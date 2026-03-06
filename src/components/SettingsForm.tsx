@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Loader2, UserPlus } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Loader2, UserPlus, Trash2, RotateCcw, AlertTriangle } from 'lucide-react'
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr)
@@ -18,7 +19,15 @@ interface AdminUser {
   created_at: string
 }
 
-export default function SettingsForm({ currentEmail, initialFirstName, initialLastName }: { currentEmail: string; initialFirstName?: string; initialLastName?: string }) {
+interface DeletedApplication {
+  id: string
+  startup_name: string
+  deleted_at: string
+  founders: { full_name: string; is_primary: boolean }[]
+}
+
+export default function SettingsForm({ currentEmail, initialFirstName, initialLastName, deletedApplications = [] }: { currentEmail: string; initialFirstName?: string; initialLastName?: string; deletedApplications?: DeletedApplication[] }) {
+  const router = useRouter()
   const [firstName, setFirstName] = useState(initialFirstName || '')
   const [lastName, setLastName] = useState(initialLastName || '')
   const [profileLoading, setProfileLoading] = useState(false)
@@ -380,6 +389,118 @@ export default function SettingsForm({ currentEmail, initialFirstName, initialLa
           </form>
         </div>
       </div>
+
+      {/* Trash */}
+      <TrashSection applications={deletedApplications} onRefresh={() => router.refresh()} />
+    </div>
+  )
+}
+
+function TrashSection({ applications, onRefresh }: { applications: DeletedApplication[]; onRefresh: () => void }) {
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [loadingId, setLoadingId] = useState<string | null>(null)
+
+  const handleRestore = async (id: string) => {
+    setLoadingId(id)
+    await fetch(`/api/applications/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'restore' }),
+    })
+    setLoadingId(null)
+    onRefresh()
+  }
+
+  const handlePermanentDelete = async (id: string) => {
+    setLoadingId(id)
+    await fetch(`/api/applications/${id}`, { method: 'DELETE' })
+    setConfirmDeleteId(null)
+    setLoadingId(null)
+    onRefresh()
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-6">
+      <div className="flex items-center gap-2 mb-4">
+        <Trash2 size={20} className="text-gray-500" />
+        <h2 className="text-lg font-semibold">Trash</h2>
+        {applications.length > 0 && (
+          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{applications.length}</span>
+        )}
+      </div>
+
+      {applications.length === 0 ? (
+        <p className="text-sm text-gray-500">No deleted applications.</p>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {applications.map(app => {
+            const primaryFounder = app.founders?.find(f => f.is_primary) || app.founders?.[0]
+            return (
+              <div key={app.id} className="flex items-center justify-between py-3">
+                <div>
+                  <span className="text-sm font-medium">{app.startup_name}</span>
+                  {primaryFounder && (
+                    <span className="text-xs text-gray-400 ml-2">{primaryFounder.full_name}</span>
+                  )}
+                  <p className="text-xs text-gray-400">
+                    Deleted on {formatDate(app.deleted_at)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleRestore(app.id)}
+                    disabled={loadingId === app.id}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                    title="Restore"
+                  >
+                    <RotateCcw size={14} />
+                    Restore
+                  </button>
+                  <button
+                    onClick={() => setConfirmDeleteId(app.id)}
+                    disabled={loadingId === app.id}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                    title="Delete permanently"
+                  >
+                    <Trash2 size={14} />
+                    Delete
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Permanent delete confirmation modal */}
+      {confirmDeleteId && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setConfirmDeleteId(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle size={20} className="text-red-600" />
+              <h3 className="font-semibold">Delete permanently?</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-5">
+              This action cannot be undone. The application and all related data (founders, documents, notes) will be permanently deleted.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setConfirmDeleteId(null)}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handlePermanentDelete(confirmDeleteId)}
+                disabled={loadingId === confirmDeleteId}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {loadingId === confirmDeleteId ? 'Deleting...' : 'Delete permanently'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

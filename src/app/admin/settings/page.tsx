@@ -13,6 +13,12 @@ export default async function SettingsPage() {
     redirect('/admin/login')
   }
 
+  const { data: deletedApplications } = await supabase
+    .from('applications')
+    .select('id, startup_name, deleted_at, founders(full_name, is_primary)')
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false })
+
   return (
     <div className="min-h-screen bg-gray-50">
       <AdminNav email={user.email || ''} displayName={[user.user_metadata?.first_name, user.user_metadata?.last_name].filter(Boolean).join(' ') || undefined} />
@@ -21,7 +27,7 @@ export default async function SettingsPage() {
           <ArrowLeft size={16} /> Back to applications
         </Link>
         <h1 className="text-2xl font-bold mb-6">Settings</h1>
-        <SettingsForm currentEmail={user.email || ''} initialFirstName={user.user_metadata?.first_name || ''} initialLastName={user.user_metadata?.last_name || ''} />
+        <SettingsForm currentEmail={user.email || ''} initialFirstName={user.user_metadata?.first_name || ''} initialLastName={user.user_metadata?.last_name || ''} deletedApplications={deletedApplications || []} />
       </div>
     </div>
   )

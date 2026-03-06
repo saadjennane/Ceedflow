@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Mail, FileText, ExternalLink, History, X } from 'lucide-react'
+import { ArrowLeft, Mail, FileText, ExternalLink, History, X, Trash2 } from 'lucide-react'
 import type {
   Application, ApplicationStatus, Priority, NextAction, AdminUser,
 } from '@/lib/types'
@@ -65,6 +65,8 @@ export default function ApplicationDetail({
   const [noteText, setNoteText] = useState('')
   const [submittingNote, setSubmittingNote] = useState(false)
   const [showActivity, setShowActivity] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const updateField = async (field: string, value: string | null) => {
     const oldValue = (application as unknown as Record<string, unknown>)[field] as string | undefined
@@ -100,6 +102,17 @@ export default function ApplicationDetail({
 
     setNoteText('')
     setSubmittingNote(false)
+    router.refresh()
+  }
+
+  const handleSoftDelete = async () => {
+    setDeleting(true)
+    await fetch(`/api/applications/${application.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'soft-delete' }),
+    })
+    router.push('/admin')
     router.refresh()
   }
 
@@ -323,6 +336,16 @@ export default function ApplicationDetail({
                 {NEXT_ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
               </select>
             </div>
+
+            <div className="pt-2 border-t border-gray-200">
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
+              >
+                <Trash2 size={16} />
+                Move to trash
+              </button>
+            </div>
           </div>
 
           {/* Notes - separate block */}
@@ -362,6 +385,33 @@ export default function ApplicationDetail({
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowDeleteConfirm(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+            <h2 className="font-semibold text-lg mb-2">Move to trash?</h2>
+            <p className="text-sm text-gray-600 mb-5">
+              <strong>{application.startup_name}</strong> will be moved to the trash. You can restore it later from Settings.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSoftDelete}
+                disabled={deleting}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? 'Deleting...' : 'Move to trash'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Activity History Modal */}
       {showActivity && (

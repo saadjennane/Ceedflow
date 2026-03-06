@@ -59,6 +59,7 @@ export interface Application {
   next_action?: NextAction
   created_at: string
   updated_at?: string
+  deleted_at?: string
   founders?: Founder[]
   documents?: Document[]
   notes?: Note[]
