@@ -13,22 +13,47 @@ export default function AdminLogin() {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
 
+  const [debug, setDebug] = useState('')
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
+    setDebug('')
 
-    const supabase = createClient()
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-    if (error) {
-      setError(error.message)
+    setDebug(`URL: ${supabaseUrl ? supabaseUrl.substring(0, 30) + '...' : 'MISSING'}\nKey: ${supabaseKey ? supabaseKey.substring(0, 20) + '...' : 'MISSING'}`)
+
+    if (!supabaseUrl || !supabaseKey) {
+      setError('Supabase env vars are missing. Check Vercel environment variables.')
       setLoading(false)
       return
     }
 
-    router.push('/admin')
-    router.refresh()
+    try {
+      setDebug(d => d + '\nCreating client...')
+      const supabase = createClient()
+      setDebug(d => d + '\nCalling signInWithPassword...')
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+      setDebug(d => d + `\nResult: ${error ? 'ERROR: ' + error.message : 'SUCCESS, user=' + data.user?.email}`)
+
+      if (error) {
+        setError(error.message)
+        setLoading(false)
+        return
+      }
+
+      setDebug(d => d + '\nRedirecting to /admin...')
+      router.push('/admin')
+      router.refresh()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setError('Connection error: ' + msg)
+      setDebug(d => d + '\nCATCH: ' + msg)
+      setLoading(false)
+    }
   }
 
   return (
@@ -76,6 +101,11 @@ export default function AdminLogin() {
             Sign In
           </button>
         </form>
+        {debug && (
+          <pre className="mt-4 p-3 bg-gray-100 text-xs text-gray-700 rounded-lg whitespace-pre-wrap break-all">
+            {debug}
+          </pre>
+        )}
       </div>
     </div>
   )
