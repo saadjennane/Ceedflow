@@ -1,11 +1,19 @@
-import { Resend } from 'resend'
+import nodemailer from 'nodemailer'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
-function getResend() {
-  return new Resend(process.env.RESEND_API_KEY)
+function getTransporter() {
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'ssl0.ovh.net',
+    port: Number(process.env.SMTP_PORT) || 465,
+    secure: true,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  })
 }
 
-const FROM_EMAIL = process.env.EMAIL_FROM || 'Startup Program <onboarding@resend.dev>'
+const FROM_EMAIL = process.env.EMAIL_FROM || 'CEED Morocco <noreply@ceedflow.com>'
 
 export async function sendAdminNotification(data: {
   startupName: string
@@ -13,7 +21,6 @@ export async function sendAdminNotification(data: {
   sector: string
   applicationId: string
 }) {
-  // Dynamically fetch all admin emails from Supabase Auth
   const supabase = await createServiceRoleClient()
   const { data: usersData } = await supabase.auth.admin.listUsers()
   const adminEmails = usersData?.users?.map(u => u.email).filter(Boolean) as string[] || []
@@ -22,9 +29,9 @@ export async function sendAdminNotification(data: {
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
-  await getResend().emails.send({
+  await getTransporter().sendMail({
     from: FROM_EMAIL,
-    to: adminEmails,
+    to: adminEmails.join(', '),
     subject: `New startup application: ${data.startupName}`,
     html: `
       <h2>New startup application received</h2>
@@ -38,7 +45,7 @@ export async function sendAdminNotification(data: {
 }
 
 export async function sendApplicantConfirmation(email: string, startupName: string) {
-  const { data: emailData, error } = await getResend().emails.send({
+  await getTransporter().sendMail({
     from: FROM_EMAIL,
     to: email,
     subject: 'Application received – CEED Morocco',
@@ -49,9 +56,4 @@ export async function sendApplicantConfirmation(email: string, startupName: stri
       <p>We will contact you if your project is selected for the next stage.</p>
     `,
   })
-  if (error) {
-    console.error('Applicant confirmation email error:', error)
-    throw error
-  }
-  return emailData
 }
