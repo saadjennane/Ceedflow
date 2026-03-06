@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 160" fill="none">
+  <!-- Circular arcs -->
+  <path d="M70 80c0-33.1 26.9-60 60-60" stroke="#A8D4FF" stroke-width="6" stroke-linecap="round" fill="none"/>
+  <path d="M58 80c0-39.8 32.2-72 72-72" stroke="#6BB8FF" stroke-width="6" stroke-linecap="round" fill="none"/>
+  <path d="M46 80c0-46.4 37.6-84 84-84" stroke="#3B8EF0" stroke-width="7" stroke-linecap="round" fill="none"/>
+  <!-- C letter as arc -->
+  <path d="M82 80c0-26.5 21.5-48 48-48" stroke="#2B7DE9" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <path d="M82 80c0 26.5 21.5 48 48 48" stroke="#5BA8F5" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <!-- CEED text -->
+  <text x="140" y="95" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="62" fill="#2563EB">CEED</text>
+  <!-- MOROCCO text -->
+  <text x="185" y="130" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="30" fill="#6B7280" letter-spacing="4">MOROCCO</text>
+</svg>
