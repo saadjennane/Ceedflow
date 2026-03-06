@@ -1,7 +1,9 @@
 import { Resend } from 'resend'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+function getResend() {
+  return new Resend(process.env.RESEND_API_KEY)
+}
 
 const FROM_EMAIL = process.env.EMAIL_FROM || 'Startup Program <onboarding@resend.dev>'
 
@@ -20,7 +22,7 @@ export async function sendAdminNotification(data: {
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
-  await resend.emails.send({
+  await getResend().emails.send({
     from: FROM_EMAIL,
     to: adminEmails,
     subject: `New startup application: ${data.startupName}`,
@@ -36,7 +38,7 @@ export async function sendAdminNotification(data: {
 }
 
 export async function sendApplicantConfirmation(email: string, startupName: string) {
-  const { data, error } = await resend.emails.send({
+  const { data: emailData, error } = await getResend().emails.send({
     from: FROM_EMAIL,
     to: email,
     subject: 'Application received – CEED Morocco',
@@ -51,5 +53,5 @@ export async function sendApplicantConfirmation(email: string, startupName: stri
     console.error('Applicant confirmation email error:', error)
     throw error
   }
-  return data
+  return emailData
 }
