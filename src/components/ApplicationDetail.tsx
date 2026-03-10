@@ -337,15 +337,6 @@ export default function ApplicationDetail({
               </select>
             </div>
 
-            <div className="pt-2 border-t border-gray-200">
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
-              >
-                <Trash2 size={16} />
-                Move to trash
-              </button>
-            </div>
           </div>
 
           {/* Notes - separate block */}
@@ -383,6 +374,15 @@ export default function ApplicationDetail({
               </div>
             )}
           </div>
+
+          {/* Move to trash */}
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
+          >
+            <Trash2 size={16} />
+            Move to trash
+          </button>
         </div>
       </div>
 
