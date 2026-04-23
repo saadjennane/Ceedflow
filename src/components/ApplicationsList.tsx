@@ -2,9 +2,8 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { Search, Download, Filter, LayoutList, LayoutGrid, FileText, User } from 'lucide-react'
+import { Search, Download, Filter, LayoutList, LayoutGrid, FileText, User, Trash2, X } from 'lucide-react'
 import type { Application, ApplicationStatus, Sector, Stage, Priority, AdminUser } from '@/lib/types'
 import KanbanBoard from './KanbanBoard'
 
@@ -64,6 +63,9 @@ export default function ApplicationsList({ applications, adminUsers, currentUser
   const [showFilters, setShowFilters] = useState(false)
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list')
   const [groupBy, setGroupBy] = useState<'status' | 'assignee'>('status')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
 
   const filtered = useMemo(() => {
     return applications.filter(app => {
@@ -101,6 +103,72 @@ export default function ApplicationsList({ applications, adminUsers, currentUser
       old_value: oldValue,
       new_value: value,
     })
+    router.refresh()
+  }
+
+  const visibleSelectedIds = useMemo(
+    () => filtered.map(a => a.id).filter(id => selectedIds.has(id)),
+    [filtered, selectedIds]
+  )
+  const allSelected = filtered.length > 0 && visibleSelectedIds.length === filtered.length
+  const someSelected = visibleSelectedIds.length > 0
+
+  const toggleOne = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleAll = () => {
+    if (allSelected) setSelectedIds(new Set())
+    else setSelectedIds(new Set(filtered.map(a => a.id)))
+  }
+
+  const clearSelection = () => setSelectedIds(new Set())
+
+  const bulkUpdateField = async (field: 'status' | 'priority', value: string) => {
+    const ids = visibleSelectedIds
+    if (ids.length === 0) return
+    const idSet = new Set(ids)
+    const oldValues = new Map(
+      applications
+        .filter(a => idSet.has(a.id))
+        .map(a => [a.id, field === 'status' ? a.status : a.priority])
+    )
+    await supabase.from('applications').update({ [field]: value }).in('id', ids)
+    const logs = ids
+      .filter(id => oldValues.get(id) !== value)
+      .map(id => ({
+        application_id: id,
+        actor_user_id: currentUserId,
+        action_type: `${field}_changed`,
+        old_value: oldValues.get(id) ?? null,
+        new_value: value,
+      }))
+    if (logs.length > 0) await supabase.from('activity_log').insert(logs)
+    clearSelection()
+    router.refresh()
+  }
+
+  const bulkSoftDelete = async () => {
+    const ids = visibleSelectedIds
+    if (ids.length === 0) return
+    setBulkDeleting(true)
+    await supabase.from('applications').update({ deleted_at: new Date().toISOString() }).in('id', ids)
+    const logs = ids.map(id => ({
+      application_id: id,
+      actor_user_id: currentUserId,
+      action_type: 'trashed',
+      old_value: null,
+      new_value: null,
+    }))
+    await supabase.from('activity_log').insert(logs)
+    setBulkDeleting(false)
+    setShowBulkDeleteConfirm(false)
+    clearSelection()
     router.refresh()
   }
 
@@ -217,12 +285,68 @@ export default function ApplicationsList({ applications, adminUsers, currentUser
         )}
       </div>
 
+      {viewMode === 'list' && visibleSelectedIds.length > 0 && (
+        <div className="mb-3 flex items-center gap-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+          <span className="text-sm font-medium text-blue-900">{visibleSelectedIds.length} selected</span>
+          <div className="h-4 w-px bg-blue-200" />
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-600">Set status</label>
+            <select
+              value=""
+              onChange={(e) => { if (e.target.value) bulkUpdateField('status', e.target.value) }}
+              className="text-sm border border-gray-300 rounded-lg px-2 py-1 bg-white"
+            >
+              <option value="">—</option>
+              {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-600">Set priority</label>
+            <select
+              value=""
+              onChange={(e) => { if (e.target.value) bulkUpdateField('priority', e.target.value) }}
+              className="text-sm border border-gray-300 rounded-lg px-2 py-1 bg-white"
+            >
+              <option value="">—</option>
+              {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => setShowBulkDeleteConfirm(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-700 bg-white border border-red-200 rounded-lg hover:bg-red-50"
+            >
+              <Trash2 size={14} />
+              Delete
+            </button>
+            <button
+              onClick={clearSelection}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900"
+              title="Clear selection"
+            >
+              <X size={14} />
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       {viewMode === 'list' ? (
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="px-4 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      ref={el => { if (el) el.indeterminate = !allSelected && someSelected }}
+                      onChange={toggleAll}
+                      className="h-4 w-4 rounded border-gray-300 cursor-pointer"
+                      aria-label="Select all"
+                    />
+                  </th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Startup</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Founder</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Sector</th>
@@ -237,13 +361,26 @@ export default function ApplicationsList({ applications, adminUsers, currentUser
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="text-center py-12 text-gray-500">
+                    <td colSpan={10} className="text-center py-12 text-gray-500">
                       No applications found.
                     </td>
                   </tr>
                 ) : (
                   filtered.map((app) => (
-                    <tr key={app.id} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => router.push(`/admin/applications/${app.id}`)}>
+                    <tr
+                      key={app.id}
+                      className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${selectedIds.has(app.id) ? 'bg-blue-50/50' : ''}`}
+                      onClick={() => router.push(`/admin/applications/${app.id}`)}
+                    >
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(app.id)}
+                          onChange={() => toggleOne(app.id)}
+                          className="h-4 w-4 rounded border-gray-300 cursor-pointer"
+                          aria-label={`Select ${app.startup_name}`}
+                        />
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2 font-medium text-black">
                           {app.logo_url && (
@@ -302,6 +439,39 @@ export default function ApplicationsList({ applications, adminUsers, currentUser
         </div>
       ) : (
         <KanbanBoard applications={filtered} adminUsers={adminUsers} groupBy={groupBy} onStatusChange={(appId, newStatus, oldStatus) => updateField(appId, 'status', newStatus, oldStatus)} />
+      )}
+
+      {showBulkDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <Trash2 size={20} className="text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold">Move {visibleSelectedIds.length} application{visibleSelectedIds.length > 1 ? 's' : ''} to trash?</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-6">
+              The selected application{visibleSelectedIds.length > 1 ? 's' : ''} will be moved to trash. You can restore {visibleSelectedIds.length > 1 ? 'them' : 'it'} later from Settings.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                disabled={bulkDeleting}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={bulkSoftDelete}
+                disabled={bulkDeleting}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                <Trash2 size={14} />
+                {bulkDeleting ? 'Deleting...' : 'Move to trash'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
