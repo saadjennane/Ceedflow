@@ -157,17 +157,21 @@ export default function ApplicationsList({ applications, adminUsers, currentUser
     const ids = visibleSelectedIds
     if (ids.length === 0) return
     setBulkDeleting(true)
-    await supabase.from('applications').update({ deleted_at: new Date().toISOString() }).in('id', ids)
-    const logs = ids.map(id => ({
-      application_id: id,
-      actor_user_id: currentUserId,
-      action_type: 'trashed',
-      old_value: null,
-      new_value: null,
-    }))
-    await supabase.from('activity_log').insert(logs)
+    const results = await Promise.all(
+      ids.map(id =>
+        fetch(`/api/applications/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'soft-delete' }),
+        })
+      )
+    )
+    const failed = results.filter(r => !r.ok)
     setBulkDeleting(false)
     setShowBulkDeleteConfirm(false)
+    if (failed.length > 0) {
+      alert(`Failed to delete ${failed.length} application${failed.length > 1 ? 's' : ''}.`)
+    }
     clearSelection()
     router.refresh()
   }
