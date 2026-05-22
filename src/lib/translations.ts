@@ -85,6 +85,14 @@ const translations = {
     internalRules: 'internal rules',
     viewInternalRules: 'View internal rules',
 
+    // Program Info page
+    programInfo: 'Program Info',
+    programInfoTitle: 'Program Information',
+    programInfoSubtitle: 'Learn more about our incubation and acceleration program.',
+    tabEligibility: 'Eligibility Criteria',
+    tabSelection: 'Selection Process',
+    tabTimeline: 'Program Timeline',
+
     // Modals
     possibleDuplicate: 'Possible Duplicate',
     duplicateMessage: 'An application with similar information already exists. Please confirm submission.',
@@ -185,6 +193,14 @@ const translations = {
     acceptInternalRulesBefore: 'J\'ai lu et j\'accepte le',
     internalRules: 'règlement intérieur',
     viewInternalRules: 'Voir le règlement intérieur',
+
+    // Program Info page
+    programInfo: 'Infos sur le programme',
+    programInfoTitle: 'Infos sur le programme',
+    programInfoSubtitle: 'En savoir plus sur notre programme d\'incubation et d\'accélération.',
+    tabEligibility: 'Critères d\'éligibilité',
+    tabSelection: 'Processus de sélection',
+    tabTimeline: 'Timeline du programme',
 
     // Modals
     possibleDuplicate: 'Doublon possible',

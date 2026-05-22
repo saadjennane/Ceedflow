@@ -32,6 +32,15 @@ export default function Home() {
               <span className="text-lg">🇬🇧</span> Apply
             </Link>
           </div>
+          <div className="mt-6 flex items-center justify-center gap-4 text-sm">
+            <Link href="/program-info?lang=fr" className="text-gray-500 hover:text-blue-700 underline">
+              Infos sur le programme
+            </Link>
+            <span className="text-gray-300">·</span>
+            <Link href="/program-info?lang=en" className="text-gray-500 hover:text-blue-700 underline">
+              Program info
+            </Link>
+          </div>
         </div>
       </div>
     </div>
