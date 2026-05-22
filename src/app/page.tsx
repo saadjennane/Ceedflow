@@ -43,7 +43,7 @@ export default function Home() {
             </Link>
             <Link
               href="/apply?lang=en"
-              className="inline-flex items-center justify-center gap-2 border border-blue-200 bg-white/70 backdrop-blur-sm text-blue-700 px-8 py-3.5 rounded-xl font-medium hover:bg-white hover:border-blue-300 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 w-full sm:w-auto"
+              className="inline-flex items-center justify-center gap-2 bg-blue-600 text-white px-8 py-3.5 rounded-xl font-medium shadow-lg shadow-blue-600/25 hover:shadow-xl hover:shadow-blue-600/40 hover:-translate-y-0.5 hover:bg-blue-700 transition-all duration-200 w-full sm:w-auto"
             >
               <span className="text-lg">🇬🇧</span> Apply
             </Link>
