@@ -43,6 +43,9 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
   const [duplicateWarning, setDuplicateWarning] = useState(false)
   const [duplicateConfirmed, setDuplicateConfirmed] = useState(false)
   const [showErrors, setShowErrors] = useState(false)
+  const [acceptedRules, setAcceptedRules] = useState(false)
+
+  const internalRulesUrl = '/Reglement_The_Bridge_CEED_Maroc.pdf'
 
   // Form state
   const [startupName, setStartupName] = useState('')
@@ -880,18 +883,51 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
             />
           </div>
 
+          <label className="flex items-start gap-2 cursor-pointer text-sm">
+            <input
+              type="checkbox"
+              checked={acceptedRules}
+              onChange={(e) => setAcceptedRules(e.target.checked)}
+              className="mt-1 accent-blue-600 cursor-pointer"
+            />
+            <span>
+              {t.acceptInternalRulesBefore}{' '}
+              <a
+                href={internalRulesUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 underline hover:text-blue-700"
+              >
+                {t.internalRules}
+              </a>
+            </span>
+          </label>
+
           <div className="flex justify-between pt-4">
             <button onClick={prevStep} className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
               {t.back}
             </button>
-            <button
-              onClick={handleSubmit}
-              disabled={submitting}
-              className="px-8 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+            {acceptedRules && (
+              <button
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="px-8 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {submitting && <Loader2 size={16} className="animate-spin" />}
+                {submitting ? t.submitting : t.submitApplication}
+              </button>
+            )}
+          </div>
+
+          <div className="flex justify-end">
+            <a
+              href={internalRulesUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-gray-600 hover:text-blue-700 underline"
             >
-              {submitting && <Loader2 size={16} className="animate-spin" />}
-              {submitting ? t.submitting : t.submitApplication}
-            </button>
+              {t.viewInternalRules}
+            </a>
           </div>
         </div>
       )}

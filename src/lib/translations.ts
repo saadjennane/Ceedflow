@@ -81,6 +81,9 @@ const translations = {
     confidentialityText: 'By submitting this application, you acknowledge that all information provided is accurate and complete. <strong>CEED is committed to preserving the confidentiality of all information submitted through this application.</strong> Your data will only be used for the purpose of evaluating your application and will not be shared with third parties without your prior consent.',
     submitApplication: 'Submit Application',
     submitting: 'Submitting...',
+    acceptInternalRulesBefore: 'I have read and accept the',
+    internalRules: 'internal rules',
+    viewInternalRules: 'View internal rules',
 
     // Modals
     possibleDuplicate: 'Possible Duplicate',
@@ -179,6 +182,9 @@ const translations = {
     confidentialityText: 'En soumettant cette candidature, vous reconnaissez que toutes les informations fournies sont exactes et complètes. <strong>CEED s\'engage à préserver la confidentialité de toutes les informations soumises via cette candidature.</strong> Vos données ne seront utilisées que dans le cadre de l\'évaluation de votre candidature et ne seront pas partagées avec des tiers sans votre consentement préalable.',
     submitApplication: 'Soumettre la candidature',
     submitting: 'Envoi en cours...',
+    acceptInternalRulesBefore: 'J\'ai lu et j\'accepte le',
+    internalRules: 'règlement intérieur',
+    viewInternalRules: 'Voir le règlement intérieur',
 
     // Modals
     possibleDuplicate: 'Doublon possible',
