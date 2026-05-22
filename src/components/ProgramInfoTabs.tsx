@@ -176,7 +176,7 @@ function SelectionContent({ lang }: { lang: Lang }) {
   if (lang === 'en') {
     return (
       <div className="space-y-8">
-        <Step number={2} title="Application screening & shortlisting">
+        <Step number={1} title="Application screening & shortlisting">
           <p>The program team reviews all applications received to identify projects with:</p>
           <Bullets items={[
             'a relevant problem statement',
@@ -188,7 +188,7 @@ function SelectionContent({ lang }: { lang: Lang }) {
           <p>Shortlisted startups are then invited to pitch to the pre-selection committee.</p>
         </Step>
 
-        <Step number={3} title="Pre-selection committee">
+        <Step number={2} title="Pre-selection committee">
           <p>Shortlisted startups present their project, in person or online, to a committee made up of:</p>
           <Bullets items={['SID members', 'sector experts', 'entrepreneurs', 'investors', 'ecosystem partners']} />
           <p className="font-medium text-gray-900 pt-1">Evaluation criteria</p>
@@ -203,7 +203,7 @@ function SelectionContent({ lang }: { lang: Lang }) {
           ]} />
         </Step>
 
-        <Step number={4} title="Admission & immediate onboarding">
+        <Step number={3} title="Admission & immediate onboarding">
           <p>Selected startups join the program as soon as their admission is confirmed, in order to:</p>
           <Bullets items={[
             'reduce waiting times',
@@ -215,7 +215,7 @@ function SelectionContent({ lang }: { lang: Lang }) {
           </p>
         </Step>
 
-        <Step number={5} title="Diagnostic & Structuring phase (1 month)">
+        <Step number={4} title="Diagnostic & Structuring phase (1 month)">
           <p>Each startup receives intensive support including:</p>
           <Bullets items={[
             'individual strategic sessions',
@@ -236,7 +236,7 @@ function SelectionContent({ lang }: { lang: Lang }) {
           ]} />
         </Step>
 
-        <Step number={6} title="Funding committee">
+        <Step number={5} title="Funding committee">
           <p>At the end of the first month, each startup presents to the funding committee:</p>
           <Bullets items={[
             'diagnostic findings',
@@ -259,7 +259,7 @@ function SelectionContent({ lang }: { lang: Lang }) {
   }
   return (
     <div className="space-y-8">
-      <Step number={2} title="Analyse & présélection des dossiers">
+      <Step number={1} title="Analyse & présélection des dossiers">
         <p>L&apos;équipe du programme analyse l&apos;ensemble des candidatures reçues pour identifier les projets présentant :</p>
         <Bullets items={[
           'une problématique pertinente',
@@ -271,7 +271,7 @@ function SelectionContent({ lang }: { lang: Lang }) {
         <p>Les startups présélectionnées sont ensuite invitées à pitcher devant le comité de présélection.</p>
       </Step>
 
-      <Step number={3} title="Comité de présélection">
+      <Step number={2} title="Comité de présélection">
         <p>Les startups présélectionnées présentent leur projet, en présentiel ou en ligne, devant un comité composé de :</p>
         <Bullets items={['membres de SID', 'experts sectoriels', 'entrepreneurs', 'investisseurs', 'partenaires de l’écosystème']} />
         <p className="font-medium text-gray-900 pt-1">Critères évalués</p>
@@ -286,7 +286,7 @@ function SelectionContent({ lang }: { lang: Lang }) {
         ]} />
       </Step>
 
-      <Step number={4} title="Admission & onboarding immédiat">
+      <Step number={3} title="Admission & onboarding immédiat">
         <p>Les startups retenues intègrent le programme dès validation de leur admission, afin de :</p>
         <Bullets items={[
           'réduire les délais d’attente',
@@ -298,7 +298,7 @@ function SelectionContent({ lang }: { lang: Lang }) {
         </p>
       </Step>
 
-      <Step number={5} title="Phase Diagnostic & Structuration (1 mois)">
+      <Step number={4} title="Phase Diagnostic & Structuration (1 mois)">
         <p>Chaque startup bénéficie d&apos;un accompagnement intensif :</p>
         <Bullets items={[
           'sessions stratégiques individuelles',
@@ -320,7 +320,7 @@ function SelectionContent({ lang }: { lang: Lang }) {
         ]} />
       </Step>
 
-      <Step number={6} title="Comité de financement">
+      <Step number={5} title="Comité de financement">
         <p>À l&apos;issue du premier mois, chaque startup présente au comité :</p>
         <Bullets items={[
           'les enseignements du diagnostic',
