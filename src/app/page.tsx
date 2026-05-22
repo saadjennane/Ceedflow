@@ -43,11 +43,11 @@ export default function Home() {
           </div>
         </div>
       </div>
-      <footer className="w-full px-4 py-8 flex justify-center">
+      <footer className="w-full px-4 py-6 flex justify-center">
         <img
           src="/Banner.png"
           alt="Led by Royaume du Maroc, operated by Tamwilcom, as part of Digital Morocco 2030"
-          className="max-w-full h-auto"
+          className="max-h-28 max-w-full w-auto h-auto"
         />
       </footer>
     </div>
