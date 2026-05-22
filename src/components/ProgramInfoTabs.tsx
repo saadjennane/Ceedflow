@@ -79,7 +79,7 @@ function EligibilityContent({ lang }: { lang: Lang }) {
         </section>
 
         <section className="border-t border-gray-200 pt-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-3">Article 5 – Non-eligible projects</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">Non-eligible projects</h3>
           <p className="text-sm leading-relaxed mb-3">The following are notably not eligible:</p>
           <ul className="list-disc pl-6 space-y-2 text-sm leading-relaxed">
             <li>Illegal projects or projects contrary to the regulations in force in Morocco.</li>
@@ -130,7 +130,7 @@ function EligibilityContent({ lang }: { lang: Lang }) {
       </section>
 
       <section className="border-t border-gray-200 pt-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-3">Article 5 – Projets non éligibles</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-3">Projets non éligibles</h3>
         <p className="text-sm leading-relaxed mb-3">Ne sont notamment pas éligibles :</p>
         <ul className="list-disc pl-6 space-y-2 text-sm leading-relaxed">
           <li>Les projets illégaux ou contraires à la réglementation en vigueur au Maroc.</li>
@@ -150,12 +150,194 @@ function EligibilityContent({ lang }: { lang: Lang }) {
   )
 }
 
-function SelectionContent({ lang }: { lang: Lang }) {
+function Step({ number, title, children }: { number: number; title: string; children: React.ReactNode }) {
   return (
-    <div className="prose prose-sm max-w-none text-gray-700">
-      <p className="text-gray-400 italic">
-        {lang === 'fr' ? 'Contenu à venir…' : 'Content coming soon…'}
-      </p>
+    <div className="flex gap-4">
+      <div className="flex-shrink-0 w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-semibold">
+        {number}
+      </div>
+      <div className="flex-1 pt-1 min-w-0">
+        <h3 className="text-base font-semibold text-gray-900 mb-3">{title}</h3>
+        <div className="space-y-3 text-sm text-gray-700 leading-relaxed">{children}</div>
+      </div>
+    </div>
+  )
+}
+
+function Bullets({ items }: { items: string[] }) {
+  return (
+    <ul className="list-disc pl-5 space-y-1">
+      {items.map((item, i) => <li key={i}>{item}</li>)}
+    </ul>
+  )
+}
+
+function SelectionContent({ lang }: { lang: Lang }) {
+  if (lang === 'en') {
+    return (
+      <div className="space-y-8">
+        <Step number={2} title="Application screening & shortlisting">
+          <p>The program team reviews all applications received to identify projects with:</p>
+          <Bullets items={[
+            'a relevant problem statement',
+            'strong impact potential',
+            'execution capacity',
+            'a clear vision',
+            'meaningful development potential during the program',
+          ]} />
+          <p>Shortlisted startups are then invited to pitch to the pre-selection committee.</p>
+        </Step>
+
+        <Step number={3} title="Pre-selection committee">
+          <p>Shortlisted startups present their project, in person or online, to a committee made up of:</p>
+          <Bullets items={['SID members', 'sector experts', 'entrepreneurs', 'investors', 'ecosystem partners']} />
+          <p className="font-medium text-gray-900 pt-1">Evaluation criteria</p>
+          <Bullets items={[
+            'relevance of the problem addressed',
+            'market potential',
+            'team motivation and complementarity',
+            'execution capacity',
+            'product vision',
+            'technical feasibility',
+            'ability to deliver tangible results during the program',
+          ]} />
+        </Step>
+
+        <Step number={4} title="Admission & immediate onboarding">
+          <p>Selected startups join the program as soon as their admission is confirmed, in order to:</p>
+          <Bullets items={[
+            'reduce waiting times',
+            'keep the entrepreneurial momentum',
+            'kick off the diagnostic and structuring phase quickly',
+          ]} />
+          <p>
+            Each startup then enters the <strong>Diagnostic &amp; Roadmapping</strong> phase (1 month) — an intensive sprint to understand the startup&apos;s real needs, build a tailored roadmap, identify priorities, define KPIs, and set the program objectives.
+          </p>
+        </Step>
+
+        <Step number={5} title="Diagnostic & Structuring phase (1 month)">
+          <p>Each startup receives intensive support including:</p>
+          <Bullets items={[
+            'individual strategic sessions',
+            'product audit',
+            'business audit',
+            'market structuring',
+            'technical and commercial framing',
+            'milestone preparation',
+          ]} />
+          <p className="font-medium text-gray-900 pt-1">Deliverables at the end of the month</p>
+          <Bullets items={[
+            'a clear roadmap',
+            'an execution plan',
+            'measurable objectives',
+            'a market validation strategy',
+            'a prioritized product backlog',
+            'tracking KPIs',
+          ]} />
+        </Step>
+
+        <Step number={6} title="Funding committee">
+          <p>At the end of the first month, each startup presents to the funding committee:</p>
+          <Bullets items={[
+            'diagnostic findings',
+            'roadmap',
+            'objectives',
+            'development strategy',
+            'product and market priorities',
+            'grant utilization plan',
+          ]} />
+          <p className="font-medium text-gray-900 pt-1">Committee objectives</p>
+          <Bullets items={[
+            'validate the startup continuing in the program',
+            'confirm alignment with the program objectives',
+            'unlock the funding / grant',
+            'validate the milestones for the acceleration phase',
+          ]} />
+        </Step>
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-8">
+      <Step number={2} title="Analyse & présélection des dossiers">
+        <p>L&apos;équipe du programme analyse l&apos;ensemble des candidatures reçues pour identifier les projets présentant :</p>
+        <Bullets items={[
+          'une problématique pertinente',
+          'un potentiel d’impact',
+          'une capacité d’exécution',
+          'une vision claire',
+          'un potentiel de développement durant le programme',
+        ]} />
+        <p>Les startups présélectionnées sont ensuite invitées à pitcher devant le comité de présélection.</p>
+      </Step>
+
+      <Step number={3} title="Comité de présélection">
+        <p>Les startups présélectionnées présentent leur projet, en présentiel ou en ligne, devant un comité composé de :</p>
+        <Bullets items={['membres de SID', 'experts sectoriels', 'entrepreneurs', 'investisseurs', 'partenaires de l’écosystème']} />
+        <p className="font-medium text-gray-900 pt-1">Critères évalués</p>
+        <Bullets items={[
+          'pertinence du problème adressé',
+          'potentiel marché',
+          'motivation et complémentarité de l’équipe',
+          'capacité d’exécution',
+          'vision produit',
+          'faisabilité technique',
+          'capacité à atteindre des résultats concrets durant le programme',
+        ]} />
+      </Step>
+
+      <Step number={4} title="Admission & onboarding immédiat">
+        <p>Les startups retenues intègrent le programme dès validation de leur admission, afin de :</p>
+        <Bullets items={[
+          'réduire les délais d’attente',
+          'maintenir la dynamique entrepreneuriale',
+          'démarrer rapidement la phase de diagnostic et de structuration',
+        ]} />
+        <p>
+          Chaque startup entre alors dans la phase <strong>Diagnostic &amp; Roadmapping</strong> (1 mois) — une phase intensive pour comprendre les besoins réels de la startup, construire une feuille de route adaptée, identifier les priorités, définir les KPIs et préparer les objectifs du programme.
+        </p>
+      </Step>
+
+      <Step number={5} title="Phase Diagnostic & Structuration (1 mois)">
+        <p>Chaque startup bénéficie d&apos;un accompagnement intensif :</p>
+        <Bullets items={[
+          'sessions stratégiques individuelles',
+          'audit produit',
+          'audit business',
+          'structuration marché',
+          'cadrage technique',
+          'cadrage commercial',
+          'préparation des milestones',
+        ]} />
+        <p className="font-medium text-gray-900 pt-1">Livrables à la fin du mois</p>
+        <Bullets items={[
+          'une roadmap claire',
+          'un plan d’exécution',
+          'des objectifs mesurables',
+          'une stratégie de validation marché',
+          'un backlog produit priorisé',
+          'des KPIs de suivi',
+        ]} />
+      </Step>
+
+      <Step number={6} title="Comité de financement">
+        <p>À l&apos;issue du premier mois, chaque startup présente au comité :</p>
+        <Bullets items={[
+          'les enseignements du diagnostic',
+          'sa roadmap',
+          'ses objectifs',
+          'sa stratégie de développement',
+          'ses priorités produit et marché',
+          'son plan d’utilisation de la subvention',
+        ]} />
+        <p className="font-medium text-gray-900 pt-1">Objectifs du comité</p>
+        <Bullets items={[
+          'valider la poursuite de la startup dans le programme',
+          'confirmer l’alignement du projet avec les objectifs du programme',
+          'débloquer le financement / la subvention',
+          'valider les milestones de la phase d’accélération',
+        ]} />
+      </Step>
     </div>
   )
 }
