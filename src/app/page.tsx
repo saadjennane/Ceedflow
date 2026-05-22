@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 export default function Home() {
   return (
-    <div className="min-h-screen relative bg-white">
+    <div className="min-h-screen relative bg-white flex flex-col">
       <div className="absolute top-4 right-4">
         <Link
           href="/admin"
@@ -11,7 +11,7 @@ export default function Home() {
           Admin
         </Link>
       </div>
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex-1 flex items-center justify-center">
         <div className="text-center max-w-lg px-6">
           <img src="/logo-ceed.svg" alt="CEED Morocco" className="h-20 mx-auto mb-8" />
           <p className="text-gray-600 mb-8">
@@ -43,6 +43,13 @@ export default function Home() {
           </div>
         </div>
       </div>
+      <footer className="w-full px-4 py-8 flex justify-center">
+        <img
+          src="/Banner.png"
+          alt="Led by Royaume du Maroc, operated by Tamwilcom, as part of Digital Morocco 2030"
+          className="max-w-6xl w-full h-auto"
+        />
+      </footer>
     </div>
   )
 }
