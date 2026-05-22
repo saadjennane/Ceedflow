@@ -47,7 +47,7 @@ export default function Home() {
         <img
           src="/Banner.png"
           alt="Led by Royaume du Maroc, operated by Tamwilcom, as part of Digital Morocco 2030"
-          className="max-w-6xl w-full h-auto"
+          className="max-w-full h-auto"
         />
       </footer>
     </div>
