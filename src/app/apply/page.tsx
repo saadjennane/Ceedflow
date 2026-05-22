@@ -19,7 +19,8 @@ export default async function ApplyPage({
           &larr; {t.back}
         </Link>
         <div className="flex items-center gap-3 mt-4 mb-2">
-          <img src="/logo-ceed.svg" alt="CEED Morocco" className="h-10" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/The_Bridge_by_CEED.png" alt="The Bridge by CEED" className="h-10" />
         </div>
         <h1 className="text-3xl font-bold mt-4 mb-2">{t.applyTitle}</h1>
         <p className="text-gray-600">{t.applySubtitle}</p>
