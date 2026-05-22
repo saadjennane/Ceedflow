@@ -15,9 +15,17 @@ export default async function ProgramInfoPage({
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-4xl mx-auto">
-        <Link href="/" className="text-sm text-blue-600 hover:text-blue-800">
-          &larr; {t.back}
-        </Link>
+        <div className="flex items-center justify-between gap-4">
+          <Link href="/" className="text-sm text-blue-600 hover:text-blue-800">
+            &larr; {t.back}
+          </Link>
+          <Link
+            href={`/apply?lang=${lang}`}
+            className="inline-flex items-center justify-center bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+          >
+            {lang === 'fr' ? 'Soumettre' : 'Apply'}
+          </Link>
+        </div>
         <div className="flex items-center gap-3 mt-4 mb-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo-ceed.svg" alt="CEED Morocco" className="h-10" />

@@ -342,12 +342,280 @@ function SelectionContent({ lang }: { lang: Lang }) {
   )
 }
 
-function TimelineContent({ lang }: { lang: Lang }) {
+function Month({
+  number,
+  title,
+  objective,
+  focus,
+  deliverables,
+  focusLabel,
+  deliverablesLabel,
+}: {
+  number: number
+  title: string
+  objective: string
+  focus: string[]
+  deliverables: string[]
+  focusLabel: string
+  deliverablesLabel: string
+}) {
   return (
-    <div className="prose prose-sm max-w-none text-gray-700">
-      <p className="text-gray-400 italic">
-        {lang === 'fr' ? 'Contenu à venir…' : 'Content coming soon…'}
-      </p>
+    <div className="flex gap-4">
+      <div className="flex-shrink-0 w-12 h-12 rounded-full bg-blue-600 text-white flex flex-col items-center justify-center leading-none">
+        <span className="text-[9px] font-medium tracking-wider">M</span>
+        <span className="text-sm font-bold mt-0.5">{number}</span>
+      </div>
+      <div className="flex-1 pt-1 min-w-0">
+        <h3 className="text-base font-semibold text-gray-900 mb-1">{title}</h3>
+        <p className="text-sm text-gray-700 leading-relaxed mb-3">{objective}</p>
+        <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+          <div>
+            <p className="font-medium text-gray-900 mb-1">{focusLabel}</p>
+            <ul className="list-disc pl-5 space-y-1 text-gray-700">
+              {focus.map(f => <li key={f}>{f}</li>)}
+            </ul>
+          </div>
+          <div>
+            <p className="font-medium text-gray-900 mb-1">{deliverablesLabel}</p>
+            <ul className="list-disc pl-5 space-y-1 text-gray-700">
+              {deliverables.map(d => <li key={d}>{d}</li>)}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DnaCard({ title, description, bullets }: { title: string; description: string; bullets?: string[] }) {
+  return (
+    <div className="bg-blue-50/60 border border-blue-100 rounded-lg p-4">
+      <h4 className="text-sm font-bold tracking-wider text-blue-700 mb-2">{title}</h4>
+      <p className="text-sm text-gray-700 leading-relaxed mb-2">{description}</p>
+      {bullets && (
+        <ul className="list-disc pl-5 space-y-1 text-sm text-gray-700">
+          {bullets.map(b => <li key={b}>{b}</li>)}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function TimelineContent({ lang }: { lang: Lang }) {
+  if (lang === 'en') {
+    const months: { number: number; title: string; objective: string; focus: string[]; deliverables: string[] }[] = [
+      {
+        number: 1,
+        title: 'Diagnostic & Structuring',
+        objective: "Understand each startup's real needs and build a clear execution roadmap.",
+        focus: ['360° diagnostic', 'Product & business audit', 'Roadmap structuring', 'KPI definition', 'Funding preparation'],
+        deliverables: ['Roadmap', 'Measurable objectives', 'MVP & market strategy'],
+      },
+      {
+        number: 2,
+        title: 'Build Sprint',
+        objective: 'Quickly build the first product versions.',
+        focus: ['MVP execution', 'Vibe Coding', 'Rapid construction', 'Product & data foundations', 'Initial deployment'],
+        deliverables: ['Functional MVP', 'First user tests'],
+      },
+      {
+        number: 3,
+        title: 'Market Validation',
+        objective: 'Test the market and expose the product to real users.',
+        focus: ['Customer discovery', 'Field acquisition', 'Pricing', 'First pilots', 'Corporate reverse pitch'],
+        deliverables: ['Market feedback', 'First leads', 'First validations'],
+      },
+      {
+        number: 4,
+        title: 'Traction & Business',
+        objective: 'Turn tests into concrete business opportunities.',
+        focus: ['Commercial closing', 'Offer structuring', 'Product-Market Fit', 'Investor Office Hours', 'Product optimization'],
+        deliverables: ['POCs', 'First customers', 'First potential revenue'],
+      },
+      {
+        number: 5,
+        title: 'Growth Foundations',
+        objective: 'Prepare startups to scale effectively.',
+        focus: ['Acquisition', 'Growth', 'Process', 'Operational structuring', 'Automation'],
+        deliverables: ['Acquisition funnel', 'Traction KPIs', 'Growth structuring'],
+      },
+      {
+        number: 6,
+        title: 'Investment & Demo Readiness',
+        objective: 'Prepare startups to convince partners and investors.',
+        focus: ['Storytelling', 'Investment readiness', 'Product demos', 'Product Demo Night'],
+        deliverables: ['Structured pitch', 'Consolidated KPIs', 'Demonstrable product'],
+      },
+      {
+        number: 7,
+        title: 'Demo Day Preparation',
+        objective: 'Finalize demonstrations and accelerate business opportunities.',
+        focus: ['Pitch training', 'Mock sessions', 'Business matching', 'Traction finalization'],
+        deliverables: ['Demo ready', 'Final deck', 'Identified business opportunities'],
+      },
+      {
+        number: 8,
+        title: 'Go-To-Market & Scaling',
+        objective: 'Turn opportunities into real growth.',
+        focus: ['Commercial rollout', 'Partnerships', 'Industrialization', 'Market Access Day', 'Final Demo Day'],
+        deliverables: ['Growth roadmap', 'First deployments', 'Post-program strategy'],
+      },
+    ]
+    return (
+      <div>
+        <div className="mb-8">
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Acceleration Program Timeline</h3>
+          <p className="text-sm text-gray-500">8 months to build, validate, and commercialize.</p>
+        </div>
+        <div className="space-y-8">
+          {months.map(m => (
+            <Month
+              key={m.number}
+              number={m.number}
+              title={m.title}
+              objective={m.objective}
+              focus={m.focus}
+              deliverables={m.deliverables}
+              focusLabel="Focus"
+              deliverablesLabel="Deliverables"
+            />
+          ))}
+        </div>
+
+        <section className="border-t border-gray-200 pt-8 mt-10">
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Program DNA</h3>
+          <p className="text-sm text-gray-500 mb-5">The four pillars driving the program.</p>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <DnaCard
+              title="BUILD"
+              description="Build concrete solutions and testable MVPs quickly."
+              bullets={['execution', 'real demonstrations', 'field tests', 'concrete deliverables over theory']}
+            />
+            <DnaCard
+              title="VALIDATE"
+              description="Test the market quickly to gather:"
+              bullets={['user feedback', 'pilots', 'first customers', 'first business opportunities']}
+            />
+            <DnaCard
+              title="AUTONOMIZE"
+              description="Develop entrepreneur autonomy through Vibe Coding and modern AI tools. Startups learn to build tools, launch MVPs, automate workflows, and iterate quickly without fully depending on external technical resources."
+            />
+            <DnaCard
+              title="SCALE"
+              description="Turn MVPs and market validation into real growth:"
+              bullets={['signatures', 'partnerships', 'deployments', 'funding readiness']}
+            />
+          </div>
+        </section>
+      </div>
+    )
+  }
+
+  const months: { number: number; title: string; objective: string; focus: string[]; deliverables: string[] }[] = [
+    {
+      number: 1,
+      title: 'Diagnostic & Structuration',
+      objective: "Comprendre les besoins réels de chaque startup et construire une roadmap d'exécution claire.",
+      focus: ['Diagnostic 360°', 'Audit produit & business', 'Structuration roadmap', 'Définition KPIs', 'Préparation financement'],
+      deliverables: ['Feuille de route', 'Objectifs mesurables', 'Stratégie MVP & marché'],
+    },
+    {
+      number: 2,
+      title: 'Build Sprint',
+      objective: 'Construire rapidement les premières versions des produits.',
+      focus: ['MVP execution', 'Vibe Coding', 'Construction rapide', 'Bases produit & data', 'Déploiement initial'],
+      deliverables: ['MVP fonctionnel', 'Premiers tests utilisateurs'],
+    },
+    {
+      number: 3,
+      title: 'Validation Marché',
+      objective: 'Tester le marché et confronter le produit aux utilisateurs réels.',
+      focus: ['Customer discovery', 'Acquisition terrain', 'Pricing', 'Premiers pilotes', 'Reverse Pitch corporates'],
+      deliverables: ['Feedback marché', 'Premiers leads', 'Premières validations'],
+    },
+    {
+      number: 4,
+      title: 'Traction & Business',
+      objective: 'Transformer les tests en opportunités business concrètes.',
+      focus: ['Closing commercial', 'Structuration offre', 'Product Market Fit', 'Investor Office Hours', 'Optimisation produit'],
+      deliverables: ['POCs', 'Premiers clients', 'Premiers revenus potentiels'],
+    },
+    {
+      number: 5,
+      title: 'Growth Foundations',
+      objective: 'Préparer les startups à scaler efficacement.',
+      focus: ['Acquisition', 'Growth', 'Process', 'Structuration opérationnelle', 'Automatisation'],
+      deliverables: ['Funnel d’acquisition', 'KPIs de traction', 'Structuration croissance'],
+    },
+    {
+      number: 6,
+      title: 'Investment & Demo Readiness',
+      objective: 'Préparer les startups à convaincre partenaires et investisseurs.',
+      focus: ['Storytelling', 'Investment readiness', 'Démonstrations produit', 'Product Demo Night'],
+      deliverables: ['Pitch structuré', 'KPIs consolidés', 'Produit démontrable'],
+    },
+    {
+      number: 7,
+      title: 'Demo Day Preparation',
+      objective: 'Finaliser les démonstrations et accélérer les opportunités business.',
+      focus: ['Pitch training', 'Mock sessions', 'Business matching', 'Finalisation traction'],
+      deliverables: ['Demo prête', 'Deck final', 'Opportunités commerciales identifiées'],
+    },
+    {
+      number: 8,
+      title: 'Go-To-Market & Industrialisation',
+      objective: 'Transformer les opportunités en croissance réelle.',
+      focus: ['Déploiement commercial', 'Partenariats', 'Industrialisation', 'Market Access Day', 'Demo Day final'],
+      deliverables: ['Roadmap croissance', 'Premiers déploiements', 'Stratégie post-programme'],
+    },
+  ]
+
+  return (
+    <div>
+      <div className="mb-8">
+        <h3 className="text-lg font-semibold text-gray-900 mb-1">Timeline du Programme d&apos;Accélération</h3>
+        <p className="text-sm text-gray-500">8 mois pour construire, valider et commercialiser.</p>
+      </div>
+      <div className="space-y-8">
+        {months.map(m => (
+          <Month
+            key={m.number}
+            number={m.number}
+            title={m.title}
+            objective={m.objective}
+            focus={m.focus}
+            deliverables={m.deliverables}
+            focusLabel="Focus"
+            deliverablesLabel="Livrables"
+          />
+        ))}
+      </div>
+
+      <section className="border-t border-gray-200 pt-8 mt-10">
+        <h3 className="text-lg font-semibold text-gray-900 mb-1">ADN du programme</h3>
+        <p className="text-sm text-gray-500 mb-5">Les quatre piliers qui guident le programme.</p>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <DnaCard
+            title="BUILD"
+            description="Construire rapidement des solutions concrètes et des MVPs testables."
+            bullets={['l’exécution', 'les démonstrations réelles', 'les tests terrain', 'les livrables concrets plutôt que la théorie']}
+          />
+          <DnaCard
+            title="VALIDATE"
+            description="Tester rapidement le marché pour obtenir :"
+            bullets={['des retours utilisateurs', 'des pilotes', 'des premiers clients', 'des premières opportunités business']}
+          />
+          <DnaCard
+            title="AUTONOMIZE"
+            description="Développer l'autonomie des entrepreneurs grâce au Vibe Coding et aux outils IA modernes. Les startups apprennent à construire des outils, lancer des MVPs, automatiser certains workflows et itérer rapidement sans dépendre entièrement de ressources techniques externes."
+          />
+          <DnaCard
+            title="SCALE"
+            description="Transformer les MVPs et validations marché en croissance réelle :"
+            bullets={['signatures', 'partenariats', 'déploiements', 'préparation au financement']}
+          />
+        </div>
+      </section>
     </div>
   )
 }
