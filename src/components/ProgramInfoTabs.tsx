@@ -190,7 +190,7 @@ function SelectionContent({ lang }: { lang: Lang }) {
 
         <Step number={2} title="Pre-selection committee">
           <p>Shortlisted startups present their project, in person or online, to a committee made up of:</p>
-          <Bullets items={['SID members', 'sector experts', 'entrepreneurs', 'investors', 'ecosystem partners']} />
+          <Bullets items={['CEED Morocco members', 'sector experts', 'entrepreneurs', 'investors', 'ecosystem partners']} />
           <p className="font-medium text-gray-900 pt-1">Evaluation criteria</p>
           <Bullets items={[
             'relevance of the problem addressed',
@@ -273,7 +273,7 @@ function SelectionContent({ lang }: { lang: Lang }) {
 
       <Step number={2} title="Comité de présélection">
         <p>Les startups présélectionnées présentent leur projet, en présentiel ou en ligne, devant un comité composé de :</p>
-        <Bullets items={['membres de SID', 'experts sectoriels', 'entrepreneurs', 'investisseurs', 'partenaires de l’écosystème']} />
+        <Bullets items={['membres de CEED Morocco', 'experts sectoriels', 'entrepreneurs', 'investisseurs', 'partenaires de l’écosystème']} />
         <p className="font-medium text-gray-900 pt-1">Critères évalués</p>
         <Bullets items={[
           'pertinence du problème adressé',
