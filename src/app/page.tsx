@@ -17,7 +17,7 @@ export default function Home() {
       </div>
       <div className="flex-1 flex items-center justify-center relative z-10">
         <div className="text-center max-w-lg px-6">
-          <img src="/The_Bridge_by_CEED.png" alt="The Bridge by CEED" className="h-20 mx-auto mb-8 drop-shadow-sm" />
+          <img src="/The_Bridge_by_CEED.png" alt="The Bridge by CEED" className="h-36 mx-auto mb-8 drop-shadow-sm" />
           <p className="text-gray-600 mb-10 leading-relaxed">
             Apply to our incubation and acceleration program. We support early-stage startups
             with mentorship, funding, and resources.
