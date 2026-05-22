@@ -1,11 +1,23 @@
 import Link from 'next/link'
+import { Info } from 'lucide-react'
 
 export default function Home() {
   return (
-    <div className="min-h-screen relative bg-gradient-to-b from-white via-white to-blue-50/40 flex flex-col overflow-hidden">
-      <div className="pointer-events-none absolute -top-32 -left-32 w-96 h-96 bg-blue-200/30 rounded-full blur-3xl" />
-      <div className="pointer-events-none absolute top-1/3 -right-40 w-[28rem] h-[28rem] bg-blue-100/40 rounded-full blur-3xl" />
-      <div className="pointer-events-none absolute bottom-40 left-1/4 w-72 h-72 bg-indigo-100/30 rounded-full blur-3xl" />
+    <div className="min-h-screen relative bg-gradient-to-br from-blue-50/60 via-white to-indigo-50/50 flex flex-col overflow-hidden">
+      {/* Decorative blobs */}
+      <div className="pointer-events-none absolute -top-24 -left-24 w-[28rem] h-[28rem] bg-blue-300/30 rounded-full blur-3xl" />
+      <div className="pointer-events-none absolute top-1/3 -right-32 w-[32rem] h-[32rem] bg-indigo-200/40 rounded-full blur-3xl" />
+      <div className="pointer-events-none absolute bottom-32 left-1/4 w-80 h-80 bg-sky-200/40 rounded-full blur-3xl" />
+      <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 w-[20rem] h-[20rem] bg-blue-100/40 rounded-full blur-3xl" />
+
+      {/* Dot pattern overlay */}
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.15]"
+        style={{
+          backgroundImage: 'radial-gradient(circle, #3b82f6 1px, transparent 1px)',
+          backgroundSize: '32px 32px',
+        }}
+      />
 
       <div className="absolute top-4 right-4 z-10">
         <Link
@@ -36,12 +48,19 @@ export default function Home() {
               <span className="text-lg">🇬🇧</span> Apply
             </Link>
           </div>
-          <div className="mt-8 flex items-center justify-center gap-4 text-sm">
-            <Link href="/program-info?lang=fr" className="text-gray-500 hover:text-blue-700 transition-colors underline-offset-4 hover:underline">
+          <div className="mt-8 flex items-center justify-center gap-2 flex-wrap">
+            <Link
+              href="/program-info?lang=fr"
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm text-blue-700 bg-white/70 backdrop-blur-sm border border-blue-200 hover:bg-blue-50 hover:border-blue-300 hover:shadow-sm transition-all"
+            >
+              <Info size={14} />
               Infos sur le programme
             </Link>
-            <span className="text-gray-300">·</span>
-            <Link href="/program-info?lang=en" className="text-gray-500 hover:text-blue-700 transition-colors underline-offset-4 hover:underline">
+            <Link
+              href="/program-info?lang=en"
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm text-blue-700 bg-white/70 backdrop-blur-sm border border-blue-200 hover:bg-blue-50 hover:border-blue-300 hover:shadow-sm transition-all"
+            >
+              <Info size={14} />
               Program info
             </Link>
           </div>
