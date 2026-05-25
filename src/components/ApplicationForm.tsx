@@ -188,22 +188,24 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
   }
 
   const handleSubmit = async () => {
+    if (submitting) return
     if (!validateStep(1) || !validateStep(2)) {
       setError(t.fillRequired)
       setShowErrors(true)
       return
     }
 
+    setSubmitting(true)
+    setError('')
+
     if (!duplicateConfirmed) {
       const isDuplicate = await checkDuplicate()
       if (isDuplicate) {
+        setSubmitting(false)
         setDuplicateWarning(true)
         return
       }
     }
-
-    setSubmitting(true)
-    setError('')
 
     try {
       // Upload logo first if present
