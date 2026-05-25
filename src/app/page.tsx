@@ -19,10 +19,10 @@ export default function Home() {
         }}
       />
 
-      <div className="absolute top-4 right-4 z-10">
+      <div className="absolute top-4 right-4 z-20">
         <Link
           href="/admin"
-          className="text-gray-400 text-sm hover:text-gray-600 transition-colors"
+          className="inline-flex items-center px-3 py-1.5 rounded-full text-sm text-gray-600 bg-white/70 backdrop-blur-sm border border-gray-200 hover:bg-white hover:text-gray-900 hover:border-gray-300 hover:shadow-sm transition-all"
         >
           Admin
         </Link>
