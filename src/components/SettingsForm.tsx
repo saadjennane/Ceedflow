@@ -50,6 +50,9 @@ export default function SettingsForm({ currentEmail, initialFirstName, initialLa
   const [adminError, setAdminError] = useState('')
   const [adminSuccess, setAdminSuccess] = useState('')
   const [listLoading, setListLoading] = useState(true)
+  const [confirmDeleteAdmin, setConfirmDeleteAdmin] = useState<AdminUser | null>(null)
+  const [deleteAdminLoading, setDeleteAdminLoading] = useState(false)
+  const [deleteAdminError, setDeleteAdminError] = useState('')
 
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -165,6 +168,27 @@ export default function SettingsForm({ currentEmail, initialFirstName, initialLa
       return `${user.first_name} ${user.last_name}`.trim()
     }
     return user.email
+  }
+
+  const handleDeleteAdmin = async () => {
+    if (!confirmDeleteAdmin) return
+    setDeleteAdminLoading(true)
+    setDeleteAdminError('')
+
+    const res = await fetch(`/api/admin/users/${confirmDeleteAdmin.id}`, {
+      method: 'DELETE',
+    })
+    const data = await res.json()
+
+    if (!res.ok) {
+      setDeleteAdminError(data.error || 'Failed to delete admin.')
+      setDeleteAdminLoading(false)
+      return
+    }
+
+    setConfirmDeleteAdmin(null)
+    setDeleteAdminLoading(false)
+    fetchAdminUsers()
   }
 
   return (
@@ -309,9 +333,23 @@ export default function SettingsForm({ currentEmail, initialFirstName, initialLa
                       )}
                     </div>
                   </div>
-                  <span className="text-xs text-gray-400">
-                    {formatDate(user.created_at)}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-gray-400">
+                      {formatDate(user.created_at)}
+                    </span>
+                    {user.email !== currentEmail && (
+                      <button
+                        onClick={() => {
+                          setDeleteAdminError('')
+                          setConfirmDeleteAdmin(user)
+                        }}
+                        className="flex items-center gap-1 px-2 py-1 text-xs text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
+                        title="Delete admin"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -392,6 +430,47 @@ export default function SettingsForm({ currentEmail, initialFirstName, initialLa
 
       {/* Trash */}
       <TrashSection applications={deletedApplications} onRefresh={() => router.refresh()} />
+
+      {/* Delete admin confirmation modal */}
+      {confirmDeleteAdmin && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => !deleteAdminLoading && setConfirmDeleteAdmin(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle size={20} className="text-red-600" />
+              <h3 className="font-semibold">Delete admin?</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-2">
+              <span className="font-medium">{getDisplayName(confirmDeleteAdmin)}</span>
+              {(confirmDeleteAdmin.first_name || confirmDeleteAdmin.last_name) && (
+                <span className="text-gray-500"> ({confirmDeleteAdmin.email})</span>
+              )}
+              {' '}will lose access immediately. This action cannot be undone.
+            </p>
+            {deleteAdminError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm mb-3 mt-3">
+                {deleteAdminError}
+              </div>
+            )}
+            <div className="flex gap-3 justify-end mt-5">
+              <button
+                onClick={() => setConfirmDeleteAdmin(null)}
+                disabled={deleteAdminLoading}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAdmin}
+                disabled={deleteAdminLoading}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {deleteAdminLoading && <Loader2 size={14} className="animate-spin" />}
+                Delete admin
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
