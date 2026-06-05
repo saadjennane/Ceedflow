@@ -14,12 +14,10 @@ export type FounderRole = 'CEO' | 'CTO' | 'COO' | 'CFO' | 'CMO' | 'CPO' | 'Busin
 export type ApplicationStatus = 'New' | 'Very interesting' | 'Interesting' | 'Average' | 'Not interesting'
 export type Priority = 'High' | 'Normal' | 'Low'
 export type NextAction = 'Call founder' | 'Schedule meeting' | 'Request more information' | 'Keep as backup' | 'Closed'
-export type ActionType = 'Call founder' | 'Schedule meeting' | 'Request more information' | 'Keep as backup'
-
 export interface ApplicationAction {
   id: string
   application_id: string
-  action_type: ActionType
+  action_type: string
   assigned_admin_id?: string | null
   is_done: boolean
   created_by?: string | null
