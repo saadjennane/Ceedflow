@@ -243,3 +243,76 @@ export interface AdminUser {
   first_name?: string
   last_name?: string
 }
+
+export interface Juror {
+  id: string
+  first_name: string
+  last_name: string
+  email: string
+  phone?: string | null
+  role?: string | null
+  created_at: string
+}
+
+export type CommitteeStatus = 'draft' | 'active' | 'closed'
+export type CommitteeDecision = 'retenu' | 'rejete'
+
+export interface Committee {
+  id: string
+  name: string
+  description?: string | null
+  status: CommitteeStatus
+  created_at: string
+  updated_at: string
+}
+
+export interface CommitteeApplication {
+  id: string
+  committee_id: string
+  application_id: string
+  admin_override_decision?: CommitteeDecision | null
+  admin_override_by?: string | null
+  admin_override_at?: string | null
+  created_at: string
+}
+
+export interface CommitteeJuror {
+  id: string
+  committee_id: string
+  juror_id: string
+  access_token: string
+  created_at: string
+}
+
+export interface JurorDecision {
+  id: string
+  committee_id: string
+  juror_id: string
+  application_id: string
+  decision: CommitteeDecision
+  created_at: string
+  updated_at: string
+}
+
+export interface JurorRating {
+  id: string
+  committee_id: string
+  juror_id: string
+  application_id: string
+  criterion: RatingCriterionKey
+  sub_index: number
+  score: number
+  created_at: string
+  updated_at: string
+}
+
+export interface JurorRatingComment {
+  id: string
+  committee_id: string
+  juror_id: string
+  application_id: string
+  criterion: RatingCriterionKey
+  comment: string
+  created_at: string
+  updated_at: string
+}
