@@ -114,8 +114,18 @@ export interface ApplicationRating {
   application_id: string
   admin_id: string
   criterion: RatingCriterionKey
+  sub_index: number
   score: number
-  comment?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ApplicationRatingComment {
+  id: string
+  application_id: string
+  admin_id: string
+  criterion: RatingCriterionKey
+  comment: string
   created_at: string
   updated_at: string
 }
@@ -171,6 +181,7 @@ export interface Application {
   activity_log?: ActivityLog[]
   application_actions?: ApplicationAction[]
   application_ratings?: ApplicationRating[]
+  application_rating_comments?: ApplicationRatingComment[]
 }
 
 export interface Document {

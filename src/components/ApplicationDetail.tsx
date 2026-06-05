@@ -265,6 +265,7 @@ export default function ApplicationDetail({
           <RatingGrid
             applicationId={application.id}
             ratings={application.application_ratings || []}
+            comments={application.application_rating_comments || []}
             adminUsers={adminUsers}
             currentUserId={currentUserId}
           />
