@@ -4,14 +4,15 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Mail, FileText, ExternalLink, History, X, Trash2 } from 'lucide-react'
+import { ArrowLeft, Mail, FileText, ExternalLink, History, X, Trash2, Plus } from 'lucide-react'
 import type {
-  Application, ApplicationStatus, Priority, NextAction, AdminUser,
+  Application, ApplicationStatus, Priority, ActionType, ApplicationAction, AdminUser,
 } from '@/lib/types'
+import RatingGrid from './RatingGrid'
 
 const STATUSES: ApplicationStatus[] = ['New', 'Very interesting', 'Interesting', 'Average', 'Not interesting']
 const PRIORITIES: Priority[] = ['High', 'Normal', 'Low']
-const NEXT_ACTIONS: NextAction[] = ['Call founder', 'Schedule meeting', 'Request more information', 'Keep as backup', 'Closed']
+const ACTION_TYPES: ActionType[] = ['Call founder', 'Schedule meeting', 'Request more information', 'Keep as backup']
 
 const statusColors: Record<ApplicationStatus, string> = {
   'New': 'bg-blue-100 text-blue-800',
@@ -260,6 +261,14 @@ export default function ApplicationDetail({
             <InfoRow label="Total investment" value={application.total_investment || '—'} />
           </Section>
 
+          {/* Rating */}
+          <RatingGrid
+            applicationId={application.id}
+            ratings={application.application_ratings || []}
+            adminUsers={adminUsers}
+            currentUserId={currentUserId}
+          />
+
           {/* Documents */}
           <Section title="Documents">
             {(!application.documents || application.documents.length === 0) ? (
@@ -325,19 +334,16 @@ export default function ApplicationDetail({
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">Next Action</label>
-              <select
-                value={application.next_action || ''}
-                onChange={(e) => updateField('next_action', e.target.value || null)}
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">None</option>
-                {NEXT_ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
-            </div>
-
           </div>
+
+          {/* Actions */}
+          <ActionsBlock
+            applicationId={application.id}
+            actions={application.application_actions || []}
+            adminUsers={adminUsers}
+            currentUserId={currentUserId}
+          />
+
 
           {/* Notes - separate block */}
           <div className="bg-white border border-gray-200 rounded-lg p-5">
@@ -480,9 +486,164 @@ function formatActivity(actionType: string, oldValue?: string, newValue?: string
       return `${name} ${newValue ? 'assigned' : 'unassigned'} the application`
     case 'next_action_changed':
       return `${name} set next action to "${newValue || 'None'}"`
+    case 'action_added':
+      return `${name} added action "${newValue}"`
+    case 'action_updated':
+      return `${name} updated action: ${newValue}`
+    case 'action_completed':
+      return `${name} ${newValue === 'true' ? 'completed' : 'reopened'} action "${oldValue}"`
+    case 'action_removed':
+      return `${name} removed action "${oldValue}"`
     case 'note_added':
       return `${name} added a note`
     default:
       return `${name} performed ${actionType.replace(/_/g, ' ')}`
   }
+}
+
+function ActionsBlock({
+  applicationId,
+  actions,
+  adminUsers,
+  currentUserId,
+}: {
+  applicationId: string
+  actions: ApplicationAction[]
+  adminUsers: AdminUser[]
+  currentUserId: string
+}) {
+  const router = useRouter()
+  const supabase = createClient()
+  const [adding, setAdding] = useState(false)
+
+  const sorted = [...actions].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  )
+
+  const logActivity = async (action_type: string, old_value: string | null, new_value: string | null) => {
+    await supabase.from('activity_log').insert({
+      application_id: applicationId,
+      actor_user_id: currentUserId,
+      action_type,
+      old_value,
+      new_value,
+    })
+  }
+
+  const addAction = async () => {
+    setAdding(true)
+    const { data } = await supabase
+      .from('application_actions')
+      .insert({
+        application_id: applicationId,
+        action_type: ACTION_TYPES[0],
+        created_by: currentUserId,
+      })
+      .select()
+      .single()
+
+    if (data) {
+      await logActivity('action_added', null, data.action_type)
+    }
+    setAdding(false)
+    router.refresh()
+  }
+
+  const updateAction = async (action: ApplicationAction, patch: Partial<ApplicationAction>) => {
+    const next = { ...action, ...patch }
+
+    await supabase
+      .from('application_actions')
+      .update({
+        ...patch,
+        ...(patch.is_done !== undefined
+          ? { completed_at: patch.is_done ? new Date().toISOString() : null }
+          : {}),
+      })
+      .eq('id', action.id)
+
+    if (patch.is_done !== undefined && patch.is_done !== action.is_done) {
+      await logActivity('action_completed', action.action_type, String(patch.is_done))
+    } else if (patch.action_type && patch.action_type !== action.action_type) {
+      await logActivity('action_updated', action.action_type, `type → ${patch.action_type}`)
+    } else if (patch.assigned_admin_id !== undefined && patch.assigned_admin_id !== action.assigned_admin_id) {
+      const assigneeName = patch.assigned_admin_id
+        ? getAdminDisplayName(adminUsers, patch.assigned_admin_id)
+        : 'unassigned'
+      await logActivity('action_updated', next.action_type, `assignee → ${assigneeName}`)
+    }
+
+    router.refresh()
+  }
+
+  const removeAction = async (action: ApplicationAction) => {
+    await supabase.from('application_actions').delete().eq('id', action.id)
+    await logActivity('action_removed', action.action_type, null)
+    router.refresh()
+  }
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-5">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-semibold text-sm text-gray-500 uppercase tracking-wide">Actions</h3>
+        <button
+          onClick={addAction}
+          disabled={adding}
+          className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+        >
+          <Plus size={14} />
+          Add action
+        </button>
+      </div>
+
+      {sorted.length === 0 ? (
+        <p className="text-sm text-gray-500">No actions yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {sorted.map(action => (
+            <div
+              key={action.id}
+              className={`border rounded-lg p-2 space-y-2 ${action.is_done ? 'bg-gray-50 border-gray-200' : 'border-gray-200'}`}
+            >
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={action.is_done}
+                  onChange={(e) => updateAction(action, { is_done: e.target.checked })}
+                  className="w-4 h-4 rounded border-gray-300 cursor-pointer"
+                  title={action.is_done ? 'Mark as not done' : 'Mark as done'}
+                />
+                <select
+                  value={action.action_type}
+                  onChange={(e) => updateAction(action, { action_type: e.target.value as ActionType })}
+                  className={`flex-1 text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 ${action.is_done ? 'line-through text-gray-500' : ''}`}
+                >
+                  {ACTION_TYPES.map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+                <button
+                  onClick={() => removeAction(action)}
+                  className="p-1 text-gray-400 hover:text-red-600"
+                  title="Remove action"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+              <select
+                value={action.assigned_admin_id || ''}
+                onChange={(e) => updateAction(action, { assigned_admin_id: e.target.value || null })}
+                className="w-full text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Unassigned</option>
+                {adminUsers.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.first_name || u.last_name ? `${u.first_name || ''} ${u.last_name || ''}`.trim() : u.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }

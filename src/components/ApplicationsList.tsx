@@ -3,8 +3,10 @@
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Search, Download, Filter, LayoutList, LayoutGrid, FileText, User, Trash2, X } from 'lucide-react'
+import { Search, Download, Filter, LayoutList, LayoutGrid, FileText, User, Trash2, X, Star } from 'lucide-react'
 import type { Application, ApplicationStatus, Sector, Stage, Priority, AdminUser } from '@/lib/types'
+import { computeRatingStats } from '@/lib/ratings'
+import RatingPill from './RatingPill'
 import KanbanBoard from './KanbanBoard'
 
 function formatDate(dateStr: string): string {
@@ -60,6 +62,8 @@ export default function ApplicationsList({ applications, adminUsers, currentUser
   const [filterSector, setFilterSector] = useState('')
   const [filterStage, setFilterStage] = useState('')
   const [filterPriority, setFilterPriority] = useState('')
+  const [filterMinRating, setFilterMinRating] = useState('')
+  const [sortBy, setSortBy] = useState<'date' | 'rating'>('date')
   const [showFilters, setShowFilters] = useState(false)
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list')
   const [groupBy, setGroupBy] = useState<'status' | 'assignee'>('status')
@@ -67,8 +71,17 @@ export default function ApplicationsList({ applications, adminUsers, currentUser
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false)
   const [bulkDeleting, setBulkDeleting] = useState(false)
 
+  const ratingByApp = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof computeRatingStats>>()
+    for (const app of applications) {
+      map.set(app.id, computeRatingStats(app.application_ratings))
+    }
+    return map
+  }, [applications])
+
   const filtered = useMemo(() => {
-    return applications.filter(app => {
+    const minRating = filterMinRating ? parseFloat(filterMinRating) : 0
+    const result = applications.filter(app => {
       const searchLower = search.toLowerCase()
       const matchesSearch = !search ||
         app.startup_name.toLowerCase().includes(searchLower) ||
@@ -79,9 +92,22 @@ export default function ApplicationsList({ applications, adminUsers, currentUser
       const matchesStage = !filterStage || app.stage === filterStage
       const matchesPriority = !filterPriority || app.priority === filterPriority
 
-      return matchesSearch && matchesStatus && matchesSector && matchesStage && matchesPriority
+      const avg = ratingByApp.get(app.id)?.overallAvg ?? 0
+      const matchesRating = minRating === 0 || avg >= minRating
+
+      return matchesSearch && matchesStatus && matchesSector && matchesStage && matchesPriority && matchesRating
     })
-  }, [applications, search, filterStatus, filterSector, filterStage, filterPriority])
+
+    if (sortBy === 'rating') {
+      result.sort((a, b) => {
+        const aAvg = ratingByApp.get(a.id)?.overallAvg ?? -1
+        const bAvg = ratingByApp.get(b.id)?.overallAvg ?? -1
+        return bAvg - aAvg
+      })
+    }
+
+    return result
+  }, [applications, search, filterStatus, filterSector, filterStage, filterPriority, filterMinRating, sortBy, ratingByApp])
 
   const exportCSV = () => {
     const params = new URLSearchParams()
@@ -199,6 +225,15 @@ export default function ApplicationsList({ applications, adminUsers, currentUser
             </button>
           </div>
           <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as 'date' | 'rating')}
+            className="text-sm border border-gray-300 rounded-lg px-3 py-2"
+            title="Sort"
+          >
+            <option value="date">Sort: Newest</option>
+            <option value="rating">Sort: Top rated</option>
+          </select>
+          <select
             value={groupBy}
             onChange={(e) => setGroupBy(e.target.value as 'status' | 'assignee')}
             className="text-sm border border-gray-300 rounded-lg px-3 py-2"
@@ -274,12 +309,25 @@ export default function ApplicationsList({ applications, adminUsers, currentUser
               <option value="">All Priorities</option>
               {PRIORITIES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
+            <select
+              value={filterMinRating}
+              onChange={(e) => setFilterMinRating(e.target.value)}
+              className="text-sm border border-gray-300 rounded-lg px-3 py-1.5"
+            >
+              <option value="">Min rating: any</option>
+              <option value="2">★ 2+</option>
+              <option value="3">★ 3+</option>
+              <option value="3.5">★ 3.5+</option>
+              <option value="4">★ 4+</option>
+              <option value="4.5">★ 4.5+</option>
+            </select>
             <button
               onClick={() => {
                 setFilterStatus('')
                 setFilterSector('')
                 setFilterStage('')
                 setFilterPriority('')
+                setFilterMinRating('')
               }}
               className="text-sm text-gray-500 hover:text-blue-700 underline"
             >
@@ -357,6 +405,7 @@ export default function ApplicationsList({ applications, adminUsers, currentUser
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Stage</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Priority</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 w-20" title="Team rating"><Star size={14} /></th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600 w-10" title="Assigned"><User size={14} /></th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600 w-10" title="Documents"><FileText size={14} /></th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Date</th>
@@ -365,7 +414,7 @@ export default function ApplicationsList({ applications, adminUsers, currentUser
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="text-center py-12 text-gray-500">
+                    <td colSpan={11} className="text-center py-12 text-gray-500">
                       No applications found.
                     </td>
                   </tr>
@@ -417,6 +466,12 @@ export default function ApplicationsList({ applications, adminUsers, currentUser
                         >
                           {PRIORITIES.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
+                      </td>
+                      <td className="px-4 py-3">
+                        {(() => {
+                          const s = ratingByApp.get(app.id)
+                          return <RatingPill avg={s?.overallAvg ?? null} count={s?.raterCount ?? 0} />
+                        })()}
                       </td>
                       <td className="px-4 py-3">
                         <AdminAvatar adminUsers={adminUsers} adminId={app.assigned_admin_id} />

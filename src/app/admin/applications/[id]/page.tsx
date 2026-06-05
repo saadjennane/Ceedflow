@@ -18,7 +18,7 @@ export default async function ApplicationDetailPage({
 
   const { data: application } = await supabase
     .from('applications')
-    .select('*, founders(*), documents(*), notes(*), activity_log(*)')
+    .select('*, founders(*), documents(*), notes(*), activity_log(*), application_actions(*), application_ratings(*)')
     .eq('id', id)
     .single()
 

@@ -14,6 +14,111 @@ export type FounderRole = 'CEO' | 'CTO' | 'COO' | 'CFO' | 'CMO' | 'CPO' | 'Busin
 export type ApplicationStatus = 'New' | 'Very interesting' | 'Interesting' | 'Average' | 'Not interesting'
 export type Priority = 'High' | 'Normal' | 'Low'
 export type NextAction = 'Call founder' | 'Schedule meeting' | 'Request more information' | 'Keep as backup' | 'Closed'
+export type ActionType = 'Call founder' | 'Schedule meeting' | 'Request more information' | 'Keep as backup'
+
+export interface ApplicationAction {
+  id: string
+  application_id: string
+  action_type: ActionType
+  assigned_admin_id?: string | null
+  is_done: boolean
+  created_by?: string | null
+  created_at: string
+  completed_at?: string | null
+}
+
+export type RatingCriterionKey =
+  | 'innovation'
+  | 'problem_solution_fit'
+  | 'maturity'
+  | 'team'
+  | 'scalability'
+  | 'viability'
+  | 'morocco_impact'
+
+export interface RatingCriterion {
+  key: RatingCriterionKey
+  label: string
+  sublabels: string[]
+}
+
+export const RATING_CRITERIA: RatingCriterion[] = [
+  {
+    key: 'innovation',
+    label: 'Caractère innovant',
+    sublabels: [
+      'Originalité et différenciation de la solution vs. concurrents',
+      "Existence d'un avantage concurrentiel durable (technologie, brevet…)",
+      'Potentiel de disruption dans le secteur adressé',
+    ],
+  },
+  {
+    key: 'problem_solution_fit',
+    label: 'Adéquation problème / solution',
+    sublabels: [
+      'Pertinence et réalité du problème identifié (taille, acuité)',
+      'Solidité de la réponse apportée au problème — logique produit/marché',
+      'Validation par des utilisateurs cibles (interviews, tests, pilotes…)',
+    ],
+  },
+  {
+    key: 'maturity',
+    label: 'Maturité du projet',
+    sublabels: [
+      'Stade de développement : PoC validé → prototype → MVP fonctionnel',
+      'Qualité et fonctionnalités du prototype / MVP existant',
+      'Clarté de la roadmap produit court terme (3-6 mois)',
+    ],
+  },
+  {
+    key: 'team',
+    label: 'Maîtrise du projet',
+    sublabels: [
+      "Compétences techniques de l'équipe fondatrice (adéquation métier)",
+      'Compétences managériales et entrepreneuriales des porteurs',
+      "Complémentarité des profils au sein de l'équipe fondatrice",
+      'Engagement et disponibilité à temps plein dans le projet',
+    ],
+  },
+  {
+    key: 'scalability',
+    label: 'Scalabilité & potentiel de marché',
+    sublabels: [
+      'Taille adressable du marché (TAM, SAM, SOM)',
+      "Potentiel de passage à l'échelle (scalabilité du modèle)",
+      'Ambition de développement au-delà du Maroc (régional, international)',
+    ],
+  },
+  {
+    key: 'viability',
+    label: 'Viabilité économique',
+    sublabels: [
+      'Cohérence et solidité du modèle économique (sources de revenus)',
+      "Clarté des hypothèses financières et du plan d'investissement",
+      "Capacité à mobiliser l'autofinancement requis (10% minimum)",
+    ],
+  },
+  {
+    key: 'morocco_impact',
+    label: 'Impact & valeur ajoutée Maroc',
+    sublabels: [
+      'Contribution au développement numérique et économique du Maroc',
+      "Potentiel de création d'emplois post-accompagnement",
+      'Alignement avec les priorités de Digital Morocco 2030',
+    ],
+  },
+]
+
+export interface ApplicationRating {
+  id: string
+  application_id: string
+  admin_id: string
+  criterion: RatingCriterionKey
+  score: number
+  comment?: string | null
+  created_at: string
+  updated_at: string
+}
 
 export interface Founder {
   id?: string
@@ -64,6 +169,8 @@ export interface Application {
   documents?: Document[]
   notes?: Note[]
   activity_log?: ActivityLog[]
+  application_actions?: ApplicationAction[]
+  application_ratings?: ApplicationRating[]
 }
 
 export interface Document {

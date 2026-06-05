@@ -4,6 +4,8 @@ import { useMemo, useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { FileText, GripVertical } from 'lucide-react'
 import type { Application, ApplicationStatus, Priority, AdminUser } from '@/lib/types'
+import { computeRatingStats } from '@/lib/ratings'
+import RatingPill from './RatingPill'
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr)
@@ -64,6 +66,7 @@ function KanbanCard({
   const initials = getAdminInitials(adminUsers, application.assigned_admin_id)
   const docCount = application.documents?.length || 0
   const founderName = application.founders?.[0]?.full_name
+  const ratingStats = computeRatingStats(application.application_ratings)
 
   return (
     <div
@@ -105,6 +108,12 @@ function KanbanCard({
           <span>{application.sector}</span>
           <span>&middot;</span>
           <span>{application.stage}</span>
+          {ratingStats.overallAvg !== null && (
+            <>
+              <span>&middot;</span>
+              <RatingPill avg={ratingStats.overallAvg} count={ratingStats.raterCount} size="xs" />
+            </>
+          )}
         </div>
         <div className="flex items-center justify-between pl-5">
           <div className="flex items-center gap-2">

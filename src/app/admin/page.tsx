@@ -14,7 +14,7 @@ export default async function AdminPage() {
 
   const { data: applications } = await supabase
     .from('applications')
-    .select('*, founders(*), documents(*)')
+    .select('*, founders(*), documents(*), application_ratings(*)')
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
