@@ -4,11 +4,14 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Plus, Trash2, Copy, Check, ExternalLink, Loader2, X } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Copy, Check, ExternalLink, Loader2, X, Eye, Pencil } from 'lucide-react'
 import type {
   Committee, CommitteeApplication, CommitteeJuror, JurorDecision, JurorRating, Application, Juror, CommitteeStatus, CommitteeDecision,
 } from '@/lib/types'
+import { RATING_CRITERIA } from '@/lib/types'
 import { computeFinalDecision, generateAccessToken } from '@/lib/committees'
+
+const TOTAL_SUB_CRITERIA = RATING_CRITERIA.reduce((sum, c) => sum + c.sublabels.length, 0)
 
 const STATUS_OPTIONS: { value: CommitteeStatus; label: string }[] = [
   { value: 'draft', label: 'Brouillon' },
@@ -49,6 +52,7 @@ export default function CommitteeDetailClient({
   const [copiedToken, setCopiedToken] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [inspectedAppId, setInspectedAppId] = useState<string | null>(null)
 
   const appsById = useMemo(() => new Map(allApps.map(a => [a.id, a])), [allApps])
   const jurorsById = useMemo(() => new Map(allJurors.map(j => [j.id, j])), [allJurors])
@@ -361,7 +365,7 @@ export default function CommitteeDetailClient({
                         <div className="text-[10px] text-gray-400">Ret./Rej./En attente</div>
                       </td>
                       <td className="px-3 py-2">
-                        <FinalBadge final={final.final} overridden={final.overridden} />
+                        <FinalBadge final={final.final} />
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1">
@@ -382,13 +386,22 @@ export default function CommitteeDetailClient({
                         </div>
                       </td>
                       <td className="px-3 py-2">
-                        <button
-                          onClick={() => removeAppFromCommittee(ca)}
-                          className="p-1 text-gray-400 hover:text-red-600"
-                          title="Retirer du comité"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setInspectedAppId(ca.application_id)}
+                            className="p-1 text-gray-400 hover:text-blue-600"
+                            title="Voir / modifier les notes des jurys"
+                          >
+                            <Eye size={14} />
+                          </button>
+                          <button
+                            onClick={() => removeAppFromCommittee(ca)}
+                            className="p-1 text-gray-400 hover:text-red-600"
+                            title="Retirer du comité"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -398,6 +411,67 @@ export default function CommitteeDetailClient({
           </div>
         )}
       </div>
+
+      {/* Inspect app modal */}
+      {inspectedAppId && (() => {
+        const app = appsById.get(inspectedAppId)
+        const stats = appStats.get(inspectedAppId)
+        return (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setInspectedAppId(null)}>
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+                <div>
+                  <h2 className="font-semibold">{app?.startup_name}</h2>
+                  <p className="text-xs text-gray-500">Détail des votes des jurys</p>
+                </div>
+                <button onClick={() => setInspectedAppId(null)} className="text-gray-400 hover:text-gray-700">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-5 space-y-2">
+                {committeeJurors.length === 0 ? (
+                  <p className="text-sm text-gray-500">Aucun jury dans ce comité.</p>
+                ) : (
+                  committeeJurors.map(cj => {
+                    const j = jurorsById.get(cj.juror_id)
+                    if (!j) return null
+                    const myRatings = ratings.filter(r => r.juror_id === cj.juror_id && r.application_id === inspectedAppId)
+                    const myAvg = myRatings.length > 0 ? myRatings.reduce((a, b) => a + b.score, 0) / myRatings.length : null
+                    const myDecision = stats?.jurorDecisionsForApp.find(d => d.juror_id === cj.juror_id)
+                    return (
+                      <div key={cj.id} className="flex items-center justify-between gap-3 border border-gray-200 rounded-lg px-3 py-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm">{j.first_name} {j.last_name}</div>
+                          <div className="text-xs text-gray-500">
+                            {myRatings.length}/{TOTAL_SUB_CRITERIA} sous-critères ·{' '}
+                            {myAvg !== null ? <span className="text-amber-700">{myAvg.toFixed(1)}/5</span> : <span className="text-gray-400">pas de note</span>}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {myDecision ? (
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${myDecision.decision === 'retenu' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                              {myDecision.decision === 'retenu' ? 'Retenu' : 'Rejeté'}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-400">En attente</span>
+                          )}
+                          <Link
+                            href={`/admin/committees/${committee.id}/jurors/${cj.juror_id}/applications/${inspectedAppId}`}
+                            className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                          >
+                            <Pencil size={12} />
+                            Modifier
+                          </Link>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Delete confirmation */}
       {confirmDelete && (
@@ -430,24 +504,12 @@ export default function CommitteeDetailClient({
   )
 }
 
-function FinalBadge({ final, overridden }: { final: 'retenu' | 'rejete' | 'pending'; overridden: boolean }) {
+function FinalBadge({ final }: { final: 'retenu' | 'rejete' | 'pending' }) {
   if (final === 'retenu') {
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-        Retenu{overridden && <span className="text-[10px] text-green-600">(admin)</span>}
-      </span>
-    )
+    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Retenu</span>
   }
   if (final === 'rejete') {
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-        Rejeté{overridden && <span className="text-[10px] text-red-600">(admin)</span>}
-      </span>
-    )
+    return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Rejeté</span>
   }
-  return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-      En attente
-    </span>
-  )
+  return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">En attente</span>
 }
