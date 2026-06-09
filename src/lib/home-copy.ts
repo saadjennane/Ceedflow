@@ -14,7 +14,6 @@ export const HOME_COPY = {
 
     why: {
       title: 'Pourquoi The Bridge ?',
-      pitch: 'Nous ne sommes pas un incubateur traditionnel.',
       body: "The Bridge a été conçu pour accompagner les entrepreneurs dans la construction de solutions concrètes, la validation de leur marché et le développement de leurs premières opportunités commerciales.",
       intro: 'Notre approche privilégie :',
       bullets: ['Moins de théorie', "Plus d'exécution", 'Plus de terrain', "Plus d'autonomie", 'Plus de résultats'],
@@ -140,7 +139,6 @@ export const HOME_COPY = {
 
     why: {
       title: 'Why The Bridge?',
-      pitch: "We're not a traditional incubator.",
       body: 'The Bridge was designed to support entrepreneurs in building concrete solutions, validating their market, and developing their first business opportunities.',
       intro: 'Our approach favors:',
       bullets: ['Less theory', 'More execution', 'More fieldwork', 'More autonomy', 'More results'],

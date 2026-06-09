@@ -91,7 +91,6 @@ export default async function Home({
           </div>
           {/* Content RIGHT */}
           <div>
-            <p className="text-2xl md:text-3xl text-emerald-400 font-medium mb-6">{t.why.pitch}</p>
             <p className="text-zinc-300 mb-8 leading-relaxed text-lg">{t.why.body}</p>
             <p className="text-zinc-400 mb-4">{t.why.intro}</p>
             <ul className="space-y-3 text-lg">
