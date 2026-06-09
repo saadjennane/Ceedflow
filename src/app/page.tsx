@@ -1,9 +1,10 @@
 import Link from 'next/link'
 import { Fragment } from 'react'
-import { ArrowDown, ArrowRight, CheckCircle2, Zap, Target, Rocket, Users } from 'lucide-react'
+import { ArrowDown, ArrowRight, CheckCircle2, Zap, Target, Users } from 'lucide-react'
 import { HOME_COPY, type Lang } from '@/lib/home-copy'
 import StickyHeader from '@/components/StickyHeader'
 import { BridgeArc, BridgeCables, BridgeMark, ArcDivider } from '@/components/BridgeMotifs'
+import BenefitsSlider from '@/components/BenefitsSlider'
 
 export default async function Home({
   searchParams,
@@ -144,45 +145,36 @@ export default async function Home({
       <section className="relative bg-zinc-950 border-y border-zinc-900 px-6 py-24">
         <div className="max-w-5xl mx-auto">
           <SectionLabel>04</SectionLabel>
-          <h2 className="text-4xl md:text-5xl font-bold mb-16 tracking-tight">{t.benefits.title}</h2>
+          <h2 className="text-4xl md:text-5xl font-bold mb-4 tracking-tight">{t.benefits.title}</h2>
+          <p className="text-lg text-zinc-400 max-w-3xl mb-16 leading-relaxed">{t.benefits.subtitle}</p>
 
           <div className="space-y-6">
-            <Block icon={<Target className="text-emerald-400" size={20} />} title={t.benefits.mentoring.title}>
-              <p className="mb-3 text-zinc-300">{t.benefits.mentoring.intro}</p>
-              <ul className="space-y-1 text-zinc-400 mb-3">
-                {t.benefits.mentoring.items.map(i => <li key={i} className="flex gap-2"><span className="text-emerald-400">›</span>{i}</li>)}
-              </ul>
-              <p className="text-zinc-500 italic text-sm">{t.benefits.mentoring.outro}</p>
-            </Block>
-
-            <Block icon={<Zap className="text-emerald-400" size={20} />} title={t.benefits.workshops.title}>
-              <p className="mb-3 text-zinc-300">{t.benefits.workshops.intro}</p>
-              <p className="mb-3 text-zinc-500 text-sm">{t.benefits.workshops.topicsLabel}</p>
-              <div className="flex flex-wrap gap-2 mb-3">
-                {t.benefits.workshops.topics.map(topic => (
-                  <span key={topic} className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs">
-                    {topic}
-                  </span>
-                ))}
-              </div>
-              <p className="text-zinc-500 italic text-sm">{t.benefits.workshops.outro}</p>
-            </Block>
-
-            <Block icon={<Rocket className="text-emerald-400" size={20} />} title={t.benefits.mvp.title}>
-              <p className="mb-3 text-zinc-300">{t.benefits.mvp.intro}</p>
-              <ul className="space-y-1 text-zinc-400 mb-3">
-                {t.benefits.mvp.items.map(i => <li key={i} className="flex gap-2"><span className="text-emerald-400">›</span>{i}</li>)}
-              </ul>
-              <p className="text-zinc-500 italic text-sm">{t.benefits.mvp.outro}</p>
-            </Block>
-
-            <Block icon={<Users className="text-emerald-400" size={20} />} title={t.benefits.networking.title}>
-              <p className="mb-3 text-zinc-300">{t.benefits.networking.intro}</p>
-              <ul className="space-y-1 text-zinc-400 mb-3">
-                {t.benefits.networking.items.map(i => <li key={i} className="flex gap-2"><span className="text-emerald-400">›</span>{i}</li>)}
-              </ul>
-              <p className="text-zinc-500 italic text-sm">{t.benefits.networking.outro}</p>
-            </Block>
+            <BenefitsSlider
+              slides={[
+                {
+                  icon: <Target className="text-emerald-400" size={22} />,
+                  title: t.benefits.mentoring.title,
+                  intro: t.benefits.mentoring.intro,
+                  items: t.benefits.mentoring.items,
+                  outro: t.benefits.mentoring.outro,
+                },
+                {
+                  icon: <Zap className="text-emerald-400" size={22} />,
+                  title: t.benefits.workshops.title,
+                  intro: t.benefits.workshops.intro,
+                  topicsLabel: t.benefits.workshops.topicsLabel,
+                  topics: t.benefits.workshops.topics,
+                  outro: t.benefits.workshops.outro,
+                },
+                {
+                  icon: <Users className="text-emerald-400" size={22} />,
+                  title: t.benefits.networking.title,
+                  intro: t.benefits.networking.intro,
+                  items: t.benefits.networking.items,
+                  outro: t.benefits.networking.outro,
+                },
+              ]}
+            />
 
             <Block title={t.benefits.funding.title} accent>
               <BridgeMark className="pointer-events-none absolute top-6 right-6 w-24 h-14 text-emerald-400/15" />
@@ -190,14 +182,12 @@ export default async function Home({
               <div className="grid md:grid-cols-2 gap-4 relative">
                 <div className="relative overflow-hidden rounded-2xl p-6 bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border border-emerald-500/30">
                   <BridgeArc className="pointer-events-none absolute -top-4 -right-4 w-32 h-32 text-white/10" strokeWidth={2} />
-                  <div className="text-4xl font-bold text-emerald-400 mb-2">200K MAD</div>
-                  <h4 className="font-semibold text-white mb-1">{t.benefits.funding.grant.title}</h4>
+                  <div className="text-2xl md:text-3xl font-bold text-emerald-400 mb-3">{t.benefits.funding.grant.title}</div>
                   <p className="text-sm text-zinc-400">{t.benefits.funding.grant.desc}</p>
                 </div>
                 <div className="relative overflow-hidden rounded-2xl p-6 bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border border-emerald-500/30">
                   <BridgeArc className="pointer-events-none absolute -top-4 -right-4 w-32 h-32 text-white/10" strokeWidth={2} />
-                  <div className="text-4xl font-bold text-emerald-400 mb-2">{lang === 'fr' ? '12 mois' : '12 months'}</div>
-                  <h4 className="font-semibold text-white mb-1">{t.benefits.funding.stipend.title}</h4>
+                  <div className="text-2xl md:text-3xl font-bold text-emerald-400 mb-3">{t.benefits.funding.stipend.title}</div>
                   <p className="text-sm text-zinc-400">{t.benefits.funding.stipend.desc}</p>
                 </div>
               </div>

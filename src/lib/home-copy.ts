@@ -21,6 +21,7 @@ export const HOME_COPY = {
 
     benefits: {
       title: 'Ce que vous obtenez',
+      subtitle: "De votre MVP à vos premiers clients, jusqu'au roadshow investisseurs : un accompagnement de bout en bout.",
       mentoring: {
         title: 'Accompagnement personnalisé',
         intro: 'Un suivi régulier assuré par :',
@@ -34,12 +35,6 @@ export const HOME_COPY = {
         topics: ['Product Market Fit', 'Acquisition B2B', 'Juridique', 'Automatisation', 'Analytics', 'Vibe Coding', '…'],
         outro: 'Tous les ateliers sont orientés pratique et directement applicables à votre projet.',
       },
-      mvp: {
-        title: 'Développement du MVP',
-        intro: 'Le programme accompagne les startups dans :',
-        items: ['La conception de leur MVP', 'Le développement de leur solution', 'Les tests utilisateurs', 'Les itérations produit'],
-        outro: "L'objectif est d'aboutir rapidement à un produit fonctionnel et validé par le marché.",
-      },
       networking: {
         title: 'Networking',
         intro: 'Des rencontres régulières avec :',
@@ -49,8 +44,8 @@ export const HOME_COPY = {
       funding: {
         title: 'Financement',
         intro: 'Les startups sélectionnées peuvent bénéficier de :',
-        grant: { title: "Jusqu'à 200 000 MAD de subvention", desc: 'Destinés à accélérer le développement du projet et sa mise sur le marché.' },
-        stipend: { title: 'Bourse de vie entrepreneuriale', desc: "Une allocation mensuelle pouvant être accordée pendant une durée allant jusqu'à 12 mois afin de permettre aux entrepreneurs de se consacrer pleinement au développement de leur startup." },
+        grant: { title: 'Subvention de 200k MAD', desc: "Destinée à accélérer le développement du projet et sa mise sur le marché." },
+        stipend: { title: 'Bourse de Vie', desc: "Une allocation mensuelle pouvant être accordée pendant une durée allant jusqu'à 12 mois afin de permettre aux entrepreneurs de se consacrer pleinement au développement de leur startup." },
       },
     },
 
@@ -150,6 +145,7 @@ export const HOME_COPY = {
 
     benefits: {
       title: 'What you get',
+      subtitle: 'From your MVP to your first customers, all the way to investor roadshows — end-to-end support.',
       mentoring: {
         title: 'Personalized support',
         intro: 'Regular guidance from:',
@@ -163,12 +159,6 @@ export const HOME_COPY = {
         topics: ['Product Market Fit', 'B2B Acquisition', 'Legal', 'Automation', 'Analytics', 'Vibe Coding', '…'],
         outro: 'All workshops are practice-oriented and directly applicable to your project.',
       },
-      mvp: {
-        title: 'MVP Development',
-        intro: 'The program supports startups in:',
-        items: ['Designing their MVP', 'Building their solution', 'User testing', 'Product iterations'],
-        outro: 'The goal is to quickly arrive at a functional product validated by the market.',
-      },
       networking: {
         title: 'Networking',
         intro: 'Regular encounters with:',
@@ -178,8 +168,8 @@ export const HOME_COPY = {
       funding: {
         title: 'Funding',
         intro: 'Selected startups may benefit from:',
-        grant: { title: 'Up to 200,000 MAD in grant funding', desc: "Intended to accelerate the project's development and market launch." },
-        stipend: { title: 'Entrepreneurial living stipend', desc: 'A monthly allowance that may be granted for up to 12 months so entrepreneurs can fully dedicate themselves to building their startup.' },
+        grant: { title: '200k MAD grant', desc: "To accelerate the project's development and market launch." },
+        stipend: { title: 'Living stipend', desc: 'A monthly allowance that may be granted for up to 12 months so entrepreneurs can fully dedicate themselves to building their startup.' },
       },
     },
 
