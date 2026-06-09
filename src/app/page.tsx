@@ -272,12 +272,8 @@ export default async function Home({
       <footer className="bg-black border-t border-zinc-900">
         <div className="max-w-6xl mx-auto px-6 py-10 flex flex-col md:flex-row items-center justify-between gap-4">
           <img src="/THE BRIDGE LOGO-02.png" alt="The Bridge" className="h-7 w-auto opacity-70" />
-          <div className="flex items-center gap-4 text-xs text-zinc-500">
-            <span>© {new Date().getFullYear()} The Bridge by CEED</span>
-            <span className="text-zinc-700">·</span>
-            <Link href="/admin" className="hover:text-emerald-400 transition">
-              Admin
-            </Link>
+          <div className="text-xs text-zinc-500">
+            © {new Date().getFullYear()} The Bridge by CEED
           </div>
         </div>
       </footer>
