@@ -54,11 +54,8 @@ export default async function Home({
               {t.hero.tagline.split('.')[2]?.trim()}.
             </span>
           </h1>
-          <p className="text-lg md:text-xl text-zinc-300 max-w-2xl mx-auto mb-4 leading-relaxed">
+          <p className="text-lg md:text-xl text-zinc-300 max-w-2xl mx-auto mb-12 leading-relaxed">
             {t.hero.lead}
-          </p>
-          <p className="text-base text-zinc-500 max-w-2xl mx-auto mb-12 leading-relaxed">
-            {t.hero.sub}
           </p>
           <ApplyButtons lang={lang} label={lang === 'fr' ? t.applyFr : t.applyEn} />
         </div>

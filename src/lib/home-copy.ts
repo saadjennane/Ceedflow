@@ -8,8 +8,7 @@ export const HOME_COPY = {
 
     hero: {
       tagline: 'Construisez. Validez. Accélérez.',
-      lead: "The Bridge est un programme d'accélération conçu pour transformer des projets innovants en produits, clients et opportunités de croissance.",
-      sub: "Pendant 8 mois, les startups sélectionnées bénéficient d'un accompagnement personnalisé, d'un accès à des experts, mentors et investisseurs, ainsi que de mécanismes de financement destinés à accélérer leur développement.",
+      lead: "The Bridge vous permet d'accélérer le lancement de vos projets innovants, rencontrer vos clients et valider votre marché.",
     },
 
     why: {
@@ -133,8 +132,7 @@ export const HOME_COPY = {
 
     hero: {
       tagline: 'Build. Validate. Accelerate.',
-      lead: 'The Bridge is an acceleration program designed to turn innovative projects into products, customers, and growth opportunities.',
-      sub: 'Over 8 months, selected startups receive personalized support, access to experts, mentors and investors, and funding mechanisms designed to accelerate their development.',
+      lead: 'The Bridge helps you accelerate the launch of your innovative projects, meet your customers, and validate your market.',
     },
 
     why: {
