@@ -95,10 +95,10 @@ export const HOME_COPY = {
     dna: {
       title: 'Notre ADN',
       cards: [
-        { letter: 'B', title: 'BUILD', text: 'Construire rapidement des solutions concrètes et des MVPs testables.' },
-        { letter: 'V', title: 'VALIDATE', text: 'Confronter les solutions au marché dès les premières semaines.' },
-        { letter: 'A', title: 'AUTONOMIZE', text: "Développer l'autonomie des entrepreneurs grâce au Vibe Coding et aux outils IA modernes." },
-        { letter: 'S', title: 'SCALE', text: 'Transformer les validations marché en opportunités business réelles.' },
+        { title: 'BUILD', text: 'Construire rapidement des solutions concrètes et des MVPs testables.' },
+        { title: 'VALIDATE', text: 'Confronter les solutions au marché dès les premières semaines.' },
+        { title: 'AUTONOMIZE', text: "Développer l'autonomie des entrepreneurs grâce au Vibe Coding et aux outils IA modernes." },
+        { title: 'SCALE', text: 'Transformer les validations marché en opportunités business réelles.' },
       ],
     },
 
@@ -224,10 +224,10 @@ export const HOME_COPY = {
     dna: {
       title: 'Our DNA',
       cards: [
-        { letter: 'B', title: 'BUILD', text: 'Quickly build concrete solutions and testable MVPs.' },
-        { letter: 'V', title: 'VALIDATE', text: 'Confront solutions with the market from the very first weeks.' },
-        { letter: 'A', title: 'AUTONOMIZE', text: "Develop entrepreneurs' autonomy through Vibe Coding and modern AI tools." },
-        { letter: 'S', title: 'SCALE', text: 'Turn market validations into real business opportunities.' },
+        { title: 'BUILD', text: 'Quickly build concrete solutions and testable MVPs.' },
+        { title: 'VALIDATE', text: 'Confront solutions with the market from the very first weeks.' },
+        { title: 'AUTONOMIZE', text: "Develop entrepreneurs' autonomy through Vibe Coding and modern AI tools." },
+        { title: 'SCALE', text: 'Turn market validations into real business opportunities.' },
       ],
     },
 

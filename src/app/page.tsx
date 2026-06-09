@@ -1,5 +1,8 @@
 import Link from 'next/link'
-import { ArrowRight, CheckCircle2, Zap, Target, Users } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Zap, Target, Users, Hammer, BadgeCheck, Sparkles, Rocket } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+
+const DNA_ICONS: LucideIcon[] = [Hammer, BadgeCheck, Sparkles, Rocket]
 import { HOME_COPY, type Lang } from '@/lib/home-copy'
 import StickyHeader from '@/components/StickyHeader'
 import { BridgeArc, BridgeCables, BridgeMark, ArcDivider } from '@/components/BridgeMotifs'
@@ -106,8 +109,8 @@ export default async function Home({
           <SectionLabel>02</SectionLabel>
           <h2 className="text-4xl md:text-5xl font-bold mb-16 tracking-tight">{t.dna.title}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {t.dna.cards.map(c => (
-              <DnaCard key={c.title} letter={c.letter} title={c.title} text={c.text} />
+            {t.dna.cards.map((c, i) => (
+              <DnaCard key={c.title} Icon={DNA_ICONS[i]} title={c.title} text={c.text} />
             ))}
           </div>
         </div>
@@ -370,15 +373,17 @@ function Phase({ num, month, title, children }: { num: number; month: string; ti
   )
 }
 
-function DnaCard({ letter, title, text }: { letter: string; title: string; text: string }) {
+function DnaCard({ Icon, title, text }: { Icon: LucideIcon; title: string; text: string }) {
   return (
     <div className="group relative rounded-3xl p-6 border border-zinc-800 bg-zinc-900/40 hover:border-emerald-500/50 hover:bg-zinc-900 transition overflow-hidden">
-      <div className="absolute -top-4 -right-4 text-8xl font-bold text-emerald-500/5 group-hover:text-emerald-500/15 transition select-none">
-        {letter}
-      </div>
+      <Icon
+        className="absolute -top-4 -right-4 text-emerald-500/10 group-hover:text-emerald-500/20 transition pointer-events-none"
+        size={140}
+        strokeWidth={1.25}
+      />
       <div className="relative">
-        <div className="w-12 h-12 rounded-2xl bg-emerald-400 text-black flex items-center justify-center text-xl font-bold mb-4">
-          {letter}
+        <div className="w-12 h-12 rounded-2xl bg-emerald-400 text-black flex items-center justify-center mb-4">
+          <Icon size={24} strokeWidth={2.25} />
         </div>
         <h3 className="font-bold text-white mb-2 tracking-wide">{title}</h3>
         <p className="text-sm text-zinc-400 leading-relaxed">{text}</p>
