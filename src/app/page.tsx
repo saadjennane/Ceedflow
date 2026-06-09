@@ -16,15 +16,6 @@ export default async function Home({
 
   return (
     <div className="min-h-screen bg-black text-zinc-100 selection:bg-emerald-400 selection:text-black">
-      {/* Top partner banner — white background with fade to black */}
-      <div className="relative bg-gradient-to-b from-white via-white to-black/10 py-5 px-4 flex items-center justify-center border-b border-zinc-800">
-        <img
-          src="/Banner.png"
-          alt="Led by Royaume du Maroc, operated by Tamwilcom, as part of Digital Morocco 2030"
-          className="max-h-24 md:max-h-32 w-auto"
-        />
-      </div>
-
       <StickyHeader lang={lang} applyLabel={lang === 'fr' ? t.applyFr : t.applyEn} />
 
       {/* HERO */}
@@ -272,6 +263,21 @@ export default async function Home({
               </li>
             ))}
           </ul>
+        </div>
+      </section>
+
+      {/* NOS PARTENAIRES */}
+      <section className="relative px-6 py-24">
+        <div className="max-w-5xl mx-auto">
+          <SectionLabel>08</SectionLabel>
+          <h2 className="text-4xl md:text-5xl font-bold mb-12 tracking-tight">{t.partners.title}</h2>
+          <div className="bg-white rounded-3xl p-8 md:p-14 flex items-center justify-center">
+            <img
+              src="/Banner.png"
+              alt="Led by Royaume du Maroc, operated by Tamwilcom, as part of Digital Morocco 2030"
+              className="max-h-32 md:max-h-48 w-auto"
+            />
+          </div>
         </div>
       </section>
 

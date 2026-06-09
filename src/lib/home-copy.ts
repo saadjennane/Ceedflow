@@ -120,6 +120,10 @@ export const HOME_COPY = {
       ],
     },
 
+    partners: {
+      title: 'Nos partenaires',
+    },
+
     finalCta: {
       title: 'Prêt à construire le prochain chapitre de votre startup ?',
       sub: "Rejoignez The Bridge by CEED et bénéficiez d'un accompagnement conçu pour transformer des idées en produits, des produits en clients et des clients en croissance.",
@@ -243,6 +247,10 @@ export const HOME_COPY = {
         'Concrete market validation with users or customers',
         'First business opportunities, pilots or purchase orders identified',
       ],
+    },
+
+    partners: {
+      title: 'Our partners',
     },
 
     finalCta: {
