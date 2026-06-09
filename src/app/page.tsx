@@ -1,6 +1,5 @@
 import Link from 'next/link'
-import { Fragment } from 'react'
-import { ArrowDown, ArrowRight, CheckCircle2, Zap, Target, Users } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Zap, Target, Users } from 'lucide-react'
 import { HOME_COPY, type Lang } from '@/lib/home-copy'
 import StickyHeader from '@/components/StickyHeader'
 import { BridgeArc, BridgeCables, BridgeMark, ArcDivider } from '@/components/BridgeMotifs'
@@ -224,26 +223,10 @@ export default async function Home({
       {/* INTERMEDIATE CTA 2 */}
       <MidCta title={t.midCta2.title} sub={t.midCta2.sub} lang={lang} label={lang === 'fr' ? t.applyFr : t.applyEn} variant="alt" />
 
-      {/* PROCESSUS DE SELECTION */}
-      <section className="relative px-6 py-24">
-        <div className="max-w-3xl mx-auto">
-          <SectionLabel>06</SectionLabel>
-          <h2 className="text-4xl md:text-5xl font-bold mb-16 tracking-tight">{t.selection.title}</h2>
-          <ol className="space-y-2">
-            {t.selection.steps.map((s, i) => (
-              <Fragment key={s.title}>
-                <Step n={i + 1} title={s.title} text={s.text} />
-                {i < t.selection.steps.length - 1 && <Connector />}
-              </Fragment>
-            ))}
-          </ol>
-        </div>
-      </section>
-
       {/* CE QU'ON ATTEND */}
       <section className="relative px-6 py-24">
         <div className="max-w-3xl mx-auto">
-          <SectionLabel>07</SectionLabel>
+          <SectionLabel>06</SectionLabel>
           <h2 className="text-4xl md:text-5xl font-bold mb-12 tracking-tight">{t.expectations.title}</h2>
           <ul className="space-y-4">
             {t.expectations.items.map(item => (
@@ -259,7 +242,7 @@ export default async function Home({
       {/* NOS PARTENAIRES */}
       <section className="relative px-6 py-24">
         <div className="max-w-5xl mx-auto">
-          <SectionLabel>08</SectionLabel>
+          <SectionLabel>07</SectionLabel>
           <h2 className="text-4xl md:text-5xl font-bold mb-12 tracking-tight">{t.partners.title}</h2>
           <div className="bg-white rounded-3xl p-8 md:p-14 flex items-center justify-center">
             <img
@@ -399,27 +382,3 @@ function DnaCard({ letter, title, text }: { letter: string; title: string; text:
   )
 }
 
-function Step({ n, title, text }: { n: number; title: string; text: string }) {
-  return (
-    <li className="group rounded-3xl p-5 border border-zinc-800 bg-zinc-900/50 hover:border-emerald-500/40 transition flex gap-4">
-      <div className="w-10 h-10 rounded-full bg-emerald-400 text-black flex items-center justify-center font-bold flex-shrink-0 shadow-[0_0_20px_-5px_rgba(16,185,129,0.5)]">
-        {n}
-      </div>
-      <div>
-        <h3 className="font-semibold text-white mb-1">{title}</h3>
-        <p className="text-sm text-zinc-400 leading-relaxed">{text}</p>
-      </div>
-    </li>
-  )
-}
-
-function Connector() {
-  return (
-    <li className="flex justify-center py-1">
-      <div className="flex flex-col items-center">
-        <div className="w-px h-3 bg-zinc-800" />
-        <ArrowDown size={14} className="text-emerald-500/60" />
-      </div>
-    </li>
-  )
-}

@@ -56,6 +56,14 @@ export const HOME_COPY = {
       title: 'Comment fonctionne le programme ?',
       phases: [
         {
+          tag: 'Mois 0', title: 'Sélection',
+          items: [
+            "Préselection par l'équipe du programme.",
+            "Présentation du projet devant un comité composé d'experts, d'investisseurs, de membres de SID et de partenaires de l'écosystème.",
+            'Présentation de la feuille de route devant un comité de financement afin de valider le financement et la poursuite dans le programme.',
+          ],
+        },
+        {
           tag: 'Mois 1', title: 'Diagnostic & Structuration',
           items: ['Diagnostic 360°', 'Analyse produit, marché et business', 'Définition des priorités', 'Construction de la roadmap'],
           note: "Ce premier mois permet également d'adapter les contenus du programme et certaines thématiques d'ateliers aux besoins réels des startups sélectionnées.",
@@ -84,17 +92,6 @@ export const HOME_COPY = {
         { letter: 'V', title: 'VALIDATE', text: 'Confronter les solutions au marché dès les premières semaines.' },
         { letter: 'A', title: 'AUTONOMIZE', text: "Développer l'autonomie des entrepreneurs grâce au Vibe Coding et aux outils IA modernes." },
         { letter: 'S', title: 'SCALE', text: 'Transformer les validations marché en opportunités business réelles.' },
-      ],
-    },
-
-    selection: {
-      title: 'Processus de sélection',
-      steps: [
-        { title: 'Candidature', text: 'Complétez le formulaire de candidature en ligne.' },
-        { title: 'Présélection', text: "Analyse des dossiers par l'équipe du programme." },
-        { title: 'Comité de sélection', text: "Présentation du projet devant un comité composé d'experts, d'investisseurs, de membres de SID et de partenaires de l'écosystème." },
-        { title: 'Admission', text: 'Les startups retenues rejoignent immédiatement le programme.' },
-        { title: 'Comité de financement', text: "À l'issue du premier mois de diagnostic, les startups présentent leur feuille de route afin de valider leur financement et leur poursuite dans le programme." },
       ],
     },
 
@@ -180,6 +177,14 @@ export const HOME_COPY = {
       title: 'How does the program work?',
       phases: [
         {
+          tag: 'Month 0', title: 'Selection',
+          items: [
+            'Pre-selection by the program team.',
+            'Project pitch in front of a committee of experts, investors, SID members and ecosystem partners.',
+            'Roadmap presentation in front of a funding committee to validate funding and continued participation.',
+          ],
+        },
+        {
           tag: 'Month 1', title: 'Diagnostic & Structuring',
           items: ['360° diagnostic', 'Product, market and business analysis', 'Priority setting', 'Roadmap building'],
           note: "This first month also allows us to adapt the program's content and certain workshop topics to the real needs of the selected startups.",
@@ -208,17 +213,6 @@ export const HOME_COPY = {
         { letter: 'V', title: 'VALIDATE', text: 'Confront solutions with the market from the very first weeks.' },
         { letter: 'A', title: 'AUTONOMIZE', text: "Develop entrepreneurs' autonomy through Vibe Coding and modern AI tools." },
         { letter: 'S', title: 'SCALE', text: 'Turn market validations into real business opportunities.' },
-      ],
-    },
-
-    selection: {
-      title: 'Selection process',
-      steps: [
-        { title: 'Application', text: 'Complete the online application form.' },
-        { title: 'Pre-selection', text: 'Application review by the program team.' },
-        { title: 'Selection committee', text: 'Project pitch in front of a committee of experts, investors, SID members and ecosystem partners.' },
-        { title: 'Admission', text: 'Selected startups immediately join the program.' },
-        { title: 'Funding committee', text: 'At the end of the first diagnostic month, startups present their roadmap to validate their funding and continued participation in the program.' },
       ],
     },
 
