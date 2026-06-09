@@ -109,6 +109,7 @@ export const HOME_COPY = {
         "The Bridge s'adresse aux startups innovantes — marocaines, ou étrangères disposant d'une présence et d'un projet de développement au Maroc — créées depuis moins de 8 ans et en phase d'incubation, de structuration ou de développement de MVP.",
         "Nous recherchons des projets à fort potentiel de croissance et de scalabilité, portés par une équipe fondatrice engagée, capable d'exécution et pleinement disponible pour s'investir dans le programme.",
       ],
+      cta: 'En savoir plus',
     },
 
     expectations: {
@@ -239,6 +240,7 @@ export const HOME_COPY = {
         'The Bridge is built for innovative startups — Moroccan, or foreign with a presence and development project in Morocco — less than 8 years old and at the incubation, structuring or MVP-development stage.',
         "We look for projects with strong growth and scalability potential, led by a founding team that is committed, execution-driven, and fully available to invest themselves in the program.",
       ],
+      cta: 'Learn more',
     },
 
     expectations: {

@@ -270,7 +270,7 @@ export default function ReglementPage() {
 
 function Article({ num, title, children }: { num: string; title: string; children: React.ReactNode }) {
   return (
-    <section className="scroll-mt-20">
+    <section id={`article-${num}`} className="scroll-mt-20">
       <h2 className="text-xl md:text-2xl font-bold text-gray-900 border-b border-gray-200 pb-3 mb-5 uppercase tracking-tight">
         <span className="text-emerald-600 mr-3">Article {num}</span>
         <span className="text-gray-300 mr-3">—</span>
