@@ -15,7 +15,7 @@ export default async function ApplyPage({
   return (
     <div className="min-h-screen py-12 px-4">
       <div className="max-w-2xl mx-auto mb-8">
-        <Link href="/" className="text-sm text-blue-600 hover:text-blue-800">
+        <Link href="/" className="text-sm text-emerald-600 hover:text-emerald-700">
           &larr; {t.back}
         </Link>
         <div className="flex items-center gap-3 mt-4 mb-2">

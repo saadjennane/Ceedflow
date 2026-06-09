@@ -11,6 +11,7 @@ export const HOME_COPY = {
       pourQui: 'Pour qui',
       programme: 'Le programme',
       timeline: 'Timeline',
+      reglement: 'Règlement',
     },
 
     hero: {
@@ -140,6 +141,7 @@ export const HOME_COPY = {
       pourQui: 'For who',
       programme: 'Program',
       timeline: 'Timeline',
+      reglement: 'Rules',
     },
 
     hero: {

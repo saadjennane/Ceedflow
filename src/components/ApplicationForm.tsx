@@ -83,7 +83,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
   const stepLabels = [t.stepStartupInfo, t.stepFounders, t.stepTraction, t.stepDocuments, t.stepSubmit]
 
   const inputClass = (hasError: boolean) =>
-    `w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+    `w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
       hasError ? 'border-red-400 bg-red-50' : 'border-gray-300'
     }`
 
@@ -318,7 +318,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
                 step > i + 1
                   ? 'bg-green-600 text-white'
                   : step === i + 1
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-emerald-500 text-white'
                   : 'bg-gray-200 text-gray-500'
               }`}
             >
@@ -353,7 +353,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
               </button>
               <button
                 onClick={confirmDuplicate}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                className="flex-1 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
               >
                 {t.submitAnyway}
               </button>
@@ -368,7 +368,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
           <div className="bg-white rounded-xl p-6 max-w-md w-full">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold">{t.addDocument}</h3>
-              <button onClick={() => { setShowAddDocModal(false); setNewDocName(''); setNewDocFile(null) }} className="text-gray-400 hover:text-blue-700">
+              <button onClick={() => { setShowAddDocModal(false); setNewDocName(''); setNewDocFile(null) }} className="text-gray-400 hover:text-emerald-700">
                 <X size={20} />
               </button>
             </div>
@@ -380,7 +380,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
                   value={newDocName}
                   onChange={(e) => setNewDocName(e.target.value)}
                   placeholder={t.documentNamePlaceholder}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
               <div>
@@ -401,7 +401,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
               <button
                 onClick={handleAddDoc}
                 disabled={!newDocName.trim() || !newDocFile}
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="w-full px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50"
               >
                 {t.add}
               </button>
@@ -461,7 +461,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
                 type="date"
                 value={creationDate}
                 onChange={(e) => setCreationDate(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
             <div>
@@ -469,7 +469,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
               <select
                 value={sector}
                 onChange={(e) => setSector(e.target.value as Sector)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 {SECTORS.map(s => <option key={s} value={s}>{d.sectors[s]}</option>)}
               </select>
@@ -483,7 +483,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
               value={website}
               onChange={(e) => setWebsite(e.target.value)}
               placeholder="https://"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
 
@@ -494,7 +494,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
               value={linkedinPage}
               onChange={(e) => setLinkedinPage(e.target.value)}
               placeholder="https://linkedin.com/company/..."
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
 
@@ -516,7 +516,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
               onChange={(e) => setCustomers(e.target.value)}
               rows={2}
               placeholder={t.describeCustomers}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
             />
           </div>
 
@@ -527,7 +527,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
               onChange={(e) => setBusinessModel(e.target.value)}
               rows={2}
               placeholder={t.businessModelPlaceholder}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
             />
           </div>
 
@@ -537,7 +537,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
               <select
                 value={businessModelType}
                 onChange={(e) => setBusinessModelType(e.target.value as BusinessModelType)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="B2B">{d.businessModelTypes['B2B']}</option>
                 <option value="B2C">{d.businessModelTypes['B2C']}</option>
@@ -549,7 +549,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
               <select
                 value={stage}
                 onChange={(e) => setStage(e.target.value as Stage)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 {STAGES.map(s => <option key={s} value={s}>{d.stages[s]}</option>)}
               </select>
@@ -559,7 +559,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
           <div className="flex justify-end">
             <button
               onClick={nextStep}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="px-6 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
             >
               {t.next}
             </button>
@@ -621,7 +621,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
                   <select
                     value={founder.role}
                     onChange={(e) => updateFounder(index, 'role', e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
                     {ROLES.map(r => <option key={r} value={r}>{d.roles[r]}</option>)}
                   </select>
@@ -635,7 +635,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
                   value={founder.linkedin || ''}
                   onChange={(e) => updateFounder(index, 'linkedin', e.target.value)}
                   placeholder="https://linkedin.com/in/..."
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
             </div>
@@ -644,7 +644,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
           {founders.length < 4 && (
             <button
               onClick={addFounder}
-              className="flex items-center gap-2 text-sm text-gray-600 hover:text-blue-700"
+              className="flex items-center gap-2 text-sm text-gray-600 hover:text-emerald-700"
             >
               <Plus size={16} /> {t.addCoFounder}
             </button>
@@ -654,7 +654,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
             <button onClick={prevStep} className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
               {t.back}
             </button>
-            <button onClick={nextStep} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            <button onClick={nextStep} className="px-6 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600">
               {t.next}
             </button>
           </div>
@@ -676,7 +676,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
                 value={revenue}
                 onChange={(e) => setRevenue(e.target.value)}
                 placeholder="e.g. 500000"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
             <div>
@@ -687,7 +687,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
                 value={projectedRevenue}
                 onChange={(e) => setProjectedRevenue(e.target.value)}
                 placeholder="e.g. 1000000"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
           </div>
@@ -699,7 +699,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
               min="0"
               value={employees}
               onChange={(e) => setEmployees(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
 
@@ -710,7 +710,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
               min="0"
               value={usersOrCustomers}
               onChange={(e) => setUsersOrCustomers(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
 
@@ -722,7 +722,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
                   type="radio"
                   checked={!raisedFunds}
                   onChange={() => setRaisedFunds(false)}
-                  className="accent-blue-600"
+                  className="accent-emerald-500"
                 />
                 {t.no}
               </label>
@@ -731,7 +731,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
                   type="radio"
                   checked={raisedFunds}
                   onChange={() => setRaisedFunds(true)}
-                  className="accent-blue-600"
+                  className="accent-emerald-500"
                 />
                 {t.yes}
               </label>
@@ -747,7 +747,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
                 value={fundsAmount}
                 onChange={(e) => setFundsAmount(e.target.value)}
                 placeholder="e.g. 2000000"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
           )}
@@ -758,7 +758,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
               <select
                 value={fundraisingPlan}
                 onChange={(e) => setFundraisingPlan(e.target.value as FundraisingPlan)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="No">{d.fundraisingPlans['No']}</option>
                 <option value="In 6 months">{d.fundraisingPlans['In 6 months']}</option>
@@ -771,7 +771,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
               <select
                 value={patentStatus}
                 onChange={(e) => setPatentStatus(e.target.value as PatentStatus)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="No">{d.patentStatuses['No']}</option>
                 <option value="Yes">{d.patentStatuses['Yes']}</option>
@@ -787,7 +787,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
               min="0"
               value={totalInvestment}
               onChange={(e) => setTotalInvestment(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
 
@@ -795,7 +795,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
             <button onClick={prevStep} className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
               {t.back}
             </button>
-            <button onClick={nextStep} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            <button onClick={nextStep} className="px-6 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600">
               {t.next}
             </button>
           </div>
@@ -843,7 +843,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
             )}
             <button
               onClick={() => setShowAddDocModal(true)}
-              className="flex items-center gap-2 text-sm text-gray-600 hover:text-blue-700 border border-dashed border-gray-300 rounded-lg px-4 py-2 hover:border-gray-400 transition-colors"
+              className="flex items-center gap-2 text-sm text-gray-600 hover:text-emerald-700 border border-dashed border-gray-300 rounded-lg px-4 py-2 hover:border-gray-400 transition-colors"
             >
               <Plus size={16} />
               {t.addDocument}
@@ -854,7 +854,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
             <button onClick={prevStep} className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
               {t.back}
             </button>
-            <button onClick={nextStep} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            <button onClick={nextStep} className="px-6 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600">
               {t.next}
             </button>
           </div>
@@ -871,7 +871,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
             <select
               value={source}
               onChange={(e) => setSource(e.target.value as Source)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
               <option value="" disabled>{t.selectOption}</option>
               {SOURCES.map(s => <option key={s} value={s}>{d.sources[s]}</option>)}
@@ -890,7 +890,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
               type="checkbox"
               checked={acceptedRules}
               onChange={(e) => setAcceptedRules(e.target.checked)}
-              className="mt-1 accent-blue-600 cursor-pointer"
+              className="mt-1 accent-emerald-500 cursor-pointer"
             />
             <span>
               {t.acceptInternalRulesBefore}{' '}
@@ -898,7 +898,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
                 href={internalRulesUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-600 underline hover:text-blue-700"
+                className="text-emerald-600 underline hover:text-emerald-700"
               >
                 {t.internalRules}
               </a>
@@ -913,7 +913,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
               <button
                 onClick={handleSubmit}
                 disabled={submitting}
-                className="px-8 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                className="px-8 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50 flex items-center gap-2"
               >
                 {submitting && <Loader2 size={16} className="animate-spin" />}
                 {submitting ? t.submitting : t.submitApplication}
@@ -926,7 +926,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
               href={internalRulesUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm text-gray-600 hover:text-blue-700 underline"
+              className="text-sm text-gray-600 hover:text-emerald-700 underline"
             >
               {t.viewInternalRules}
             </a>

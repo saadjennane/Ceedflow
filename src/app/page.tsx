@@ -27,6 +27,7 @@ export default async function Home({
           { label: t.nav.pourQui, href: '#pour-qui' },
           { label: t.nav.programme, href: '#programme' },
           { label: t.nav.timeline, href: '#timeline' },
+          { label: t.nav.reglement, href: '/reglement' },
         ]}
       />
 
