@@ -6,6 +6,13 @@ export const HOME_COPY = {
     applyFr: 'Déposer ma candidature',
     applyEn: 'Apply',
 
+    nav: {
+      pourquoi: 'Pourquoi',
+      pourQui: 'Pour qui',
+      programme: 'Le programme',
+      timeline: 'Timeline',
+    },
+
     hero: {
       badge: 'Date limite de candidature · 20 juillet 2026',
       tagline: 'Construisez. Validez. Accélérez.',
@@ -127,6 +134,13 @@ export const HOME_COPY = {
     langToggle: { fr: 'FR', en: 'EN' },
     applyFr: 'Déposer ma candidature',
     applyEn: 'Apply',
+
+    nav: {
+      pourquoi: 'Why',
+      pourQui: 'For who',
+      programme: 'Program',
+      timeline: 'Timeline',
+    },
 
     hero: {
       badge: 'Application deadline · 20 July 2026',

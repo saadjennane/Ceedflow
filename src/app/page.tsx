@@ -16,7 +16,16 @@ export default async function Home({
 
   return (
     <div className="min-h-screen bg-black text-zinc-100 selection:bg-emerald-400 selection:text-black">
-      <StickyHeader lang={lang} applyLabel={lang === 'fr' ? t.applyFr : t.applyEn} />
+      <StickyHeader
+        lang={lang}
+        applyLabel={lang === 'fr' ? t.applyFr : t.applyEn}
+        navItems={[
+          { label: t.nav.pourquoi, href: '#pourquoi' },
+          { label: t.nav.pourQui, href: '#pour-qui' },
+          { label: t.nav.programme, href: '#programme' },
+          { label: t.nav.timeline, href: '#timeline' },
+        ]}
+      />
 
       {/* HERO */}
       <section className="relative overflow-hidden px-6 pt-20 pb-24">
@@ -51,7 +60,7 @@ export default async function Home({
       <ArcDivider className="w-full h-16 mx-auto max-w-6xl" color="#10b981" />
 
       {/* POURQUOI — titre dans une carte verte arrondie + arc décoratif */}
-      <section className="relative px-6 py-24 overflow-hidden">
+      <section id="pourquoi" className="relative px-6 py-24 overflow-hidden scroll-mt-24">
         <div className="max-w-6xl mx-auto grid lg:grid-cols-[auto_1fr] gap-12 lg:gap-20 items-center">
           {/* Title card LEFT with decorative arc on its right */}
           <div className="relative mx-auto lg:mx-0">
@@ -105,7 +114,7 @@ export default async function Home({
       </section>
 
       {/* À QUI S'ADRESSE — titre dans une carte verte à droite + arc décoratif */}
-      <section className="relative px-6 py-24 overflow-hidden">
+      <section id="pour-qui" className="relative px-6 py-24 overflow-hidden scroll-mt-24">
         <div className="max-w-6xl mx-auto grid lg:grid-cols-[1fr_auto] gap-12 lg:gap-20 items-center">
           {/* Content LEFT */}
           <div className="order-2 lg:order-1">
@@ -141,7 +150,7 @@ export default async function Home({
       <ArcDivider className="w-full h-16 mx-auto max-w-6xl" color="#10b981" variant="up" />
 
       {/* CE QUE VOUS OBTENEZ */}
-      <section className="relative bg-zinc-950 border-y border-zinc-900 px-6 py-24">
+      <section id="programme" className="relative bg-zinc-950 border-y border-zinc-900 px-6 py-24 scroll-mt-24">
         <div className="max-w-5xl mx-auto">
           <SectionLabel>04</SectionLabel>
           <h2 className="text-4xl md:text-5xl font-bold mb-4 tracking-tight">{t.benefits.title}</h2>
@@ -199,7 +208,7 @@ export default async function Home({
       <MidCta title={t.midCta1.title} sub={t.midCta1.sub} lang={lang} label={lang === 'fr' ? t.applyFr : t.applyEn} />
 
       {/* COMMENT FONCTIONNE */}
-      <section className="relative px-6 py-24">
+      <section id="timeline" className="relative px-6 py-24 scroll-mt-24">
         <div className="max-w-5xl mx-auto">
           <SectionLabel>05</SectionLabel>
           <h2 className="text-4xl md:text-5xl font-bold mb-16 tracking-tight">{t.how.title}</h2>
