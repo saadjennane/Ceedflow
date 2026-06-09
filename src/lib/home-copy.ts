@@ -121,7 +121,7 @@ export const HOME_COPY = {
     },
 
     partners: {
-      title: 'Nos partenaires',
+      title: 'Ce programme est soutenu par',
     },
 
     finalCta: {
@@ -250,7 +250,7 @@ export const HOME_COPY = {
     },
 
     partners: {
-      title: 'Our partners',
+      title: 'This program is supported by',
     },
 
     finalCta: {
