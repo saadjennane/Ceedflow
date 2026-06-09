@@ -7,6 +7,7 @@ export const HOME_COPY = {
     applyEn: 'Apply',
 
     hero: {
+      badge: 'Date limite de candidature · 20 juillet 2026',
       tagline: 'Construisez. Validez. Accélérez.',
       lead: "The Bridge vous permet d'accélérer le lancement de vos projets innovants, rencontrer vos clients et valider votre marché.",
     },
@@ -131,6 +132,7 @@ export const HOME_COPY = {
     applyEn: 'Apply',
 
     hero: {
+      badge: 'Application deadline · 20 July 2026',
       tagline: 'Build. Validate. Accelerate.',
       lead: 'The Bridge helps you accelerate the launch of your innovative projects, meet your customers, and validate your market.',
     },

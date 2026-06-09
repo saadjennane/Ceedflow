@@ -45,7 +45,7 @@ export default async function Home({
         <div className="relative max-w-5xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-xs font-medium mb-8">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            {lang === 'fr' ? 'Programme d\'accélération · 8 mois' : 'Acceleration program · 8 months'}
+            {t.hero.badge}
           </div>
           <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6 leading-[1.05]">
             <span className="block">{t.hero.tagline.split('.')[0]}.</span>
