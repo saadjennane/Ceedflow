@@ -16,12 +16,12 @@ export default async function Home({
 
   return (
     <div className="min-h-screen bg-black text-zinc-100 selection:bg-emerald-400 selection:text-black">
-      {/* Top partner banner */}
-      <div className="bg-zinc-950 border-b border-zinc-800 py-3 px-4 flex items-center justify-center">
+      {/* Top partner banner — white background with fade to black */}
+      <div className="relative bg-gradient-to-b from-white via-white to-black/10 py-5 px-4 flex items-center justify-center border-b border-zinc-800">
         <img
           src="/Banner.png"
           alt="Led by Royaume du Maroc, operated by Tamwilcom, as part of Digital Morocco 2030"
-          className="max-h-14 md:max-h-16 w-auto opacity-90"
+          className="max-h-24 md:max-h-32 w-auto"
         />
       </div>
 
