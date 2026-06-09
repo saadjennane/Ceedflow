@@ -43,10 +43,6 @@ export default async function Home({
         <BridgeCables className="pointer-events-none absolute top-1/4 left-0 w-full h-[28rem] text-emerald-400/15" strokeWidth={2.5} />
 
         <div className="relative max-w-5xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-xs font-medium mb-8">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            {t.hero.badge}
-          </div>
           <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6 leading-[1.05]">
             <span className="block">{t.hero.tagline.split('.')[0]}.</span>
             <span className="block">{t.hero.tagline.split('.')[1]?.trim()}.</span>
@@ -57,7 +53,7 @@ export default async function Home({
           <p className="text-lg md:text-xl text-zinc-300 max-w-2xl mx-auto mb-12 leading-relaxed">
             {t.hero.lead}
           </p>
-          <ApplyButtons lang={lang} label={lang === 'fr' ? t.applyFr : t.applyEn} />
+          <ApplyButtons lang={lang} label={t.hero.badge} />
         </div>
       </section>
 
@@ -102,6 +98,21 @@ export default async function Home({
         </div>
       </section>
 
+      {/* NOTRE ADN */}
+      <section className="relative bg-zinc-950 border-y border-zinc-900 px-6 py-24 overflow-hidden">
+        <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[30rem] h-[30rem] bg-emerald-500/10 rounded-full blur-[120px]" />
+        <BridgeCables className="pointer-events-none absolute bottom-0 left-0 w-full h-72 text-emerald-400/10" strokeWidth={2} />
+        <div className="relative max-w-5xl mx-auto">
+          <SectionLabel>02</SectionLabel>
+          <h2 className="text-4xl md:text-5xl font-bold mb-16 tracking-tight">{t.dna.title}</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {t.dna.cards.map(c => (
+              <DnaCard key={c.title} letter={c.letter} title={c.title} text={c.text} />
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* À QUI S'ADRESSE — titre dans une carte verte à droite + arc décoratif */}
       <section className="relative px-6 py-24 overflow-hidden">
         <div className="max-w-6xl mx-auto grid lg:grid-cols-[1fr_auto] gap-12 lg:gap-20 items-center">
@@ -126,27 +137,12 @@ export default async function Home({
               <path d="M 80 0 Q 10 200 80 400" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" />
             </svg>
             <div className="relative z-10 rounded-[2.5rem] bg-emerald-400 p-10 lg:p-12 lg:w-[400px]">
-              <div className="text-xs font-mono text-black/60 mb-4">/ 02</div>
+              <div className="text-xs font-mono text-black/60 mb-4">/ 03</div>
               <h2 className="text-4xl lg:text-5xl font-bold text-black leading-[1.05] tracking-tight">
                 {t.whoFor.title}
               </h2>
               <BridgeMark className="mt-8 w-24 h-14 text-black/60" />
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* NOTRE ADN */}
-      <section className="relative bg-zinc-950 border-y border-zinc-900 px-6 py-24 overflow-hidden">
-        <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[30rem] h-[30rem] bg-emerald-500/10 rounded-full blur-[120px]" />
-        <BridgeCables className="pointer-events-none absolute bottom-0 left-0 w-full h-72 text-emerald-400/10" strokeWidth={2} />
-        <div className="relative max-w-5xl mx-auto">
-          <SectionLabel>03</SectionLabel>
-          <h2 className="text-4xl md:text-5xl font-bold mb-16 tracking-tight">{t.dna.title}</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {t.dna.cards.map(c => (
-              <DnaCard key={c.title} letter={c.letter} title={c.title} text={c.text} />
-            ))}
           </div>
         </div>
       </section>
