@@ -8,8 +8,12 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "Startup Program - Applications",
-  description: "Submit your startup application for our incubation program",
+  title: "The Bridge by CEED",
+  description: "Build. Validate. Accelerate. — 8-month acceleration program for innovative startups in Morocco.",
+  icons: {
+    icon: '/FAVICON THE BRIDGE.png',
+    apple: '/FAVICON THE BRIDGE.png',
+  },
 };
 
 export default function RootLayout({

@@ -1,0 +1,255 @@
+export type Lang = 'fr' | 'en'
+
+export const HOME_COPY = {
+  fr: {
+    langToggle: { fr: 'FR', en: 'EN' },
+    applyFr: 'Déposer ma candidature',
+    applyEn: 'Apply',
+
+    hero: {
+      tagline: 'Construisez. Validez. Accélérez.',
+      lead: "The Bridge est un programme d'accélération conçu pour transformer des projets innovants en produits, clients et opportunités de croissance.",
+      sub: "Pendant 8 mois, les startups sélectionnées bénéficient d'un accompagnement personnalisé, d'un accès à des experts, mentors et investisseurs, ainsi que de mécanismes de financement destinés à accélérer leur développement.",
+    },
+
+    why: {
+      title: 'Pourquoi The Bridge ?',
+      pitch: 'Nous ne sommes pas un incubateur traditionnel.',
+      body: "The Bridge a été conçu pour accompagner les entrepreneurs dans la construction de solutions concrètes, la validation de leur marché et le développement de leurs premières opportunités commerciales.",
+      intro: 'Notre approche privilégie :',
+      bullets: ['Moins de théorie', "Plus d'exécution", 'Plus de terrain', "Plus d'autonomie", 'Plus de résultats'],
+    },
+
+    benefits: {
+      title: 'Ce que vous obtenez',
+      mentoring: {
+        title: 'Accompagnement personnalisé',
+        intro: 'Un suivi régulier assuré par :',
+        items: ['Des mentors', 'Des experts sectoriels', 'Des entrepreneurs expérimentés', "L'équipe d'accompagnement du programme"],
+        outro: "L'objectif est simple : accélérer l'exécution et lever rapidement les blocages.",
+      },
+      workshops: {
+        title: 'Ateliers concrets & Peer Learning',
+        intro: 'Des ateliers et sessions collaboratives, conçus autour des défis concrets des startups.',
+        topicsLabel: 'Exemples de thématiques :',
+        topics: ['Product Market Fit', 'Acquisition B2B', 'Juridique', 'Automatisation', 'Analytics', 'Vibe Coding', '…'],
+        outro: 'Tous les ateliers sont orientés pratique et directement applicables à votre projet.',
+      },
+      mvp: {
+        title: 'Développement du MVP',
+        intro: 'Le programme accompagne les startups dans :',
+        items: ['La conception de leur MVP', 'Le développement de leur solution', 'Les tests utilisateurs', 'Les itérations produit'],
+        outro: "L'objectif est d'aboutir rapidement à un produit fonctionnel et validé par le marché.",
+      },
+      vibe: {
+        title: 'Autonomie grâce au Vibe Coding',
+        intro: 'The Bridge intègre un parcours dédié au Vibe Coding et aux outils IA modernes.',
+        learnLabel: 'Les entrepreneurs apprennent à :',
+        items: ['Construire rapidement des outils et prototypes', 'Déployer des applications simples', 'Automatiser certains processus', 'Améliorer leur autonomie technologique'],
+      },
+      funding: {
+        title: 'Financement',
+        intro: 'Les startups sélectionnées peuvent bénéficier de :',
+        grant: { title: "Jusqu'à 200 000 MAD de subvention", desc: 'Destinés à accélérer le développement du projet et sa mise sur le marché.' },
+        stipend: { title: 'Bourse de vie entrepreneuriale', desc: "Une allocation mensuelle pouvant être accordée pendant une durée allant jusqu'à 12 mois afin de permettre aux entrepreneurs de se consacrer pleinement au développement de leur startup." },
+      },
+    },
+
+    midCta1: { title: 'Vous vous reconnaissez ?', sub: 'Déposez votre candidature dès maintenant.' },
+    midCta2: { title: 'Prêt à candidater ?', sub: 'Quelques minutes suffisent pour soumettre votre projet.' },
+
+    how: {
+      title: 'Comment fonctionne le programme ?',
+      phases: [
+        {
+          tag: 'Mois 1', title: 'Diagnostic & Structuration',
+          items: ['Diagnostic 360°', 'Analyse produit, marché et business', 'Définition des priorités', 'Construction de la roadmap'],
+          note: "Ce premier mois permet également d'adapter les contenus du programme et certaines thématiques d'ateliers aux besoins réels des startups sélectionnées.",
+        },
+        {
+          tag: 'Mois 2 à 4', title: 'Build & MVP',
+          items: ['Développement du MVP', 'Validation des hypothèses', 'Tests utilisateurs', 'Premières démonstrations'],
+        },
+        {
+          tag: 'Mois 5 à 7', title: 'Go-To-Market & Traction',
+          items: ['Acquisition', 'Développement commercial', 'Partenariats', 'Premiers clients'],
+        },
+        {
+          tag: 'Mois 8', title: 'Demo Day',
+          intro: 'Présentation devant :',
+          items: ['Investisseurs', 'Corporates', 'Partenaires', "Acteurs de l'écosystème"],
+          note: "Avec pour objectif d'accélérer les opportunités commerciales et de financement.",
+        },
+      ],
+    },
+
+    dna: {
+      title: 'Notre ADN',
+      cards: [
+        { letter: 'B', title: 'BUILD', text: 'Construire rapidement des solutions concrètes et des MVPs testables.' },
+        { letter: 'V', title: 'VALIDATE', text: 'Confronter les solutions au marché dès les premières semaines.' },
+        { letter: 'A', title: 'AUTONOMIZE', text: "Développer l'autonomie des entrepreneurs grâce au Vibe Coding et aux outils IA modernes." },
+        { letter: 'S', title: 'SCALE', text: 'Transformer les validations marché en opportunités business réelles.' },
+      ],
+    },
+
+    selection: {
+      title: 'Processus de sélection',
+      steps: [
+        { title: 'Candidature', text: 'Complétez le formulaire de candidature en ligne.' },
+        { title: 'Présélection', text: "Analyse des dossiers par l'équipe du programme." },
+        { title: 'Comité de sélection', text: "Présentation du projet devant un comité composé d'experts, d'investisseurs, de membres de SID et de partenaires de l'écosystème." },
+        { title: 'Admission', text: 'Les startups retenues rejoignent immédiatement le programme.' },
+        { title: 'Comité de financement', text: "À l'issue du premier mois de diagnostic, les startups présentent leur feuille de route afin de valider leur financement et leur poursuite dans le programme." },
+      ],
+    },
+
+    whoFor: {
+      title: "À qui s'adresse The Bridge ?",
+      paragraphs: [
+        "The Bridge s'adresse aux startups innovantes — marocaines, ou étrangères disposant d'une présence et d'un projet de développement au Maroc — créées depuis moins de 8 ans et en phase d'incubation, de structuration ou de développement de MVP.",
+        "Nous recherchons des projets à fort potentiel de croissance et de scalabilité, portés par une équipe fondatrice engagée, capable d'exécution et pleinement disponible pour s'investir dans le programme.",
+      ],
+    },
+
+    expectations: {
+      title: 'Ce que nous attendons à la fin du programme',
+      items: [
+        'Un MVP fonctionnel et déployé',
+        "Une validation marché concrète auprès d'utilisateurs ou de clients",
+        'Des premières opportunités commerciales, pilotes ou bons de commande identifiés',
+      ],
+    },
+
+    finalCta: {
+      title: 'Prêt à construire le prochain chapitre de votre startup ?',
+      sub: "Rejoignez The Bridge by CEED et bénéficiez d'un accompagnement conçu pour transformer des idées en produits, des produits en clients et des clients en croissance.",
+    },
+  },
+
+  en: {
+    langToggle: { fr: 'FR', en: 'EN' },
+    applyFr: 'Déposer ma candidature',
+    applyEn: 'Apply',
+
+    hero: {
+      tagline: 'Build. Validate. Accelerate.',
+      lead: 'The Bridge is an acceleration program designed to turn innovative projects into products, customers, and growth opportunities.',
+      sub: 'Over 8 months, selected startups receive personalized support, access to experts, mentors and investors, and funding mechanisms designed to accelerate their development.',
+    },
+
+    why: {
+      title: 'Why The Bridge?',
+      pitch: "We're not a traditional incubator.",
+      body: 'The Bridge was designed to support entrepreneurs in building concrete solutions, validating their market, and developing their first business opportunities.',
+      intro: 'Our approach favors:',
+      bullets: ['Less theory', 'More execution', 'More fieldwork', 'More autonomy', 'More results'],
+    },
+
+    benefits: {
+      title: 'What you get',
+      mentoring: {
+        title: 'Personalized support',
+        intro: 'Regular guidance from:',
+        items: ['Mentors', 'Industry experts', 'Experienced entrepreneurs', "The program's support team"],
+        outro: 'The goal is simple: accelerate execution and quickly remove blockers.',
+      },
+      workshops: {
+        title: 'Concrete workshops & Peer Learning',
+        intro: 'Workshops and collaborative sessions, designed around the real challenges of startups.',
+        topicsLabel: 'Example topics:',
+        topics: ['Product Market Fit', 'B2B Acquisition', 'Legal', 'Automation', 'Analytics', 'Vibe Coding', '…'],
+        outro: 'All workshops are practice-oriented and directly applicable to your project.',
+      },
+      mvp: {
+        title: 'MVP Development',
+        intro: 'The program supports startups in:',
+        items: ['Designing their MVP', 'Building their solution', 'User testing', 'Product iterations'],
+        outro: 'The goal is to quickly arrive at a functional product validated by the market.',
+      },
+      vibe: {
+        title: 'Autonomy through Vibe Coding',
+        intro: 'The Bridge includes a dedicated track on Vibe Coding and modern AI tools.',
+        learnLabel: 'Entrepreneurs learn to:',
+        items: ['Quickly build tools and prototypes', 'Deploy simple applications', 'Automate certain processes', 'Improve their technological autonomy'],
+      },
+      funding: {
+        title: 'Funding',
+        intro: 'Selected startups may benefit from:',
+        grant: { title: 'Up to 200,000 MAD in grant funding', desc: "Intended to accelerate the project's development and market launch." },
+        stipend: { title: 'Entrepreneurial living stipend', desc: 'A monthly allowance that may be granted for up to 12 months so entrepreneurs can fully dedicate themselves to building their startup.' },
+      },
+    },
+
+    midCta1: { title: 'Does this sound like you?', sub: 'Apply now.' },
+    midCta2: { title: 'Ready to apply?', sub: 'It only takes a few minutes to submit your project.' },
+
+    how: {
+      title: 'How does the program work?',
+      phases: [
+        {
+          tag: 'Month 1', title: 'Diagnostic & Structuring',
+          items: ['360° diagnostic', 'Product, market and business analysis', 'Priority setting', 'Roadmap building'],
+          note: "This first month also allows us to adapt the program's content and certain workshop topics to the real needs of the selected startups.",
+        },
+        {
+          tag: 'Months 2-4', title: 'Build & MVP',
+          items: ['MVP development', 'Hypothesis validation', 'User testing', 'First demos'],
+        },
+        {
+          tag: 'Months 5-7', title: 'Go-To-Market & Traction',
+          items: ['Acquisition', 'Business development', 'Partnerships', 'First customers'],
+        },
+        {
+          tag: 'Month 8', title: 'Demo Day',
+          intro: 'Pitch in front of:',
+          items: ['Investors', 'Corporates', 'Partners', 'Ecosystem players'],
+          note: 'With the goal of accelerating business and funding opportunities.',
+        },
+      ],
+    },
+
+    dna: {
+      title: 'Our DNA',
+      cards: [
+        { letter: 'B', title: 'BUILD', text: 'Quickly build concrete solutions and testable MVPs.' },
+        { letter: 'V', title: 'VALIDATE', text: 'Confront solutions with the market from the very first weeks.' },
+        { letter: 'A', title: 'AUTONOMIZE', text: "Develop entrepreneurs' autonomy through Vibe Coding and modern AI tools." },
+        { letter: 'S', title: 'SCALE', text: 'Turn market validations into real business opportunities.' },
+      ],
+    },
+
+    selection: {
+      title: 'Selection process',
+      steps: [
+        { title: 'Application', text: 'Complete the online application form.' },
+        { title: 'Pre-selection', text: 'Application review by the program team.' },
+        { title: 'Selection committee', text: 'Project pitch in front of a committee of experts, investors, SID members and ecosystem partners.' },
+        { title: 'Admission', text: 'Selected startups immediately join the program.' },
+        { title: 'Funding committee', text: 'At the end of the first diagnostic month, startups present their roadmap to validate their funding and continued participation in the program.' },
+      ],
+    },
+
+    whoFor: {
+      title: 'Who is The Bridge for?',
+      paragraphs: [
+        'The Bridge is built for innovative startups — Moroccan, or foreign with a presence and development project in Morocco — less than 8 years old and at the incubation, structuring or MVP-development stage.',
+        "We look for projects with strong growth and scalability potential, led by a founding team that is committed, execution-driven, and fully available to invest themselves in the program.",
+      ],
+    },
+
+    expectations: {
+      title: 'What we expect at the end of the program',
+      items: [
+        'A functional, deployed MVP',
+        'Concrete market validation with users or customers',
+        'First business opportunities, pilots or purchase orders identified',
+      ],
+    },
+
+    finalCta: {
+      title: 'Ready to build the next chapter of your startup?',
+      sub: 'Join The Bridge by CEED and benefit from support designed to turn ideas into products, products into customers, and customers into growth.',
+    },
+  },
+} as const
