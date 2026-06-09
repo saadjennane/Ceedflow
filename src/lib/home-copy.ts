@@ -109,6 +109,7 @@ export const HOME_COPY = {
         'Un MVP fonctionnel et déployé',
         "Une validation marché concrète auprès d'utilisateurs ou de clients",
         'Des premières opportunités commerciales, pilotes ou bons de commande identifiés',
+        'Des rencontres avec des investisseurs pour votre levée de fonds',
       ],
     },
 
@@ -230,6 +231,7 @@ export const HOME_COPY = {
         'A functional, deployed MVP',
         'Concrete market validation with users or customers',
         'First business opportunities, pilots or purchase orders identified',
+        'Meetings with investors for your fundraising round',
       ],
     },
 
