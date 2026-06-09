@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Fragment } from 'react'
-import { ArrowDown, ArrowRight, CheckCircle2, Zap, Target, Rocket, Code } from 'lucide-react'
+import { ArrowDown, ArrowRight, CheckCircle2, Zap, Target, Rocket, Users } from 'lucide-react'
 import { HOME_COPY, type Lang } from '@/lib/home-copy'
 import StickyHeader from '@/components/StickyHeader'
 import { BridgeArc, BridgeCables, BridgeMark, ArcDivider } from '@/components/BridgeMotifs'
@@ -177,12 +177,12 @@ export default async function Home({
               <p className="text-zinc-500 italic text-sm">{t.benefits.mvp.outro}</p>
             </Block>
 
-            <Block icon={<Code className="text-emerald-400" size={20} />} title={t.benefits.vibe.title}>
-              <p className="mb-3 text-zinc-300">{t.benefits.vibe.intro}</p>
-              <p className="mb-3 text-zinc-400">{t.benefits.vibe.learnLabel}</p>
-              <ul className="space-y-1 text-zinc-400">
-                {t.benefits.vibe.items.map(i => <li key={i} className="flex gap-2"><span className="text-emerald-400">›</span>{i}</li>)}
+            <Block icon={<Users className="text-emerald-400" size={20} />} title={t.benefits.networking.title}>
+              <p className="mb-3 text-zinc-300">{t.benefits.networking.intro}</p>
+              <ul className="space-y-1 text-zinc-400 mb-3">
+                {t.benefits.networking.items.map(i => <li key={i} className="flex gap-2"><span className="text-emerald-400">›</span>{i}</li>)}
               </ul>
+              <p className="text-zinc-500 italic text-sm">{t.benefits.networking.outro}</p>
             </Block>
 
             <Block title={t.benefits.funding.title} accent>

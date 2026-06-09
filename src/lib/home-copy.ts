@@ -40,11 +40,11 @@ export const HOME_COPY = {
         items: ['La conception de leur MVP', 'Le développement de leur solution', 'Les tests utilisateurs', 'Les itérations produit'],
         outro: "L'objectif est d'aboutir rapidement à un produit fonctionnel et validé par le marché.",
       },
-      vibe: {
-        title: 'Autonomie grâce au Vibe Coding',
-        intro: 'The Bridge intègre un parcours dédié au Vibe Coding et aux outils IA modernes.',
-        learnLabel: 'Les entrepreneurs apprennent à :',
-        items: ['Construire rapidement des outils et prototypes', 'Déployer des applications simples', 'Automatiser certains processus', 'Améliorer leur autonomie technologique'],
+      networking: {
+        title: 'Networking',
+        intro: 'Des rencontres régulières avec :',
+        items: ['Mentors', 'Investisseurs', 'Partenaires stratégiques', 'Clients potentiels', '…'],
+        outro: 'Construisez votre réseau dès le premier mois et accédez aux bons interlocuteurs au bon moment.',
       },
       funding: {
         title: 'Financement',
@@ -165,11 +165,11 @@ export const HOME_COPY = {
         items: ['Designing their MVP', 'Building their solution', 'User testing', 'Product iterations'],
         outro: 'The goal is to quickly arrive at a functional product validated by the market.',
       },
-      vibe: {
-        title: 'Autonomy through Vibe Coding',
-        intro: 'The Bridge includes a dedicated track on Vibe Coding and modern AI tools.',
-        learnLabel: 'Entrepreneurs learn to:',
-        items: ['Quickly build tools and prototypes', 'Deploy simple applications', 'Automate certain processes', 'Improve their technological autonomy'],
+      networking: {
+        title: 'Networking',
+        intro: 'Regular encounters with:',
+        items: ['Mentors', 'Investors', 'Strategic partners', 'Potential customers', '…'],
+        outro: 'Build your network from day one and meet the right people at the right time.',
       },
       funding: {
         title: 'Funding',
