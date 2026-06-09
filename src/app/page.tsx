@@ -139,12 +139,27 @@ export default async function Home({
         </div>
       </section>
 
+      {/* NOTRE ADN */}
+      <section className="relative bg-zinc-950 border-y border-zinc-900 px-6 py-24 overflow-hidden">
+        <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[30rem] h-[30rem] bg-emerald-500/10 rounded-full blur-[120px]" />
+        <BridgeCables className="pointer-events-none absolute bottom-0 left-0 w-full h-72 text-emerald-400/10" strokeWidth={2} />
+        <div className="relative max-w-5xl mx-auto">
+          <SectionLabel>03</SectionLabel>
+          <h2 className="text-4xl md:text-5xl font-bold mb-16 tracking-tight">{t.dna.title}</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {t.dna.cards.map(c => (
+              <DnaCard key={c.title} letter={c.letter} title={c.title} text={c.text} />
+            ))}
+          </div>
+        </div>
+      </section>
+
       <ArcDivider className="w-full h-16 mx-auto max-w-6xl" color="#10b981" variant="up" />
 
       {/* CE QUE VOUS OBTENEZ */}
       <section className="relative bg-zinc-950 border-y border-zinc-900 px-6 py-24">
         <div className="max-w-5xl mx-auto">
-          <SectionLabel>03</SectionLabel>
+          <SectionLabel>04</SectionLabel>
           <h2 className="text-4xl md:text-5xl font-bold mb-16 tracking-tight">{t.benefits.title}</h2>
 
           <div className="space-y-6">
@@ -213,7 +228,7 @@ export default async function Home({
       {/* COMMENT FONCTIONNE */}
       <section className="relative px-6 py-24">
         <div className="max-w-5xl mx-auto">
-          <SectionLabel>04</SectionLabel>
+          <SectionLabel>05</SectionLabel>
           <h2 className="text-4xl md:text-5xl font-bold mb-16 tracking-tight">{t.how.title}</h2>
 
           <div className="space-y-4">
@@ -227,21 +242,6 @@ export default async function Home({
                   <p className="text-sm text-zinc-500 italic">{p.note}</p>
                 )}
               </Phase>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* NOTRE ADN */}
-      <section className="relative bg-zinc-950 border-y border-zinc-900 px-6 py-24 overflow-hidden">
-        <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[30rem] h-[30rem] bg-emerald-500/10 rounded-full blur-[120px]" />
-        <BridgeCables className="pointer-events-none absolute bottom-0 left-0 w-full h-72 text-emerald-400/10" strokeWidth={2} />
-        <div className="relative max-w-5xl mx-auto">
-          <SectionLabel>05</SectionLabel>
-          <h2 className="text-4xl md:text-5xl font-bold mb-16 tracking-tight">{t.dna.title}</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {t.dna.cards.map(c => (
-              <DnaCard key={c.title} letter={c.letter} title={c.title} text={c.text} />
             ))}
           </div>
         </div>
