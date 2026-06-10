@@ -67,7 +67,7 @@ export const HOME_COPY = {
           tag: 'Mois 0', title: 'Sélection',
           items: [
             "Préselection par l'équipe du programme.",
-            "Présentation du projet devant un comité composé d'experts, d'investisseurs, de membres de SID et de partenaires de l'écosystème.",
+            "Présentation du projet devant un comité composé d'experts, d'investisseurs, de membres de CEED Maroc et de partenaires de l'écosystème.",
             'Présentation de la feuille de route devant un comité de financement afin de valider le financement et la poursuite dans le programme.',
           ],
         },
@@ -198,7 +198,7 @@ export const HOME_COPY = {
           tag: 'Month 0', title: 'Selection',
           items: [
             'Pre-selection by the program team.',
-            'Project pitch in front of a committee of experts, investors, SID members and ecosystem partners.',
+            'Project pitch in front of a committee of experts, investors, CEED Maroc members and ecosystem partners.',
             'Roadmap presentation in front of a funding committee to validate funding and continued participation.',
           ],
         },
