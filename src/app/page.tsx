@@ -123,17 +123,10 @@ export default async function Home({
           {/* Content LEFT */}
           <div className="order-2 lg:order-1">
             {t.whoFor.paragraphs.map((p, i) => (
-              <p key={i} className="text-zinc-300 mb-6 text-lg leading-relaxed">
+              <p key={i} className="text-zinc-300 mb-6 last:mb-0 text-lg leading-relaxed">
                 {p}
               </p>
             ))}
-            <Link
-              href="/reglement#article-4"
-              className="inline-flex items-center gap-2 mt-2 px-5 py-2.5 rounded-full border border-emerald-500/40 text-emerald-300 text-sm font-medium hover:bg-emerald-500/10 hover:border-emerald-400 transition"
-            >
-              {t.whoFor.cta}
-              <ArrowRight size={14} />
-            </Link>
           </div>
           {/* Title card RIGHT with decorative arc on its left */}
           <div className="relative mx-auto lg:mx-0 order-1 lg:order-2">
