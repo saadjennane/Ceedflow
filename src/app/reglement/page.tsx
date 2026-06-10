@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Download } from 'lucide-react'
 
 export const metadata = {
   title: "Règlement — The Bridge by CEED",
@@ -23,12 +23,20 @@ export default function ReglementPage() {
         <img src="/logo-ceed.svg" alt="CEED Morocco" className="h-12 md:h-16 w-auto" />
       </div>
 
-      {/* Back link */}
-      <div className="max-w-4xl mx-auto px-6 pt-8">
+      {/* Back link + download */}
+      <div className="max-w-4xl mx-auto px-6 pt-8 flex items-center justify-between gap-4">
         <Link href="/" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-emerald-600 transition">
           <ArrowLeft size={16} />
           Retour à l&apos;accueil
         </Link>
+        <a
+          href="/Règlement Appel à projets Ceed v10.06.2026.pdf"
+          download
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 text-sm font-medium hover:bg-emerald-500/20 hover:border-emerald-500 transition"
+        >
+          <Download size={14} />
+          Télécharger la version PDF
+        </a>
       </div>
 
       {/* Title */}

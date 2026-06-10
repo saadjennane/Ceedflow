@@ -45,7 +45,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
   const [showErrors, setShowErrors] = useState(false)
   const [acceptedRules, setAcceptedRules] = useState(false)
 
-  const internalRulesUrl = '/Reglement_The_Bridge_CEED_Maroc.pdf'
+  const internalRulesUrl = '/reglement'
 
   // Form state
   const [startupName, setStartupName] = useState('')
