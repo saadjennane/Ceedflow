@@ -109,7 +109,6 @@ export const HOME_COPY = {
         "The Bridge s'adresse aux startups innovantes marocaines, détenues par des entrepreneurs marocains ou étrangers, créées depuis moins de 8 ans, ayant dépassé le stade du POC (proof of concept), et ayant pour finalité le développement du prototype ou du MVP (minimum viable product).",
         "Nous recherchons des projets à fort potentiel de croissance et de scalabilité, portés par une équipe fondatrice engagée, capable d'exécution et pleinement disponible pour s'investir dans le programme.",
       ],
-      cta: 'En savoir plus',
     },
 
     expectations: {
@@ -240,7 +239,6 @@ export const HOME_COPY = {
         'The Bridge is built for innovative Moroccan startups, owned by Moroccan or foreign entrepreneurs, less than 8 years old, that have moved past the POC (proof of concept) stage and aim to develop a prototype or MVP (minimum viable product).',
         "We look for projects with strong growth and scalability potential, led by a founding team that is committed, execution-driven, and fully available to invest themselves in the program.",
       ],
-      cta: 'Learn more',
     },
 
     expectations: {
