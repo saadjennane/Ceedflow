@@ -53,7 +53,7 @@ export const HOME_COPY = {
         title: 'Financement',
         intro: 'Les startups sélectionnées peuvent bénéficier de :',
         grant: { title: 'Subvention de 200k MAD', desc: "Destinée à accélérer le développement du projet et sa mise sur le marché." },
-        stipend: { title: 'Bourse de Vie', desc: "Une allocation mensuelle pouvant être accordée pendant une durée allant jusqu'à 12 mois afin de permettre aux entrepreneurs de se consacrer pleinement au développement de leur startup." },
+        stipend: { title: 'Bourse de Vie', desc: "Un soutien financier temporaire pouvant être accordé pendant une durée allant jusqu'à 12 mois afin de permettre aux entrepreneurs de se consacrer pleinement au développement de leur startup." },
       },
     },
 
@@ -184,7 +184,7 @@ export const HOME_COPY = {
         title: 'Funding',
         intro: 'Selected startups may benefit from:',
         grant: { title: '200k MAD grant', desc: "To accelerate the project's development and market launch." },
-        stipend: { title: 'Living stipend', desc: 'A monthly allowance that may be granted for up to 12 months so entrepreneurs can fully dedicate themselves to building their startup.' },
+        stipend: { title: 'Living stipend', desc: 'Temporary financial support that may be granted for up to 12 months so entrepreneurs can fully dedicate themselves to building their startup.' },
       },
     },
 
