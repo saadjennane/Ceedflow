@@ -25,7 +25,7 @@ export default async function Home({
       {/* Minimal nav */}
       <nav className="relative z-10 flex items-center justify-between px-6 md:px-12 py-6">
         <Link href="/" className="flex items-center">
-          <img src="/THE BRIDGE LOGO-02.png" alt="The Bridge" className="h-10 md:h-12 w-auto" />
+          <img src="/THE BRIDGE LOGO-04.png" alt="The Bridge" className="h-10 md:h-12 w-auto" />
         </Link>
         <div className="flex items-center gap-4 md:gap-6">
           <Link
@@ -55,7 +55,7 @@ export default async function Home({
           </span>
           <span className="block animate-fade-up opacity-0" style={{ animationDelay: '0.75s' }}>
             <span className="text-emerald-400">Scale</span>{' '}
-            <span className="text-white">{lang === 'fr' ? 'votre startup' : 'your startup'}</span>
+            <span className="text-white">your startup</span>
           </span>
         </h1>
 
