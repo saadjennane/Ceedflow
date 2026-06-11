@@ -53,7 +53,7 @@ export default function ReglementPage() {
 
         <Section id="preambule" num={1} title="Préambule">
           <p>
-            Cet appel à projet s&apos;inscrit dans le cadre de l&apos;initiative <strong>« l&apos;Offre Startup VB »</strong>, financée par le Ministère de la Transition Numérique et de la Réforme de l&apos;Administration (MTNRA), et dont la gestion est confiée à Tamwilcom.
+            Cet appel à projets s&apos;inscrit dans le cadre de l&apos;initiative <strong>« l&apos;Offre Startup VB »</strong>, financée par le Ministère de la Transition Numérique et de la Réforme de l&apos;Administration (MTNRA), et dont la gestion est confiée à Tamwilcom.
           </p>
           <p>
             Dans ce cadre, <strong>CEED Maroc</strong> — Center for Entrepreneurial and Executive Development Morocco — lance <strong>« The Bridge »</strong>, son programme de venture building et d&apos;accompagnement entrepreneurial.
@@ -66,7 +66,7 @@ export default function ReglementPage() {
           </p>
         </Section>
 
-        <Section id="objet" num={2} title="Objet de l'appel à projet">
+        <Section id="objet" num={2} title="Objet de l'appel à projets">
           <p>
             Cet appel à projets a pour objectif de sélectionner, à la suite d&apos;un processus de sélection, <strong>jusqu&apos;à vingt (20) startups innovantes</strong> afin de bénéficier d&apos;un programme d&apos;accompagnement et d&apos;un financement<sup>1</sup> sous forme d&apos;une <strong>« Bourse d&apos;incubation »</strong><sup>2</sup>.
           </p>
@@ -78,7 +78,7 @@ export default function ReglementPage() {
 
         <Section id="programme" num={3} title="Programme d'accompagnement">
           <p>
-            Les candidats sélectionnés dans le cadre de cet appel à projet auront accès gratuitement<sup>3</sup> à un programme d&apos;accompagnement<sup>4</sup> de <strong>8 mois</strong> comprenant les services suivants :
+            Les candidats sélectionnés dans le cadre de cet appel à projets auront accès gratuitement<sup>3</sup> à un programme d&apos;accompagnement<sup>4</sup> de <strong>8 mois</strong> comprenant les services suivants :
           </p>
           <ul className="list-disc pl-6 space-y-1">
             <li>Des ateliers collectifs thématiques et sessions de formation (business model, go-to-market, finance, juridique, RH, technologie, etc.) ;</li>
