@@ -102,10 +102,25 @@ export default async function Home({
 
       {/* Partner logos */}
       <div className="relative z-10 px-4 md:px-12 pb-6 pt-2 animate-fade-up opacity-0" style={{ animationDelay: '1.75s' }}>
-        <div className="max-w-7xl mx-auto bg-white rounded-2xl px-6 md:px-10 py-5 md:py-6 flex items-center justify-around gap-4 md:gap-8 flex-wrap shadow-2xl">
-          <img src="/Logos/Logo MNTRA.png" alt="Ministère de la Transition Numérique et de la Réforme de l'Administration" className="h-24 md:h-32 w-auto object-contain" />
-          <img src="/Logos/LOGO TAMWILCOM .jpg" alt="Tamwilcom" className="h-20 md:h-28 w-auto object-contain" />
-          <img src="/Logos/LOGO_DM2030.png" alt="Digital Morocco 2030" className="h-12 md:h-16 w-auto object-contain" />
+        <div className="max-w-7xl mx-auto bg-white rounded-2xl px-6 md:px-10 py-5 md:py-6 flex items-end justify-around gap-4 md:gap-10 flex-wrap shadow-2xl">
+          <div className="flex flex-col items-center gap-2">
+            <span className="text-[10px] md:text-xs uppercase tracking-wider text-gray-500 font-medium">
+              {lang === 'fr' ? 'Financé par' : 'Funded by'}
+            </span>
+            <img src="/Logos/Logo MNTRA.png" alt="Ministère de la Transition Numérique et de la Réforme de l'Administration" className="h-24 md:h-32 w-auto object-contain" />
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <span className="text-[10px] md:text-xs uppercase tracking-wider text-gray-500 font-medium">
+              {lang === 'fr' ? 'Opéré par' : 'Operated by'}
+            </span>
+            <img src="/Logos/LOGO TAMWILCOM .jpg" alt="Tamwilcom" className="h-20 md:h-28 w-auto object-contain" />
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <span className="text-[10px] md:text-xs uppercase tracking-wider text-gray-500 font-medium">
+              {lang === 'fr' ? 'Dans le cadre de' : 'As part of'}
+            </span>
+            <img src="/Logos/LOGO_DM2030.png" alt="Digital Morocco 2030" className="h-12 md:h-16 w-auto object-contain" />
+          </div>
           <img src="/Logos/Logo CEED.png" alt="CEED Morocco" className="h-12 md:h-16 w-auto object-contain" />
         </div>
       </div>
