@@ -102,29 +102,34 @@ export default async function Home({
 
       {/* Partner logos */}
       <div className="relative z-10 px-4 md:px-12 pb-6 pt-2 animate-fade-up opacity-0" style={{ animationDelay: '1.75s' }}>
-        <div className="max-w-7xl mx-auto bg-white rounded-2xl px-6 md:px-10 py-5 md:py-6 flex items-stretch justify-around gap-6 md:gap-10 flex-wrap shadow-2xl">
-          <div className="flex flex-col items-center justify-between min-h-[120px] md:min-h-[160px]">
-            <span className="text-[10px] md:text-xs uppercase tracking-wider text-gray-500 font-medium">
-              {lang === 'fr' ? 'Financé par' : 'Funded by'}
-            </span>
+        <div className="max-w-7xl mx-auto bg-white rounded-2xl px-6 md:px-10 py-6 md:py-8 flex items-center justify-around gap-6 md:gap-10 flex-wrap shadow-2xl">
+          {/* Each column: label on top (or invisible spacer) + gap + fixed-height container with logo centered inside */}
+          <Partner label={lang === 'fr' ? 'Financé par' : 'Funded by'}>
             <img src="/Logos/Logo MNTRA.png" alt="Ministère de la Transition Numérique et de la Réforme de l'Administration" className="h-24 md:h-32 w-auto object-contain" />
-          </div>
-          <div className="flex flex-col items-center justify-between min-h-[120px] md:min-h-[160px]">
-            <span className="text-[10px] md:text-xs uppercase tracking-wider text-gray-500 font-medium">
-              {lang === 'fr' ? 'Opéré par' : 'Operated by'}
-            </span>
+          </Partner>
+          <Partner label={lang === 'fr' ? 'Opéré par' : 'Operated by'}>
             <img src="/Logos/LOGO TAMWILCOM .jpg" alt="Tamwilcom" className="h-20 md:h-28 w-auto object-contain" />
-          </div>
-          <div className="flex flex-col items-center justify-between min-h-[120px] md:min-h-[160px]">
-            <span className="text-[10px] md:text-xs uppercase tracking-wider text-gray-500 font-medium">
-              {lang === 'fr' ? 'Dans le cadre de' : 'As part of'}
-            </span>
+          </Partner>
+          <Partner label={lang === 'fr' ? 'Dans le cadre de' : 'As part of'}>
             <img src="/Logos/LOGO_DM2030.png" alt="Digital Morocco 2030" className="h-12 md:h-16 w-auto object-contain" />
-          </div>
-          <div className="flex flex-col items-center justify-end min-h-[120px] md:min-h-[160px]">
+          </Partner>
+          <Partner>
             <img src="/Logos/Logo CEED.png" alt="CEED Morocco" className="h-12 md:h-16 w-auto object-contain" />
-          </div>
+          </Partner>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function Partner({ label, children }: { label?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <span className={`text-[10px] md:text-xs uppercase tracking-wider text-gray-500 font-medium text-center ${label ? '' : 'invisible select-none'}`}>
+        {label || '.'}
+      </span>
+      <div className="h-24 md:h-32 flex items-center justify-center">
+        {children}
       </div>
     </div>
   )
