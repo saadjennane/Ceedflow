@@ -12,8 +12,8 @@ export default function ReglementPage() {
       {/* Top banner */}
       <div className="w-full bg-white py-6 px-4 flex items-center justify-center border-b border-gray-100">
         <img
-          src="/Banner.png"
-          alt="Led by Royaume du Maroc, operated by Tamwilcom, as part of Digital Morocco 2030"
+          src="/Logos/Banner Reglement.png"
+          alt="Royaume du Maroc · Tamwilcom · CEED Maroc"
           className="max-h-28 md:max-h-32 w-auto"
         />
       </div>
