@@ -128,7 +128,7 @@ export default async function Home({
               </p>
             ))}
             <Link
-              href="/reglement#article-4"
+              href="/reglement#eligibilite"
               className="inline-flex items-center gap-2 mt-2 px-5 py-2.5 rounded-full border border-emerald-500/40 text-emerald-300 text-sm font-medium hover:bg-emerald-500/10 hover:border-emerald-400 transition"
             >
               {t.whoFor.cta}
