@@ -108,13 +108,13 @@ export default async function Home({
             <img src="/Logos/Logo MNTRA.png" alt="Ministère de la Transition Numérique et de la Réforme de l'Administration" className="h-24 md:h-32 w-auto object-contain" />
           </Partner>
           <Partner label={lang === 'fr' ? 'Opéré par' : 'Operated by'}>
-            <img src="/Logos/LOGO TAMWILCOM .jpg" alt="Tamwilcom" className="h-20 md:h-28 w-auto object-contain" />
+            <img src="/Logos/LOGO TAMWILCOM .jpg" alt="Tamwilcom" className="h-16 md:h-24 w-auto object-contain" />
           </Partner>
           <Partner label={lang === 'fr' ? 'Dans le cadre de' : 'As part of'}>
-            <img src="/Logos/LOGO_DM2030.png" alt="Digital Morocco 2030" className="h-12 md:h-16 w-auto object-contain" />
+            <img src="/Logos/LOGO_DM2030.png" alt="Digital Morocco 2030" className="h-10 md:h-14 w-auto object-contain" />
           </Partner>
           <Partner>
-            <img src="/Logos/Logo CEED.png" alt="CEED Morocco" className="h-12 md:h-16 w-auto object-contain" />
+            <img src="/Logos/Logo CEED.png" alt="CEED Morocco" className="h-14 md:h-20 w-auto object-contain" />
           </Partner>
         </div>
       </div>
