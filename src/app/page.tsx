@@ -101,10 +101,10 @@ export default async function Home({
       {/* Partner logos */}
       <div className="relative z-10 px-4 md:px-12 pb-6 pt-2 animate-fade-up opacity-0" style={{ animationDelay: '1.75s' }}>
         <div className="max-w-7xl mx-auto bg-white rounded-2xl px-6 md:px-10 py-5 md:py-6 flex items-center justify-around gap-4 md:gap-8 flex-wrap shadow-2xl">
-          <img src="/Logo MTNRA.png" alt="Ministère de la Transition Numérique et de la Réforme de l'Administration" className="h-24 md:h-32 w-auto object-contain" />
-          <img src="/Logo Tamwilcom h.png" alt="Tamwilcom" className="h-10 md:h-14 w-auto object-contain" />
-          <img src="/Logo Strategie.png" alt="Stratégie" className="h-10 md:h-14 w-auto object-contain" />
-          <img src="/logo-ceed.svg" alt="CEED Morocco" className="h-10 md:h-14 w-auto object-contain" />
+          <img src="/Logos/Logo MNTRA.png" alt="Ministère de la Transition Numérique et de la Réforme de l'Administration" className="h-24 md:h-32 w-auto object-contain" />
+          <img src="/Logos/Logo Tamwilcom.png" alt="Tamwilcom" className="h-10 md:h-14 w-auto object-contain" />
+          <img src="/Logos/Logo Strategie.png" alt="Stratégie" className="h-10 md:h-14 w-auto object-contain" />
+          <img src="/Logos/Logo CEED.png" alt="CEED Morocco" className="h-10 md:h-14 w-auto object-contain" />
         </div>
       </div>
     </div>
