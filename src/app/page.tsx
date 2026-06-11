@@ -42,12 +42,14 @@ export default async function Home({
               EN
             </Link>
           </div>
-          <Link
-            href="/reglement"
+          <a
+            href="/Règlement Appel à projets Ceed v11.06.2026.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
             className="text-sm text-zinc-200 hover:text-emerald-400 transition whitespace-nowrap"
           >
             Règlement
-          </Link>
+          </a>
           <Link
             href={`/apply?lang=${lang}`}
             className="inline-flex items-center gap-1.5 bg-emerald-400 text-black px-5 py-2 rounded-full text-sm font-semibold hover:bg-emerald-300 transition shadow-[0_0_25px_-5px_rgba(52,211,153,0.6)]"
