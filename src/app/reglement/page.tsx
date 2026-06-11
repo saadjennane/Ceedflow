@@ -30,7 +30,7 @@ export default function ReglementPage() {
           Retour à l&apos;accueil
         </Link>
         <a
-          href="/Règlement Appel à projets Ceed v10.06.2026.pdf"
+          href="/Règlement Appel à projets Ceed v11.06.2026.pdf"
           download
           className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 text-sm font-medium hover:bg-emerald-500/20 hover:border-emerald-500 transition"
         >
