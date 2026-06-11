@@ -102,8 +102,8 @@ export default async function Home({
       <div className="relative z-10 px-4 md:px-12 pb-6 pt-2 animate-fade-up opacity-0" style={{ animationDelay: '1.75s' }}>
         <div className="max-w-7xl mx-auto bg-white rounded-2xl px-6 md:px-10 py-5 md:py-6 flex items-center justify-around gap-4 md:gap-8 flex-wrap shadow-2xl">
           <img src="/Logos/Logo MNTRA.png" alt="Ministère de la Transition Numérique et de la Réforme de l'Administration" className="h-24 md:h-32 w-auto object-contain" />
-          <img src="/Logos/Logo Tamwilcom.png" alt="Tamwilcom" className="h-14 md:h-20 w-auto object-contain" />
-          <img src="/Logos/Logo Strategie.png" alt="Stratégie" className="h-14 md:h-20 w-auto object-contain" />
+          <img src="/Logos/LOGO TAMWILCOM .jpg" alt="Tamwilcom" className="h-14 md:h-20 w-auto object-contain" />
+          <img src="/Logos/LOGO_DM2030.png" alt="Digital Morocco 2030" className="h-14 md:h-20 w-auto object-contain" />
           <img src="/Logos/Logo CEED.png" alt="CEED Morocco" className="h-14 md:h-20 w-auto object-contain" />
         </div>
       </div>
