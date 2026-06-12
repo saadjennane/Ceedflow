@@ -10,22 +10,31 @@ export default async function StartupsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/admin/login')
 
-  const [startupsRes, lastRunRes] = await Promise.all([
-    supabase
+  // Fetch in batches of 1000 (Supabase default page cap) until we get everything.
+  const startups: ExternalStartup[] = []
+  const BATCH = 1000
+  let from = 0
+  while (true) {
+    const { data, error } = await supabase
       .from('external_startups')
       .select('*')
       .order('name', { ascending: true })
-      .limit(2000),
-    supabase
-      .from('external_startups_sync_runs')
-      .select('*')
-      .order('started_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ])
+      .range(from, from + BATCH - 1)
+    if (error) break
+    if (!data || data.length === 0) break
+    startups.push(...(data as ExternalStartup[]))
+    if (data.length < BATCH) break
+    from += BATCH
+  }
 
-  const startups = (startupsRes.data || []) as ExternalStartup[]
-  const lastRun = (lastRunRes.data || null) as ExternalStartupSyncRun | null
+  const { data: lastRunData } = await supabase
+    .from('external_startups_sync_runs')
+    .select('*')
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const lastRun = (lastRunData || null) as ExternalStartupSyncRun | null
 
   return (
     <div className="min-h-screen bg-gray-50">

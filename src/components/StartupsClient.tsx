@@ -1,10 +1,12 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Search, Globe, Linkedin, MapPin, Calendar, Users, ExternalLink } from 'lucide-react'
+import { Search, Globe, Linkedin, MapPin, Calendar, Users, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { ExternalStartup, ExternalStartupSyncRun, ExternalStartupStatus } from '@/lib/types'
+
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 250]
 
 const STATUS_OPTIONS: { value: ExternalStartupStatus | 'all'; label: string; color: string }[] = [
   { value: 'all', label: 'Tous', color: 'bg-gray-100 text-gray-700' },
@@ -56,6 +58,8 @@ export default function StartupsClient({
   const [filterSector, setFilterSector] = useState('')
   const [filterStage, setFilterStage] = useState('')
   const [filterCity, setFilterCity] = useState('')
+  const [pageSize, setPageSize] = useState(50)
+  const [page, setPage] = useState(1)
 
   const allSectors = useMemo(() => {
     const s = new Set<string>()
@@ -102,6 +106,17 @@ export default function StartupsClient({
     startups.forEach(s => { c[s.status_internal] = (c[s.status_internal] || 0) + 1 })
     return c
   }, [startups])
+
+  // Reset page to 1 whenever filters change
+  useEffect(() => {
+    setPage(1)
+  }, [search, filterStatus, filterSector, filterStage, filterCity, pageSize])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const startIdx = (currentPage - 1) * pageSize
+  const endIdx = Math.min(startIdx + pageSize, filtered.length)
+  const paginated = filtered.slice(startIdx, endIdx)
 
   return (
     <div>
@@ -183,8 +198,33 @@ export default function StartupsClient({
         )}
       </div>
 
-      {/* Results count */}
-      <div className="text-sm text-gray-500 mb-3">{filtered.length} résultats</div>
+      {/* Results count + page size selector */}
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div className="text-sm text-gray-500">
+          {filtered.length === 0 ? '0 résultat' : (
+            <>
+              <strong className="text-gray-700">{startIdx + 1}</strong>
+              {' – '}
+              <strong className="text-gray-700">{endIdx}</strong>
+              {' sur '}
+              <strong className="text-gray-700">{filtered.length}</strong>
+              {filtered.length !== startups.length && (
+                <span className="text-gray-400"> (filtrés sur {startups.length})</span>
+              )}
+            </>
+          )}
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <label className="text-xs text-gray-500">Par page</label>
+          <select
+            value={pageSize}
+            onChange={e => setPageSize(parseInt(e.target.value, 10))}
+            className="text-sm border border-gray-300 rounded-lg px-2 py-1"
+          >
+            {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+      </div>
 
       {/* Table */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -210,7 +250,7 @@ export default function StartupsClient({
                 </td>
               </tr>
             ) : (
-              filtered.slice(0, 500).map(s => (
+              paginated.map(s => (
                 <tr
                   key={s.id}
                   className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
@@ -281,16 +321,73 @@ export default function StartupsClient({
           </tbody>
         </table>
       </div>
-      {filtered.length > 500 && (
-        <p className="text-xs text-gray-400 text-center mt-3">
-          Affichage limité à 500 lignes — affine les filtres pour réduire la liste.
-        </p>
+      {/* Pagination controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 mt-4 flex-wrap">
+          <button
+            onClick={() => setPage(Math.max(1, currentPage - 1))}
+            disabled={currentPage === 1}
+            className="flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <ChevronLeft size={14} />
+            Précédent
+          </button>
+          <PageNumbers current={currentPage} total={totalPages} onChange={setPage} />
+          <button
+            onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage === totalPages}
+            className="flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Suivant
+            <ChevronRight size={14} />
+          </button>
+        </div>
       )}
 
       {/* Hidden imports for icons used in detail page so they're tree-shaken sanely */}
       <div className="hidden">
         <MapPin /> <Calendar /> <Users /> <ExternalLink />
       </div>
+    </div>
+  )
+}
+
+function PageNumbers({ current, total, onChange }: { current: number; total: number; onChange: (n: number) => void }) {
+  // Show a sliding window of page numbers with ellipses
+  const pages: (number | 'ellipsis-left' | 'ellipsis-right')[] = []
+  const window = 1
+  if (total <= 7) {
+    for (let i = 1; i <= total; i++) pages.push(i)
+  } else {
+    pages.push(1)
+    if (current - window > 2) pages.push('ellipsis-left')
+    for (let i = Math.max(2, current - window); i <= Math.min(total - 1, current + window); i++) {
+      pages.push(i)
+    }
+    if (current + window < total - 1) pages.push('ellipsis-right')
+    pages.push(total)
+  }
+  return (
+    <div className="flex items-center gap-1">
+      {pages.map((p, idx) => {
+        if (typeof p === 'string') {
+          return <span key={p + idx} className="px-2 text-gray-400">…</span>
+        }
+        const active = p === current
+        return (
+          <button
+            key={p}
+            onClick={() => onChange(p)}
+            className={`min-w-[34px] px-2.5 py-1.5 text-sm rounded-lg border transition ${
+              active
+                ? 'border-blue-600 bg-blue-600 text-white'
+                : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            {p}
+          </button>
+        )
+      })}
     </div>
   )
 }
