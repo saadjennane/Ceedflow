@@ -8,6 +8,31 @@ import type { ExternalStartup, ExternalStartupSyncRun, ExternalStartupStatus } f
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 250]
 
+type SortBy = 'funding-desc' | 'funding-asc' | 'name' | 'founded-desc' | 'recent'
+
+const SORT_OPTIONS: { value: SortBy; label: string }[] = [
+  { value: 'funding-desc', label: 'Levée ↓' },
+  { value: 'funding-asc', label: 'Levée ↑' },
+  { value: 'founded-desc', label: 'Année (récente)' },
+  { value: 'name', label: 'Nom (A-Z)' },
+  { value: 'recent', label: 'Récemment ajoutée' },
+]
+
+/** Parse "$48.0M", "$1.5B", "$200K", "48000000" → number (USD). Null/empty → -1 so they sort last in desc. */
+function parseFunding(s?: string | null): number {
+  if (!s) return -1
+  const t = s.replace(/[\s,]/g, '').replace(/\$/g, '')
+  const m = t.match(/^([\d.]+)\s*([MKB])?/i)
+  if (!m) return -1
+  const num = parseFloat(m[1])
+  if (isNaN(num)) return -1
+  const suffix = (m[2] || '').toUpperCase()
+  if (suffix === 'B') return num * 1_000_000_000
+  if (suffix === 'M') return num * 1_000_000
+  if (suffix === 'K') return num * 1_000
+  return num
+}
+
 const STATUS_OPTIONS: { value: ExternalStartupStatus | 'all'; label: string; color: string }[] = [
   { value: 'all', label: 'Tous', color: 'bg-gray-100 text-gray-700' },
   { value: 'new', label: 'Nouveau', color: 'bg-blue-100 text-blue-800' },
@@ -60,6 +85,7 @@ export default function StartupsClient({
   const [filterCity, setFilterCity] = useState('')
   const [pageSize, setPageSize] = useState(50)
   const [page, setPage] = useState(1)
+  const [sortBy, setSortBy] = useState<SortBy>('funding-desc')
 
   const allSectors = useMemo(() => {
     const s = new Set<string>()
@@ -81,7 +107,7 @@ export default function StartupsClient({
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
-    return startups.filter(s => {
+    const list = startups.filter(s => {
       if (filterStatus !== 'all' && s.status_internal !== filterStatus) return false
       if (filterSector && !s.sectors.includes(filterSector)) return false
       if (filterStage && s.stage !== filterStage) return false
@@ -99,7 +125,24 @@ export default function StartupsClient({
       }
       return true
     })
-  }, [startups, search, filterStatus, filterSector, filterStage, filterCity])
+    // Sort
+    list.sort((a, b) => {
+      if (sortBy === 'funding-desc') return parseFunding(b.total_funding) - parseFunding(a.total_funding)
+      if (sortBy === 'funding-asc') {
+        const ax = parseFunding(a.total_funding)
+        const bx = parseFunding(b.total_funding)
+        // push unknowns to the end
+        if (ax < 0 && bx >= 0) return 1
+        if (bx < 0 && ax >= 0) return -1
+        return ax - bx
+      }
+      if (sortBy === 'founded-desc') return (b.founding_year || 0) - (a.founding_year || 0)
+      if (sortBy === 'recent') return new Date(b.first_scraped_at).getTime() - new Date(a.first_scraped_at).getTime()
+      // name
+      return a.name.localeCompare(b.name, 'fr')
+    })
+    return list
+  }, [startups, search, filterStatus, filterSector, filterStage, filterCity, sortBy])
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: startups.length, new: 0, reviewed: 0, interested: 0, contacted: 0, not_relevant: 0 }
@@ -207,15 +250,27 @@ export default function StartupsClient({
             </>
           )}
         </div>
-        <div className="flex items-center gap-2 text-sm">
-          <label className="text-xs text-gray-500">Par page</label>
-          <select
-            value={pageSize}
-            onChange={e => setPageSize(parseInt(e.target.value, 10))}
-            className="text-sm border border-gray-300 rounded-lg px-2 py-1"
-          >
-            {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
+        <div className="flex items-center gap-3 text-sm">
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-500">Trier par</label>
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value as SortBy)}
+              className="text-sm border border-gray-300 rounded-lg px-2 py-1"
+            >
+              {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-500">Par page</label>
+            <select
+              value={pageSize}
+              onChange={e => setPageSize(parseInt(e.target.value, 10))}
+              className="text-sm border border-gray-300 rounded-lg px-2 py-1"
+            >
+              {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
         </div>
       </div>
 
