@@ -316,3 +316,68 @@ export interface JurorRatingComment {
   created_at: string
   updated_at: string
 }
+
+export type ExternalStartupStatus = 'new' | 'reviewed' | 'interested' | 'contacted' | 'not_relevant'
+
+export interface ExternalStartupFounder {
+  name: string
+  role?: string
+}
+
+export interface ExternalStartup {
+  id: string
+  source: string
+  external_id: string
+  source_url?: string | null
+
+  name: string
+  logo_url?: string | null
+  description?: string | null
+  sectors: string[]
+  stage?: string | null
+  status?: string | null
+  city?: string | null
+  country?: string | null
+  founding_year?: number | null
+  employee_count?: string | null
+  maturity_pct?: number | null
+
+  total_funding?: string | null
+  latest_round?: string | null
+  latest_round_date?: string | null
+  lead_investor?: string | null
+  other_investors: string[]
+
+  founders: ExternalStartupFounder[]
+
+  website?: string | null
+  linkedin?: string | null
+
+  notable_clients: string[]
+
+  raw_data?: Record<string, unknown>
+
+  first_scraped_at: string
+  last_scraped_at: string
+
+  status_internal: ExternalStartupStatus
+  notes?: string | null
+  contacted_at?: string | null
+  contacted_by?: string | null
+  reviewed_by?: string | null
+  reviewed_at?: string | null
+}
+
+export interface ExternalStartupSyncRun {
+  id: string
+  source: string
+  started_at: string
+  finished_at?: string | null
+  pages_scanned: number
+  startups_seen: number
+  startups_inserted: number
+  startups_updated: number
+  errors: number
+  status: 'running' | 'completed' | 'failed'
+  error_log?: string | null
+}
