@@ -123,14 +123,7 @@ export default function StartupsClient({
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div>
           <h1 className="text-2xl font-bold">Startups</h1>
-          <p className="text-sm text-gray-500">
-            {startups.length} startups · source : thepulse.ma
-            {lastRun && (
-              <span className="ml-2 text-xs">
-                — dernière sync {formatRelative(lastRun.started_at)} ({lastRun.status})
-              </span>
-            )}
-          </p>
+          <p className="text-sm text-gray-500">{startups.length} startups</p>
         </div>
       </div>
 
