@@ -25,7 +25,7 @@ export default async function Home({
       {/* Minimal nav */}
       <nav className="relative z-10 flex items-center justify-between px-6 md:px-12 py-5">
         <Link href="/" className="flex items-center">
-          <img src="/Logos/logo builders-01.png" alt="The Builders" className="h-12 md:h-16 w-auto" />
+          <img src="/Logos/logo builders-01.png" alt="The Builders" className="h-9 md:h-11 w-auto" />
         </Link>
         <div className="flex items-center gap-3 md:gap-5">
           <div className="flex items-center gap-0.5 bg-black/40 backdrop-blur-md border border-white/15 rounded-full p-0.5">
@@ -62,14 +62,17 @@ export default async function Home({
 
       {/* Hero content */}
       <div className="relative z-10 flex-1 flex flex-col justify-center max-w-7xl w-full mx-auto px-6 md:px-12 py-6">
-        <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.05] tracking-tight">
-          <span className="block animate-fade-up opacity-0" style={{ animationDelay: '0.15s' }}>
+        <div className="text-6xl sm:text-7xl md:text-8xl lg:text-9xl font-extrabold tracking-tight text-white mb-4 animate-fade-up opacity-0" style={{ animationDelay: '0s' }}>
+          The Builders
+        </div>
+        <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.05] tracking-tight">
+          <span className="block animate-fade-up opacity-0" style={{ animationDelay: '0.3s' }}>
             <span className="text-emerald-400">Build</span>
           </span>
-          <span className="block animate-fade-up opacity-0" style={{ animationDelay: '0.45s' }}>
+          <span className="block animate-fade-up opacity-0" style={{ animationDelay: '0.6s' }}>
             <span className="text-emerald-400">Validate</span>
           </span>
-          <span className="block animate-fade-up opacity-0" style={{ animationDelay: '0.75s' }}>
+          <span className="block animate-fade-up opacity-0" style={{ animationDelay: '0.9s' }}>
             <span className="text-emerald-400">Scale</span>{' '}
             <span className="text-white">your startup</span>
           </span>
