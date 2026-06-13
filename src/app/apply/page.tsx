@@ -20,7 +20,7 @@ export default async function ApplyPage({
         </Link>
         <div className="flex items-center gap-3 mt-4 mb-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/THE BRIDGE LOGO-02.png" alt="The Bridge" className="h-16" />
+          <img src="/THE BRIDGE LOGO-02.png" alt="The Builders" className="h-16" />
         </div>
         <h1 className="text-3xl font-bold mt-4 mb-2">{t.applyTitle}</h1>
         <p className="text-gray-600">{t.applySubtitle}</p>

@@ -17,12 +17,12 @@ export const HOME_COPY = {
     hero: {
       badge: 'Date limite de candidature · 20 juillet 2026',
       tagline: 'Construisez. Validez. Accélérez.',
-      lead: "The Bridge vous permet d'accélérer le lancement de vos projets innovants, rencontrer vos clients et valider votre marché.",
+      lead: "The Builders vous permet d'accélérer le lancement de vos projets innovants, rencontrer vos clients et valider votre marché.",
     },
 
     why: {
-      title: 'Pourquoi The Bridge ?',
-      body: "The Bridge a été conçu pour accompagner les entrepreneurs dans la construction de solutions concrètes, la validation de leur marché et le développement de leurs premières opportunités commerciales.",
+      title: 'Pourquoi The Builders ?',
+      body: "The Builders a été conçu pour accompagner les entrepreneurs dans la construction de solutions concrètes, la validation de leur marché et le développement de leurs premières opportunités commerciales.",
       intro: 'Notre approche privilégie :',
       bullets: ['Moins de théorie', "Plus d'exécution", 'Plus de terrain', "Plus d'autonomie", 'Plus de résultats'],
     },
@@ -104,9 +104,9 @@ export const HOME_COPY = {
     },
 
     whoFor: {
-      title: "À qui s'adresse The Bridge ?",
+      title: "À qui s'adresse The Builders ?",
       paragraphs: [
-        "The Bridge s'adresse aux startups innovantes marocaines, détenues par des entrepreneurs marocains ou étrangers, créées depuis moins de 8 ans, ayant dépassé le stade du POC (proof of concept), et ayant pour finalité le développement du prototype ou du MVP (minimum viable product).",
+        "The Builders s'adresse aux startups innovantes marocaines, détenues par des entrepreneurs marocains ou étrangers, créées depuis moins de 8 ans, ayant dépassé le stade du POC (proof of concept), et ayant pour finalité le développement du prototype ou du MVP (minimum viable product).",
         "Nous recherchons des projets à fort potentiel de croissance et de scalabilité, portés par une équipe fondatrice engagée, capable d'exécution et pleinement disponible pour s'investir dans le programme.",
       ],
       cta: 'En savoir plus',
@@ -128,7 +128,7 @@ export const HOME_COPY = {
 
     finalCta: {
       title: 'Prêt à construire le prochain chapitre de votre startup ?',
-      sub: "Rejoignez The Bridge by CEED et bénéficiez d'un accompagnement conçu pour transformer des idées en produits, des produits en clients et des clients en croissance.",
+      sub: "Rejoignez The Builders by CEED et bénéficiez d'un accompagnement conçu pour transformer des idées en produits, des produits en clients et des clients en croissance.",
     },
   },
 
@@ -148,12 +148,12 @@ export const HOME_COPY = {
     hero: {
       badge: 'Application deadline · 20 July 2026',
       tagline: 'Build. Validate. Accelerate.',
-      lead: 'The Bridge helps you accelerate the launch of your innovative projects, meet your customers, and validate your market.',
+      lead: 'The Builders helps you accelerate the launch of your innovative projects, meet your customers, and validate your market.',
     },
 
     why: {
-      title: 'Why The Bridge?',
-      body: 'The Bridge was designed to support entrepreneurs in building concrete solutions, validating their market, and developing their first business opportunities.',
+      title: 'Why The Builders?',
+      body: 'The Builders was designed to support entrepreneurs in building concrete solutions, validating their market, and developing their first business opportunities.',
       intro: 'Our approach favors:',
       bullets: ['Less theory', 'More execution', 'More fieldwork', 'More autonomy', 'More results'],
     },
@@ -235,9 +235,9 @@ export const HOME_COPY = {
     },
 
     whoFor: {
-      title: 'Who is The Bridge for?',
+      title: 'Who is The Builders for?',
       paragraphs: [
-        'The Bridge is built for innovative Moroccan startups, owned by Moroccan or foreign entrepreneurs, less than 8 years old, that have moved past the POC (proof of concept) stage and aim to develop a prototype or MVP (minimum viable product).',
+        'The Builders is built for innovative Moroccan startups, owned by Moroccan or foreign entrepreneurs, less than 8 years old, that have moved past the POC (proof of concept) stage and aim to develop a prototype or MVP (minimum viable product).',
         "We look for projects with strong growth and scalability potential, led by a founding team that is committed, execution-driven, and fully available to invest themselves in the program.",
       ],
       cta: 'Learn more',
@@ -259,7 +259,7 @@ export const HOME_COPY = {
 
     finalCta: {
       title: 'Ready to build the next chapter of your startup?',
-      sub: 'Join The Bridge by CEED and benefit from support designed to turn ideas into products, products into customers, and customers into growth.',
+      sub: 'Join The Builders by CEED and benefit from support designed to turn ideas into products, products into customers, and customers into growth.',
     },
   },
 } as const

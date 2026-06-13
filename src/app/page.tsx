@@ -23,10 +23,7 @@ export default async function Home({
       <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/70" />
 
       {/* Minimal nav */}
-      <nav className="relative z-10 flex items-center justify-between px-6 md:px-12 py-5">
-        <Link href="/" className="flex items-center">
-          <img src="/THE BRIDGE LOGO-04.png" alt="The Bridge" className="h-12 md:h-16 w-auto" />
-        </Link>
+      <nav className="relative z-10 flex items-center justify-end px-6 md:px-12 py-5">
         <div className="flex items-center gap-3 md:gap-5">
           <div className="flex items-center gap-0.5 bg-black/40 backdrop-blur-md border border-white/15 rounded-full p-0.5">
             <Link

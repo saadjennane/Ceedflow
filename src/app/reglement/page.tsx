@@ -2,8 +2,8 @@ import Link from 'next/link'
 import { ArrowLeft, Download } from 'lucide-react'
 
 export const metadata = {
-  title: "Règlement — The Bridge by CEED",
-  description: "Règlement de l'appel à projets The Bridge — Segment Incubation",
+  title: "Règlement — The Builders by CEED",
+  description: "Règlement de l'appel à projets The Builders — Segment Incubation",
 }
 
 export default function ReglementPage() {
@@ -42,7 +42,7 @@ export default function ReglementPage() {
       {/* Title */}
       <header className="max-w-4xl mx-auto px-6 pt-10 pb-12 text-center">
         <p className="text-xs uppercase tracking-widest text-gray-500 mb-3">Règlement de l&apos;appel à projets</p>
-        <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">« The Bridge »</h1>
+        <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">« The Builders »</h1>
         <p className="text-lg text-gray-700">Segment Incubation</p>
         <p className="text-base text-gray-500 mt-1">Du 12/06/2026 au 20/07/2026</p>
         <div className="mt-6 h-1 w-16 bg-emerald-500 mx-auto rounded-full" />
@@ -56,10 +56,10 @@ export default function ReglementPage() {
             Cet appel à projets s&apos;inscrit dans le cadre de l&apos;initiative <strong>« l&apos;Offre Startup VB »</strong>, financée par le Ministère de la Transition Numérique et de la Réforme de l&apos;Administration (MTNRA), et dont la gestion est confiée à Tamwilcom.
           </p>
           <p>
-            Dans ce cadre, <strong>CEED Maroc</strong> — Center for Entrepreneurial and Executive Development Morocco — lance <strong>« The Bridge »</strong>, son programme de venture building et d&apos;accompagnement entrepreneurial.
+            Dans ce cadre, <strong>CEED Maroc</strong> — Center for Entrepreneurial and Executive Development Morocco — lance <strong>« The Builders »</strong>, son programme de venture building et d&apos;accompagnement entrepreneurial.
           </p>
           <p>
-            Conçu comme un pont entre l&apos;innovation, l&apos;exécution et l&apos;accès au financement, « The Bridge » a pour ambition d&apos;accompagner des entrepreneurs et startups innovantes à fort potentiel dans la structuration, le développement et l&apos;accélération de leurs projets, à travers un accompagnement stratégique, opérationnel et orienté croissance.
+            Conçu comme un pont entre l&apos;innovation, l&apos;exécution et l&apos;accès au financement, « The Builders » a pour ambition d&apos;accompagner des entrepreneurs et startups innovantes à fort potentiel dans la structuration, le développement et l&apos;accélération de leurs projets, à travers un accompagnement stratégique, opérationnel et orienté croissance.
           </p>
           <p>
             Les startups sélectionnées pourront également bénéficier, sous réserve d&apos;éligibilité, de conformité et de validation par les instances concernées, des mécanismes de financement prévus dans le cadre de l&apos;Offre Startup VB.
@@ -224,7 +224,7 @@ export default function ReglementPage() {
       </main>
 
       <footer className="border-t border-gray-100 py-8 text-center text-xs text-gray-400">
-        © {new Date().getFullYear()} The Bridge by CEED — Règlement de l&apos;appel à projets
+        © {new Date().getFullYear()} The Builders by CEED — Règlement de l&apos;appel à projets
       </footer>
     </div>
   )

@@ -8,7 +8,7 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "The Bridge by CEED",
+  title: "The Builders by CEED",
   description: "Build. Validate. Accelerate. — 8-month acceleration program for innovative startups in Morocco.",
   icons: {
     icon: '/FAVICON THE BRIDGE.png',
