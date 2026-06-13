@@ -40,7 +40,7 @@ export default async function Home({
             </Link>
           </div>
           <a
-            href="/Règlement Appel à projets Ceed v11.06.2026.pdf"
+            href="/Règlement Appel à projets Ceed v13.06.2026.pdf"
             target="_blank"
             rel="noopener noreferrer"
             className="text-sm text-zinc-200 hover:text-emerald-400 transition whitespace-nowrap"
