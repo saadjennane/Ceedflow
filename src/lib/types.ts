@@ -379,3 +379,38 @@ export interface ExternalStartupSyncRun {
   status: 'running' | 'completed' | 'failed'
   error_log?: string | null
 }
+
+export type EmailCampaignStatus = 'draft' | 'sending' | 'sent' | 'failed'
+export type EmailSendStatus = 'queued' | 'sent' | 'failed' | 'bounced'
+
+export interface EmailCampaign {
+  id: string
+  subject: string
+  body: string
+  status: EmailCampaignStatus
+  created_by?: string | null
+  created_at: string
+  updated_at: string
+  sent_at?: string | null
+  recipients_count: number
+  sent_count: number
+  failed_count: number
+  opened_count: number
+}
+
+export interface EmailSend {
+  id: string
+  campaign_id: string
+  application_id?: string | null
+  recipient_email: string
+  recipient_name?: string | null
+  startup_name?: string | null
+  tracking_token: string
+  status: EmailSendStatus
+  sent_at?: string | null
+  opened_at?: string | null
+  open_count: number
+  last_opened_at?: string | null
+  error_message?: string | null
+  created_at: string
+}

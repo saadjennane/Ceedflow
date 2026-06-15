@@ -2,13 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { FileText, Users, FolderKanban, Rocket } from 'lucide-react'
+import { FileText, Users, FolderKanban, Rocket, Mail } from 'lucide-react'
 
 const TABS = [
   { href: '/admin', label: 'Applications', icon: FileText, match: (p: string) => p === '/admin' || (p.startsWith('/admin/applications')) },
   { href: '/admin/jurors', label: 'Jury', icon: Users, match: (p: string) => p.startsWith('/admin/jurors') },
   { href: '/admin/committees', label: 'Comités', icon: FolderKanban, match: (p: string) => p.startsWith('/admin/committees') },
   { href: '/admin/startups', label: 'Startups', icon: Rocket, match: (p: string) => p.startsWith('/admin/startups') },
+  { href: '/admin/campaigns', label: 'Campagnes', icon: Mail, match: (p: string) => p.startsWith('/admin/campaigns') },
 ]
 
 export default function AdminTabs() {
