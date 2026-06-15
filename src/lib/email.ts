@@ -1,5 +1,12 @@
 import nodemailer from 'nodemailer'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import {
+  buildTransactionalHtml,
+  buildTransactionalText,
+  applyVariables,
+  type TemplateContext,
+} from '@/lib/email-templates'
+import type { EmailLanguage, EmailTemplate, EmailTemplateTrigger } from '@/lib/types'
 
 function getTransporter() {
   return nodemailer.createTransport({
@@ -15,45 +22,110 @@ function getTransporter() {
 
 const FROM_EMAIL = process.env.EMAIL_FROM || 'CEED Morocco <noreply@ceedflow.com>'
 
-export async function sendAdminNotification(data: {
-  startupName: string
-  stage: string
-  sector: string
-  applicationId: string
-}) {
-  const supabase = await createServiceRoleClient()
-  const { data: usersData } = await supabase.auth.admin.listUsers()
-  const adminEmails = usersData?.users?.map(u => u.email).filter(Boolean) as string[] || []
-
-  if (adminEmails.length === 0) return
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-
-  await getTransporter().sendMail({
-    from: FROM_EMAIL,
-    to: adminEmails.join(', '),
-    subject: `New startup application: ${data.startupName}`,
-    html: `
-      <h2>New startup application received</h2>
-      <p><strong>Startup:</strong> ${data.startupName}</p>
-      <p><strong>Stage:</strong> ${data.stage}</p>
-      <p><strong>Sector:</strong> ${data.sector}</p>
-      <br/>
-      <p><a href="${appUrl}/admin/applications/${data.applicationId}">Review application</a></p>
-    `,
-  })
+export interface SendTemplateArgs {
+  key: string
+  triggerEvent: EmailTemplateTrigger
+  language?: EmailLanguage
+  /** Recipient for applicant-facing templates. Ignored when the template is internal. */
+  to?: string | null
+  recipientName?: string | null
+  variables?: TemplateContext
+  applicationId?: string | null
+  externalStartupId?: string | null
+  sentBy?: string | null
+  /** Manual sends may override the rendered subject/body after the admin edits them. */
+  subjectOverride?: string
+  bodyOverride?: string
 }
 
-export async function sendApplicantConfirmation(email: string, startupName: string) {
-  await getTransporter().sendMail({
-    from: FROM_EMAIL,
-    to: email,
-    subject: 'Application received – CEED Morocco',
-    html: `
-      <h2>Application received</h2>
-      <p>Thank you for submitting <strong>${startupName}</strong> to our startup program.</p>
-      <p>Your application has been received and will be reviewed by our team.</p>
-      <p>We will contact you if your project is selected for the next stage.</p>
-    `,
-  })
+export interface SendTemplateResult {
+  status: 'sent' | 'skipped' | 'failed'
+  reason?: string
+  recipients?: string[]
+}
+
+/**
+ * Send a transactional email from a managed template.
+ *
+ * - Loads the template by `key`.
+ * - Respects the `enabled` toggle (returns `skipped` when off, and logs it).
+ * - Renders the FR or EN variant with {{variables}}.
+ * - Internal templates go to all admins; otherwise to `to`.
+ * - Every attempt is logged in `email_template_sends`.
+ */
+export async function sendTemplateEmail(args: SendTemplateArgs): Promise<SendTemplateResult> {
+  const supabase = await createServiceRoleClient()
+  const language: EmailLanguage = args.language === 'en' ? 'en' : 'fr'
+  const ctx: TemplateContext = args.variables || {}
+
+  const { data: template, error } = await supabase
+    .from('email_templates')
+    .select('*')
+    .eq('key', args.key)
+    .maybeSingle<EmailTemplate>()
+
+  if (error || !template) {
+    console.error(`sendTemplateEmail: template "${args.key}" not found`, error)
+    return { status: 'failed', reason: 'template_not_found' }
+  }
+
+  // Resolve recipients
+  let recipients: string[] = []
+  if (template.is_internal) {
+    const { data: usersData } = await supabase.auth.admin.listUsers()
+    recipients = (usersData?.users?.map(u => u.email).filter(Boolean) as string[]) || []
+  } else if (args.to) {
+    recipients = [args.to]
+  }
+
+  const logSend = (status: 'sent' | 'failed' | 'skipped', subject: string, errMsg?: string) =>
+    supabase.from('email_template_sends').insert({
+      template_id: template.id,
+      template_key: template.key,
+      trigger_event: args.triggerEvent,
+      application_id: args.applicationId || null,
+      external_startup_id: args.externalStartupId || null,
+      recipient_email: recipients[0] || args.to || '',
+      recipient_name: args.recipientName || null,
+      language,
+      subject,
+      status,
+      error_message: errMsg || null,
+      sent_by: args.sentBy || null,
+    })
+
+  const rawSubject = args.subjectOverride ?? (language === 'en' ? template.subject_en : template.subject_fr)
+  const rawBody = args.bodyOverride ?? (language === 'en' ? template.body_en : template.body_fr)
+  const subject = applyVariables(rawSubject, ctx)
+
+  // Toggle off → skip (and record why)
+  if (!template.enabled) {
+    await logSend('skipped', subject, 'template_disabled')
+    return { status: 'skipped', reason: 'template_disabled' }
+  }
+
+  if (recipients.length === 0) {
+    await logSend('skipped', subject, 'no_recipient')
+    return { status: 'skipped', reason: 'no_recipient' }
+  }
+
+  const html = buildTransactionalHtml(rawBody, ctx)
+  const text = buildTransactionalText(rawBody, ctx)
+
+  try {
+    await getTransporter().sendMail({
+      from: FROM_EMAIL,
+      to: recipients.join(', '),
+      subject,
+      html,
+      text,
+    })
+    await logSend('sent', subject)
+    return { status: 'sent', recipients }
+  } catch (e) {
+    const msg = (e as Error).message?.slice(0, 500) || 'unknown'
+    console.error(`sendTemplateEmail: failed to send "${args.key}":`, msg)
+    await logSend('failed', subject, msg)
+    return { status: 'failed', reason: msg, recipients }
+  }
 }

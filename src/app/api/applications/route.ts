@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
-import { sendAdminNotification, sendApplicantConfirmation } from '@/lib/email'
+import { sendTemplateEmail } from '@/lib/email'
 import type { ApplicationFormData } from '@/lib/types'
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
 export async function POST(request: NextRequest) {
   try {
@@ -60,17 +62,37 @@ export async function POST(request: NextRequest) {
       console.error('Founders insert error:', foundersError)
     }
 
-    // Send emails (non-blocking)
-    const primaryEmail = data.founders[0]?.email
+    // Auto emails on form submission (each respects its template's on/off toggle)
+    const primaryFounder = data.founders.find(f => f.is_primary) || data.founders[0]
+    const primaryEmail = primaryFounder?.email
+    const founderFirstName = primaryFounder?.full_name?.trim().split(/\s+/)[0] || ''
     try {
       await Promise.all([
-        sendAdminNotification({
-          startupName: data.startup_name,
-          stage: data.stage,
-          sector: data.sector,
+        sendTemplateEmail({
+          key: 'admin_notification',
+          triggerEvent: 'on_application_submitted',
           applicationId: application.id,
+          variables: {
+            startup_name: data.startup_name,
+            stage: data.stage,
+            sector: data.sector,
+            review_url: `${APP_URL}/admin/applications/${application.id}`,
+          },
         }),
-        primaryEmail ? sendApplicantConfirmation(primaryEmail, data.startup_name) : Promise.resolve(),
+        primaryEmail
+          ? sendTemplateEmail({
+              key: 'application_received',
+              triggerEvent: 'on_application_submitted',
+              to: primaryEmail,
+              recipientName: primaryFounder?.full_name,
+              applicationId: application.id,
+              variables: {
+                founder_first_name: founderFirstName,
+                founder_name: primaryFounder?.full_name,
+                startup_name: data.startup_name,
+              },
+            })
+          : Promise.resolve({ status: 'skipped' as const }),
       ])
     } catch (emailErr) {
       console.error('Email error (non-fatal):', emailErr)

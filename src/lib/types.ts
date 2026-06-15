@@ -172,6 +172,8 @@ export interface Application {
   created_at: string
   updated_at?: string
   deleted_at?: string
+  do_not_contact?: boolean
+  unsubscribed_at?: string | null
   founders?: Founder[]
   documents?: Document[]
   notes?: Note[]
@@ -413,4 +415,43 @@ export interface EmailSend {
   last_opened_at?: string | null
   error_message?: string | null
   created_at: string
+}
+
+// --- Transactional email templates (auto on triggers, or launched manually) ---
+
+export type EmailTemplateTrigger = 'on_application_submitted' | 'manual'
+export type EmailLanguage = 'fr' | 'en'
+
+export interface EmailTemplate {
+  id: string
+  key: string
+  name: string
+  description?: string | null
+  trigger_event: EmailTemplateTrigger
+  enabled: boolean
+  is_internal: boolean
+  subject_fr: string
+  body_fr: string
+  subject_en: string
+  body_en: string
+  available_variables: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface EmailTemplateSend {
+  id: string
+  template_id?: string | null
+  template_key: string
+  trigger_event: EmailTemplateTrigger
+  application_id?: string | null
+  external_startup_id?: string | null
+  recipient_email: string
+  recipient_name?: string | null
+  language: EmailLanguage
+  subject: string
+  status: 'sent' | 'failed' | 'skipped'
+  error_message?: string | null
+  sent_by?: string | null
+  sent_at: string
 }

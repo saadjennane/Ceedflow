@@ -4,11 +4,12 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Mail, FileText, ExternalLink, History, X, Trash2, Plus } from 'lucide-react'
+import { ArrowLeft, Mail, FileText, ExternalLink, History, X, Trash2, Plus, Send } from 'lucide-react'
 import type {
-  Application, ApplicationStatus, Priority, ApplicationAction, AdminUser,
+  Application, ApplicationStatus, Priority, ApplicationAction, AdminUser, EmailTemplate,
 } from '@/lib/types'
 import RatingGrid from './RatingGrid'
+import SendTemplateModal from './SendTemplateModal'
 
 const STATUSES: ApplicationStatus[] = ['New', 'Very interesting', 'Interesting', 'Average', 'Not interesting']
 const PRIORITIES: Priority[] = ['High', 'Normal', 'Low']
@@ -54,16 +55,19 @@ export default function ApplicationDetail({
   currentUserId,
   currentUserEmail,
   adminUsers,
+  manualTemplates = [],
 }: {
   application: Application
   currentUserId: string
   currentUserEmail: string
   adminUsers: AdminUser[]
+  manualTemplates?: EmailTemplate[]
 }) {
   const router = useRouter()
   const supabase = createClient()
   const [noteText, setNoteText] = useState('')
   const [submittingNote, setSubmittingNote] = useState(false)
+  const [showSendTemplate, setShowSendTemplate] = useState(false)
   const [showActivity, setShowActivity] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -158,6 +162,15 @@ export default function ApplicationDetail({
             >
               <History size={16} />
             </button>
+            {primaryFounder?.email && !application.do_not_contact && (
+              <button
+                onClick={() => setShowSendTemplate(true)}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
+              >
+                <Send size={16} />
+                Envoyer un email
+              </button>
+            )}
             {requestInfoEmail && (
               <a
                 href={requestInfoEmail}
@@ -170,6 +183,19 @@ export default function ApplicationDetail({
           </div>
         </div>
       </div>
+
+      {showSendTemplate && primaryFounder?.email && (
+        <SendTemplateModal
+          applicationId={application.id}
+          founderName={primaryFounder.full_name}
+          founderEmail={primaryFounder.email}
+          startupName={application.startup_name}
+          stage={application.stage}
+          sector={application.sector}
+          templates={manualTemplates}
+          onClose={() => setShowSendTemplate(false)}
+        />
+      )}
 
       {/* Main grid: content + sidebar */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">

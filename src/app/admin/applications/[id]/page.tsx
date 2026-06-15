@@ -30,6 +30,14 @@ export default async function ApplicationDetailPage({
   const serviceClient = await createServiceRoleClient()
   const { data: adminUsers } = await serviceClient.auth.admin.listUsers()
 
+  // Load manual + enabled email templates for the "Envoyer un email" modal
+  const { data: manualTemplates } = await supabase
+    .from('email_templates')
+    .select('*')
+    .eq('trigger_event', 'manual')
+    .eq('enabled', true)
+    .order('name', { ascending: true })
+
   return (
     <div className="min-h-screen bg-gray-50">
       <AdminNav email={user.email || ''} displayName={[user.user_metadata?.first_name, user.user_metadata?.last_name].filter(Boolean).join(' ') || undefined} />
@@ -44,6 +52,7 @@ export default async function ApplicationDetailPage({
             first_name: u.user_metadata?.first_name || '',
             last_name: u.user_metadata?.last_name || '',
           })) || []}
+          manualTemplates={manualTemplates || []}
         />
       </div>
     </div>

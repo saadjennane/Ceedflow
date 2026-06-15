@@ -4,13 +4,23 @@
  * markdown conversion so they cannot inject HTML.
  */
 
-const ALLOWED_VARS = ['founder_name', 'founder_first_name', 'startup_name'] as const
+const ALLOWED_VARS = [
+  'founder_name',
+  'founder_first_name',
+  'startup_name',
+  'stage',
+  'sector',
+  'review_url',
+] as const
 export type TemplateVar = typeof ALLOWED_VARS[number]
 
 export interface TemplateContext {
   founder_name?: string
   founder_first_name?: string
   startup_name?: string
+  stage?: string
+  sector?: string
+  review_url?: string
 }
 
 /** Escape HTML special chars to neutralize anything user-typed. */
@@ -82,6 +92,44 @@ export function buildHtmlBody(rawMarkdown: string, ctx: TemplateContext, opts: {
   <img src="${opts.trackingPixelUrl}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;">
 </body>
 </html>`
+}
+
+/**
+ * Build the HTML body for a transactional template email (confirmation,
+ * shortlisted, rejection…). No tracking pixel; footer is generic. Pass an
+ * `unsubscribeUrl` only for marketing-style messages.
+ */
+export function buildTransactionalHtml(
+  rawMarkdown: string,
+  ctx: TemplateContext,
+  opts?: { unsubscribeUrl?: string },
+): string {
+  const withVars = applyVariables(rawMarkdown, ctx)
+  const content = markdownToHtml(withVars)
+  const footer = opts?.unsubscribeUrl
+    ? `<hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0 16px;">
+    <p style="font-size:11px;color:#9ca3af;margin:0;">
+      <a href="${opts.unsubscribeUrl}" style="color:#9ca3af;text-decoration:underline;">Se désabonner / Unsubscribe</a>
+    </p>`
+    : ''
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#111827;">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;padding:32px 28px;line-height:1.55;font-size:15px;">
+    ${content}
+    ${footer}
+  </div>
+</body>
+</html>`
+}
+
+/** Plain text fallback for a transactional template email. */
+export function buildTransactionalText(rawMarkdown: string, ctx: TemplateContext): string {
+  return applyVariables(rawMarkdown, ctx)
 }
 
 /** Plain text fallback (also helps deliverability). */
