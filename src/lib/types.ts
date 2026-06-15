@@ -112,7 +112,6 @@ export interface ApplicationRating {
   application_id: string
   admin_id: string
   criterion: RatingCriterionKey
-  sub_index: number
   score: number
   created_at: string
   updated_at: string
@@ -300,7 +299,6 @@ export interface JurorRating {
   juror_id: string
   application_id: string
   criterion: RatingCriterionKey
-  sub_index: number
   score: number
   created_at: string
   updated_at: string

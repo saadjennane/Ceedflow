@@ -11,7 +11,7 @@ import type {
 import { RATING_CRITERIA } from '@/lib/types'
 import { computeFinalDecision, generateAccessToken } from '@/lib/committees'
 
-const TOTAL_SUB_CRITERIA = RATING_CRITERIA.reduce((sum, c) => sum + c.sublabels.length, 0)
+const TOTAL_CRITERIA = RATING_CRITERIA.length
 
 const STATUS_OPTIONS: { value: CommitteeStatus; label: string }[] = [
   { value: 'draft', label: 'Brouillon' },
@@ -443,7 +443,7 @@ export default function CommitteeDetailClient({
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-sm">{j.first_name} {j.last_name}</div>
                           <div className="text-xs text-gray-500">
-                            {myRatings.length}/{TOTAL_SUB_CRITERIA} sous-critères ·{' '}
+                            {myRatings.length}/{TOTAL_CRITERIA} critères ·{' '}
                             {myAvg !== null ? <span className="text-amber-700">{myAvg.toFixed(1)}/5</span> : <span className="text-gray-400">pas de note</span>}
                           </div>
                         </div>

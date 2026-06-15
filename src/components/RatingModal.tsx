@@ -103,13 +103,11 @@ export default function RatingModal({
 
   const stats = useMemo(() => computeRatingStats(ratings, currentUserId), [ratings, currentUserId])
 
-  // Map[criterion][sub_index] -> ApplicationRating for the current user
-  const myScoresByCriterion = useMemo(() => {
-    const map: Partial<Record<RatingCriterionKey, Record<number, ApplicationRating>>> = {}
+  // Map[criterion] -> ApplicationRating for the current user
+  const myScoreByCriterion = useMemo(() => {
+    const map: Partial<Record<RatingCriterionKey, ApplicationRating>> = {}
     for (const r of ratings) {
-      if (r.admin_id !== currentUserId) continue
-      if (!map[r.criterion]) map[r.criterion] = {}
-      map[r.criterion]![r.sub_index] = r
+      if (r.admin_id === currentUserId) map[r.criterion] = r
     }
     return map
   }, [ratings, currentUserId])
@@ -122,22 +120,16 @@ export default function RatingModal({
     return map
   }, [comments, currentUserId])
 
-  // Per-criterion: my avg + global avg per sub_index
+  // Per-criterion: my note + team avg
   const perCriterionStats = useMemo(() => {
-    const map: Partial<Record<RatingCriterionKey, { myAvg: number | null; teamAvg: number | null; teamSubAvg: Record<number, number | null> }>> = {}
+    const map: Partial<Record<RatingCriterionKey, { myScore: number | null; teamAvg: number | null }>> = {}
     for (const c of RATING_CRITERIA) {
       const all = ratings.filter(r => r.criterion === c.key)
-      const mine = all.filter(r => r.admin_id === currentUserId).map(r => r.score)
+      const mine = all.find(r => r.admin_id === currentUserId)
       const team = all.map(r => r.score)
-      const subAvg: Record<number, number | null> = {}
-      for (let i = 0; i < c.sublabels.length; i++) {
-        const arr = all.filter(r => r.sub_index === i).map(r => r.score)
-        subAvg[i] = arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : null
-      }
       map[c.key] = {
-        myAvg: mine.length > 0 ? mine.reduce((a, b) => a + b, 0) / mine.length : null,
+        myScore: mine?.score ?? null,
         teamAvg: team.length > 0 ? team.reduce((a, b) => a + b, 0) / team.length : null,
-        teamSubAvg: subAvg,
       }
     }
     return map
@@ -148,7 +140,7 @@ export default function RatingModal({
     return ids.map(id => ({ id, name: getAdminName(adminUsers, id), avg: stats.perAdminAvg[id] }))
   }, [ratings, adminUsers, stats, currentUserId])
 
-  const upsertScore = async (criterion: RatingCriterionKey, subIndex: number, score: number) => {
+  const upsertScore = async (criterion: RatingCriterionKey, score: number) => {
     await supabase
       .from('application_ratings')
       .upsert(
@@ -156,10 +148,9 @@ export default function RatingModal({
           application_id: applicationId,
           admin_id: currentUserId,
           criterion,
-          sub_index: subIndex,
           score,
         },
-        { onConflict: 'application_id,admin_id,criterion,sub_index' }
+        { onConflict: 'application_id,admin_id,criterion' }
       )
     router.refresh()
   }
@@ -227,39 +218,29 @@ export default function RatingModal({
                     <span className="text-gray-400 mr-1">{idx + 1}.</span>
                     {c.label}
                   </h3>
-                  <div className="text-right shrink-0 space-y-0.5">
-                    {cstats?.myAvg !== null && cstats?.myAvg !== undefined && (
-                      <div className="text-[11px] text-gray-600">
-                        Moi: <span className="font-medium text-amber-700">{cstats.myAvg.toFixed(1)}/5</span>
-                      </div>
-                    )}
+                  <div className="text-right shrink-0">
                     {cstats?.teamAvg !== null && cstats?.teamAvg !== undefined && (
                       <div className="text-[11px] text-gray-500">
-                        Équipe: {cstats.teamAvg.toFixed(1)}/5
+                        Équipe: <span className="font-medium">{cstats.teamAvg.toFixed(1)}/5</span>
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  {c.sublabels.map((sub, subIdx) => {
-                    const mine = myScoresByCriterion[c.key]?.[subIdx]
-                    const subTeam = cstats?.teamSubAvg[subIdx] ?? null
-                    return (
-                      <div key={subIdx} className="flex items-center justify-between gap-3 py-1.5">
-                        <div className="flex-1 min-w-0 flex items-start gap-2">
-                          <span className="text-gray-300 text-xs mt-0.5">•</span>
-                          <span className="text-xs text-gray-700">{sub}</span>
-                        </div>
-                        <div className="flex items-center gap-3 shrink-0">
-                          {subTeam !== null && (
-                            <span className="text-[10px] text-gray-400 tabular-nums">{subTeam.toFixed(1)}</span>
-                          )}
-                          <StarRow value={mine?.score ?? null} onChange={(n) => upsertScore(c.key, subIdx, n)} size={16} />
-                        </div>
-                      </div>
-                    )
-                  })}
+                {/* Sub-criteria shown as evaluation hints (read-only) */}
+                <ul className="space-y-1 mb-3 ml-1">
+                  {c.sublabels.map((sub, subIdx) => (
+                    <li key={subIdx} className="flex items-start gap-2">
+                      <span className="text-gray-300 text-xs mt-0.5">•</span>
+                      <span className="text-xs text-gray-500">{sub}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                {/* One score per criterion */}
+                <div className="flex items-center justify-between gap-3 py-2 border-t border-gray-100 mt-2">
+                  <span className="text-sm font-medium text-gray-700">Votre note</span>
+                  <StarRow value={myScoreByCriterion[c.key]?.score ?? null} onChange={(n) => upsertScore(c.key, n)} size={20} />
                 </div>
 
                 <textarea
@@ -304,23 +285,22 @@ export default function RatingModal({
                       {isOpen && (
                         <div className="px-3 pb-3 pt-1 space-y-3">
                           {RATING_CRITERIA.map(c => {
-                            const subs = theirRatings.filter(r => r.criterion === c.key).sort((a, b) => a.sub_index - b.sub_index)
+                            const rating = theirRatings.find(r => r.criterion === c.key)
                             const cmt = theirComments.find(x => x.criterion === c.key)
-                            if (subs.length === 0 && !cmt) return null
+                            if (!rating && !cmt) return null
                             return (
                               <div key={c.key} className="text-xs">
-                                <div className="font-medium text-gray-700 mb-1">{c.label}</div>
-                                {subs.map(s => (
-                                  <div key={s.sub_index} className="flex items-center justify-between pl-2 py-0.5">
-                                    <span className="text-gray-500 truncate flex-1">{c.sublabels[s.sub_index]}</span>
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="font-medium text-gray-700">{c.label}</span>
+                                  {rating && (
                                     <div className="flex items-center gap-1 shrink-0">
-                                      <StarDisplay value={s.score} size={11} />
-                                      <span className="text-gray-500 tabular-nums">{s.score}/5</span>
+                                      <StarDisplay value={rating.score} size={11} />
+                                      <span className="text-gray-500 tabular-nums">{rating.score}/5</span>
                                     </div>
-                                  </div>
-                                ))}
+                                  )}
+                                </div>
                                 {cmt && (
-                                  <p className="text-gray-500 italic mt-1 pl-2 border-l border-gray-200">{cmt.comment}</p>
+                                  <p className="text-gray-500 italic pl-2 border-l border-gray-200">{cmt.comment}</p>
                                 )}
                               </div>
                             )

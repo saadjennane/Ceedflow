@@ -51,7 +51,7 @@ export default async function JuryHomePage({
   const apps = (appsData || []) as Pick<Application, 'id' | 'startup_name' | 'sector' | 'stage' | 'logo_url' | 'description'>[]
   const appsById = new Map(apps.map(a => [a.id, a]))
 
-  const totalSubCriteria = RATING_CRITERIA.reduce((sum, c) => sum + c.sublabels.length, 0)
+  const totalCriteria = RATING_CRITERIA.length
 
   const ratingsByApp = new Map<string, JurorRating[]>()
   for (const r of myRatings) {
@@ -63,7 +63,7 @@ export default async function JuryHomePage({
   const completedCount = appIds.filter(id => {
     const rs = ratingsByApp.get(id) || []
     const dec = decisionByApp.get(id)
-    return rs.length === totalSubCriteria && dec
+    return rs.length === totalCriteria && dec
   }).length
 
   return (
@@ -109,7 +109,7 @@ export default async function JuryHomePage({
               const rs = ratingsByApp.get(ca.application_id) || []
               const avg = rs.length > 0 ? rs.reduce((a, b) => a + b.score, 0) / rs.length : null
               const dec = decisionByApp.get(ca.application_id)
-              const complete = rs.length === totalSubCriteria && dec
+              const complete = rs.length === totalCriteria && dec
               return (
                 <Link
                   key={ca.id}
@@ -130,7 +130,7 @@ export default async function JuryHomePage({
                   )}
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
-                      <span className="text-gray-500">{rs.length}/{totalSubCriteria} sous-critères</span>
+                      <span className="text-gray-500">{rs.length}/{totalCriteria} critères</span>
                       {avg !== null && (
                         <span className="flex items-center gap-0.5 text-amber-700">
                           <Star size={12} className="fill-amber-400 stroke-amber-500" />

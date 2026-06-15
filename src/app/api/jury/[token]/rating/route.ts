@@ -19,9 +19,9 @@ export async function POST(
   }
 
   const body = await request.json()
-  const { application_id, criterion, sub_index, score } = body
+  const { application_id, criterion, score } = body
 
-  if (typeof application_id !== 'string' || typeof criterion !== 'string' || typeof sub_index !== 'number' || typeof score !== 'number') {
+  if (typeof application_id !== 'string' || typeof criterion !== 'string' || typeof score !== 'number') {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
   }
   if (score < 1 || score > 5) {
@@ -46,10 +46,9 @@ export async function POST(
       juror_id: cj.juror_id,
       application_id,
       criterion,
-      sub_index,
       score,
     },
-    { onConflict: 'committee_id,juror_id,application_id,criterion,sub_index' }
+    { onConflict: 'committee_id,juror_id,application_id,criterion' }
   )
 
   if (error) {

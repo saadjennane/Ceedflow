@@ -58,8 +58,7 @@ export default async function JurorDetailPage({
     }
   }
 
-  const totalSubCriteria = RATING_CRITERIA.reduce((sum, c) => sum + c.sublabels.length, 0)
-  void totalSubCriteria
+  void RATING_CRITERIA
 
   return (
     <div className="min-h-screen bg-gray-50">

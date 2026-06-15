@@ -64,12 +64,9 @@ export default function AdminJurorRatingClient({
   const [draftComments, setDraftComments] = useState<Partial<Record<RatingCriterionKey, string>>>({})
   const [saving, setSaving] = useState(false)
 
-  const scoresByCriterion = useMemo(() => {
-    const map: Partial<Record<RatingCriterionKey, Record<number, number>>> = {}
-    for (const r of ratings) {
-      if (!map[r.criterion]) map[r.criterion] = {}
-      map[r.criterion]![r.sub_index] = r.score
-    }
+  const scoreByCriterion = useMemo(() => {
+    const map: Partial<Record<RatingCriterionKey, number>> = {}
+    for (const r of ratings) map[r.criterion] = r.score
     return map
   }, [ratings])
 
@@ -83,9 +80,9 @@ export default function AdminJurorRatingClient({
     ? ratings.reduce((a, b) => a + b.score, 0) / ratings.length
     : null
 
-  const totalSubCriteria = RATING_CRITERIA.reduce((sum, c) => sum + c.sublabels.length, 0)
+  const totalCriteria = RATING_CRITERIA.length
 
-  const setScore = async (criterion: RatingCriterionKey, subIndex: number, score: number) => {
+  const setScore = async (criterion: RatingCriterionKey, score: number) => {
     setSaving(true)
     await supabase.from('juror_ratings').upsert(
       {
@@ -93,10 +90,9 @@ export default function AdminJurorRatingClient({
         juror_id: jurorId,
         application_id: application.id,
         criterion,
-        sub_index: subIndex,
         score,
       },
-      { onConflict: 'committee_id,juror_id,application_id,criterion,sub_index' }
+      { onConflict: 'committee_id,juror_id,application_id,criterion' }
     )
     setSaving(false)
     router.refresh()
@@ -207,7 +203,7 @@ export default function AdminJurorRatingClient({
             </span>
             {myAvg !== null && <span className="text-xs text-gray-400">/5</span>}
           </div>
-          <div className="text-[10px] text-gray-400 mt-0.5">{ratings.length}/{totalSubCriteria} sous-critères</div>
+          <div className="text-[10px] text-gray-400 mt-0.5">{ratings.length}/{totalCriteria} critères notés</div>
         </div>
         <div className={`rounded-lg p-3 border ${decision?.decision === 'retenu' ? 'bg-green-50 border-green-200' : decision?.decision === 'rejete' ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
           <div className="flex items-center justify-between">
@@ -236,23 +232,19 @@ export default function AdminJurorRatingClient({
                 <span className="text-gray-400 mr-1">{idx + 1}.</span>
                 {c.label}
               </h3>
-              <div className="space-y-2">
-                {c.sublabels.map((sub, subIdx) => {
-                  const score = scoresByCriterion[c.key]?.[subIdx] ?? null
-                  return (
-                    <div key={subIdx} className="flex items-center justify-between gap-3 py-1.5">
-                      <div className="flex-1 flex items-start gap-2">
-                        <span className="text-gray-300 text-xs mt-0.5">•</span>
-                        <span className="text-xs text-gray-700">{sub}</span>
-                      </div>
-                      <StarRow
-                        value={score}
-                        onChange={(n) => setScore(c.key, subIdx, n)}
-                        size={16}
-                      />
-                    </div>
-                  )
-                })}
+              {/* Sub-criteria as evaluation hints */}
+              <ul className="space-y-1 mb-3 ml-1">
+                {c.sublabels.map((sub, subIdx) => (
+                  <li key={subIdx} className="flex items-start gap-2">
+                    <span className="text-gray-300 text-xs mt-0.5">•</span>
+                    <span className="text-xs text-gray-500">{sub}</span>
+                  </li>
+                ))}
+              </ul>
+              {/* One score per criterion */}
+              <div className="flex items-center justify-between gap-3 py-2 border-t border-gray-100">
+                <span className="text-sm font-medium text-gray-700">Note du jury</span>
+                <StarRow value={scoreByCriterion[c.key] ?? null} onChange={(n) => setScore(c.key, n)} size={20} />
               </div>
               <textarea
                 value={draft}
