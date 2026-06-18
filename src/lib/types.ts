@@ -420,6 +420,7 @@ export interface EmailSend {
 // --- Transactional email templates (auto on triggers, or launched manually) ---
 
 export type EmailTemplateTrigger = 'on_application_submitted' | 'manual'
+export type EmailTemplateRecipientType = 'application' | 'juror'
 export type EmailLanguage = 'fr' | 'en'
 
 export interface EmailTemplate {
@@ -428,6 +429,7 @@ export interface EmailTemplate {
   name: string
   description?: string | null
   trigger_event: EmailTemplateTrigger
+  recipient_type: EmailTemplateRecipientType
   enabled: boolean
   is_internal: boolean
   subject_fr: string

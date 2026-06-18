@@ -20,7 +20,35 @@ function getTransporter() {
   })
 }
 
-const FROM_EMAIL = process.env.EMAIL_FROM || 'CEED Morocco <noreply@ceedflow.com>'
+export const DEFAULT_FROM_EMAIL = process.env.EMAIL_FROM || 'CEED Morocco <noreply@ceedflow.com>'
+
+/**
+ * Comma-separated list of allowed FROM addresses (from env var EMAIL_FROM_ADDRESSES).
+ * Each entry can be a plain email or formatted as `"Display Name <email@host>"`.
+ * Always falls back to including DEFAULT_FROM_EMAIL.
+ */
+export function getAllowedFromAddresses(): string[] {
+  const raw = process.env.EMAIL_FROM_ADDRESSES || ''
+  const list = raw.split(',').map(s => s.trim()).filter(Boolean)
+  if (list.length === 0 || !list.includes(DEFAULT_FROM_EMAIL)) {
+    list.unshift(DEFAULT_FROM_EMAIL)
+  }
+  return Array.from(new Set(list))
+}
+
+/** Extract just the bare email from a "Name <email>" formatted address. */
+function bareEmail(formatted: string): string {
+  const m = formatted.match(/<([^>]+)>/)
+  return (m ? m[1] : formatted).trim().toLowerCase()
+}
+
+/** Validate that a given FROM is in the allowed list (compares bare emails). */
+export function isAllowedFrom(from: string): boolean {
+  const target = bareEmail(from)
+  return getAllowedFromAddresses().some(a => bareEmail(a) === target)
+}
+
+const FROM_EMAIL = DEFAULT_FROM_EMAIL
 
 export interface SendTemplateArgs {
   key: string
@@ -32,7 +60,10 @@ export interface SendTemplateArgs {
   variables?: TemplateContext
   applicationId?: string | null
   externalStartupId?: string | null
+  jurorId?: string | null
   sentBy?: string | null
+  /** Override the FROM. Must be in EMAIL_FROM_ADDRESSES list (else falls back to default). */
+  from?: string | null
   /** Manual sends may override the rendered subject/body after the admin edits them. */
   subjectOverride?: string
   bodyOverride?: string
@@ -83,8 +114,10 @@ export async function sendTemplateEmail(args: SendTemplateArgs): Promise<SendTem
       template_id: template.id,
       template_key: template.key,
       trigger_event: args.triggerEvent,
+      recipient_type: template.recipient_type,
       application_id: args.applicationId || null,
       external_startup_id: args.externalStartupId || null,
+      juror_id: args.jurorId || null,
       recipient_email: recipients[0] || args.to || '',
       recipient_name: args.recipientName || null,
       language,
@@ -112,9 +145,11 @@ export async function sendTemplateEmail(args: SendTemplateArgs): Promise<SendTem
   const html = buildTransactionalHtml(rawBody, ctx)
   const text = buildTransactionalText(rawBody, ctx)
 
+  const fromAddress = args.from && isAllowedFrom(args.from) ? args.from : FROM_EMAIL
+
   try {
     await getTransporter().sendMail({
-      from: FROM_EMAIL,
+      from: fromAddress,
       to: recipients.join(', '),
       subject,
       html,

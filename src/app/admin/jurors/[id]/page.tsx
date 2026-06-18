@@ -4,8 +4,10 @@ import Link from 'next/link'
 import { ArrowLeft, Mail, Phone, Briefcase } from 'lucide-react'
 import AdminNav from '@/components/AdminNav'
 import AdminTabs from '@/components/AdminTabs'
+import JurorSendEmailButton from '@/components/JurorSendEmailButton'
+import { getAllowedFromAddresses } from '@/lib/email'
 import type {
-  Juror, Committee, CommitteeJuror, JurorRating, JurorDecision, Application,
+  Juror, Committee, CommitteeJuror, JurorRating, JurorDecision, Application, EmailTemplate,
 } from '@/lib/types'
 import { RATING_CRITERIA } from '@/lib/types'
 
@@ -22,13 +24,16 @@ export default async function JurorDetailPage({
   const { data: juror } = await supabase.from('jurors').select('*').eq('id', id).single()
   if (!juror) notFound()
 
-  const [cjRes, committeesRes, ratingsRes, decisionsRes, appsRes] = await Promise.all([
+  const [cjRes, committeesRes, ratingsRes, decisionsRes, appsRes, templatesRes] = await Promise.all([
     supabase.from('committee_jurors').select('*').eq('juror_id', id),
     supabase.from('committees').select('*'),
     supabase.from('juror_ratings').select('*').eq('juror_id', id),
     supabase.from('juror_decisions').select('*').eq('juror_id', id),
     supabase.from('applications').select('id, startup_name, sector, stage').is('deleted_at', null),
+    supabase.from('email_templates').select('*').eq('trigger_event', 'manual').eq('recipient_type', 'juror').eq('enabled', true).order('name'),
   ])
+  const manualTemplates = (templatesRes.data || []) as EmailTemplate[]
+  const fromAddresses = getAllowedFromAddresses()
 
   const myCommitteeJurors = (cjRes.data || []) as CommitteeJuror[]
   const committees = (committeesRes.data || []) as Committee[]
@@ -70,7 +75,20 @@ export default async function JurorDetailPage({
         </Link>
 
         <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-          <h1 className="text-2xl font-bold mb-2">{(juror as Juror).first_name} {(juror as Juror).last_name}</h1>
+          <div className="flex items-start justify-between gap-4 mb-2">
+            <h1 className="text-2xl font-bold">{(juror as Juror).first_name} {(juror as Juror).last_name}</h1>
+            <JurorSendEmailButton
+              juror={{
+                id: (juror as Juror).id,
+                first_name: (juror as Juror).first_name,
+                last_name: (juror as Juror).last_name,
+                email: (juror as Juror).email,
+                role: (juror as Juror).role,
+              }}
+              templates={manualTemplates}
+              fromAddresses={fromAddresses}
+            />
+          </div>
           <div className="flex flex-wrap gap-4 text-sm text-gray-600">
             <a href={`mailto:${(juror as Juror).email}`} className="flex items-center gap-1 hover:text-blue-700">
               <Mail size={14} />

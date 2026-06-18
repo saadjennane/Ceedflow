@@ -11,6 +11,9 @@ const ALLOWED_VARS = [
   'stage',
   'sector',
   'review_url',
+  'juror_name',
+  'juror_first_name',
+  'juror_role',
 ] as const
 export type TemplateVar = typeof ALLOWED_VARS[number]
 
@@ -21,6 +24,9 @@ export interface TemplateContext {
   stage?: string
   sector?: string
   review_url?: string
+  juror_name?: string
+  juror_first_name?: string
+  juror_role?: string
 }
 
 /** Escape HTML special chars to neutralize anything user-typed. */

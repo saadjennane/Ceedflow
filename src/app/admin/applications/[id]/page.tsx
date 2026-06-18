@@ -2,6 +2,7 @@ import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supab
 import { redirect, notFound } from 'next/navigation'
 import AdminNav from '@/components/AdminNav'
 import ApplicationDetail from '@/components/ApplicationDetail'
+import { getAllowedFromAddresses } from '@/lib/email'
 
 export default async function ApplicationDetailPage({
   params,
@@ -30,13 +31,16 @@ export default async function ApplicationDetailPage({
   const serviceClient = await createServiceRoleClient()
   const { data: adminUsers } = await serviceClient.auth.admin.listUsers()
 
-  // Load manual + enabled email templates for the "Envoyer un email" modal
+  // Load manual + enabled email templates for the "Envoyer un email" modal (application-only)
   const { data: manualTemplates } = await supabase
     .from('email_templates')
     .select('*')
     .eq('trigger_event', 'manual')
+    .eq('recipient_type', 'application')
     .eq('enabled', true)
     .order('name', { ascending: true })
+
+  const fromAddresses = getAllowedFromAddresses()
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -53,6 +57,7 @@ export default async function ApplicationDetailPage({
             last_name: u.user_metadata?.last_name || '',
           })) || []}
           manualTemplates={manualTemplates || []}
+          fromAddresses={fromAddresses}
         />
       </div>
     </div>

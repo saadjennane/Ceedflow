@@ -56,12 +56,14 @@ export default function ApplicationDetail({
   currentUserEmail,
   adminUsers,
   manualTemplates = [],
+  fromAddresses = [],
 }: {
   application: Application
   currentUserId: string
   currentUserEmail: string
   adminUsers: AdminUser[]
   manualTemplates?: EmailTemplate[]
+  fromAddresses?: string[]
 }) {
   const router = useRouter()
   const supabase = createClient()
@@ -186,13 +188,17 @@ export default function ApplicationDetail({
 
       {showSendTemplate && primaryFounder?.email && (
         <SendTemplateModal
-          applicationId={application.id}
-          founderName={primaryFounder.full_name}
-          founderEmail={primaryFounder.email}
-          startupName={application.startup_name}
-          stage={application.stage}
-          sector={application.sector}
+          target={{
+            kind: 'application',
+            applicationId: application.id,
+            founderName: primaryFounder.full_name,
+            founderEmail: primaryFounder.email,
+            startupName: application.startup_name,
+            stage: application.stage,
+            sector: application.sector,
+          }}
           templates={manualTemplates}
+          fromAddresses={fromAddresses}
           onClose={() => setShowSendTemplate(false)}
         />
       )}
