@@ -41,8 +41,8 @@ export default function StickyHeader({
       >
         <Link href="/" className="flex items-center flex-shrink-0">
           <img
-            src="/THE BRIDGE LOGO-02.png"
-            alt="The Bridge"
+            src="/Logos/logo%20builders-01.png"
+            alt="The Builders"
             className={`w-auto transition-all duration-300 ${scrolled ? 'h-9 md:h-10' : 'h-14 md:h-16'}`}
           />
         </Link>
