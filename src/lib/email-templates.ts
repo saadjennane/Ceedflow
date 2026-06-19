@@ -73,13 +73,23 @@ export function markdownToHtml(raw: string): string {
   return blocks.map(b => `<p style="margin:0 0 14px 0;">${b.replace(/\n/g, '<br/>')}</p>`).join('')
 }
 
-/** Build the full HTML email body for one recipient. */
+/** Build the full HTML email body for one recipient. Tracking pixel and
+ * unsubscribe link are both optional — caller controls inclusion. */
 export function buildHtmlBody(rawMarkdown: string, ctx: TemplateContext, opts: {
-  trackingPixelUrl: string
-  unsubscribeUrl: string
+  trackingPixelUrl?: string
+  unsubscribeUrl?: string
 }): string {
   const withVars = applyVariables(rawMarkdown, ctx)
   const content = markdownToHtml(withVars)
+  const footer = opts.unsubscribeUrl
+    ? `<hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0 16px;">
+    <p style="font-size:11px;color:#9ca3af;margin:0;">
+      <a href="${opts.unsubscribeUrl}" style="color:#9ca3af;text-decoration:underline;">Se désabonner / Unsubscribe</a>
+    </p>`
+    : ''
+  const pixel = opts.trackingPixelUrl
+    ? `<img src="${opts.trackingPixelUrl}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;">`
+    : ''
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -89,13 +99,9 @@ export function buildHtmlBody(rawMarkdown: string, ctx: TemplateContext, opts: {
 <body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#111827;">
   <div style="max-width:600px;margin:0 auto;background:#ffffff;padding:32px 28px;line-height:1.55;font-size:15px;">
     ${content}
-    <hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0 16px;">
-    <p style="font-size:11px;color:#9ca3af;margin:0;">
-      Vous recevez cet email car vous avez candidaté au programme The Builders by CEED Maroc.<br>
-      <a href="${opts.unsubscribeUrl}" style="color:#9ca3af;text-decoration:underline;">Se désabonner</a>
-    </p>
+    ${footer}
   </div>
-  <img src="${opts.trackingPixelUrl}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;">
+  ${pixel}
 </body>
 </html>`
 }
@@ -139,12 +145,12 @@ export function buildTransactionalText(rawMarkdown: string, ctx: TemplateContext
 }
 
 /** Plain text fallback (also helps deliverability). */
-export function buildTextBody(rawMarkdown: string, ctx: TemplateContext, opts: { unsubscribeUrl: string }): string {
+export function buildTextBody(rawMarkdown: string, ctx: TemplateContext, opts: { unsubscribeUrl?: string }): string {
   const withVars = applyVariables(rawMarkdown, ctx)
+  if (!opts.unsubscribeUrl) return withVars
   return `${withVars}
 
 ---
-Vous recevez cet email car vous avez candidaté au programme The Builders by CEED Maroc.
 Se désabonner : ${opts.unsubscribeUrl}`
 }
 

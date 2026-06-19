@@ -10,10 +10,10 @@ export default async function UnsubscribePage({
   const { token } = await params
   const supabase = await createServiceRoleClient()
 
-  // Find the send by token to identify the application
+  // Find the send by token to identify the application or juror
   const { data: send } = await supabase
     .from('email_sends')
-    .select('application_id, recipient_email')
+    .select('application_id, juror_id, audience_type, recipient_email')
     .eq('tracking_token', token)
     .maybeSingle()
 
@@ -22,10 +22,17 @@ export default async function UnsubscribePage({
 
   if (send) {
     email = send.recipient_email
-    if (send.application_id) {
+    const now = new Date().toISOString()
+    if (send.audience_type === 'juror' && send.juror_id) {
+      await supabase
+        .from('jurors')
+        .update({ do_not_contact: true, unsubscribed_at: now })
+        .eq('id', send.juror_id)
+      success = true
+    } else if (send.application_id) {
       await supabase
         .from('applications')
-        .update({ do_not_contact: true, unsubscribed_at: new Date().toISOString() })
+        .update({ do_not_contact: true, unsubscribed_at: now })
         .eq('id', send.application_id)
       success = true
     }

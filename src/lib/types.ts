@@ -384,12 +384,17 @@ export interface ExternalStartupSyncRun {
 
 export type EmailCampaignStatus = 'draft' | 'sending' | 'sent' | 'failed'
 export type EmailSendStatus = 'queued' | 'sent' | 'failed' | 'bounced'
+export type EmailCampaignAudience = 'application' | 'juror'
 
 export interface EmailCampaign {
   id: string
   subject: string
   body: string
   status: EmailCampaignStatus
+  audience_type: EmailCampaignAudience
+  include_unsubscribe: boolean
+  include_tracking_pixel: boolean
+  filters_json?: Record<string, unknown> | null
   created_by?: string | null
   created_at: string
   updated_at: string
@@ -400,10 +405,45 @@ export interface EmailCampaign {
   opened_count: number
 }
 
+export interface ApplicationTag {
+  id: string
+  label: string
+  color: string
+  created_at: string
+  created_by?: string | null
+}
+
+export interface ApplicationTagAssignment {
+  application_id: string
+  tag_id: string
+  assigned_at: string
+  assigned_by?: string | null
+}
+
+export type CommitteeDecisionFilter = 'retenu' | 'rejete' | 'pending' | 'none' | 'any'
+
+export interface ApplicationCampaignFilters {
+  status?: string
+  priority?: string
+  sector?: string
+  stage?: string
+  source?: string
+  minAvgRating?: number
+  committeeDecision?: CommitteeDecisionFilter
+  tagIds?: string[]
+}
+
+export interface JurorCampaignFilters {
+  roleQuery?: string
+  onlyInActiveCommittee?: boolean
+}
+
 export interface EmailSend {
   id: string
   campaign_id: string
   application_id?: string | null
+  juror_id?: string | null
+  audience_type: EmailCampaignAudience
   recipient_email: string
   recipient_name?: string | null
   startup_name?: string | null

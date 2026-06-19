@@ -94,11 +94,12 @@ export async function POST(
   if (!jurorId) return NextResponse.json({ error: 'jurorId required for juror template' }, { status: 400 })
   const { data: juror } = await service
     .from('jurors')
-    .select('id, first_name, last_name, email, role')
+    .select('id, first_name, last_name, email, role, do_not_contact')
     .eq('id', jurorId)
     .maybeSingle()
   if (!juror) return NextResponse.json({ error: 'Juror not found' }, { status: 404 })
   if (!juror.email) return NextResponse.json({ error: 'Ce jury n\'a pas d\'email' }, { status: 400 })
+  if (juror.do_not_contact) return NextResponse.json({ error: 'Ce jury est marqué « ne plus contacter »' }, { status: 400 })
 
   const fullName = [juror.first_name, juror.last_name].filter(Boolean).join(' ')
   const result = await sendTemplateEmail({

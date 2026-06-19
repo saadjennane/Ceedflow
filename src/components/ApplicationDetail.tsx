@@ -6,10 +6,11 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, Mail, FileText, ExternalLink, History, X, Trash2, Plus, Send } from 'lucide-react'
 import type {
-  Application, ApplicationStatus, Priority, ApplicationAction, AdminUser, EmailTemplate,
+  Application, ApplicationStatus, Priority, ApplicationAction, AdminUser, EmailTemplate, ApplicationTag,
 } from '@/lib/types'
 import RatingGrid from './RatingGrid'
 import SendTemplateModal from './SendTemplateModal'
+import ApplicationTagsEditor from './ApplicationTagsEditor'
 
 const STATUSES: ApplicationStatus[] = ['New', 'Very interesting', 'Interesting', 'Average', 'Not interesting']
 const PRIORITIES: Priority[] = ['High', 'Normal', 'Low']
@@ -57,6 +58,8 @@ export default function ApplicationDetail({
   adminUsers,
   manualTemplates = [],
   fromAddresses = [],
+  appTags = [],
+  allTags = [],
 }: {
   application: Application
   currentUserId: string
@@ -64,6 +67,8 @@ export default function ApplicationDetail({
   adminUsers: AdminUser[]
   manualTemplates?: EmailTemplate[]
   fromAddresses?: string[]
+  appTags?: ApplicationTag[]
+  allTags?: ApplicationTag[]
 }) {
   const router = useRouter()
   const supabase = createClient()
@@ -154,6 +159,9 @@ export default function ApplicationDetail({
               <p className="text-gray-500 text-sm mt-1">
                 Submitted on {formatDate(application.created_at)}
               </p>
+              <div className="mt-2">
+                <ApplicationTagsEditor applicationId={application.id} initialTags={appTags} allTags={allTags} />
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">

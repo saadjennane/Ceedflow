@@ -49,6 +49,13 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
             <div>
               <h1 className="text-2xl font-bold mb-1">{c.subject}</h1>
               <p className="text-sm text-gray-500">Créée le {formatDate(c.created_at)}{c.sent_at && ` · Envoyée le ${formatDate(c.sent_at)}`}</p>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
+                  {c.audience_type === 'juror' ? 'Audience : Jurys' : 'Audience : Candidats'}
+                </span>
+                {c.include_tracking_pixel && <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">Tracking</span>}
+                {c.include_unsubscribe && <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">Unsub</span>}
+              </div>
             </div>
             <span className={`px-3 py-1 rounded-full text-xs font-medium ${STATUS_COLOR[c.status]}`}>
               {STATUS_LABEL[c.status]}
@@ -75,8 +82,8 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="text-left px-4 py-2 font-medium text-gray-600">Startup</th>
-                <th className="text-left px-4 py-2 font-medium text-gray-600">Fondateur</th>
+                <th className="text-left px-4 py-2 font-medium text-gray-600">{c.audience_type === 'juror' ? 'Jury' : 'Startup'}</th>
+                <th className="text-left px-4 py-2 font-medium text-gray-600">{c.audience_type === 'juror' ? '' : 'Fondateur'}</th>
                 <th className="text-left px-4 py-2 font-medium text-gray-600">Email</th>
                 <th className="text-left px-4 py-2 font-medium text-gray-600">Statut</th>
                 <th className="text-left px-4 py-2 font-medium text-gray-600">Envoyé</th>
@@ -87,8 +94,8 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
             <tbody>
               {list.map(s => (
                 <tr key={s.id} className="border-b border-gray-100">
-                  <td className="px-4 py-2 font-medium">{s.startup_name || '—'}</td>
-                  <td className="px-4 py-2 text-gray-700">{s.recipient_name || '—'}</td>
+                  <td className="px-4 py-2 font-medium">{c.audience_type === 'juror' ? (s.recipient_name || '—') : (s.startup_name || '—')}</td>
+                  <td className="px-4 py-2 text-gray-700">{c.audience_type === 'juror' ? '' : (s.recipient_name || '—')}</td>
                   <td className="px-4 py-2 text-gray-600">{s.recipient_email}</td>
                   <td className="px-4 py-2">
                     {s.status === 'sent' && <span className="text-emerald-700 inline-flex items-center gap-1"><Check size={12} /> envoyé</span>}

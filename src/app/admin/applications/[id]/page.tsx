@@ -42,6 +42,15 @@ export default async function ApplicationDetailPage({
 
   const fromAddresses = getAllowedFromAddresses()
 
+  // Tags
+  const [allTagsRes, appTagsRes] = await Promise.all([
+    supabase.from('application_tags').select('*').order('label'),
+    supabase.from('application_tag_assignments').select('tag_id, application_tags(*)').eq('application_id', id),
+  ])
+  const allTags = allTagsRes.data || []
+  type AssignmentRow = { tag_id: string; application_tags: typeof allTags[number] }
+  const appTags = ((appTagsRes.data || []) as AssignmentRow[]).map(r => r.application_tags).filter(Boolean)
+
   return (
     <div className="min-h-screen bg-gray-50">
       <AdminNav email={user.email || ''} displayName={[user.user_metadata?.first_name, user.user_metadata?.last_name].filter(Boolean).join(' ') || undefined} />
@@ -58,6 +67,8 @@ export default async function ApplicationDetailPage({
           })) || []}
           manualTemplates={manualTemplates || []}
           fromAddresses={fromAddresses}
+          appTags={appTags}
+          allTags={allTags}
         />
       </div>
     </div>
