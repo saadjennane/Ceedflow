@@ -43,7 +43,7 @@ export default function StickyHeader({
           <img
             src="/Logos/logo%20builders-01.png"
             alt="The Builders"
-            className={`w-auto transition-all duration-300 ${scrolled ? 'h-9 md:h-10' : 'h-14 md:h-16'}`}
+            className={`w-auto transition-all duration-300 ${scrolled ? 'h-7 md:h-8' : 'h-9 md:h-10'}`}
           />
         </Link>
 

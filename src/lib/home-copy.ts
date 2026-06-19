@@ -11,6 +11,7 @@ export const HOME_COPY = {
       pourQui: 'Pour qui',
       programme: 'Le programme',
       timeline: 'Timeline',
+      faq: 'FAQ',
       reglement: 'Règlement',
     },
 
@@ -22,8 +23,8 @@ export const HOME_COPY = {
 
     why: {
       title: 'Pourquoi The Builders ?',
-      body: "The Builders a été conçu pour accompagner les entrepreneurs dans la construction de solutions concrètes, la validation de leur marché et le développement de leurs premières opportunités commerciales.",
-      intro: 'Notre approche privilégie :',
+      body: "Construire vite. Valider tôt. Décrocher ses premiers clients. The Builders accompagne les startups marocaines, de l'idée jusqu'au marché.",
+      intro: 'Notre approche :',
       bullets: ['Moins de théorie', "Plus d'exécution", 'Plus de terrain', "Plus d'autonomie", 'Plus de résultats'],
     },
 
@@ -51,9 +52,9 @@ export const HOME_COPY = {
       },
       funding: {
         title: 'Financement',
-        intro: 'Les startups sélectionnées peuvent bénéficier de :',
-        grant: { title: 'Subvention de 200k MAD', desc: "Destinée à accélérer le développement du projet et sa mise sur le marché." },
-        stipend: { title: 'Bourse de Vie', desc: "Un soutien financier temporaire pouvant être accordé pendant une durée allant jusqu'à 12 mois afin de permettre aux entrepreneurs de se consacrer pleinement au développement de leur startup." },
+        intro: 'Les startups sélectionnées peuvent bénéficier :',
+        grant: { title: 'Subvention de 200k MAD', desc: 'Pour accélérer le développement et la mise sur le marché.' },
+        stipend: { title: 'Bourse de Vie', desc: "Un soutien financier jusqu'à 12 mois pour se consacrer pleinement au développement de la startup." },
       },
     },
 
@@ -96,20 +97,21 @@ export const HOME_COPY = {
     dna: {
       title: 'Notre ADN',
       cards: [
-        { title: 'BUILD', text: 'Construire rapidement des solutions concrètes et des MVPs testables.' },
-        { title: 'VALIDATE', text: 'Confronter les solutions au marché dès les premières semaines.' },
-        { title: 'AUTONOMIZE', text: "Développer l'autonomie des entrepreneurs grâce au Vibe Coding et aux outils IA modernes." },
-        { title: 'SCALE', text: 'Transformer les validations marché en opportunités business réelles.' },
+        { title: 'BUILD', text: 'Des MVPs concrets, testables, déployés vite.' },
+        { title: 'VALIDATE', text: 'Au contact du marché dès les premières semaines.' },
+        { title: 'AUTONOMIZE', text: 'Vibe Coding et IA pour avancer seul, plus vite.' },
+        { title: 'SCALE', text: 'De la validation marché aux premières ventes.' },
       ],
     },
 
     whoFor: {
       title: "À qui s'adresse The Builders ?",
       paragraphs: [
-        "The Builders s'adresse aux startups innovantes marocaines, détenues par des entrepreneurs marocains ou étrangers, créées depuis moins de 8 ans, ayant dépassé le stade du POC (proof of concept), et ayant pour finalité le développement du prototype ou du MVP (minimum viable product).",
-        "Nous recherchons des projets à fort potentiel de croissance et de scalabilité, portés par une équipe fondatrice engagée, capable d'exécution et pleinement disponible pour s'investir dans le programme.",
+        "Pour les startups innovantes marocaines, du POC aux premiers clients.",
+        "Portées par une équipe fondatrice engagée et à fort potentiel.",
+        "Quel que soit votre stade, nous adaptons l'accompagnement à votre maturité et à vos priorités.",
       ],
-      cta: 'En savoir plus',
+      cta: "Voir les critères d'éligibilité",
     },
 
     expectations: {
@@ -119,6 +121,71 @@ export const HOME_COPY = {
         "Une validation marché concrète auprès d'utilisateurs ou de clients",
         'Des premières opportunités commerciales, pilotes ou bons de commande identifiés',
         'Des rencontres avec des investisseurs pour votre levée de fonds',
+      ],
+    },
+
+    faq: {
+      title: 'Questions fréquentes',
+      items: [
+        {
+          q: 'Qui peut postuler à The Builders ?',
+          blocks: [
+            "Les startups innovantes marocaines, détenues par des entrepreneurs marocains ou étrangers, créées depuis moins de 8 ans, dont la finalité est le développement d'un prototype ou d'un MVP — du POC validé jusqu'au MVP fonctionnel.",
+          ],
+        },
+        {
+          q: 'Combien coûte le programme ?',
+          blocks: [
+            "Le programme est entièrement gratuit pour les startups sélectionnées. Aucun frais d'inscription, aucun coût caché.",
+          ],
+        },
+        {
+          q: 'Comment se déroule la sélection ?',
+          blocks: [
+            'La sélection se déroule en trois étapes :',
+            { ordered: true, list: [
+              "Présélection sur dossier par l'équipe du programme.",
+              "Pitch devant un comité d'experts, d'investisseurs, de membres de CEED Maroc et de partenaires de l'écosystème.",
+              "Validation finale : présentation de la feuille de route devant un comité de financement, qui valide le financement et l'entrée dans le programme.",
+            ] },
+          ],
+        },
+        {
+          q: 'Quelle subvention est proposée ?',
+          blocks: [
+            "Une subvention pouvant aller jusqu'à 200 000 MAD pour les startups sélectionnées, destinée à accélérer le développement et la mise sur le marché.",
+          ],
+        },
+        {
+          q: 'Comment fonctionne la bourse de vie ?',
+          blocks: [
+            "Un soutien financier mensuel accordé pendant 3 mois, renouvelable 3 fois (soit jusqu'à 12 mois maximum).",
+            "Montant : 70 % de la moyenne brute des 12 dernières fiches de paie, plafonné à 40 000 MAD brut/mois.",
+            "Conditions d'éligibilité :",
+            { list: [
+              "Minimum 5 ans d'expérience en tant que salarié ou gérant non-associé.",
+              "Toujours en poste, ou avoir quitté son emploi depuis moins de 12 mois.",
+            ] },
+          ],
+        },
+        {
+          q: 'Quelle est la durée du programme ?',
+          blocks: [
+            "8 mois — du diagnostic 360° (Mois 1) jusqu'au Demo Day final (Mois 8), précédés d'une phase de sélection (Mois 0).",
+          ],
+        },
+        {
+          q: 'Pourquoi un premier mois consacré au diagnostic ?',
+          blocks: [
+            "Le premier mois permet d'adapter les contenus du programme et certaines thématiques d'ateliers aux besoins réels des startups sélectionnées. Chaque parcours est ajusté à la maturité, aux priorités et aux blocages de chaque équipe.",
+          ],
+        },
+        {
+          q: 'Quelles sont les attentes côté fondateurs ?',
+          blocks: [
+            "Une équipe fondatrice engagée, exécutante et active dans le programme — présente aux ateliers, mentorats, comités et sessions collectives. The Builders est conçu pour des équipes qui veulent passer rapidement de l'idée au marché.",
+          ],
+        },
       ],
     },
 
@@ -142,6 +209,7 @@ export const HOME_COPY = {
       pourQui: 'For who',
       programme: 'Program',
       timeline: 'Timeline',
+      faq: 'FAQ',
       reglement: 'Rules',
     },
 
@@ -153,8 +221,8 @@ export const HOME_COPY = {
 
     why: {
       title: 'Why The Builders?',
-      body: 'The Builders was designed to support entrepreneurs in building concrete solutions, validating their market, and developing their first business opportunities.',
-      intro: 'Our approach favors:',
+      body: 'Build fast. Validate early. Land your first customers. The Builders supports Moroccan startups, from idea to market.',
+      intro: 'Our approach:',
       bullets: ['Less theory', 'More execution', 'More fieldwork', 'More autonomy', 'More results'],
     },
 
@@ -182,9 +250,9 @@ export const HOME_COPY = {
       },
       funding: {
         title: 'Funding',
-        intro: 'Selected startups may benefit from:',
-        grant: { title: '200k MAD grant', desc: "To accelerate the project's development and market launch." },
-        stipend: { title: 'Living stipend', desc: 'Temporary financial support that may be granted for up to 12 months so entrepreneurs can fully dedicate themselves to building their startup.' },
+        intro: 'Selected startups may receive:',
+        grant: { title: '200k MAD grant', desc: 'To accelerate development and market launch.' },
+        stipend: { title: 'Living stipend', desc: 'Financial support for up to 12 months to focus fully on building the startup.' },
       },
     },
 
@@ -227,20 +295,21 @@ export const HOME_COPY = {
     dna: {
       title: 'Our DNA',
       cards: [
-        { title: 'BUILD', text: 'Quickly build concrete solutions and testable MVPs.' },
-        { title: 'VALIDATE', text: 'Confront solutions with the market from the very first weeks.' },
-        { title: 'AUTONOMIZE', text: "Develop entrepreneurs' autonomy through Vibe Coding and modern AI tools." },
-        { title: 'SCALE', text: 'Turn market validations into real business opportunities.' },
+        { title: 'BUILD', text: 'Concrete MVPs, testable and shipped fast.' },
+        { title: 'VALIDATE', text: 'In front of the market from the first weeks.' },
+        { title: 'AUTONOMIZE', text: 'Vibe Coding and AI to move forward solo, faster.' },
+        { title: 'SCALE', text: 'From market validation to first sales.' },
       ],
     },
 
     whoFor: {
       title: 'Who is The Builders for?',
       paragraphs: [
-        'The Builders is built for innovative Moroccan startups, owned by Moroccan or foreign entrepreneurs, less than 8 years old, that have moved past the POC (proof of concept) stage and aim to develop a prototype or MVP (minimum viable product).',
-        "We look for projects with strong growth and scalability potential, led by a founding team that is committed, execution-driven, and fully available to invest themselves in the program.",
+        'For innovative Moroccan startups, from POC to first customers.',
+        'Led by a committed, high-potential founding team.',
+        'Whatever your stage, we tailor the support to your maturity and priorities.',
       ],
-      cta: 'Learn more',
+      cta: 'See eligibility criteria',
     },
 
     expectations: {
@@ -250,6 +319,71 @@ export const HOME_COPY = {
         'Concrete market validation with users or customers',
         'First business opportunities, pilots or purchase orders identified',
         'Meetings with investors for your fundraising round',
+      ],
+    },
+
+    faq: {
+      title: 'Frequently asked questions',
+      items: [
+        {
+          q: 'Who can apply to The Builders?',
+          blocks: [
+            'Innovative Moroccan startups, owned by Moroccan or foreign entrepreneurs, less than 8 years old, whose goal is to develop a prototype or MVP — from a validated POC to a functional MVP.',
+          ],
+        },
+        {
+          q: 'How much does the program cost?',
+          blocks: [
+            'The program is entirely free for selected startups. No registration fees, no hidden costs.',
+          ],
+        },
+        {
+          q: 'How does the selection work?',
+          blocks: [
+            'The selection runs in three steps:',
+            { ordered: true, list: [
+              'Document-based pre-selection by the program team.',
+              'Pitch in front of a committee of experts, investors, CEED Morocco members and ecosystem partners.',
+              'Final validation: roadmap presentation to a funding committee, which validates funding and entry into the program.',
+            ] },
+          ],
+        },
+        {
+          q: 'What grant is offered?',
+          blocks: [
+            'A grant of up to 200,000 MAD for selected startups, designed to accelerate development and market launch.',
+          ],
+        },
+        {
+          q: 'How does the living stipend work?',
+          blocks: [
+            'A monthly stipend paid for 3 months, renewable 3 times (up to 12 months total).',
+            'Amount: 70% of the gross average of the last 12 payslips, capped at 40,000 MAD gross/month.',
+            'Eligibility:',
+            { list: [
+              'Minimum 5 years of experience as employee or non-associate manager.',
+              'Currently employed, or having left employment less than 12 months ago.',
+            ] },
+          ],
+        },
+        {
+          q: 'How long does the program last?',
+          blocks: [
+            '8 months — from the 360° diagnostic (Month 1) to the final Demo Day (Month 8), preceded by a selection phase (Month 0).',
+          ],
+        },
+        {
+          q: 'Why a first month dedicated to diagnostic?',
+          blocks: [
+            "The first month allows us to adapt the program's content and certain workshop topics to the real needs of selected startups. Each journey is tailored to the maturity, priorities and blockers of each team.",
+          ],
+        },
+        {
+          q: 'What are the expectations for founders?',
+          blocks: [
+            'A committed, execution-driven founding team, actively engaged in the program — present at workshops, mentoring, committees and collective sessions. The Builders is built for teams that want to move fast from idea to market.',
+          ],
+        },
       ],
     },
 

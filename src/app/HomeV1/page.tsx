@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowRight, CheckCircle2, Zap, Target, Users, Hammer, BadgeCheck, Sparkles, Rocket } from 'lucide-react'
+import { ArrowRight, CheckCircle2, ChevronDown, Zap, Target, Users, Hammer, BadgeCheck, Sparkles, Rocket } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 const DNA_ICONS: LucideIcon[] = [Hammer, BadgeCheck, Sparkles, Rocket]
@@ -27,6 +27,7 @@ export default async function Home({
           { label: t.nav.pourQui, href: '#pour-qui' },
           { label: t.nav.programme, href: '#programme' },
           { label: t.nav.timeline, href: '#timeline' },
+          { label: t.nav.faq, href: '#faq' },
           { label: t.nav.reglement, href: '/reglement' },
         ]}
       />
@@ -128,7 +129,7 @@ export default async function Home({
               </p>
             ))}
             <Link
-              href="/reglement#eligibilite"
+              href="#faq"
               className="inline-flex items-center gap-2 mt-2 px-5 py-2.5 rounded-full border border-emerald-500/40 text-emerald-300 text-sm font-medium hover:bg-emerald-500/10 hover:border-emerald-400 transition"
             >
               {t.whoFor.cta}
@@ -259,10 +260,23 @@ export default async function Home({
         </div>
       </section>
 
+      {/* FAQ */}
+      <section id="faq" className="relative px-6 py-24 scroll-mt-24">
+        <div className="max-w-3xl mx-auto">
+          <SectionLabel>07</SectionLabel>
+          <h2 className="text-4xl md:text-5xl font-bold mb-12 tracking-tight">{t.faq.title}</h2>
+          <div className="space-y-3">
+            {t.faq.items.map((item, i) => (
+              <FaqItem key={i} q={item.q} blocks={item.blocks} />
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* NOS PARTENAIRES */}
       <section className="relative px-6 py-24">
         <div className="max-w-5xl mx-auto">
-          <SectionLabel>07</SectionLabel>
+          <SectionLabel>08</SectionLabel>
           <h2 className="text-4xl md:text-5xl font-bold mb-12 tracking-tight">{t.partners.title}</h2>
           <div className="bg-white rounded-3xl p-8 md:p-14 flex items-center justify-center">
             <img
@@ -378,6 +392,30 @@ function Phase({ num, month, title, children }: { num: number; month: string; ti
       </div>
       <div className="pl-0 md:pl-16">{children}</div>
     </div>
+  )
+}
+
+type FaqBlock = string | { readonly list: ReadonlyArray<string>; readonly ordered?: boolean }
+
+function FaqItem({ q, blocks }: { q: string; blocks: ReadonlyArray<FaqBlock> }) {
+  return (
+    <details className="group rounded-2xl border border-zinc-800 bg-zinc-900/40 hover:border-emerald-500/40 transition overflow-hidden open:border-emerald-500/40 open:bg-zinc-900/60">
+      <summary className="cursor-pointer list-none px-6 py-5 flex items-center justify-between gap-4">
+        <span className="font-medium text-zinc-100 group-hover:text-emerald-300 transition">{q}</span>
+        <ChevronDown size={18} className="text-zinc-500 group-hover:text-emerald-400 transition shrink-0 group-open:rotate-180 duration-200" />
+      </summary>
+      <div className="px-6 pb-6 text-zinc-300 space-y-3 leading-relaxed text-[15px]">
+        {blocks.map((block, i) => {
+          if (typeof block === 'string') return <p key={i}>{block}</p>
+          const Tag = block.ordered ? 'ol' : 'ul'
+          return (
+            <Tag key={i} className={`pl-5 space-y-1 ${block.ordered ? 'list-decimal' : 'list-disc'} marker:text-emerald-400`}>
+              {block.list.map((it, j) => <li key={j}>{it}</li>)}
+            </Tag>
+          )
+        })}
+      </div>
+    </details>
   )
 }
 
