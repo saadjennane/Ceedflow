@@ -1,8 +1,79 @@
 -- Campaigns v2: multi-audience (application | juror), togglable unsubscribe/tracking,
 -- persisted filter snapshot. Plus a flexible tag system for applications.
--- Idempotent: safe to re-run.
+-- Idempotent: safe to re-run. Also self-healing: creates the base 012 schema
+-- (email_campaigns / email_sends / status enums / opt-out flags) if missing.
 
--- 1) Enum for who the campaign targets
+-- 0) Base schema (mirrors 012). Idempotent.
+DO $$ BEGIN
+  CREATE TYPE email_campaign_status AS ENUM ('draft', 'sending', 'sent', 'failed');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE email_send_status AS ENUM ('queued', 'sent', 'failed', 'bounced');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS email_campaigns (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  status email_campaign_status NOT NULL DEFAULT 'draft',
+  created_by UUID REFERENCES auth.users(id),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  sent_at TIMESTAMPTZ,
+  recipients_count INTEGER NOT NULL DEFAULT 0,
+  sent_count INTEGER NOT NULL DEFAULT 0,
+  failed_count INTEGER NOT NULL DEFAULT 0,
+  opened_count INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_campaigns_created ON email_campaigns(created_at DESC);
+
+-- updated_at trigger (uses the shared update_updated_at function from earlier migrations)
+DO $$ BEGIN
+  CREATE TRIGGER email_campaigns_updated_at
+    BEFORE UPDATE ON email_campaigns
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS email_sends (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  campaign_id UUID NOT NULL REFERENCES email_campaigns(id) ON DELETE CASCADE,
+  application_id UUID REFERENCES applications(id) ON DELETE SET NULL,
+  recipient_email TEXT NOT NULL,
+  recipient_name TEXT,
+  startup_name TEXT,
+  tracking_token TEXT NOT NULL UNIQUE,
+  status email_send_status NOT NULL DEFAULT 'queued',
+  sent_at TIMESTAMPTZ,
+  opened_at TIMESTAMPTZ,
+  open_count INTEGER NOT NULL DEFAULT 0,
+  last_opened_at TIMESTAMPTZ,
+  error_message TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_sends_campaign ON email_sends(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_email_sends_token ON email_sends(tracking_token);
+CREATE INDEX IF NOT EXISTS idx_email_sends_application ON email_sends(application_id);
+
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS do_not_contact BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS unsubscribed_at TIMESTAMPTZ;
+
+ALTER TABLE email_campaigns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE email_sends ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY "Authenticated manage email_campaigns"
+    ON email_campaigns FOR ALL TO authenticated USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Authenticated manage email_sends"
+    ON email_sends FOR ALL TO authenticated USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- 1) New enum for who the campaign targets
 DO $$ BEGIN
   CREATE TYPE email_campaign_audience AS ENUM ('application', 'juror');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
