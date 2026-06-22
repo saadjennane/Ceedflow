@@ -82,19 +82,19 @@ INSERT INTO email_templates (key, name, description, trigger_event, is_internal,
   'Envoyé automatiquement au candidat dès la soumission du formulaire.',
   'on_application_submitted', false, true,
   ARRAY['founder_first_name', 'startup_name'],
-  'Candidature reçue – The Bridge by CEED Maroc',
+  'Candidature reçue – The Builders by CEED Maroc',
   'Bonjour {{founder_first_name}},
 
-Nous avons bien reçu la candidature de **{{startup_name}}** au programme The Bridge by CEED Maroc.
+Nous avons bien reçu la candidature de **{{startup_name}}** au programme The Builders by CEED Maroc.
 
 Votre dossier sera étudié par notre équipe. Nous reviendrons vers vous si votre projet est retenu pour la prochaine étape.
 
 Merci de votre intérêt,
 L''équipe CEED Maroc',
-  'Application received – The Bridge by CEED Morocco',
+  'Application received – The Builders by CEED Morocco',
   'Hello {{founder_first_name}},
 
-We have received the application of **{{startup_name}}** to The Bridge by CEED Morocco.
+We have received the application of **{{startup_name}}** to The Builders by CEED Morocco.
 
 Your application will be reviewed by our team. We will get back to you if your project is selected for the next stage.
 
@@ -153,7 +153,7 @@ The CEED Morocco team'
   'À envoyer manuellement à un candidat non retenu.',
   'manual', false, true,
   ARRAY['founder_first_name', 'startup_name'],
-  'Votre candidature à The Bridge by CEED Maroc',
+  'Votre candidature à The Builders by CEED Maroc',
   'Bonjour {{founder_first_name}},
 
 Nous vous remercions d''avoir soumis la candidature de **{{startup_name}}**.
@@ -163,7 +163,7 @@ Après étude attentive, votre projet n''a pas été retenu pour cette édition.
 Nous vous encourageons à recandidater lors de nos prochains appels à projets et vous souhaitons beaucoup de succès.
 
 L''équipe CEED Maroc',
-  'Your application to The Bridge by CEED Morocco',
+  'Your application to The Builders by CEED Morocco',
   'Hello {{founder_first_name}},
 
 Thank you for submitting the application of **{{startup_name}}**.
@@ -180,7 +180,7 @@ The CEED Morocco team'
   'À envoyer manuellement pour convier un candidat à un entretien ou pitch.',
   'manual', false, true,
   ARRAY['founder_first_name', 'startup_name'],
-  'Invitation à un entretien – The Bridge by CEED Maroc',
+  'Invitation à un entretien – The Builders by CEED Maroc',
   'Bonjour {{founder_first_name}},
 
 Suite à l''étude de la candidature de **{{startup_name}}**, nous serions ravis de vous rencontrer pour un entretien.
@@ -189,7 +189,7 @@ Merci de nous indiquer vos disponibilités en répondant à cet email, et nous c
 
 À très bientôt,
 L''équipe CEED Maroc',
-  'Interview invitation – The Bridge by CEED Morocco',
+  'Interview invitation – The Builders by CEED Morocco',
   'Hello {{founder_first_name}},
 
 Following the review of **{{startup_name}}**''s application, we would be glad to meet you for an interview.

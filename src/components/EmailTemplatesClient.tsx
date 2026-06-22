@@ -1,10 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronDown, ChevronRight, Mail, Send, Settings, Save, Eye, Loader2, Check, Plus, Trash2, Users, X } from 'lucide-react'
 import type { EmailTemplate, EmailTemplateRecipientType, EmailLanguage } from '@/lib/types'
 import { applyVariables, markdownToHtml } from '@/lib/email-templates'
+
+export type TemplateCardHandle = {
+  isDirty: () => boolean
+  save: () => Promise<boolean>
+}
 
 const TRIGGER_LABEL: Record<EmailTemplate['trigger_event'], string> = {
   on_application_submitted: 'Soumission du formulaire',
@@ -35,11 +40,49 @@ const SAMPLE_CTX: Record<string, string> = {
 
 export default function EmailTemplatesClient({ templates }: { templates: EmailTemplate[] }) {
   const [showNew, setShowNew] = useState(false)
+  const [dirtyIds, setDirtyIds] = useState<Set<string>>(() => new Set())
+  const [savingAll, setSavingAll] = useState(false)
+  const [savedAllAt, setSavedAllAt] = useState<number | null>(null)
+  const refsMap = useRef(new Map<string, TemplateCardHandle>())
   const router = useRouter()
 
   const auto = templates.filter(t => t.trigger_event === 'on_application_submitted')
   const manualApp = templates.filter(t => t.trigger_event === 'manual' && t.recipient_type === 'application')
   const manualJury = templates.filter(t => t.trigger_event === 'manual' && t.recipient_type === 'juror')
+
+  const handleDirtyChange = useCallback((id: string, dirty: boolean) => {
+    setDirtyIds(prev => {
+      const has = prev.has(id)
+      if (dirty === has) return prev
+      const next = new Set(prev)
+      if (dirty) next.add(id); else next.delete(id)
+      return next
+    })
+  }, [])
+
+  const setCardRef = useCallback((id: string) => (handle: TemplateCardHandle | null) => {
+    if (handle) refsMap.current.set(id, handle)
+    else refsMap.current.delete(id)
+  }, [])
+
+  const saveAll = async () => {
+    setSavingAll(true)
+    const ids = Array.from(dirtyIds)
+    const results = await Promise.all(
+      ids.map(async id => {
+        const handle = refsMap.current.get(id)
+        if (!handle) return false
+        return handle.save()
+      }),
+    )
+    setSavingAll(false)
+    if (results.every(Boolean)) {
+      setSavedAllAt(Date.now())
+      setTimeout(() => setSavedAllAt(null), 2500)
+    }
+  }
+
+  const dirtyCount = dirtyIds.size
 
   return (
     <div>
@@ -50,29 +93,46 @@ export default function EmailTemplatesClient({ templates }: { templates: EmailTe
             Modifie les emails automatiques et manuels envoyés par la plateforme. Désactive un template pour suspendre son envoi.
           </p>
         </div>
-        <button
-          onClick={() => setShowNew(true)}
-          className="inline-flex items-center gap-2 bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-600 flex-shrink-0"
-        >
-          <Plus size={16} /> Nouveau template
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={saveAll}
+            disabled={dirtyCount === 0 || savingAll}
+            className="inline-flex items-center gap-2 bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed"
+            title={dirtyCount === 0 ? 'Aucune modification à sauvegarder' : 'Sauvegarder toutes les modifications en attente'}
+          >
+            {savingAll ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+            {dirtyCount > 0 ? `Sauvegarder (${dirtyCount})` : 'Sauvegarder'}
+          </button>
+          <button
+            onClick={() => setShowNew(true)}
+            className="inline-flex items-center gap-2 border border-emerald-500 text-emerald-700 bg-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-emerald-50"
+          >
+            <Plus size={16} /> Nouveau template
+          </button>
+        </div>
       </div>
+
+      {savedAllAt && (
+        <div className="mb-4 text-sm text-emerald-700 inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5">
+          <Check size={14} /> Toutes les modifications ont été sauvegardées.
+        </div>
+      )}
 
       {auto.length > 0 && (
         <Section title="Envois automatiques" subtitle="Déclenchés à la soumission du formulaire de candidature">
-          {auto.map(t => <TemplateCard key={t.id} template={t} />)}
+          {auto.map(t => <TemplateCard ref={setCardRef(t.id)} key={t.id} template={t} onDirtyChange={handleDirtyChange} />)}
         </Section>
       )}
 
       {manualApp.length > 0 && (
         <Section title="Templates candidats" subtitle="Disponibles depuis la fiche d'une candidature">
-          {manualApp.map(t => <TemplateCard key={t.id} template={t} />)}
+          {manualApp.map(t => <TemplateCard ref={setCardRef(t.id)} key={t.id} template={t} onDirtyChange={handleDirtyChange} />)}
         </Section>
       )}
 
       {manualJury.length > 0 && (
         <Section title="Templates jurys" subtitle="Disponibles depuis la fiche d'un membre du jury">
-          {manualJury.map(t => <TemplateCard key={t.id} template={t} />)}
+          {manualJury.map(t => <TemplateCard ref={setCardRef(t.id)} key={t.id} template={t} onDirtyChange={handleDirtyChange} />)}
         </Section>
       )}
 
@@ -99,7 +159,12 @@ function Section({ title, subtitle, children }: { title: string; subtitle: strin
   )
 }
 
-function TemplateCard({ template }: { template: EmailTemplate }) {
+interface TemplateCardProps {
+  template: EmailTemplate
+  onDirtyChange: (id: string, dirty: boolean) => void
+}
+
+const TemplateCard = forwardRef<TemplateCardHandle, TemplateCardProps>(function TemplateCard({ template, onDirtyChange }, ref) {
   const router = useRouter()
   const [expanded, setExpanded] = useState(false)
   const [enabled, setEnabled] = useState(template.enabled)
@@ -120,7 +185,12 @@ function TemplateCard({ template }: { template: EmailTemplate }) {
     subjectEn !== template.subject_en ||
     bodyEn !== template.body_en
 
-  const save = async (overrides?: Partial<{ enabled: boolean }>) => {
+  // Notify parent so it can drive the global "Save All" button.
+  useEffect(() => {
+    onDirtyChange(template.id, dirty)
+  }, [dirty, template.id, onDirtyChange])
+
+  const save = useCallback(async (overrides?: Partial<{ enabled: boolean }>): Promise<boolean> => {
     setSaving(true)
     setError('')
     const payload: Record<string, unknown> = {
@@ -139,12 +209,18 @@ function TemplateCard({ template }: { template: EmailTemplate }) {
     setSaving(false)
     if (!res.ok) {
       setError(data.error || 'Échec de la sauvegarde')
-      return
+      return false
     }
     setSavedAt(Date.now())
     setTimeout(() => setSavedAt(null), 2500)
     router.refresh()
-  }
+    return true
+  }, [enabled, subjectFr, bodyFr, subjectEn, bodyEn, template.id, router])
+
+  useImperativeHandle(ref, () => ({
+    isDirty: () => dirty,
+    save: () => save(),
+  }), [dirty, save])
 
   const toggleEnabled = async (next: boolean) => {
     setEnabled(next)
@@ -180,8 +256,10 @@ function TemplateCard({ template }: { template: EmailTemplate }) {
               <span className="font-medium text-gray-900">{template.name}</span>
               {template.is_internal && <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">interne</span>}
               <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-50 text-gray-500 border border-gray-200">{RECIPIENT_LABEL[template.recipient_type]}</span>
+              {dirty && <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">non sauvegardé</span>}
             </div>
             {template.description && <div className="text-xs text-gray-500 truncate">{template.description}</div>}
+            <div className="text-xs text-gray-600 truncate mt-1 italic">Sujet : {subjectFr || <span className="text-gray-400 not-italic">vide</span>}</div>
           </div>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
@@ -302,7 +380,7 @@ function TemplateCard({ template }: { template: EmailTemplate }) {
       )}
     </div>
   )
-}
+})
 
 function NewTemplateModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [name, setName] = useState('')
