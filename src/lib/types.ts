@@ -258,6 +258,17 @@ export interface Juror {
   created_at: string
 }
 
+export interface JurorAction {
+  id: string
+  juror_id: string
+  action_type: string
+  assigned_admin_id?: string | null
+  is_done: boolean
+  created_by?: string | null
+  created_at: string
+  completed_at?: string | null
+}
+
 export type CommitteeStatus = 'draft' | 'active' | 'closed'
 export type CommitteeDecision = 'retenu' | 'rejete'
 

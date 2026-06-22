@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
@@ -6,9 +6,10 @@ import AdminNav from '@/components/AdminNav'
 import AdminTabs from '@/components/AdminTabs'
 import JurorSendEmailButton from '@/components/JurorSendEmailButton'
 import JurorIdentityCard from '@/components/JurorIdentityCard'
+import JurorActionsBlock from '@/components/JurorActionsBlock'
 import { getAllowedFromAddresses } from '@/lib/email'
 import type {
-  Juror, Committee, CommitteeJuror, JurorRating, JurorDecision, Application, EmailTemplate,
+  Juror, Committee, CommitteeJuror, JurorRating, JurorDecision, Application, EmailTemplate, JurorAction,
 } from '@/lib/types'
 import { RATING_CRITERIA } from '@/lib/types'
 
@@ -25,16 +26,28 @@ export default async function JurorDetailPage({
   const { data: juror } = await supabase.from('jurors').select('*').eq('id', id).single()
   if (!juror) notFound()
 
-  const [cjRes, committeesRes, ratingsRes, decisionsRes, appsRes, templatesRes] = await Promise.all([
+  const [cjRes, committeesRes, ratingsRes, decisionsRes, appsRes, templatesRes, actionsRes] = await Promise.all([
     supabase.from('committee_jurors').select('*').eq('juror_id', id),
     supabase.from('committees').select('*'),
     supabase.from('juror_ratings').select('*').eq('juror_id', id),
     supabase.from('juror_decisions').select('*').eq('juror_id', id),
     supabase.from('applications').select('id, startup_name, sector, stage').is('deleted_at', null),
     supabase.from('email_templates').select('*').eq('trigger_event', 'manual').eq('recipient_type', 'juror').eq('enabled', true).order('name'),
+    supabase.from('juror_actions').select('*').eq('juror_id', id),
   ])
   const manualTemplates = (templatesRes.data || []) as EmailTemplate[]
+  const jurorActions = (actionsRes.data || []) as JurorAction[]
   const fromAddresses = getAllowedFromAddresses()
+
+  // Admin users for the assignee dropdown
+  const service = await createServiceRoleClient()
+  const { data: adminListData } = await service.auth.admin.listUsers()
+  const adminUsers = (adminListData?.users || []).map(u => ({
+    id: u.id,
+    email: u.email || '',
+    first_name: u.user_metadata?.first_name || '',
+    last_name: u.user_metadata?.last_name || '',
+  }))
 
   const myCommitteeJurors = (cjRes.data || []) as CommitteeJuror[]
   const committees = (committeesRes.data || []) as Committee[]
@@ -94,73 +107,86 @@ export default async function JurorDetailPage({
           }
         />
 
-        <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Comités</h2>
-          {myCommitteeJurors.length === 0 ? (
-            <p className="text-sm text-gray-500">Ce jury ne participe à aucun comité.</p>
-          ) : (
-            <div className="space-y-2">
-              {myCommitteeJurors.map(cj => {
-                const c = committeeMap.get(cj.committee_id)
-                if (!c) return null
-                return (
-                  <Link
-                    key={cj.id}
-                    href={`/admin/committees/${c.id}`}
-                    className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50"
-                  >
-                    <span className="font-medium text-sm">{c.name}</span>
-                    <span className="text-xs text-gray-500">{c.status}</span>
-                  </Link>
-                )
-              })}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <div className="bg-white border border-gray-200 rounded-lg p-6">
+              <h2 className="text-lg font-semibold mb-4">Comités</h2>
+              {myCommitteeJurors.length === 0 ? (
+                <p className="text-sm text-gray-500">Ce jury ne participe à aucun comité.</p>
+              ) : (
+                <div className="space-y-2">
+                  {myCommitteeJurors.map(cj => {
+                    const c = committeeMap.get(cj.committee_id)
+                    if (!c) return null
+                    return (
+                      <Link
+                        key={cj.id}
+                        href={`/admin/committees/${c.id}`}
+                        className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50"
+                      >
+                        <span className="font-medium text-sm">{c.name}</span>
+                        <span className="text-xs text-gray-500">{c.status}</span>
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h2 className="text-lg font-semibold mb-4">Startups notées</h2>
-          {grouped.size === 0 ? (
-            <p className="text-sm text-gray-500">Pas encore de notation.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="text-left px-3 py-2 font-medium text-gray-600">Startup</th>
-                  <th className="text-left px-3 py-2 font-medium text-gray-600">Comité</th>
-                  <th className="text-left px-3 py-2 font-medium text-gray-600">Note moy.</th>
-                  <th className="text-left px-3 py-2 font-medium text-gray-600">Décision</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Array.from(grouped.values()).map(g => {
-                  const app = appMap.get(g.applicationId)
-                  const committee = committeeMap.get(g.committeeId)
-                  const avg = g.scores.length > 0 ? g.scores.reduce((a, b) => a + b, 0) / g.scores.length : null
-                  return (
-                    <tr key={`${g.committeeId}::${g.applicationId}`} className="border-b border-gray-100">
-                      <td className="px-3 py-2">
-                        <Link href={`/admin/applications/${g.applicationId}`} className="font-medium hover:underline">
-                          {app?.startup_name || '—'}
-                        </Link>
-                      </td>
-                      <td className="px-3 py-2 text-gray-600">{committee?.name || '—'}</td>
-                      <td className="px-3 py-2 text-gray-700 tabular-nums">{avg !== null ? `${avg.toFixed(1)}/5` : '—'}</td>
-                      <td className="px-3 py-2">
-                        {g.decision ? (
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${g.decision.decision === 'retenu' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                            {g.decision.decision === 'retenu' ? 'Retenu' : 'Rejeté'}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400 text-xs">En attente</span>
-                        )}
-                      </td>
+            <div className="bg-white border border-gray-200 rounded-lg p-6">
+              <h2 className="text-lg font-semibold mb-4">Startups notées</h2>
+              {grouped.size === 0 ? (
+                <p className="text-sm text-gray-500">Pas encore de notation.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-medium text-gray-600">Startup</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-600">Comité</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-600">Note moy.</th>
+                      <th className="text-left px-3 py-2 font-medium text-gray-600">Décision</th>
                     </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
+                  </thead>
+                  <tbody>
+                    {Array.from(grouped.values()).map(g => {
+                      const app = appMap.get(g.applicationId)
+                      const committee = committeeMap.get(g.committeeId)
+                      const avg = g.scores.length > 0 ? g.scores.reduce((a, b) => a + b, 0) / g.scores.length : null
+                      return (
+                        <tr key={`${g.committeeId}::${g.applicationId}`} className="border-b border-gray-100">
+                          <td className="px-3 py-2">
+                            <Link href={`/admin/applications/${g.applicationId}`} className="font-medium hover:underline">
+                              {app?.startup_name || '—'}
+                            </Link>
+                          </td>
+                          <td className="px-3 py-2 text-gray-600">{committee?.name || '—'}</td>
+                          <td className="px-3 py-2 text-gray-700 tabular-nums">{avg !== null ? `${avg.toFixed(1)}/5` : '—'}</td>
+                          <td className="px-3 py-2">
+                            {g.decision ? (
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${g.decision.decision === 'retenu' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                {g.decision.decision === 'retenu' ? 'Retenu' : 'Rejeté'}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-xs">En attente</span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
+          <aside className="lg:col-span-1">
+            <JurorActionsBlock
+              jurorId={(juror as Juror).id}
+              actions={jurorActions}
+              adminUsers={adminUsers}
+              currentUserId={user.id}
+            />
+          </aside>
         </div>
       </div>
     </div>
