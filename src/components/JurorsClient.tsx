@@ -27,6 +27,7 @@ export default function JurorsClient({
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [role, setRole] = useState('')
+  const [company, setCompany] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -34,12 +35,14 @@ export default function JurorsClient({
     e.preventDefault()
     setError('')
     setSubmitting(true)
+    const trimmedEmail = email.trim().toLowerCase()
     const { error: err } = await supabase.from('jurors').insert({
       first_name: firstName.trim(),
       last_name: lastName.trim(),
-      email: email.trim().toLowerCase(),
+      email: trimmedEmail || null,
       phone: phone.trim() || null,
       role: role.trim() || null,
+      company: company.trim() || null,
     })
     if (err) {
       setError(err.message)
@@ -51,6 +54,7 @@ export default function JurorsClient({
     setEmail('')
     setPhone('')
     setRole('')
+    setCompany('')
     setShowForm(false)
     setSubmitting(false)
     router.refresh()
@@ -62,8 +66,9 @@ export default function JurorsClient({
     return (
       j.first_name.toLowerCase().includes(s) ||
       j.last_name.toLowerCase().includes(s) ||
-      j.email.toLowerCase().includes(s) ||
-      (j.role || '').toLowerCase().includes(s)
+      (j.email || '').toLowerCase().includes(s) ||
+      (j.role || '').toLowerCase().includes(s) ||
+      (j.company || '').toLowerCase().includes(s)
     )
   })
 
@@ -122,12 +127,12 @@ export default function JurorsClient({
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Email</label>
+            <label className="block text-sm font-medium mb-1">Email (optionnel)</label>
             <input
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              required
+              placeholder="Laisser vide pour « To add »"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -142,15 +147,25 @@ export default function JurorsClient({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Rôle / Fonction (optionnel)</label>
+              <label className="block text-sm font-medium mb-1">Fonction (optionnel)</label>
               <input
                 type="text"
                 value={role}
                 onChange={e => setRole(e.target.value)}
-                placeholder="Ex: VC chez X, CEO de Y…"
+                placeholder="Ex: VC, CEO, Mentor…"
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Entreprise / Organisation (optionnel)</label>
+            <input
+              type="text"
+              value={company}
+              onChange={e => setCompany(e.target.value)}
+              placeholder="Ex: Acme Ventures, CEED Maroc…"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
           <div className="flex gap-2 pt-2">
             <button
@@ -189,7 +204,8 @@ export default function JurorsClient({
             <tr>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Nom</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Email</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">Rôle</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Fonction</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Entreprise</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Comités</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Startups notées</th>
             </tr>
@@ -197,7 +213,7 @@ export default function JurorsClient({
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={5} className="text-center py-12 text-gray-500">
+                <td colSpan={6} className="text-center py-12 text-gray-500">
                   {jurors.length === 0 ? 'Aucun jury pour le moment.' : 'Aucun résultat.'}
                 </td>
               </tr>
@@ -210,12 +226,17 @@ export default function JurorsClient({
                     </Link>
                   </td>
                   <td className="px-4 py-3 text-gray-600">
-                    <a href={`mailto:${j.email}`} onClick={e => e.stopPropagation()} className="flex items-center gap-1 hover:text-blue-700">
-                      <Mail size={12} />
-                      {j.email}
-                    </a>
+                    {j.email ? (
+                      <a href={`mailto:${j.email}`} onClick={e => e.stopPropagation()} className="flex items-center gap-1 hover:text-blue-700">
+                        <Mail size={12} />
+                        {j.email}
+                      </a>
+                    ) : (
+                      <span className="italic text-gray-400">To add</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-gray-600">{j.role || '—'}</td>
+                  <td className="px-4 py-3 text-gray-600">{j.company || '—'}</td>
                   <td className="px-4 py-3 text-gray-600">{committeeCountByJuror.get(j.id) || 0}</td>
                   <td className="px-4 py-3 text-gray-600">{ratingsByJuror.get(j.id)?.size || 0}</td>
                 </tr>

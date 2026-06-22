@@ -249,9 +249,12 @@ export interface Juror {
   id: string
   first_name: string
   last_name: string
-  email: string
+  email?: string | null
   phone?: string | null
   role?: string | null
+  company?: string | null
+  do_not_contact?: boolean
+  unsubscribed_at?: string | null
   created_at: string
 }
 

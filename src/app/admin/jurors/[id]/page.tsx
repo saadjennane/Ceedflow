@@ -1,10 +1,11 @@
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Mail, Phone, Briefcase } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import AdminNav from '@/components/AdminNav'
 import AdminTabs from '@/components/AdminTabs'
 import JurorSendEmailButton from '@/components/JurorSendEmailButton'
+import JurorIdentityCard from '@/components/JurorIdentityCard'
 import { getAllowedFromAddresses } from '@/lib/email'
 import type {
   Juror, Committee, CommitteeJuror, JurorRating, JurorDecision, Application, EmailTemplate,
@@ -74,40 +75,24 @@ export default async function JurorDetailPage({
           <ArrowLeft size={16} /> Retour à la liste des jurys
         </Link>
 
-        <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-          <div className="flex items-start justify-between gap-4 mb-2">
-            <h1 className="text-2xl font-bold">{(juror as Juror).first_name} {(juror as Juror).last_name}</h1>
-            <JurorSendEmailButton
-              juror={{
-                id: (juror as Juror).id,
-                first_name: (juror as Juror).first_name,
-                last_name: (juror as Juror).last_name,
-                email: (juror as Juror).email,
-                role: (juror as Juror).role,
-              }}
-              templates={manualTemplates}
-              fromAddresses={fromAddresses}
-            />
-          </div>
-          <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-            <a href={`mailto:${(juror as Juror).email}`} className="flex items-center gap-1 hover:text-blue-700">
-              <Mail size={14} />
-              {(juror as Juror).email}
-            </a>
-            {(juror as Juror).phone && (
-              <span className="flex items-center gap-1">
-                <Phone size={14} />
-                {(juror as Juror).phone}
-              </span>
-            )}
-            {(juror as Juror).role && (
-              <span className="flex items-center gap-1">
-                <Briefcase size={14} />
-                {(juror as Juror).role}
-              </span>
-            )}
-          </div>
-        </div>
+        <JurorIdentityCard
+          juror={juror as Juror}
+          actions={
+            (juror as Juror).email ? (
+              <JurorSendEmailButton
+                juror={{
+                  id: (juror as Juror).id,
+                  first_name: (juror as Juror).first_name,
+                  last_name: (juror as Juror).last_name,
+                  email: (juror as Juror).email!,
+                  role: (juror as Juror).role,
+                }}
+                templates={manualTemplates}
+                fromAddresses={fromAddresses}
+              />
+            ) : null
+          }
+        />
 
         <div className="bg-white border border-gray-200 rounded-lg p-6 mb-6">
           <h2 className="text-lg font-semibold mb-4">Comités</h2>
