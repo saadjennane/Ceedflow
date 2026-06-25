@@ -18,29 +18,43 @@ export default function ResetPassword() {
 
   useEffect(() => {
     const supabase = createClient()
+    let cancelled = false
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        setReady(true)
+      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
+        if (!cancelled) setReady(true)
       }
     })
 
-    // Check if session already exists (token may have been picked up)
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // 1) If a session already exists (callback already exchanged the code), we're good.
+    // 2) Otherwise, if the URL still has a ?code= (legacy emails that bypassed the
+    //    /auth/callback route), exchange it client-side as a fallback so the user
+    //    isn't stuck on "Link Expired".
+    const bootstrap = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
       if (session) {
-        setReady(true)
+        if (!cancelled) setReady(true)
+        return
       }
-    })
+      const params = new URLSearchParams(window.location.search)
+      const code = params.get('code')
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code)
+        if (!cancelled && !error) setReady(true)
+        if (!cancelled && error) setExpired(true)
+      }
+    }
+    bootstrap()
 
-    // Timeout fallback for invalid/expired links
+    // Fallback for invalid/expired links (no code, no session, no recovery event).
     const timeout = setTimeout(() => {
-      setExpired((prev) => {
-        // Only set expired if not already ready
-        return !ready && !prev
-      })
-    }, 5000)
+      if (!cancelled) {
+        setExpired((prev) => (!ready && !prev))
+      }
+    }, 8000)
 
     return () => {
+      cancelled = true
       subscription.unsubscribe()
       clearTimeout(timeout)
     }

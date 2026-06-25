@@ -30,7 +30,7 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   // Protect admin routes
-  const publicAdminRoutes = ['/admin/login', '/admin/forgot-password', '/admin/reset-password']
+  const publicAdminRoutes = ['/admin/login', '/admin/forgot-password', '/admin/reset-password', '/auth/callback']
   const isPublicRoute = publicAdminRoutes.some(route => request.nextUrl.pathname.startsWith(route))
 
   if (request.nextUrl.pathname.startsWith('/admin') && !isPublicRoute) {
