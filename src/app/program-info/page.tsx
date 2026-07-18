@@ -42,7 +42,7 @@ export default async function ProgramInfoPage({
         </div>
         <div className="flex items-center gap-3 mt-4 mb-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/The_Bridge_by_CEED.png" alt="The Bridge by CEED" className="h-28 drop-shadow-sm" />
+          <img src="/Logos/logo%20builders-01.png" alt="The Builders by CEED" className="h-16 drop-shadow-sm" />
         </div>
         <h1 className="text-3xl font-bold mt-4 mb-2">{t.programInfoTitle}</h1>
         <p className="text-gray-600 mb-8">{t.programInfoSubtitle}</p>

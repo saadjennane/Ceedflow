@@ -1,4 +1,4 @@
-// Decorative + structural SVG motifs inspired by The Bridge logo (suspension cables + pillars)
+// Decorative + structural SVG motifs (suspension cables + pillars) used across the homepage.
 
 export function BridgeArc({
   className = '',

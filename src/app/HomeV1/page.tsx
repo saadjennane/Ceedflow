@@ -305,9 +305,9 @@ export default async function Home({
       {/* FOOTER */}
       <footer className="bg-black border-t border-zinc-900">
         <div className="max-w-6xl mx-auto px-6 py-10 flex flex-col md:flex-row items-center justify-between gap-4">
-          <img src="/THE BRIDGE LOGO-02.png" alt="The Bridge" className="h-7 w-auto opacity-70" />
+          <img src="/Logos/logo%20builders-01.png" alt="The Builders" className="h-7 w-auto opacity-70" />
           <div className="text-xs text-zinc-500">
-            © {new Date().getFullYear()} The Bridge by CEED
+            © {new Date().getFullYear()} The Builders by CEED
           </div>
         </div>
       </footer>

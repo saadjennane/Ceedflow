@@ -11,8 +11,8 @@ export const metadata: Metadata = {
   title: "The Builders by CEED",
   description: "Build. Validate. Accelerate. — 8-month acceleration program for innovative startups in Morocco.",
   icons: {
-    icon: '/FAVICON THE BRIDGE.png',
-    apple: '/FAVICON THE BRIDGE.png',
+    icon: '/Logos/logo%20builders-01.png',
+    apple: '/Logos/logo%20builders-01.png',
   },
 };
 
