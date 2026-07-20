@@ -1,6 +1,6 @@
 import Link from 'next/link'
-import { ArrowRight, Calendar } from 'lucide-react'
-import { HOME_COPY, type Lang } from '@/lib/home-copy'
+import { Calendar } from 'lucide-react'
+import type { Lang } from '@/lib/home-copy'
 
 export default async function Home({
   searchParams,
@@ -9,7 +9,6 @@ export default async function Home({
 }) {
   const params = await searchParams
   const lang: Lang = params.lang === 'en' ? 'en' : 'fr'
-  const t = HOME_COPY[lang]
 
   return (
     <div className="min-h-screen relative overflow-hidden bg-black text-white flex flex-col">
@@ -50,13 +49,9 @@ export default async function Home({
           >
             Règlement
           </a>
-          <Link
-            href={`/apply?lang=${lang}`}
-            className="inline-flex items-center gap-1.5 bg-emerald-400 text-black px-5 py-2 rounded-full text-sm font-semibold hover:bg-emerald-300 transition shadow-[0_0_25px_-5px_rgba(52,211,153,0.6)]"
-          >
-            {lang === 'fr' ? 'Postuler' : 'Apply now'}
-            <ArrowRight size={14} />
-          </Link>
+          <span className="inline-flex items-center gap-1.5 bg-zinc-900/60 backdrop-blur border border-zinc-700 text-zinc-300 px-4 py-1.5 rounded-full text-xs font-medium">
+            {lang === 'fr' ? 'Candidatures fermées' : 'Applications closed'}
+          </span>
         </div>
       </nav>
 
@@ -85,21 +80,13 @@ export default async function Home({
             <Calendar className="text-emerald-400 flex-shrink-0" size={20} />
             <div>
               <div className="text-[11px] uppercase tracking-wider text-emerald-400 font-medium">
-                {lang === 'fr' ? 'Clôture des candidatures' : 'Applications close on'}
+                {lang === 'fr' ? 'Candidatures fermées' : 'Applications closed'}
               </div>
-              <div className="text-xl md:text-2xl font-bold tracking-tight tabular-nums">20/07/2026</div>
+              <div className="text-base md:text-lg font-semibold tracking-tight">
+                {lang === 'fr' ? 'Merci à tous les candidats' : 'Thank you to all applicants'}
+              </div>
             </div>
           </div>
-        </div>
-
-        <div className="mt-6 animate-fade-up opacity-0" style={{ animationDelay: '1.5s' }}>
-          <Link
-            href={`/apply?lang=${lang}`}
-            className="group inline-flex items-center gap-3 bg-emerald-400 text-black px-7 py-3.5 rounded-full text-base md:text-lg font-semibold hover:bg-emerald-300 transition shadow-[0_0_40px_-5px_rgba(52,211,153,0.7)] hover:shadow-[0_0_50px_-5px_rgba(52,211,153,0.9)]"
-          >
-            {lang === 'fr' ? t.applyFr : t.applyEn}
-            <ArrowRight size={18} className="group-hover:translate-x-0.5 transition" />
-          </Link>
         </div>
       </div>
 

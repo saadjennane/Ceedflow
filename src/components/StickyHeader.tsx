@@ -14,10 +14,15 @@ export default function StickyHeader({
   lang,
   applyLabel,
   navItems,
+  applicationsClosed = false,
+  closedLabel,
 }: {
   lang: Lang
   applyLabel: string
   navItems: NavItem[]
+  /** When true, hides the Apply CTA and shows a neutral "closed" chip in its place. */
+  applicationsClosed?: boolean
+  closedLabel?: string
 }) {
   const [scrolled, setScrolled] = useState(false)
 
@@ -75,13 +80,19 @@ export default function StickyHeader({
               EN
             </Link>
           </div>
-          <Link
-            href={`/apply?lang=${lang}`}
-            className="hidden sm:inline-flex items-center gap-1.5 bg-emerald-400 text-black px-4 py-1.5 rounded-full text-sm font-semibold hover:bg-emerald-300 transition"
-          >
-            {applyLabel}
-            <ArrowRight size={14} />
-          </Link>
+          {applicationsClosed ? (
+            <span className="hidden sm:inline-flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 text-zinc-400 px-4 py-1.5 rounded-full text-xs font-medium">
+              {closedLabel || (lang === 'fr' ? 'Candidatures fermées' : 'Applications closed')}
+            </span>
+          ) : (
+            <Link
+              href={`/apply?lang=${lang}`}
+              className="hidden sm:inline-flex items-center gap-1.5 bg-emerald-400 text-black px-4 py-1.5 rounded-full text-sm font-semibold hover:bg-emerald-300 transition"
+            >
+              {applyLabel}
+              <ArrowRight size={14} />
+            </Link>
+          )}
         </div>
       </div>
     </header>

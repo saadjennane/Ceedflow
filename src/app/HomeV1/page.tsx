@@ -2,6 +2,9 @@ import Link from 'next/link'
 import { ArrowRight, CheckCircle2, ChevronDown, Zap, Target, Users, Hammer, BadgeCheck, Sparkles, Rocket } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
+// Toggle back to false once applications reopen.
+const APPLICATIONS_CLOSED = true
+
 const DNA_ICONS: LucideIcon[] = [Hammer, BadgeCheck, Sparkles, Rocket]
 import { HOME_COPY, type Lang } from '@/lib/home-copy'
 import StickyHeader from '@/components/StickyHeader'
@@ -22,6 +25,7 @@ export default async function Home({
       <StickyHeader
         lang={lang}
         applyLabel={lang === 'fr' ? t.applyFr : t.applyEn}
+        applicationsClosed={APPLICATIONS_CLOSED}
         navItems={[
           { label: t.nav.pourquoi, href: '#pourquoi' },
           { label: t.nav.pourQui, href: '#pour-qui' },
@@ -317,6 +321,21 @@ export default async function Home({
 
 function ApplyButtons({ lang, label, large = false, variant = 'default' }: { lang: Lang; label: string; large?: boolean; variant?: 'default' | 'onGreen' }) {
   const padding = large ? 'px-10 py-4 text-base' : 'px-8 py-3.5 text-sm'
+
+  if (APPLICATIONS_CLOSED) {
+    const closedLabel = lang === 'fr' ? 'Candidatures fermées' : 'Applications closed'
+    const closedStyles = variant === 'onGreen'
+      ? 'bg-black/20 text-black/70 border border-black/30'
+      : 'bg-zinc-900/50 text-zinc-300 border border-zinc-700'
+    return (
+      <div className="flex items-center justify-center">
+        <span className={`inline-flex items-center justify-center gap-2 ${closedStyles} ${padding} rounded-xl font-semibold`}>
+          {closedLabel}
+        </span>
+      </div>
+    )
+  }
+
   const styles = variant === 'onGreen'
     ? 'bg-black text-emerald-400 hover:bg-zinc-900 shadow-[0_0_30px_-5px_rgba(0,0,0,0.4)]'
     : 'bg-emerald-400 text-black hover:bg-emerald-300 shadow-[0_0_30px_-5px_rgba(16,185,129,0.5)] hover:shadow-[0_0_40px_-5px_rgba(16,185,129,0.7)]'

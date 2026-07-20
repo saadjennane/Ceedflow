@@ -33,12 +33,9 @@ export default async function ProgramInfoPage({
           <Link href="/" className="text-sm text-blue-600 hover:text-blue-800">
             &larr; {t.back}
           </Link>
-          <Link
-            href={`/apply?lang=${lang}`}
-            className="inline-flex items-center justify-center bg-blue-600 text-white px-5 py-2 rounded-xl text-sm font-medium shadow-lg shadow-blue-600/25 hover:shadow-xl hover:shadow-blue-600/40 hover:-translate-y-0.5 hover:bg-blue-700 transition-all duration-200"
-          >
-            {lang === 'fr' ? 'Soumettre' : 'Apply'}
-          </Link>
+          <span className="inline-flex items-center justify-center bg-gray-100 text-gray-500 border border-gray-200 px-5 py-2 rounded-xl text-sm font-medium">
+            {lang === 'fr' ? 'Candidatures fermées' : 'Applications closed'}
+          </span>
         </div>
         <div className="flex items-center gap-3 mt-4 mb-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
