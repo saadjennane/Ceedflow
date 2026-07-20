@@ -81,7 +81,10 @@ export default function StickyHeader({
             </Link>
           </div>
           {applicationsClosed ? (
-            <span className="hidden sm:inline-flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 text-zinc-400 px-4 py-1.5 rounded-full text-xs font-medium">
+            <span
+              aria-disabled="true"
+              className="hidden sm:inline-flex items-center gap-1.5 bg-zinc-800 border border-zinc-700 text-zinc-400 px-4 py-1.5 rounded-full text-sm font-semibold cursor-not-allowed"
+            >
               {closedLabel || (lang === 'fr' ? 'Candidatures fermées' : 'Applications closed')}
             </span>
           ) : (

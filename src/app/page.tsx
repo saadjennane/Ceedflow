@@ -49,7 +49,10 @@ export default async function Home({
           >
             Règlement
           </a>
-          <span className="inline-flex items-center gap-1.5 bg-zinc-900/60 backdrop-blur border border-zinc-700 text-zinc-300 px-4 py-1.5 rounded-full text-xs font-medium">
+          <span
+            aria-disabled="true"
+            className="inline-flex items-center gap-1.5 bg-zinc-800 border border-zinc-700 text-zinc-400 px-5 py-2 rounded-full text-sm font-semibold cursor-not-allowed"
+          >
             {lang === 'fr' ? 'Candidatures fermées' : 'Applications closed'}
           </span>
         </div>
@@ -87,6 +90,15 @@ export default async function Home({
               </div>
             </div>
           </div>
+        </div>
+
+        <div className="mt-6 animate-fade-up opacity-0" style={{ animationDelay: '1.5s' }}>
+          <span
+            aria-disabled="true"
+            className="inline-flex items-center gap-3 bg-zinc-800/80 border border-zinc-700 text-zinc-400 px-7 py-3.5 rounded-full text-base md:text-lg font-semibold cursor-not-allowed"
+          >
+            {lang === 'fr' ? 'Candidatures fermées' : 'Applications closed'}
+          </span>
         </div>
       </div>
 

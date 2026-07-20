@@ -33,7 +33,10 @@ export default async function ProgramInfoPage({
           <Link href="/" className="text-sm text-blue-600 hover:text-blue-800">
             &larr; {t.back}
           </Link>
-          <span className="inline-flex items-center justify-center bg-gray-100 text-gray-500 border border-gray-200 px-5 py-2 rounded-xl text-sm font-medium">
+          <span
+            aria-disabled="true"
+            className="inline-flex items-center justify-center bg-gray-300 text-gray-600 border border-gray-300 px-5 py-2 rounded-xl text-sm font-semibold cursor-not-allowed"
+          >
             {lang === 'fr' ? 'Candidatures fermées' : 'Applications closed'}
           </span>
         </div>
