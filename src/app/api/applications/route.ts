@@ -2,10 +2,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { sendTemplateEmail } from '@/lib/email'
 import type { ApplicationFormData } from '@/lib/types'
+import { APPLICATIONS_OPEN, APPLICATIONS_CLOSED_COPY } from '@/lib/config'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
 export async function POST(request: NextRequest) {
+  // Hard gate: no submissions accepted while the program is closed.
+  if (!APPLICATIONS_OPEN) {
+    return NextResponse.json(
+      { error: APPLICATIONS_CLOSED_COPY.fr.body, closed: true },
+      { status: 423 }, // 423 Locked
+    )
+  }
+
   try {
     const data: ApplicationFormData = await request.json()
     const supabase = await createServiceRoleClient()

@@ -2,10 +2,11 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Plus, Trash2, Upload, Loader2, CheckCircle, X, FileText, Image } from 'lucide-react'
+import { Plus, Trash2, Upload, Loader2, CheckCircle, X, FileText, Image, Lock } from 'lucide-react'
 import type { Sector, Source, Stage, FounderRole, BusinessModelType, FundraisingPlan, PatentStatus, ApplicationFormData, Founder } from '@/lib/types'
 import type { Lang } from '@/lib/translations'
 import { getTranslations, getDropdownLabels } from '@/lib/translations'
+import { APPLICATIONS_OPEN, APPLICATIONS_CLOSED_COPY } from '@/lib/config'
 
 const SECTORS: Sector[] = [
   'AI', 'Fintech', 'Health', 'E-commerce', 'EdTech', 'Gaming',
@@ -189,6 +190,11 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
 
   const handleSubmit = async () => {
     if (submitting) return
+    if (!APPLICATIONS_OPEN) {
+      const copy = APPLICATIONS_CLOSED_COPY[lang === 'fr' ? 'fr' : 'en']
+      setError(copy.body)
+      return
+    }
     if (!validateStep(1) || !validateStep(2)) {
       setError(t.fillRequired)
       setShowErrors(true)
@@ -303,6 +309,27 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
         <CheckCircle className="mx-auto mb-4 text-green-600" size={48} />
         <h2 className="text-2xl font-bold mb-2">{t.applicationSubmitted}</h2>
         <p className="text-gray-600">{t.thankYou}</p>
+      </div>
+    )
+  }
+
+  if (!APPLICATIONS_OPEN) {
+    const copy = APPLICATIONS_CLOSED_COPY[lang === 'fr' ? 'fr' : 'en']
+    return (
+      <div className="max-w-2xl mx-auto py-16">
+        <div className="border border-gray-200 rounded-2xl bg-white p-10 text-center shadow-sm">
+          <div className="w-14 h-14 rounded-full bg-gray-100 mx-auto mb-5 flex items-center justify-center">
+            <Lock className="text-gray-500" size={22} />
+          </div>
+          <h2 className="text-2xl font-bold mb-3">{copy.title}</h2>
+          <p className="text-gray-600 leading-relaxed max-w-md mx-auto">{copy.body}</p>
+          <a
+            href={`/?lang=${lang}`}
+            className="inline-flex items-center gap-2 mt-8 text-sm text-emerald-700 hover:text-emerald-800 font-medium"
+          >
+            ← {lang === 'fr' ? 'Retour à l\'accueil' : 'Back to home'}
+          </a>
+        </div>
       </div>
     )
   }

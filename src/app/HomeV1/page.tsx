@@ -1,9 +1,9 @@
 import Link from 'next/link'
 import { ArrowRight, CheckCircle2, ChevronDown, Zap, Target, Users, Hammer, BadgeCheck, Sparkles, Rocket } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { APPLICATIONS_OPEN } from '@/lib/config'
 
-// Toggle back to false once applications reopen.
-const APPLICATIONS_CLOSED = true
+const APPLICATIONS_CLOSED = !APPLICATIONS_OPEN
 
 const DNA_ICONS: LucideIcon[] = [Hammer, BadgeCheck, Sparkles, Rocket]
 import { HOME_COPY, type Lang } from '@/lib/home-copy'
