@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useMemo, useEffect, useRef } from 'react'
+import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Search, Download, Filter, LayoutList, LayoutGrid, FileText, User, Trash2, X, Star } from 'lucide-react'
 import type { Application, ApplicationStatus, Sector, Stage, Priority, AdminUser } from '@/lib/types'
@@ -56,20 +56,48 @@ function AdminAvatar({ adminUsers, adminId }: { adminUsers: AdminUser[]; adminId
 
 export default function ApplicationsList({ applications, adminUsers, currentUserId }: { applications: Application[]; adminUsers: AdminUser[]; currentUserId: string }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const pathname = usePathname()
   const supabase = createClient()
-  const [search, setSearch] = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
-  const [filterSector, setFilterSector] = useState('')
-  const [filterStage, setFilterStage] = useState('')
-  const [filterPriority, setFilterPriority] = useState('')
-  const [filterMinRating, setFilterMinRating] = useState('')
-  const [sortBy, setSortBy] = useState<'date' | 'rating'>('date')
-  const [showFilters, setShowFilters] = useState(false)
-  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list')
-  const [groupBy, setGroupBy] = useState<'status' | 'assignee'>('status')
+
+  // Seed each filter from URL query params so browser Back on a detail page
+  // restores the exact view. We keep local state for typing latency and only
+  // mirror it back to the URL via history.replaceState (no re-render).
+  const [search, setSearch] = useState(() => searchParams.get('q') || '')
+  const [filterStatus, setFilterStatus] = useState(() => searchParams.get('status') || '')
+  const [filterSector, setFilterSector] = useState(() => searchParams.get('sector') || '')
+  const [filterStage, setFilterStage] = useState(() => searchParams.get('stage') || '')
+  const [filterPriority, setFilterPriority] = useState(() => searchParams.get('priority') || '')
+  const [filterMinRating, setFilterMinRating] = useState(() => searchParams.get('minRating') || '')
+  const [sortBy, setSortBy] = useState<'date' | 'rating'>(() => (searchParams.get('sort') === 'rating' ? 'rating' : 'date'))
+  const [showFilters, setShowFilters] = useState(() => searchParams.get('filters') === '1')
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>(() => (searchParams.get('view') === 'kanban' ? 'kanban' : 'list'))
+  const [groupBy, setGroupBy] = useState<'status' | 'assignee'>(() => (searchParams.get('groupBy') === 'assignee' ? 'assignee' : 'status'))
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false)
   const [bulkDeleting, setBulkDeleting] = useState(false)
+
+  // Mirror all persisted filter state to the URL, silently (no Next.js re-render).
+  // When the user hits browser Back from a detail page, Next.js re-mounts this
+  // list with the URL intact, and the initial useState seeds re-hydrate the view.
+  const didMount = useRef(false)
+  useEffect(() => {
+    if (!didMount.current) { didMount.current = true; return }
+    const params = new URLSearchParams()
+    if (search) params.set('q', search)
+    if (filterStatus) params.set('status', filterStatus)
+    if (filterSector) params.set('sector', filterSector)
+    if (filterStage) params.set('stage', filterStage)
+    if (filterPriority) params.set('priority', filterPriority)
+    if (filterMinRating) params.set('minRating', filterMinRating)
+    if (sortBy !== 'date') params.set('sort', sortBy)
+    if (showFilters) params.set('filters', '1')
+    if (viewMode !== 'list') params.set('view', viewMode)
+    if (groupBy !== 'status') params.set('groupBy', groupBy)
+    const qs = params.toString()
+    const url = qs ? `${pathname}?${qs}` : pathname
+    window.history.replaceState(null, '', url)
+  }, [search, filterStatus, filterSector, filterStage, filterPriority, filterMinRating, sortBy, showFilters, viewMode, groupBy, pathname])
 
   const ratingByApp = useMemo(() => {
     const map = new Map<string, ReturnType<typeof computeRatingStats>>()
