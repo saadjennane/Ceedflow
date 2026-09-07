@@ -1,55 +1,74 @@
 import { NextRequest, NextResponse } from 'next/server'
+import ExcelJS from 'exceljs'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
+import {
+  fetchFilteredApplications,
+  pickPrimaryFounder,
+  readFiltersFromParams,
+} from '@/lib/application-filters'
 
+/**
+ * GET /api/applications/export
+ * Streams an .xlsx file matching the same filters as the admin list (status,
+ * sector, stage, priority, search, min rating, tags). Columns are kept tight
+ * per user spec: startup name, status, primary founder name / email / phone.
+ */
 export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient()
-
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const filters = readFiltersFromParams(request.nextUrl.searchParams)
+  const rows = await fetchFilteredApplications(supabase, filters)
+
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = 'The Builders by CEED'
+  workbook.created = new Date()
+  const sheet = workbook.addWorksheet('Candidatures')
+
+  sheet.columns = [
+    { header: 'Startup', key: 'startup', width: 32 },
+    { header: 'Statut', key: 'status', width: 18 },
+    { header: 'Fondateur principal', key: 'founderName', width: 28 },
+    { header: 'Email', key: 'founderEmail', width: 34 },
+    { header: 'Téléphone', key: 'founderPhone', width: 20 },
+  ]
+
+  // Style the header row: bold, subtle background, freeze it.
+  const header = sheet.getRow(1)
+  header.font = { bold: true }
+  header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } }
+  header.alignment = { vertical: 'middle', horizontal: 'left' }
+  sheet.views = [{ state: 'frozen', ySplit: 1 }]
+
+  for (const app of rows) {
+    const primary = pickPrimaryFounder(app)
+    sheet.addRow({
+      startup: app.startup_name || '',
+      status: app.status || '',
+      founderName: primary?.full_name || '',
+      founderEmail: primary?.email || '',
+      founderPhone: primary?.phone || '',
+    })
   }
 
-  const searchParams = request.nextUrl.searchParams
-  let query = supabase.from('applications').select('*')
+  // Add a light bottom border to every data row for readability.
+  sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber === 1) return
+    row.eachCell(cell => {
+      cell.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } }
+      cell.alignment = { vertical: 'middle' }
+    })
+  })
 
-  const status = searchParams.get('status')
-  const sector = searchParams.get('sector')
-  const stage = searchParams.get('stage')
-  const priority = searchParams.get('priority')
+  const buffer = await workbook.xlsx.writeBuffer()
+  const filename = `candidatures_${new Date().toISOString().slice(0, 10)}.xlsx`
 
-  if (status) query = query.eq('status', status)
-  if (sector) query = query.eq('sector', sector)
-  if (stage) query = query.eq('stage', stage)
-  if (priority) query = query.eq('priority', priority)
-
-  const { data: applications, error } = await query.order('created_at', { ascending: false })
-
-  if (error) {
-    return NextResponse.json({ error: 'Failed to fetch' }, { status: 500 })
-  }
-
-  // Build CSV
-  const headers = ['Startup Name', 'Sector', 'Stage', 'Status', 'Priority', 'Assigned Admin', 'Next Action', 'Submitted']
-  const rows = (applications || []).map(app => [
-    app.startup_name,
-    app.sector,
-    app.stage,
-    app.status,
-    app.priority,
-    app.assigned_admin_id || '',
-    app.next_action || '',
-    new Date(app.created_at).toLocaleDateString(),
-  ])
-
-  const csv = [
-    headers.join(','),
-    ...rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')),
-  ].join('\n')
-
-  return new NextResponse(csv, {
+  return new NextResponse(buffer as unknown as BodyInit, {
     headers: {
-      'Content-Type': 'text/csv',
-      'Content-Disposition': 'attachment; filename=applications.csv',
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Cache-Control': 'no-store',
     },
   })
 }

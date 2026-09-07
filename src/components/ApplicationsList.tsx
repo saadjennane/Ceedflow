@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Search, Download, Filter, LayoutList, LayoutGrid, FileText, User, Trash2, X, Star } from 'lucide-react'
+import { Search, Download, Filter, LayoutList, LayoutGrid, FileText, User, Trash2, X, Star, Mail } from 'lucide-react'
 import type { Application, ApplicationStatus, Sector, Stage, Priority, AdminUser } from '@/lib/types'
 import { computeRatingStats } from '@/lib/ratings'
 import RatingPill from './RatingPill'
@@ -137,14 +137,25 @@ export default function ApplicationsList({ applications, adminUsers, currentUser
     return result
   }, [applications, search, filterStatus, filterSector, filterStage, filterPriority, filterMinRating, sortBy, ratingByApp])
 
-  const exportCSV = () => {
+  // Build the export query string from every active filter, so downloads
+  // always match exactly what the admin sees in the list.
+  const currentFilterQuery = () => {
     const params = new URLSearchParams()
+    if (search) params.set('q', search)
     if (filterStatus) params.set('status', filterStatus)
     if (filterSector) params.set('sector', filterSector)
     if (filterStage) params.set('stage', filterStage)
     if (filterPriority) params.set('priority', filterPriority)
+    if (filterMinRating) params.set('minRating', filterMinRating)
+    return params.toString()
+  }
 
-    window.open(`/api/applications/export?${params.toString()}`, '_blank')
+  const exportXLSX = () => {
+    window.open(`/api/applications/export?${currentFilterQuery()}`, '_blank')
+  }
+
+  const exportEmails = () => {
+    window.open(`/api/applications/export-emails?${currentFilterQuery()}`, '_blank')
   }
 
   const updateField = async (appId: string, field: string, value: string, oldValue: string) => {
@@ -270,11 +281,20 @@ export default function ApplicationsList({ applications, adminUsers, currentUser
             <option value="assignee">Group by Assigned</option>
           </select>
           <button
-            onClick={exportCSV}
+            onClick={exportXLSX}
             className="flex items-center gap-2 px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+            title="Télécharger la liste filtrée au format Excel"
           >
             <Download size={16} />
-            Export CSV
+            Export Excel
+          </button>
+          <button
+            onClick={exportEmails}
+            className="flex items-center gap-2 px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+            title="Télécharger les emails des fondateurs principaux (séparés par ;) pour un envoi groupé"
+          >
+            <Mail size={16} />
+            Emails
           </button>
         </div>
       </div>
