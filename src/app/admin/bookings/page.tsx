@@ -2,19 +2,9 @@ import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import AdminNav from '@/components/AdminNav'
 import AdminTabs from '@/components/AdminTabs'
-import { Calendar, Mail } from 'lucide-react'
+import BookingsAdminTable from '@/components/BookingsAdminTable'
+import { Calendar } from 'lucide-react'
 import type { Booking, BookingSlot } from '@/lib/types'
-
-const DAY_LABEL: Record<string, string> = {
-  '2026-09-28': 'Lundi 28 septembre',
-  '2026-09-29': 'Mardi 29 septembre',
-}
-
-function formatDateTime(iso: string) {
-  const d = new Date(iso)
-  const pad = (n: number) => n.toString().padStart(2, '0')
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
 
 export default async function AdminBookingsPage() {
   const supabase = await createServerSupabaseClient()
@@ -27,7 +17,6 @@ export default async function AdminBookingsPage() {
   ])
   const slots = (slotsRes.data || []) as BookingSlot[]
   const bookings = (bookingsRes.data || []) as Booking[]
-  const slotById = new Map(slots.map(s => [s.id, s]))
 
   const totalSlots = slots.length
   const bookedCount = bookings.length
@@ -59,45 +48,7 @@ export default async function AdminBookingsPage() {
               Aucune réservation pour l&apos;instant.
             </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Créneau</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Startup</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Personne</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Email</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Réservé le</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bookings.map(b => {
-                  const slot = slotById.get(b.slot_id)
-                  return (
-                    <tr key={b.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        {slot ? (
-                          <div>
-                            <div className="font-medium">{DAY_LABEL[slot.day] || slot.day}</div>
-                            <div className="text-xs text-gray-500">{slot.start_time} – {slot.end_time}</div>
-                          </div>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 font-medium">{b.startup_name}</td>
-                      <td className="px-4 py-3 text-gray-700">{b.first_name} {b.last_name}</td>
-                      <td className="px-4 py-3 text-gray-600">
-                        <a href={`mailto:${b.email}`} className="inline-flex items-center gap-1 hover:text-blue-700">
-                          <Mail size={12} />
-                          {b.email}
-                        </a>
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{formatDateTime(b.created_at)}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+            <BookingsAdminTable bookings={bookings} slots={slots} />
           )}
         </div>
       </div>
