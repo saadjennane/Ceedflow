@@ -2,13 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { FileText, Users, FolderKanban, Rocket, Mail, MailCheck } from 'lucide-react'
+import { FileText, Users, FolderKanban, Rocket, Mail, MailCheck, CalendarClock } from 'lucide-react'
 
 const TABS = [
   { href: '/admin', label: 'Applications', icon: FileText, match: (p: string) => p === '/admin' || (p.startsWith('/admin/applications')) },
   { href: '/admin/jurors', label: 'Jury', icon: Users, match: (p: string) => p.startsWith('/admin/jurors') },
   { href: '/admin/committees', label: 'Comités', icon: FolderKanban, match: (p: string) => p.startsWith('/admin/committees') },
   { href: '/admin/startups', label: 'Startups', icon: Rocket, match: (p: string) => p.startsWith('/admin/startups') },
+  { href: '/admin/bookings', label: 'Réservations', icon: CalendarClock, match: (p: string) => p.startsWith('/admin/bookings') },
   { href: '/admin/campaigns', label: 'Campagnes', icon: Mail, match: (p: string) => p.startsWith('/admin/campaigns') },
   { href: '/admin/email-templates', label: 'Templates', icon: MailCheck, match: (p: string) => p.startsWith('/admin/email-templates') },
 ]

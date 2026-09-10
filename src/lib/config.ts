@@ -7,6 +7,14 @@
 /** Are new startup applications currently accepted? */
 export const APPLICATIONS_OPEN = false
 
+/**
+ * Deadline for candidate slot bookings (public /book page).
+ * Any GET/POST after this instant is refused. Morocco time (UTC+1, no DST).
+ * Currently: Wednesday 16 September 2026, end of day.
+ */
+export const BOOKING_DEADLINE = '2026-09-16T23:59:59+01:00'
+export const BOOKING_DAYS = ['2026-09-28', '2026-09-29'] as const
+
 export const APPLICATIONS_CLOSED_COPY = {
   fr: {
     title: 'Candidatures clôturées',

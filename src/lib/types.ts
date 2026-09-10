@@ -258,6 +258,25 @@ export interface Juror {
   created_at: string
 }
 
+export interface BookingSlot {
+  id: string
+  day: string        // 'YYYY-MM-DD'
+  start_time: string // 'HH:MM' (Morocco time, no TZ conversion)
+  end_time: string   // 'HH:MM'
+  sort_index: number
+  created_at: string
+}
+
+export interface Booking {
+  id: string
+  slot_id: string
+  startup_name: string
+  first_name: string
+  last_name: string
+  email: string
+  created_at: string
+}
+
 export interface JurorAction {
   id: string
   juror_id: string
