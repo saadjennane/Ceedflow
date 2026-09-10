@@ -13,10 +13,23 @@ export default async function AdminBookingsPage() {
 
   const [slotsRes, bookingsRes] = await Promise.all([
     supabase.from('booking_slots').select('*'),
-    supabase.from('bookings').select('*').order('created_at', { ascending: false }),
+    supabase.from('bookings').select('*'),
   ])
   const slots = (slotsRes.data || []) as BookingSlot[]
   const bookings = (bookingsRes.data || []) as Booking[]
+
+  // Chronological order by day then start_time. Bookings on unknown slots
+  // sink to the bottom so nothing hides on top when a slot was pruned.
+  const slotById = new Map(slots.map(s => [s.id, s]))
+  const sortedBookings = [...bookings].sort((a, b) => {
+    const sa = slotById.get(a.slot_id)
+    const sb = slotById.get(b.slot_id)
+    if (!sa && !sb) return 0
+    if (!sa) return 1
+    if (!sb) return -1
+    if (sa.day !== sb.day) return sa.day.localeCompare(sb.day)
+    return sa.start_time.localeCompare(sb.start_time)
+  })
 
   const totalSlots = slots.length
   const bookedCount = bookings.length
@@ -48,7 +61,7 @@ export default async function AdminBookingsPage() {
               Aucune réservation pour l&apos;instant.
             </div>
           ) : (
-            <BookingsAdminTable bookings={bookings} slots={slots} />
+            <BookingsAdminTable bookings={sortedBookings} slots={slots} />
           )}
         </div>
       </div>
