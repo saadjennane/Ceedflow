@@ -6,7 +6,7 @@ import { Plus, Trash2, Upload, Loader2, CheckCircle, X, FileText, Image, Lock } 
 import type { Sector, Source, Stage, FounderRole, BusinessModelType, FundraisingPlan, PatentStatus, ApplicationFormData, Founder } from '@/lib/types'
 import type { Lang } from '@/lib/translations'
 import { getTranslations, getDropdownLabels } from '@/lib/translations'
-import { APPLICATIONS_OPEN, APPLICATIONS_CLOSED_COPY } from '@/lib/config'
+import { APPLICATIONS_OPEN, APPLICATIONS_CLOSED_COPY, APPLICATION_BYPASS_TOKEN } from '@/lib/config'
 
 const SECTORS: Sector[] = [
   'AI', 'Fintech', 'Health', 'E-commerce', 'EdTech', 'Gaming',
@@ -34,7 +34,10 @@ interface AdditionalDoc {
   file: File
 }
 
-export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
+export default function ApplicationForm({ lang = 'en', bypassToken = '' }: { lang?: Lang; bypassToken?: string }) {
+  const bypassed = bypassToken === APPLICATION_BYPASS_TOKEN
+  const submissionAllowed = APPLICATIONS_OPEN || bypassed
+
   const t = getTranslations(lang)
   const d = getDropdownLabels(lang)
   const [step, setStep] = useState(1)
@@ -190,7 +193,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
 
   const handleSubmit = async () => {
     if (submitting) return
-    if (!APPLICATIONS_OPEN) {
+    if (!submissionAllowed) {
       const copy = APPLICATIONS_CLOSED_COPY[lang === 'fr' ? 'fr' : 'en']
       setError(copy.body)
       return
@@ -252,7 +255,10 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
         founders,
       }
 
-      const res = await fetch('/api/applications', {
+      const apiUrl = bypassed
+        ? `/api/applications?token=${encodeURIComponent(bypassToken)}`
+        : '/api/applications'
+      const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -313,7 +319,7 @@ export default function ApplicationForm({ lang = 'en' }: { lang?: Lang }) {
     )
   }
 
-  if (!APPLICATIONS_OPEN) {
+  if (!submissionAllowed) {
     const copy = APPLICATIONS_CLOSED_COPY[lang === 'fr' ? 'fr' : 'en']
     return (
       <div className="max-w-2xl mx-auto py-16">

@@ -8,6 +8,15 @@
 export const APPLICATIONS_OPEN = false
 
 /**
+ * Bypass token for the closed-applications gate. Anyone visiting
+ * /apply?token=<APPLICATION_BYPASS_TOKEN> sees a working form even while
+ * APPLICATIONS_OPEN is false. Change this string to instantly invalidate
+ * every previously shared link. Not a security boundary — treat it as a
+ * shareable secret URL for hand-picked late invitees.
+ */
+export const APPLICATION_BYPASS_TOKEN = 'late-a7f3k9m2n5x8'
+
+/**
  * Deadline for candidate slot bookings (public /book page).
  * Any GET/POST after this instant is refused. Morocco time (UTC+1, no DST).
  * Currently: Wednesday 16 September 2026, end of day.

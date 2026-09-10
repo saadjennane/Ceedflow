@@ -2,13 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { sendTemplateEmail } from '@/lib/email'
 import type { ApplicationFormData } from '@/lib/types'
-import { APPLICATIONS_OPEN, APPLICATIONS_CLOSED_COPY } from '@/lib/config'
+import { APPLICATIONS_OPEN, APPLICATIONS_CLOSED_COPY, APPLICATION_BYPASS_TOKEN } from '@/lib/config'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
 export async function POST(request: NextRequest) {
-  // Hard gate: no submissions accepted while the program is closed.
-  if (!APPLICATIONS_OPEN) {
+  // Hard gate: no submissions accepted while the program is closed, unless the
+  // caller carries the bypass token in the ?token= query (for hand-picked late
+  // invitees who received a private link).
+  const bypassOk = request.nextUrl.searchParams.get('token') === APPLICATION_BYPASS_TOKEN
+  if (!APPLICATIONS_OPEN && !bypassOk) {
     return NextResponse.json(
       { error: APPLICATIONS_CLOSED_COPY.fr.body, closed: true },
       { status: 423 }, // 423 Locked

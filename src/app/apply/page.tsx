@@ -6,11 +6,12 @@ import { getTranslations } from '@/lib/translations'
 export default async function ApplyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ lang?: string }>
+  searchParams: Promise<{ lang?: string; token?: string }>
 }) {
   const params = await searchParams
   const lang: Lang = params.lang === 'fr' ? 'fr' : 'en'
   const t = getTranslations(lang)
+  const bypassToken = params.token || ''
 
   return (
     <div className="min-h-screen py-12 px-4">
@@ -25,7 +26,7 @@ export default async function ApplyPage({
         <h1 className="text-3xl font-bold mt-4 mb-2">{t.applyTitle}</h1>
         <p className="text-gray-600">{t.applySubtitle}</p>
       </div>
-      <ApplicationForm lang={lang} />
+      <ApplicationForm lang={lang} bypassToken={bypassToken} />
     </div>
   )
 }
