@@ -1,0 +1,13 @@
+{
+  "name": "ceed",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "dev": "npm run dev --workspace=@ceed/api & npm run dev --workspace=@ceed/web",
+    "dev:api": "npm run dev --workspace=@ceed/api",
+    "dev:web": "npm run dev --workspace=@ceed/web",
+    "build": "npm run build --workspace=@ceed/shared && npm run build --workspace=@ceed/web",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}
