@@ -6,63 +6,101 @@ import type {
   SelectionConfig,
   SourcingConfig,
 } from '@ceed/shared';
-import { formatDate } from '../../lib/format';
+import { todayIso } from '../../lib/format';
 
-export interface BlockStatus {
-  /** One line under the block name in the canvas. */
-  summary: string;
-  chip?: { label: string; tone: 'ok' | 'info' | 'warn' | 'stop' | '' };
+export type Progress = 'Completed' | 'In progress' | 'Upcoming' | null;
+
+/** Where something sits against today. Derived from its own dates — nothing is stored. */
+export function progressOf(startsOn: string | null, endsOn: string | null): Progress {
+  const today = todayIso();
+  if (!startsOn && !endsOn) return null;
+  if (endsOn && endsOn < today) return 'Completed';
+  if (startsOn && startsOn > today) return 'Upcoming';
+  return 'In progress';
+}
+
+export const PROGRESS_TONE: Record<Exclude<Progress, null>, string> = {
+  Completed: 'badge',
+  'In progress': 'badge info',
+  Upcoming: 'badge',
+};
+
+export interface BlockLine {
+  /** The sentence under the block name. */
+  description: string;
+  /** The date shown on the right, before the status. */
+  date: string | null;
+  progress: Progress;
+  chips: { label: string; tone: 'ok' | 'info' | 'warn' | 'cohort' | '' }[];
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-export function blockStatus(block: Block): BlockStatus {
+export function blockLine(block: Block): BlockLine {
+  const chips: BlockLine['chips'] = [];
+
   switch (block.type) {
     case 'sourcing': {
       const c = block.config as SourcingConfig;
-      const bits = [c.channels.length ? plural(c.channels.length, 'channel') : 'No channel yet'];
+      const bits = ['Open the call and track where candidates come from'];
+      if (c.channels.length) bits.push(plural(c.channels.length, 'channel'));
       if (c.target) bits.push(`target ${c.target}`);
-      if (c.closesAt) bits.push(`closes ${formatDate(c.closesAt)}`);
-      return { summary: bits.join(' · ') };
+      return {
+        description: bits.join(' · '),
+        date: c.opensAt,
+        progress: progressOf(c.opensAt, c.closesAt),
+        chips,
+      };
     }
     case 'application': {
       const c = block.config as ApplicationConfig;
-      const bits = [c.fields.length ? plural(c.fields.length, 'question') : 'No question yet'];
-      if (c.closesAt) bits.push(`closes ${formatDate(c.closesAt)}`);
+      if (c.published) chips.push({ label: 'Form live', tone: 'ok' });
       return {
-        summary: bits.join(' · '),
-        chip: c.published ? { label: 'Form live', tone: 'ok' } : { label: 'Not published', tone: '' },
+        description: `Collect applications through a form · ${
+          c.fields.length ? plural(c.fields.length, 'question') : 'no question yet'
+        }`,
+        date: c.opensAt,
+        progress: progressOf(c.opensAt, c.closesAt),
+        chips,
       };
     }
     case 'evaluation': {
       const c = block.config as EvaluationConfig;
-      const bits = [c.criteria.length ? plural(c.criteria.length, 'criterion').replace('criterions', 'criteria') : 'No criteria yet'];
+      const bits = ['Score candidates against a grid'];
+      if (c.criteria.length) bits.push(`${c.criteria.length} criteria`);
       if (c.evaluators.length) bits.push(plural(c.evaluators.length, 'evaluator'));
-      return { summary: bits.join(' · ') };
+      return {
+        description: bits.join(' · '),
+        date: c.opensAt,
+        progress: progressOf(c.opensAt, c.closesAt),
+        chips,
+      };
     }
     case 'committee': {
       const c = block.config as CommitteeConfig;
-      const bits = [c.heldAt ? formatDate(c.heldAt) : 'No date yet'];
+      const bits = ['Jury session with startups and evaluators'];
       if (c.juryIds.length) bits.push(plural(c.juryIds.length, 'jury member'));
       if (c.location) bits.push(c.location);
-      return { summary: bits.join(' · ') };
+      return {
+        description: bits.join(' · '),
+        date: c.heldAt,
+        progress: progressOf(c.heldAt, c.heldAt),
+        chips,
+      };
     }
     case 'selection': {
       const c = block.config as SelectionConfig;
+      if (c.outputKind === 'cohort') chips.push({ label: '◎ Forms the cohort', tone: 'cohort' });
       const method =
         c.method === 'threshold' ? `score ≥ ${c.threshold}` : c.method === 'top_n' ? `top ${c.topN}` : 'decided by hand';
-      const kind = c.outputKind === 'cohort' ? 'Forms the cohort' : 'Shortlist';
       return {
-        summary: `${kind} · ${method}`,
-        chip: c.publishedAt
-          ? { label: 'Published', tone: 'ok' }
-          : { label: 'Not published', tone: 'warn' },
+        description: `Outputs ${c.outputKind === 'cohort' ? 'the selected cohort' : 'a shortlist'} · ${method}`,
+        date: c.publishedAt ? c.publishedAt.slice(0, 10) : null,
+        progress: c.publishedAt ? 'Completed' : null,
+        chips: c.publishedAt ? chips : [...chips, { label: 'Not published', tone: 'warn' as const }],
       };
     }
     default:
-      return { summary: 'Not built yet' };
+      return { description: 'Not built yet', date: null, progress: null, chips };
   }
 }
-
-/** Blocks whose drawer opens onto a working panel rather than settings only. */
-export const HAS_WORKSPACE = new Set(['application', 'evaluation', 'committee', 'selection']);

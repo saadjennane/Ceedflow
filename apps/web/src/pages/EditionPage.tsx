@@ -14,6 +14,20 @@ import '../ui/programs.css';
 
 type Tab = 'builder' | 'candidates';
 
+/** The edition's tabs, in the order the prototype settled on. Unbuilt ones stay visible and inert. */
+const TABS: { key: string; label: string; built: boolean }[] = [
+  { key: 'overview', label: 'Overview', built: false },
+  { key: 'builder', label: 'Builder', built: true },
+  { key: 'candidates', label: 'Candidates', built: true },
+  { key: 'cohort', label: 'Cohort', built: false },
+  { key: 'activities', label: 'Activities', built: false },
+  { key: 'deliverables', label: 'Deliverables', built: false },
+  { key: 'team', label: 'Team', built: false },
+  { key: 'reports', label: 'Reports', built: false },
+  { key: 'public', label: 'Public Page', built: false },
+  { key: 'settings', label: 'Settings', built: false },
+];
+
 export function EditionPage() {
   const { editionId = '' } = useParams();
   const edition = useAsync(() => api.get<EditionDetail>(`/api/editions/${editionId}`), editionId);
@@ -23,7 +37,8 @@ export function EditionPage() {
   const trackId = params.get('track');
   const setTab = (next: Tab) =>
     setParams((p) => {
-      next === 'builder' ? p.delete('tab') : p.set('tab', next);
+      if (next === 'builder') p.delete('tab');
+      else p.set('tab', next);
       return p;
     });
   const setTrackId = (next: string) =>
@@ -31,9 +46,8 @@ export function EditionPage() {
       p.set('track', next);
       return p;
     });
+
   const [editing, setEditing] = useState(false);
-  const [addingTrack, setAddingTrack] = useState(false);
-  const [trackName, setTrackName] = useState('');
   const toast = useToast();
 
   const detail = edition.data;
@@ -60,60 +74,87 @@ export function EditionPage() {
     toast(`Edition marked ${status.toLowerCase()}.`);
   };
 
+  const cohortSize = candidates.data?.filter((c) => c.status === 'Selected').length ?? 0;
+
   return (
     <>
       <header className="topbar">
         <div className="crumbs">
-          <Link to="/">Programmes</Link>
+          <Link to="/">Programs</Link>
           <Icon name="chevronRight" size={13} />
           <Link to={`/programs/${detail.program.id}`}>{detail.program.name}</Link>
           <Icon name="chevronRight" size={13} />
         </div>
         <h1>{detail.name}</h1>
-        <select className="status-select" value={detail.status} onChange={(e) => setStatus(e.target.value)} aria-label="Edition status">
+        <select
+          className="status-select"
+          value={detail.status}
+          onChange={(e) => setStatus(e.target.value)}
+          aria-label="Edition status"
+        >
           {EDITION_STATUSES.map((s) => (
             <option key={s} value={s}>
               {s}
             </option>
           ))}
         </select>
-        <span className="faint" style={{ fontSize: 12.5 }}>
-          {formatRange(detail.startsOn, detail.endsOn)}
-          {detail.city && ` · ${detail.city}`}
-        </span>
         <div className="spacer" />
-        <div className="seg" role="tablist">
-          <button role="tab" className={tab === 'builder' ? 'on' : ''} onClick={() => setTab('builder')}>
-            Builder
-          </button>
-          <button role="tab" className={tab === 'candidates' ? 'on' : ''} onClick={() => setTab('candidates')}>
-            Candidates
-            {candidates.data?.length ? <span className="num"> · {candidates.data.length}</span> : null}
-          </button>
-        </div>
+        <span className="ed-meta">
+          {formatRange(detail.startsOn, detail.endsOn)}
+          {detail.city && <> · {detail.city}</>}
+          {detail.seats > 0 && (
+            <>
+              {' · '}
+              <span className="num">{detail.seats}</span> seats
+            </>
+          )}
+          {cohortSize > 0 && (
+            <>
+              {' · '}
+              <span className="num">{cohortSize}</span> in the cohort
+            </>
+          )}
+        </span>
         <button className="btn" onClick={() => setEditing(true)}>
           <Icon name="edit" size={14} /> Edit
         </button>
       </header>
 
-      <div className="track-bar">
-        {tracks.map((t) => (
-          <button key={t.id} className={t.id === track.id ? 'track on' : 'track'} onClick={() => setTrackId(t.id)}>
-            {t.name}
-            {t.isDefault && <span className="faint" style={{ fontWeight: 400 }}> · default</span>}
-          </button>
-        ))}
-        <button className="track add" onClick={() => setAddingTrack(true)} title="Add a track">
-          <Icon name="plus" size={14} /> Track
-        </button>
-        <div className="spacer" />
-        <TrackMenu track={track} onChanged={refresh} />
-      </div>
+      <nav className="tabbar" role="tablist" aria-label="Edition">
+        {TABS.map((t) =>
+          t.built ? (
+            <button
+              key={t.key}
+              role="tab"
+              className={tab === t.key ? 'tab on' : 'tab'}
+              onClick={() => setTab(t.key as Tab)}
+            >
+              {t.label}
+              {t.key === 'candidates' && candidates.data?.length ? (
+                <span className="tab-count num">{candidates.data.length}</span>
+              ) : null}
+            </button>
+          ) : (
+            <span key={t.key} className="tab off" title="Not built yet">
+              {t.label}
+            </span>
+          ),
+        )}
+      </nav>
 
       {tab === 'builder' ? (
-        <BuilderCanvas track={track} candidates={candidates.data ?? []} onChanged={refresh} />
+        <BuilderCanvas
+          edition={detail}
+          track={track}
+          onSelectTrack={setTrackId}
+          onChanged={refresh}
+          onPublish={() => setStatus('Published')}
+        />
       ) : (
-        <CandidatesTab edition={detail} track={track} candidates={candidates.data ?? []} onChanged={refresh} />
+        <div className="page">
+          <TrackBar edition={detail} currentTrackId={track.id} onSelect={setTrackId} onChanged={refresh} />
+          <CandidatesTab edition={detail} track={track} candidates={candidates.data ?? []} onChanged={refresh} />
+        </div>
       )}
 
       {editing && (
@@ -126,100 +167,127 @@ export function EditionPage() {
           }}
         />
       )}
-
-      {addingTrack && (
-        <Modal
-          title="New track"
-          subtitle="A track is a parallel path inside the same edition: its own phases, its own candidates."
-          onClose={() => setAddingTrack(false)}
-          footer={
-            <>
-              <button className="btn ghost" onClick={() => setAddingTrack(false)}>
-                Cancel
-              </button>
-              <button
-                className="btn primary"
-                disabled={!trackName.trim()}
-                onClick={async () => {
-                  await api.post(`/api/editions/${detail.id}/tracks`, { name: trackName.trim() });
-                  setTrackName('');
-                  setAddingTrack(false);
-                  refresh();
-                  toast('Track added.');
-                }}
-              >
-                Add track
-              </button>
-            </>
-          }
-        >
-          <TextField label="Track name" value={trackName} onChange={setTrackName} placeholder="Deeptech" />
-        </Modal>
-      )}
     </>
   );
 }
 
-function TrackMenu({ track, onChanged }: { track: { id: string; name: string; isDefault: boolean }; onChanged: () => void }) {
-  const [renaming, setRenaming] = useState(false);
-  const [name, setName] = useState(track.name);
+/* ------------------------------------------------------------------ */
+/* Track bar — tracks are created, renamed and deleted from the bar    */
+/* itself; nothing is decided when the edition is created.             */
+/* ------------------------------------------------------------------ */
+
+export function TrackBar({
+  edition,
+  currentTrackId,
+  onSelect,
+  onChanged,
+}: {
+  edition: EditionDetail;
+  currentTrackId: string;
+  onSelect: (id: string) => void;
+  onChanged: () => void;
+}) {
+  const [editor, setEditor] = useState<null | 'add' | 'rename'>(null);
+  const [name, setName] = useState('');
   const [confirm, setConfirm] = useState(false);
   const toast = useToast();
 
+  const tracks = edition.tracks;
+  const current = tracks.find((t) => t.id === currentTrackId) ?? tracks[0];
+  const extra = tracks.length - 1;
+
+  const commit = async () => {
+    const value = name.trim();
+    if (!value || !editor) return setEditor(null);
+    if (editor === 'add') {
+      const created = await api.post<{ id: string }>(`/api/editions/${edition.id}/tracks`, { name: value });
+      onChanged();
+      onSelect(created.id);
+      toast('Track added.');
+    } else {
+      await api.patch(`/api/tracks/${current.id}`, { name: value });
+      onChanged();
+      toast('Track renamed.');
+    }
+    setName('');
+    setEditor(null);
+  };
+
   return (
     <>
-      <button
-        className="btn ghost sm"
-        onClick={() => {
-          setName(track.name);
-          setRenaming(true);
-        }}
-      >
-        <Icon name="edit" size={13} /> Rename track
-      </button>
-      {!track.isDefault && (
-        <button className="btn ghost sm" onClick={() => setConfirm(true)}>
-          <Icon name="trash" size={13} />
-        </button>
-      )}
+      <div className="track-bar">
+        <span className="track-label">Track</span>
+        {tracks.map((t) => (
+          <button key={t.id} className={t.id === current.id ? 'track on' : 'track'} onClick={() => onSelect(t.id)}>
+            {t.name}
+          </button>
+        ))}
 
-      {renaming && (
-        <Modal
-          title="Rename track"
-          onClose={() => setRenaming(false)}
-          footer={
-            <>
-              <button className="btn ghost" onClick={() => setRenaming(false)}>
-                Cancel
-              </button>
-              <button
-                className="btn primary"
-                disabled={!name.trim()}
-                onClick={async () => {
-                  await api.patch(`/api/tracks/${track.id}`, { name: name.trim() });
-                  setRenaming(false);
-                  onChanged();
-                  toast('Track renamed.');
-                }}
-              >
-                Save
-              </button>
-            </>
-          }
+        {editor ? (
+          <span className="track-inline">
+            <input
+              autoFocus
+              value={name}
+              placeholder="Track name"
+              aria-label="Track name"
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commit();
+                if (e.key === 'Escape') setEditor(null);
+              }}
+            />
+            <button className="btn primary sm" onClick={commit}>
+              {editor === 'rename' ? 'Rename' : 'Add'}
+            </button>
+            <button className="btn ghost icon sm" onClick={() => setEditor(null)} aria-label="Cancel">
+              <Icon name="x" size={13} />
+            </button>
+          </span>
+        ) : (
+          <button
+            className="track-add"
+            onClick={() => {
+              setName('');
+              setEditor('add');
+            }}
+            title="Add a track to this edition"
+          >
+            + Add Track
+          </button>
+        )}
+
+        <div className="spacer" />
+        <span className="track-hint">
+          {extra > 0
+            ? `${extra} track${extra > 1 ? 's' : ''} in this edition`
+            : 'One common workflow — add a track to split it by theme'}
+        </span>
+        <button
+          className="btn ghost sm"
+          onClick={() => {
+            setName(current.name);
+            setEditor('rename');
+          }}
         >
-          <TextField label="Track name" value={name} onChange={setName} />
-        </Modal>
-      )}
+          Rename
+        </button>
+        {!current.isDefault && (
+          <button className="btn ghost danger sm" onClick={() => setConfirm(true)}>
+            Delete
+          </button>
+        )}
+      </div>
 
       {confirm && (
         <ConfirmDialog
-          title={`Delete ${track.name}?`}
+          title={`Delete ${current.name}?`}
           body="Its phases, blocks and candidates go with it."
           confirmLabel="Delete track"
           destructive
           onClose={() => setConfirm(false)}
           onConfirm={async () => {
-            await api.del(`/api/tracks/${track.id}`);
+            await api.del(`/api/tracks/${current.id}`);
+            onSelect(edition.tracks.find((t) => t.isDefault)?.id ?? '');
             onChanged();
             toast('Track deleted.');
           }}
@@ -228,6 +296,8 @@ function TrackMenu({ track, onChanged }: { track: { id: string; name: string; is
     </>
   );
 }
+
+/* ------------------------------------------------------------------ */
 
 function EditEditionModal({
   edition,

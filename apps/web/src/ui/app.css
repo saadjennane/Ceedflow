@@ -120,6 +120,12 @@ textarea {
   font-weight: 800;
   font-size: 16px;
   letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.brand-sub {
+  font-size: 11px;
+  color: var(--ink-3);
 }
 
 .nav-group {

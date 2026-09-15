@@ -36,14 +36,14 @@ export function ProgramPage() {
     <>
       <header className="topbar">
         <div className="crumbs">
-          <Link to="/">Programmes</Link>
+          <Link to="/">Programs</Link>
           <Icon name="chevronRight" size={13} />
         </div>
         <h1>{p.name}</h1>
         <span className="badge">{p.type}</span>
         <div className="spacer" />
         <button className="btn" onClick={() => setEditing(true)}>
-          <Icon name="edit" size={14} /> Edit programme
+          <Icon name="edit" size={14} /> Edit program
         </button>
         <button className="btn primary" onClick={() => setAdding(true)}>
           <Icon name="plus" /> New edition
@@ -112,7 +112,7 @@ export function ProgramPage() {
 
         <div>
           <button className="btn danger sm" onClick={() => setConfirmDelete(true)}>
-            <Icon name="trash" size={13} /> Delete programme
+            <Icon name="trash" size={13} /> Delete program
           </button>
         </div>
       </div>
@@ -123,7 +123,7 @@ export function ProgramPage() {
           onClose={() => setEditing(false)}
           onSaved={() => {
             program.reload();
-            toast('Programme updated.');
+            toast('Program updated.');
           }}
         />
       )}
@@ -140,8 +140,8 @@ export function ProgramPage() {
       {confirmDelete && (
         <ConfirmDialog
           title={`Delete ${p.name}?`}
-          body={`This removes the programme, its ${p.editions.length} edition${p.editions.length === 1 ? '' : 's'}, and everything inside them. It cannot be undone.`}
-          confirmLabel="Delete programme"
+          body={`This removes the program, its ${p.editions.length} edition${p.editions.length === 1 ? '' : 's'}, and everything inside them. It cannot be undone.`}
+          confirmLabel="Delete program"
           destructive
           onClose={() => setConfirmDelete(false)}
           onConfirm={async () => {
@@ -178,7 +178,7 @@ function EditProgramModal({
 
   return (
     <Modal
-      title="Edit programme"
+      title="Edit program"
       onClose={onClose}
       footer={
         <>
@@ -206,7 +206,7 @@ function EditProgramModal({
         </>
       }
     >
-      <TextField label="Programme name" value={draft.name} onChange={(v) => set({ name: v })} />
+      <TextField label="Program name" value={draft.name} onChange={(v) => set({ name: v })} />
       <div className="grid-2">
         <TextField label="Short code" value={draft.code} onChange={(v) => set({ code: v })} />
         <SelectField

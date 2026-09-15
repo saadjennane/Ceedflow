@@ -37,9 +37,9 @@ export function ProgramsPage() {
   return (
     <>
       <header className="topbar">
-        <h1>Programmes</h1>
+        <h1>Programs</h1>
         <span className="badge">
-          <span className="num">{list.length}</span> programmes · <span className="num">{editionCount}</span> editions
+          <span className="num">{list.length}</span> programs · <span className="num">{editionCount}</span> editions
         </span>
         <div className="spacer" />
         <div className="seg" role="group" aria-label="View">
@@ -67,7 +67,7 @@ export function ProgramsPage() {
                 >
                   <Icon name="layers" />
                   <div>
-                    <strong>New programme</strong>
+                    <strong>New program</strong>
                     <span>Creates its first edition at the same time.</span>
                   </div>
                 </button>
@@ -81,7 +81,7 @@ export function ProgramsPage() {
                   <Icon name="calendar" />
                   <div>
                     <strong>New edition</strong>
-                    <span>Add a run to a programme you already have.</span>
+                    <span>Add a run to a program you already have.</span>
                   </div>
                 </button>
               </div>
@@ -96,10 +96,10 @@ export function ProgramsPage() {
 
         {!programs.loading && !list.length && (
           <div className="empty">
-            <h3>No programme yet</h3>
-            <p>A programme holds its editions. Create one and its first edition comes with it.</p>
+            <h3>No program yet</h3>
+            <p>A program holds its editions. Create one and its first edition comes with it.</p>
             <button className="btn primary" onClick={() => setNewProgram(true)}>
-              <Icon name="plus" /> New programme
+              <Icon name="plus" /> New program
             </button>
           </div>
         )}
@@ -143,7 +143,7 @@ export function ProgramsPage() {
                 <table className="data">
                   <thead>
                     <tr>
-                      <th>Programme</th>
+                      <th>Program</th>
                       <th>Edition</th>
                       <th>Status</th>
                       <th>Dates</th>

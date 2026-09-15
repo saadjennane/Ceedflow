@@ -21,7 +21,7 @@ const TEMPLATES = [
 ];
 
 /* ------------------------------------------------------------------ */
-/* New programme                                                       */
+/* New program                                                       */
 /* ------------------------------------------------------------------ */
 
 export function CreateProgramModal({
@@ -77,8 +77,8 @@ export function CreateProgramModal({
 
   return (
     <Modal
-      title="New programme"
-      subtitle={step === 1 ? 'Step 1 of 2 — the programme itself' : 'Step 2 of 2 — its first edition'}
+      title="New program"
+      subtitle={step === 1 ? 'Step 1 of 2 — the program itself' : 'Step 2 of 2 — its first edition'}
       onClose={onClose}
       footer={
         step === 1 ? (
@@ -97,7 +97,7 @@ export function CreateProgramModal({
             </button>
             <div className="spacer" />
             <button className="btn primary" disabled={saving || !editionName.trim()} onClick={submit}>
-              {saving ? 'Creating…' : 'Create programme'}
+              {saving ? 'Creating…' : 'Create program'}
             </button>
           </>
         )
@@ -106,7 +106,7 @@ export function CreateProgramModal({
       {step === 1 ? (
         <>
           <TextField
-            label="Programme name"
+            label="Program name"
             value={name}
             onChange={setName}
             placeholder="CEED Grow"
@@ -130,7 +130,7 @@ export function CreateProgramModal({
             hint="optional"
           />
           <TextArea
-            label="What is this programme for?"
+            label="What is this program for?"
             value={summary}
             onChange={setSummary}
             rows={3}
@@ -194,7 +194,7 @@ export function CreateProgramModal({
 }
 
 /* ------------------------------------------------------------------ */
-/* New edition on an existing programme                                */
+/* New edition on an existing program                                */
 /* ------------------------------------------------------------------ */
 
 export function CreateEditionModal({
@@ -240,7 +240,7 @@ export function CreateEditionModal({
   return (
     <Modal
       title="New edition"
-      subtitle="An edition is one run of a programme: its own dates, its own candidates, its own workflow."
+      subtitle="An edition is one run of a program: its own dates, its own candidates, its own workflow."
       onClose={onClose}
       footer={
         <>
@@ -254,7 +254,7 @@ export function CreateEditionModal({
       }
     >
       <SelectField
-        label="Programme"
+        label="Program"
         value={programId}
         onChange={(value) => {
           setProgramId(value);

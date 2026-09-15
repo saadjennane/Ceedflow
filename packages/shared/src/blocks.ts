@@ -90,7 +90,7 @@ export const BLOCK_TYPE_META: Record<BlockType, BlockTypeMeta> = {
 
 export const BLOCK_LIBRARY: { group: string; types: BlockType[] }[] = [
   { group: 'Recruitment & selection', types: ['sourcing', 'application', 'evaluation', 'committee', 'selection'] },
-  { group: 'Programme delivery', types: ['workshop', 'mentoring', 'deliverable', 'event'] },
+  { group: 'Program delivery', types: ['workshop', 'mentoring', 'deliverable', 'event'] },
   { group: 'Coordination', types: ['campaign', 'meeting', 'custom'] },
 ];
 

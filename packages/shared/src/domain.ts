@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { blockTypeSchema, type AnyBlockConfig, type BlockType } from './blocks.js';
 
 /* ------------------------------------------------------------------ */
-/* Programme                                                           */
+/* Program                                                           */
 /* ------------------------------------------------------------------ */
 
 export const PROGRAM_TYPES = [
@@ -122,7 +122,7 @@ export interface ProgramWithEditions extends Program {
 /* ------------------------------------------------------------------ */
 
 export const createProgramInput = z.object({
-  name: z.string().min(1, 'Give the programme a name.'),
+  name: z.string().min(1, 'Give the program a name.'),
   code: z.string().optional(),
   type: z.string().optional(),
   summary: z.string().optional(),

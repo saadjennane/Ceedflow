@@ -2,13 +2,23 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { Icon } from '../ui/Icon';
 import { useTheme } from '../ui/Overlays';
 
-/** Sections that exist in the model but are not built yet stay visible and inert. */
-const LATER = [
+/**
+ * The navigation the prototype settled on. Sections that exist in the model but
+ * are not built yet stay visible and inert, so the shape of the product is legible.
+ */
+const TOP = [
   { label: 'Home', icon: 'home' },
   { label: 'Tasks', icon: 'check' },
+];
+
+const COMMUNITY = [
   { label: 'Organisations', icon: 'layers' },
   { label: 'Individuals', icon: 'users' },
+  { label: 'CRM', icon: 'compass' },
   { label: 'Campaigns', icon: 'send' },
+];
+
+const PROGRAMS_LATER = [
   { label: 'Calendar', icon: 'calendar' },
   { label: 'Reports', icon: 'grid' },
   { label: 'Settings', icon: 'settings' },
@@ -22,21 +32,28 @@ export function Shell() {
       <nav className="sidebar">
         <div className="brand">
           <div className="brand-mark">C</div>
-          <div className="brand-name">CEED</div>
+          <div>
+            <div className="brand-name">CEED</div>
+            <div className="brand-sub">Program Management</div>
+          </div>
         </div>
 
-        <div className="eyebrow nav-group">Programmes</div>
+        {TOP.map((item) => (
+          <Soon key={item.label} {...item} />
+        ))}
+
+        <div className="eyebrow nav-group">Community</div>
+        {COMMUNITY.map((item) => (
+          <Soon key={item.label} {...item} />
+        ))}
+
+        <div className="eyebrow nav-group">Programs</div>
         <NavLink to="/" className={({ isActive }) => (isActive ? 'nav-item on' : 'nav-item')} end>
           <Icon name="layers" />
-          Programmes
+          Programs
         </NavLink>
-
-        <div className="eyebrow nav-group">Coming next</div>
-        {LATER.map((item) => (
-          <span className="nav-item" aria-disabled="true" key={item.label} title="Not built yet">
-            <Icon name={item.icon} />
-            {item.label}
-          </span>
+        {PROGRAMS_LATER.map((item) => (
+          <Soon key={item.label} {...item} />
         ))}
 
         <div className="sidebar-foot">
@@ -58,5 +75,14 @@ export function Shell() {
         <Outlet />
       </div>
     </div>
+  );
+}
+
+function Soon({ label, icon }: { label: string; icon: string }) {
+  return (
+    <span className="nav-item" aria-disabled="true" title="Not built yet">
+      <Icon name={icon} />
+      {label}
+    </span>
   );
 }

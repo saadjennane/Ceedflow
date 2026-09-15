@@ -4,43 +4,81 @@ import {
   type Block,
   type BlockType,
   type Candidate,
+  type EditionDetail,
   type PhaseWithBlocks,
+  type SelectionConfig,
   type TrackWithPhases,
 } from '@ceed/shared';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { api } from '../../lib/api';
-import { formatRange } from '../../lib/format';
+import { formatRange, formatDate } from '../../lib/format';
+import { useAsync } from '../../lib/useAsync';
 import { DateField, TextField } from '../../ui/Field';
 import { Icon } from '../../ui/Icon';
 import { ConfirmDialog, Modal, useToast } from '../../ui/Overlays';
+import { TrackBar } from '../EditionPage';
 import { BlockDrawer } from './BlockDrawer';
-import { blockStatus } from './blockSummary';
+import { PROGRESS_TONE, blockLine, progressOf } from './blockSummary';
 
 /** What is being dragged. dataTransfer cannot be read during dragover, so it lives here. */
 type DragPayload =
   | { kind: 'new'; type: BlockType }
-  | { kind: 'move'; blockId: string; fromPhaseId: string }
+  | { kind: 'move'; blockId: string }
   | { kind: 'phase'; phaseId: string };
 
+interface FunnelStep {
+  blockId: string;
+  name: string;
+  count: number;
+}
+
 export function BuilderCanvas({
+  edition,
   track,
-  candidates,
+  onSelectTrack,
   onChanged,
+  onPublish,
 }: {
+  edition: EditionDetail;
   track: TrackWithPhases;
-  candidates: Candidate[];
+  onSelectTrack: (id: string) => void;
   onChanged: () => void;
+  onPublish: () => void;
 }) {
   const [openBlockId, setOpenBlockId] = useState<string | null>(null);
   const [addingPhase, setAddingPhase] = useState(false);
   const [phaseName, setPhaseName] = useState('');
+  const [search, setSearch] = useState('');
   const [drop, setDrop] = useState<{ phaseId: string; index: number } | null>(null);
   const [phaseDropId, setPhaseDropId] = useState<string | null>(null);
   const drag = useRef<DragPayload | null>(null);
   const toast = useToast();
 
+  const candidates = useAsync(
+    () => api.get<Candidate[]>(`/api/editions/${edition.id}/candidates?trackId=${track.id}`),
+    `${edition.id}:${track.id}`,
+  );
+  const funnel = useAsync(
+    () => api.get<FunnelStep[]>(`/api/editions/${edition.id}/funnel?trackId=${track.id}`),
+    `${edition.id}:${track.id}:${JSON.stringify(track.phases.map((p) => p.blocks.map((b) => b.id)))}`,
+  );
+
+  /** For a selection block: how many arrived, how many passed. */
+  const funnelFor = useMemo(() => {
+    const steps = funnel.data ?? [];
+    return (blockId: string): [number, number] | null => {
+      const at = steps.findIndex((s) => s.blockId === blockId);
+      if (at <= 0) return null;
+      return [steps[at - 1].count, steps[at].count];
+    };
+  }, [funnel.data]);
+
   const phases = track.phases;
   const openBlock = phases.flatMap((p) => p.blocks).find((b) => b.id === openBlockId) ?? null;
+  const hasCohortSelection = phases
+    .flatMap((p) => p.blocks)
+    .some((b) => b.type === 'selection' && (b.config as SelectionConfig).outputKind === 'cohort');
+  const hasSelection = phases.flatMap((p) => p.blocks).some((b) => b.type === 'selection');
 
   const clearDrag = () => {
     drag.current = null;
@@ -68,100 +106,149 @@ export function BuilderCanvas({
     clearDrag();
     if (!payload || payload.kind !== 'phase' || payload.phaseId === targetPhaseId) return;
     const ids = phases.map((p) => p.id).filter((id) => id !== payload.phaseId);
-    const at = ids.indexOf(targetPhaseId);
-    ids.splice(at, 0, payload.phaseId);
+    ids.splice(ids.indexOf(targetPhaseId), 0, payload.phaseId);
     await api.post(`/api/tracks/${track.id}/phase-order`, { ids });
     onChanged();
   };
 
+  const groups = BLOCK_LIBRARY.map((group) => ({
+    ...group,
+    types: group.types.filter((t) => BLOCK_TYPE_META[t].label.toLowerCase().includes(search.trim().toLowerCase())),
+  })).filter((group) => group.types.length);
+
   return (
-    <div className="builder">
-      <aside className="library" aria-label="Block library">
-        <div className="eyebrow" style={{ padding: '0 4px 8px' }}>
-          Library
+    <div className="page">
+      <header className="page-head">
+        <div>
+          <h2>Program Builder</h2>
+          <p>Build this edition by organising phases and dragging blocks into each phase.</p>
         </div>
-        <p className="faint" style={{ margin: '0 4px 12px', fontSize: 12, lineHeight: 1.45 }}>
-          Drag a block into a phase, or click it to add it at the end of the first phase.
-        </p>
-        {BLOCK_LIBRARY.map((group) => (
-          <div key={group.group} className="lib-group">
-            <div className="lib-group-title">{group.group}</div>
-            {group.types.map((type) => {
-              const meta = BLOCK_TYPE_META[type];
-              return (
-                <button
-                  key={type}
-                  className={meta.implemented ? 'lib-item' : 'lib-item off'}
-                  draggable={meta.implemented}
-                  disabled={!meta.implemented}
-                  title={meta.implemented ? meta.blurb : 'Not built yet'}
-                  onDragStart={() => {
-                    drag.current = { kind: 'new', type };
-                  }}
-                  onDragEnd={clearDrag}
-                  onClick={async () => {
-                    const phase = phases[0];
-                    if (!phase) return;
-                    const block = await api.post<Block>('/api/blocks', { phaseId: phase.id, type });
-                    onChanged();
-                    setOpenBlockId(block.id);
-                  }}
-                >
-                  <span className="lib-icon">
-                    <Icon name={meta.icon} size={15} />
-                  </span>
-                  <span>
-                    <strong>{meta.label}</strong>
-                    <span className="lib-blurb">{meta.blurb}</span>
-                  </span>
-                </button>
-              );
-            })}
+        <div className="row">
+          <span className="btn off" title="Not built yet">
+            Preview
+          </span>
+          <span className="btn off" title="Not built yet">
+            Timeline
+          </span>
+          <span className="saved">
+            <Icon name="check" size={13} /> Changes save as you make them
+          </span>
+          <button
+            className="btn primary"
+            disabled={edition.status !== 'Draft'}
+            title={edition.status === 'Draft' ? 'Open the edition to candidates' : `Already ${edition.status.toLowerCase()}`}
+            onClick={onPublish}
+          >
+            Publish Edition
+          </button>
+        </div>
+      </header>
+
+      <TrackBar edition={edition} currentTrackId={track.id} onSelect={onSelectTrack} onChanged={onChanged} />
+
+      <div className="builder">
+        <aside className="library" aria-label="Block library">
+          <div className="library-head">
+            <h3>Block Library</h3>
+            <p>Drag a block into a phase</p>
           </div>
-        ))}
-      </aside>
-
-      <div className="phases">
-        {phases.map((phase, phaseIndex) => (
-          <PhaseColumn
-            key={phase.id}
-            phase={phase}
-            index={phaseIndex}
-            drop={drop?.phaseId === phase.id ? drop.index : null}
-            phaseDrop={phaseDropId === phase.id}
-            onBlockOpen={setOpenBlockId}
-            onChanged={onChanged}
-            onDragStartPhase={() => {
-              drag.current = { kind: 'phase', phaseId: phase.id };
-            }}
-            onDragStartBlock={(blockId) => {
-              drag.current = { kind: 'move', blockId, fromPhaseId: phase.id };
-            }}
-            onDragEnd={clearDrag}
-            onDragOverList={(index) => {
-              if (drag.current?.kind === 'phase') return;
-              setDrop({ phaseId: phase.id, index });
-            }}
-            onDropList={(index) => handleDrop(phase.id, index)}
-            onDragOverHeader={() => drag.current?.kind === 'phase' && setPhaseDropId(phase.id)}
-            onDropHeader={() => handlePhaseDrop(phase.id)}
-            onLeave={() => setDrop((d) => (d?.phaseId === phase.id ? null : d))}
+          <input
+            className="input"
+            placeholder="Search blocks…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search blocks"
           />
-        ))}
+          {groups.map((group) => (
+            <div key={group.group} className="lib-group">
+              <div className="lib-group-title">{group.group}</div>
+              {group.types.map((type) => {
+                const meta = BLOCK_TYPE_META[type];
+                return (
+                  <div
+                    key={type}
+                    className={meta.implemented ? 'lib-block' : 'lib-block off'}
+                    draggable={meta.implemented}
+                    title={meta.implemented ? meta.blurb : 'Not built yet'}
+                    onDragStart={() => {
+                      drag.current = { kind: 'new', type };
+                    }}
+                    onDragEnd={clearDrag}
+                    onDoubleClick={async () => {
+                      if (!meta.implemented || !phases.length) return;
+                      const block = await api.post<Block>('/api/blocks', { phaseId: phases[0].id, type });
+                      onChanged();
+                      setOpenBlockId(block.id);
+                    }}
+                  >
+                    <span className="grip">
+                      <Icon name="drag" size={13} />
+                    </span>
+                    <span className="blk-ico">
+                      <Icon name={meta.icon} size={14} />
+                    </span>
+                    {meta.label}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+          {!groups.length && <div className="phase-empty">No block matches “{search}”</div>}
+        </aside>
 
-        <button className="phase-add" onClick={() => setAddingPhase(true)}>
-          <Icon name="plus" size={18} />
-          Add phase
-        </button>
+        <div className="phase-list">
+          {hasSelection && !hasCohortSelection && (
+            <div className="callout warn">
+              <Icon name="alert" size={15} />
+              <div>
+                <strong>No Selection forms the cohort yet.</strong> Open the Selection that ends the funnel and set its
+                output to <b>the cohort</b> — otherwise nothing tells the program who the cohort is.
+              </div>
+            </div>
+          )}
+
+          {phases.map((phase, index) => (
+            <PhaseSection
+              key={phase.id}
+              phase={phase}
+              index={index}
+              drop={drop?.phaseId === phase.id ? drop.index : null}
+              phaseDrop={phaseDropId === phase.id}
+              funnelFor={funnelFor}
+              onBlockOpen={setOpenBlockId}
+              onChanged={onChanged}
+              onDragStartPhase={() => {
+                drag.current = { kind: 'phase', phaseId: phase.id };
+              }}
+              onDragStartBlock={(blockId) => {
+                drag.current = { kind: 'move', blockId };
+              }}
+              onDragEnd={clearDrag}
+              onDragOverList={(i) => drag.current?.kind !== 'phase' && setDrop({ phaseId: phase.id, index: i })}
+              onDropList={(i) => handleDrop(phase.id, i)}
+              onDragOverHead={() => drag.current?.kind === 'phase' && setPhaseDropId(phase.id)}
+              onDropHead={() => handlePhaseDrop(phase.id)}
+              onLeave={() => setDrop((d) => (d?.phaseId === phase.id ? null : d))}
+            />
+          ))}
+
+          <button className="phase-add" onClick={() => setAddingPhase(true)}>
+            <Icon name="plus" size={15} /> Add Phase
+          </button>
+        </div>
       </div>
 
       {openBlock && (
         <BlockDrawer
           block={openBlock}
           track={track}
-          candidates={candidates}
+          candidates={candidates.data ?? []}
           onClose={() => setOpenBlockId(null)}
-          onChanged={onChanged}
+          onChanged={() => {
+            onChanged();
+            candidates.reload();
+            funnel.reload();
+          }}
         />
       )}
 
@@ -205,11 +292,12 @@ export function BuilderCanvas({
 
 /* ------------------------------------------------------------------ */
 
-function PhaseColumn({
+function PhaseSection({
   phase,
   index,
   drop,
   phaseDrop,
+  funnelFor,
   onBlockOpen,
   onChanged,
   onDragStartPhase,
@@ -217,14 +305,15 @@ function PhaseColumn({
   onDragEnd,
   onDragOverList,
   onDropList,
-  onDragOverHeader,
-  onDropHeader,
+  onDragOverHead,
+  onDropHead,
   onLeave,
 }: {
   phase: PhaseWithBlocks;
   index: number;
   drop: number | null;
   phaseDrop: boolean;
+  funnelFor: (blockId: string) => [number, number] | null;
   onBlockOpen: (id: string) => void;
   onChanged: () => void;
   onDragStartPhase: () => void;
@@ -232,56 +321,67 @@ function PhaseColumn({
   onDragEnd: () => void;
   onDragOverList: (index: number) => void;
   onDropList: (index: number) => void;
-  onDragOverHeader: () => void;
-  onDropHeader: () => void;
+  onDragOverHead: () => void;
+  onDropHead: () => void;
   onLeave: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [confirm, setConfirm] = useState(false);
-  const listRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
 
-  /** Index the dragged block would take, from the pointer's position over the cards. */
+  const progress = progressOf(phase.startsOn, phase.endsOn);
+
+  /** Index the dragged block would take, from the pointer's position over the rows. */
   const indexAt = (clientY: number): number => {
-    const cards = Array.from(listRef.current?.querySelectorAll<HTMLElement>('[data-block]') ?? []);
-    for (let i = 0; i < cards.length; i++) {
-      const box = cards[i].getBoundingClientRect();
+    const rows = Array.from(bodyRef.current?.querySelectorAll<HTMLElement>('[data-block]') ?? []);
+    for (let i = 0; i < rows.length; i++) {
+      const box = rows[i].getBoundingClientRect();
       if (clientY < box.top + box.height / 2) return i;
     }
-    return cards.length;
+    return rows.length;
   };
 
   return (
-    <section className={phaseDrop ? 'phase drop' : 'phase'}>
+    <section className={phaseDrop ? 'phase drag-over' : 'phase'}>
       <header
         className="phase-head"
-        draggable
-        onDragStart={onDragStartPhase}
-        onDragEnd={onDragEnd}
         onDragOver={(e) => {
           e.preventDefault();
-          onDragOverHeader();
+          onDragOverHead();
         }}
         onDrop={(e) => {
           e.preventDefault();
-          onDropHeader();
+          onDropHead();
         }}
       >
-        <span className="phase-index num">{index + 1}</span>
+        <span className="grip" draggable onDragStart={onDragStartPhase} onDragEnd={onDragEnd} title="Drag to reorder phase">
+          <Icon name="drag" size={14} />
+        </span>
+        <span className="phase-num">Phase {index + 1}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <button className="phase-name" onClick={() => setEditing(true)} title="Rename or set dates">
+          <button className="phase-name" onClick={() => setEditing(true)}>
             {phase.name}
           </button>
-          <div className="phase-dates faint">{formatRange(phase.startsOn, phase.endsOn)}</div>
+          <div className="phase-sub">
+            {formatRange(phase.startsOn, phase.endsOn)} · {phase.blocks.length} block
+            {phase.blocks.length === 1 ? '' : 's'}
+          </div>
         </div>
-        <span className="drag-grip" title="Drag to reorder">
-          <Icon name="drag" size={15} />
-        </span>
+        <div className="phase-head-actions">
+          {progress && <span className={PROGRESS_TONE[progress]}>{progress}</span>}
+          <button className="btn ghost icon sm" onClick={() => setEditing(true)} aria-label="Edit phase">
+            <Icon name="settings" size={14} />
+          </button>
+          <button className="btn ghost icon sm" onClick={() => setConfirm(true)} aria-label="Delete phase">
+            <Icon name="x" size={14} />
+          </button>
+        </div>
       </header>
 
       <div
-        className="phase-list"
-        ref={listRef}
+        className="phase-body"
+        ref={bodyRef}
         onDragOver={(e) => {
           e.preventDefault();
           onDragOverList(indexAt(e.clientY));
@@ -295,27 +395,23 @@ function PhaseColumn({
         {phase.blocks.map((block, i) => (
           <div key={block.id}>
             {drop === i && <div className="drop-line" />}
-            <BlockCard
+            <BlockRow
               block={block}
+              funnel={
+                block.type === 'selection' && (block.config as SelectionConfig).publishedAt
+                  ? funnelFor(block.id)
+                  : null
+              }
               onOpen={() => onBlockOpen(block.id)}
               onDragStart={() => onDragStartBlock(block.id)}
               onDragEnd={onDragEnd}
+              onChanged={onChanged}
             />
           </div>
         ))}
         {drop === phase.blocks.length && <div className="drop-line" />}
-
-        {!phase.blocks.length && <div className="phase-empty">Drop a block here</div>}
+        {!phase.blocks.length && <div className="phase-empty">Drag blocks from the library into this phase</div>}
       </div>
-
-      <footer className="phase-foot">
-        <button className="btn ghost sm" onClick={() => setConfirm(true)} title="Delete phase">
-          <Icon name="trash" size={13} />
-        </button>
-        <span className="faint num" style={{ fontSize: 12 }}>
-          {phase.blocks.length} block{phase.blocks.length === 1 ? '' : 's'}
-        </span>
-      </footer>
 
       {editing && (
         <PhaseModal
@@ -350,42 +446,105 @@ function PhaseColumn({
   );
 }
 
-function BlockCard({
+function BlockRow({
   block,
+  funnel,
   onOpen,
   onDragStart,
   onDragEnd,
+  onChanged,
 }: {
   block: Block;
+  funnel: [number, number] | null;
   onOpen: () => void;
   onDragStart: () => void;
   onDragEnd: () => void;
+  onChanged: () => void;
 }) {
   const meta = BLOCK_TYPE_META[block.type];
-  const status = blockStatus(block);
+  const line = blockLine(block);
+  const [confirm, setConfirm] = useState(false);
+  const toast = useToast();
+
   return (
-    <article
-      data-block
-      className={`block-card t-${block.type}`}
-      draggable
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      onClick={onOpen}
-      tabIndex={0}
-      role="button"
-      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}
-    >
-      <div className="block-top">
-        <span className="block-icon">
-          <Icon name={meta.icon} size={14} />
+    <>
+      <div
+        data-block
+        className={`block t-${block.type}`}
+        draggable
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onClick={onOpen}
+        tabIndex={0}
+        role="button"
+        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}
+      >
+        <span className="grip">
+          <Icon name="drag" size={13} />
         </span>
-        <span className="block-type">{meta.label}</span>
-        <div className="spacer" />
-        {status.chip && <span className={status.chip.tone ? `badge ${status.chip.tone}` : 'badge'}>{status.chip.label}</span>}
+        <div className="block-ico">
+          <Icon name={meta.icon} size={15} />
+        </div>
+        <div className="block-main">
+          <div className="block-name">{block.name}</div>
+          <div className="block-desc">{line.description}</div>
+        </div>
+        <div className="block-meta">
+          {line.chips.map((chip) => (
+            <span
+              key={chip.label}
+              className={chip.tone === 'cohort' ? 'cohort-chip' : chip.tone ? `badge ${chip.tone}` : 'badge'}
+            >
+              {chip.label}
+            </span>
+          ))}
+          {funnel && (
+            <span className="funnel-chip num" title="Funnel step">
+              {funnel[0]} → {funnel[1]}
+            </span>
+          )}
+          {line.date && <span className="block-date">{formatDate(line.date)}</span>}
+          {line.progress && <span className={PROGRESS_TONE[line.progress]}>{line.progress}</span>}
+        </div>
+        <div className="block-actions">
+          <button
+            className="btn ghost icon sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpen();
+            }}
+            aria-label="Configure"
+          >
+            <Icon name="settings" size={13} />
+          </button>
+          <button
+            className="btn ghost icon sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirm(true);
+            }}
+            aria-label="Delete block"
+          >
+            <Icon name="x" size={13} />
+          </button>
+        </div>
       </div>
-      <h4>{block.name}</h4>
-      <p className="muted">{status.summary}</p>
-    </article>
+
+      {confirm && (
+        <ConfirmDialog
+          title={`Delete ${block.name}?`}
+          body="Its configuration and everything recorded against it — scores, decisions — go with it."
+          confirmLabel="Delete block"
+          destructive
+          onClose={() => setConfirm(false)}
+          onConfirm={async () => {
+            await api.del(`/api/blocks/${block.id}`);
+            onChanged();
+            toast(`${block.name} removed.`);
+          }}
+        />
+      )}
+    </>
   );
 }
 

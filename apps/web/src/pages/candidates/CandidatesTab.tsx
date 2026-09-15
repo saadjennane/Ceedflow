@@ -102,7 +102,7 @@ export function CandidatesTab({
   );
 
   return (
-    <div className="page">
+    <div className="stack" style={{ gap: 18 }}>
       {funnel.data && funnel.data.length > 1 && (
         <div className="funnel">
           {funnel.data.map((step, i) => (
