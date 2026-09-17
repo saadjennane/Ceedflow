@@ -1,7 +1,8 @@
 import { windowMinutes, type CommitteeConfig, type CommitteeSession, type TimeWindow } from '@ceed/shared';
 import { useState } from 'react';
 import { api } from '../../../lib/api';
-import { DateField, NumberField, TagField, TextField } from '../../../ui/Field';
+import { PeoplePicker } from '../../directory/PeoplePicker';
+import { DateField, NumberField, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
 import { ConfirmDialog, Modal, useToast } from '../../../ui/Overlays';
 
@@ -220,12 +221,11 @@ export function SessionModal({
           }
         />
 
-        <TagField
+        <PeoplePicker
           label="Jury"
-          values={draft.jury}
+          value={draft.jury}
           onChange={(v) => set({ jury: v })}
-          help="Who sits on this panel. They are the names that can score it."
-          placeholder="Add a jury member"
+          help="From the directory. Naming somebody here gives them the Jury role."
         />
       </Modal>
 

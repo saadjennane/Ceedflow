@@ -235,6 +235,7 @@ export const evaluationConfigSchema = z.object({
   closesAt: z.string().nullable().default(null),
   criteria: z.array(evaluationCriterionSchema).default([]),
   /** Who scores. Ignored when the evaluation scores a committee: its juries do. */
+  /** Ids of people in the directory. Never names: a rename must not orphan a score. */
   evaluators: z.array(z.string()).default([]),
   requireComment: z.boolean().default(false),
   /** The statuses this evaluation can put on a candidate. */
@@ -287,6 +288,7 @@ export const committeeSessionSchema = z.object({
   windows: z.array(timeWindowSchema).default([{ startsAt: '09:00', endsAt: '12:00' }]),
   minutesPerStartup: z.number().int().min(5).default(25),
   location: z.string().default(''),
+  /** Ids of people in the directory, resolved for display by the committee view. */
   jury: z.array(z.string()).default([]),
   position: z.number().int().default(0),
 });

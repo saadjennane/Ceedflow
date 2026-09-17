@@ -2,7 +2,7 @@
  * Realistic starting data. Run with `npm run seed --workspace=@ceed/api`.
  * Wipes the programme tables first, so it is safe to re-run.
  */
-import type { EvaluationCriterion, FormField, FormPage } from '@ceed/shared';
+import type { EvaluationCriterion, FormField, FormPage, PersonRef } from '@ceed/shared';
 import { db, migrate } from './client.js';
 import * as repo from './repo.js';
 
@@ -303,13 +303,41 @@ const CANDIDATES: SeedCandidate[] = [
   },
 ];
 
-/** Ids follow the same derivation the scoring grid uses, so seeded and live scores line up. */
-const EVALUATORS = ['Sarah Benali', 'Karim Alaoui', 'Nawal Cherkaoui'].map((name) => ({
-  id: `ev_${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
-  name,
-}));
+/**
+ * The people who judge. They are directory records rather than names, because a
+ * jury is people — so seeding a jury seeds them, even though the directory
+ * itself starts empty of startups.
+ */
+const JUDGES: [string, string, string[]][] = [
+  ['Sarah Benali', 'sarah@ceed.ma', ['CEED team', 'Mentor', 'Jury']],
+  ['Karim Alaoui', 'karim@ceed.ma', ['CEED team', 'Mentor', 'Jury', 'Investor']],
+  ['Nawal Cherkaoui', 'nawal@ceed.ma', ['CEED team', 'Mentor', 'Jury']],
+  ['Driss Benjelloun', 'driss@ceed.ma', ['Mentor', 'Jury']],
+  ['Fatima Zahra Ouali', 'fatima@ceed.ma', ['Mentor', 'Jury']],
+];
 
-const JURY = ['Sarah Benali', 'Karim Alaoui', 'Nawal Cherkaoui', 'Driss Benjelloun', 'Fatima Zahra Ouali'];
+/** Filled once the records exist, then used wherever a juror is referenced. */
+let EVALUATORS: PersonRef[] = [];
+let JURY: string[] = [];
+
+async function seedJudges() {
+  const dir = await import('./directory.js');
+  const people: PersonRef[] = [];
+  for (const [name, email, roles] of JUDGES) {
+    const record = await dir.createRecord({
+      kind: 'person',
+      name,
+      roles,
+      email,
+      city: 'Casablanca',
+      country: 'Morocco',
+      origin: 'manual',
+    });
+    people.push({ id: record.id, name: record.name });
+  }
+  EVALUATORS = people.slice(0, 3);
+  JURY = people.map((p) => p.id);
+}
 
 async function wipe() {
   const conn = await db();
@@ -319,6 +347,7 @@ async function wipe() {
 async function main() {
   await migrate();
   await wipe();
+  await seedJudges();
 
   /* ---- The live programme, fully wired ---- */
   const grow = await repo.createProgram({
@@ -333,7 +362,7 @@ async function main() {
   const editionId = grow.editions[0].id;
   await repo.updateEdition(editionId, {
     status: 'Running',
-    mentors: ['Sarah Benali', 'Karim Alaoui', 'Nawal Cherkaoui', 'Driss Benjelloun', 'Fatima Zahra Ouali'],
+    mentors: JUDGES.map(([name]) => name),
   });
 
   const detail = (await repo.getEditionDetail(editionId))!;
@@ -385,7 +414,7 @@ async function main() {
       opensAt: '2026-10-12',
       closesAt: '2026-10-25',
       criteria: CRITERIA,
-      evaluators: EVALUATORS.map((e) => e.name),
+      evaluators: EVALUATORS.map((e) => e.id),
       requireComment: true,
     },
   });
@@ -540,13 +569,13 @@ async function main() {
       const stage = (hash % 7) - 3; // -3 to +3, and unrelated to the file
       // Capped at 9 so a perfect card stays rare, and floored so nobody is absurd.
       const inTheRoom = Math.max(3, Math.min(9, onPaper + stage * 0.7));
-      for (const [index, juror] of session.session.jury.entries()) {
+      for (const [index, juror] of session.jury.entries()) {
         await repo.upsertScore({
           blockId: juryScoring.id,
           sessionId: session.session.id,
           candidateId: row.candidate.id,
-          evaluatorId: `ev_${juror.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
-          evaluatorName: juror,
+          evaluatorId: juror.id,
+          evaluatorName: juror.name,
           marks: Object.fromEntries(
             JURY_CRITERIA.map((c, i) => [
               c.id,

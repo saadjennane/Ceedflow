@@ -10,7 +10,9 @@ import {
   type CommitteeSlot,
   type EvaluationConfig,
   type TrackWithPhases,
+  type PersonRef,
 } from '@ceed/shared';
+import { peopleByIds } from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { outcomesByCandidate, outcomesOf, scoresByCandidate } from './scoring.js';
 import { intakeFor } from './selection.js';
@@ -27,6 +29,8 @@ export interface AssignmentView {
 
 export interface SessionView {
   session: CommitteeSession;
+  /** The jury as people rather than ids, so no screen resolves them itself. */
+  jury: PersonRef[];
   slots: CommitteeSlot[];
   assignments: AssignmentView[];
   /** A sitting is full when every slot is taken. */
@@ -107,10 +111,14 @@ export async function committeeView(blockId: string): Promise<CommitteeView | nu
   const grouped = evaluation ? await scoresByCandidate(evaluation) : null;
   const statuses = evaluation ? await outcomesByCandidate(evaluation) : null;
 
+  // One lookup for every jury of every sitting rather than one per sitting.
+  const jurors = await peopleByIds([...new Set(sessions.flatMap((s) => s.jury))]);
+
   const sessionViews: SessionView[] = sessions.map((session) => {
     const slots = sessionSlots(session);
     return {
       session,
+      jury: session.jury.map((id) => jurors.find((j) => j.id === id)).filter((j): j is PersonRef => Boolean(j)),
       slots,
       capacity: slots.length,
       assignments: assignments

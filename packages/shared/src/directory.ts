@@ -72,6 +72,12 @@ export interface AffiliationView {
   record: DirectoryRecord;
 }
 
+/** A person named from elsewhere in the model: the link, and what to display. */
+export interface PersonRef {
+  id: string;
+  name: string;
+}
+
 export interface RecordDetail {
   record: DirectoryRecord;
   /** Organisations for a person, people for an organisation. */

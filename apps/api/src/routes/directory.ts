@@ -60,6 +60,12 @@ export async function directoryRoutes(app: FastifyInstance) {
 
   app.delete('/api/records/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
+    // Letting a juror go would punch a hole in a ranking that was published, so
+    // the refusal names where they are still used rather than a flat no.
+    const uses = await dir.usesOf(id);
+    if (uses.length) {
+      throw new HttpError(422, `Still in use — ${uses.join(', ')}. Take them off those first.`);
+    }
     await dir.deleteRecord(id);
     reply.code(204);
   });

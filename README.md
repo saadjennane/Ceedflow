@@ -60,6 +60,26 @@ overwritten**, matching on names stripped of case, accents and punctuation, and 
 each row would do before anything is written. When the file carries a contact column, the
 organisation arrives with the person who holds it, created and linked in the same pass.
 
+## The committee and the evaluation are people
+
+A jury and an evaluation panel both hold **ids of directory records**, never names. That was a real
+bug, not a tidiness point: scores used to be keyed by `ev_sarah_benali`, derived from the name, so
+renaming a juror silently cut them off from every mark they had given. Now a rename follows
+everywhere and the marks stay put.
+
+`evaluator_name` survives on a score as a **snapshot of who marked that day**, used only if the
+record is gone. The link is the id; the name is history.
+
+Picking people is one control shared by both, with the directory behind it and *not in the directory
+yet* creating the person on the spot. **Anyone can be picked** — a real jury often includes a partner
+nobody thought to tag — and those already carrying Jury or Mentor are simply offered first. Naming
+somebody gives them the **Jury** role, so the role fills itself in by use instead of having to be set
+before a committee can be composed.
+
+Removing a person who still sits somewhere is refused, and the refusal says where: *sits on Jury day,
+evaluates on First review, 50 scores given*. The jury lives in JSONB, so no foreign key protects a
+published ranking from a hole — the check does.
+
 ## Where each block's result shows up
 
 | Block | What it produces | Where you see it |

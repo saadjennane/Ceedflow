@@ -10,6 +10,7 @@ import {
 } from '@ceed/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { peopleByIds } from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { committeeForEvaluation, committeeView } from '../services/committee.js';
 import { outcomesByCandidate, outcomesOf, scoresByCandidate, setOutcomeByHand } from '../services/scoring.js';
@@ -203,13 +204,15 @@ export async function funnelRoutes(app: FastifyInstance) {
         requireComment: config.requireComment,
         outcomes,
         scope: { blockId: committee.id, name: committee.name },
-        groups: (view?.sessions ?? []).map((session) => ({
-          sessionId: session.session.id,
-          name: session.session.name,
-          heldOn: session.session.heldOn,
-          evaluators: session.session.jury,
-          rows: session.assignments.map((a) => row(a.candidate)),
-        })),
+        groups: await Promise.all(
+          (view?.sessions ?? []).map(async (session) => ({
+            sessionId: session.session.id,
+            name: session.session.name,
+            heldOn: session.session.heldOn,
+            evaluators: await peopleByIds(session.session.jury),
+            rows: session.assignments.map((a) => row(a.candidate)),
+          })),
+        ),
       };
     }
 
@@ -224,7 +227,7 @@ export async function funnelRoutes(app: FastifyInstance) {
           sessionId: null,
           name: '',
           heldOn: null,
-          evaluators: config.evaluators,
+          evaluators: await peopleByIds(config.evaluators),
           rows: found.intake.filter((c) => c.status !== 'Withdrawn').map(row),
         },
       ],
@@ -251,7 +254,11 @@ export async function funnelRoutes(app: FastifyInstance) {
         comment: 'Add a comment before submitting.',
       });
     }
-    return repo.upsertScore({ ...input, blockId: id });
+    // The evaluator is a person in the directory. The name is written alongside
+    // as a snapshot of who scored that day, never as the link itself.
+    const [person] = await peopleByIds([input.evaluatorId]);
+    if (!person) throw new HttpError(422, 'That evaluator is not in the directory.');
+    return repo.upsertScore({ ...input, blockId: id, evaluatorName: person.name });
   });
 
   /* ---------------- selection ---------------- */

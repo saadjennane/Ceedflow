@@ -4,26 +4,26 @@ import { ApiError, api } from '../../lib/api';
 import { TagField, TextArea, TextField } from '../../ui/Field';
 import { Modal, useToast } from '../../ui/Overlays';
 
-/**
- * The second of the three ways in: typed by the team. A record added here is
- * Unclaimed — CEED maintains it until somebody takes it over.
- */
+/** Typed by the team — one of the two ways a record gets into the directory. */
 export function RecordModal({
   kind,
   record,
+  initialName,
   onClose,
   onSaved,
 }: {
   kind: RecordKind;
   /** Given when editing rather than creating. */
   record?: DirectoryRecord;
+  /** Carries over what was typed in the search that led here. */
+  initialName?: string;
   onClose: () => void;
   onSaved: (record: DirectoryRecord) => void;
 }) {
   const isOrg = kind === 'org';
   const editing = Boolean(record);
   const [draft, setDraft] = useState({
-    name: record?.name ?? '',
+    name: record?.name ?? initialName ?? '',
     roles: record?.roles ?? (isOrg ? ['Startup'] : []),
     email: record?.email ?? '',
     phone: record?.phone ?? '',
@@ -47,7 +47,7 @@ export function RecordModal({
     try {
       const saved = editing
         ? await api.patch<DirectoryRecord>(`/api/records/${record!.id}`, draft)
-        : await api.post<DirectoryRecord>('/api/records', { kind, origin: 'manual', ownership: 'Unclaimed', ...draft });
+        : await api.post<DirectoryRecord>('/api/records', { kind, origin: 'manual', ...draft });
       toast(editing ? 'Saved.' : `${saved.name} added to the directory.`);
       onSaved(saved);
     } catch (err) {
@@ -61,11 +61,7 @@ export function RecordModal({
   return (
     <Modal
       title={editing ? draft.name || 'Record' : isOrg ? 'Add an organisation' : 'Add a person'}
-      subtitle={
-        editing
-          ? undefined
-          : `Added by the team, so the page starts Unclaimed — ${isOrg ? 'invite a contact' : 'invite them'} to hand it over.`
-      }
+      subtitle={editing ? undefined : 'Kept by the CEED team until the person registers themselves.'}
       onClose={onClose}
       footer={
         <>

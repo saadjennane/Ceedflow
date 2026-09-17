@@ -1,6 +1,7 @@
 import { sessionSlots, type CommitteeConfig, type SourcingConfig } from '@ceed/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { markAsJury } from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { committeeView, seatOnFreeSlots } from '../services/committee.js';
 import { HttpError, notFound, parse } from './util.js';
@@ -30,6 +31,7 @@ export async function actionRoutes(app: FastifyInstance) {
     if (!block || block.type !== 'committee') return notFound(reply, 'Committee block not found.');
     const input = parse(sessionInput, req.body);
     await repo.createSession(id, input);
+    await markAsJury(input.jury ?? []);
     return committeeView(id);
   });
 
@@ -37,7 +39,9 @@ export async function actionRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const blockId = await repo.sessionBlockId(id);
     if (!blockId) return notFound(reply, 'Committee not found.');
-    await repo.updateSession(id, parse(sessionInput, req.body));
+    const input = parse(sessionInput, req.body);
+    await repo.updateSession(id, input);
+    await markAsJury(input.jury ?? []);
     return committeeView(blockId);
   });
 

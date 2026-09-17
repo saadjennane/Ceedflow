@@ -4,6 +4,7 @@ import {
   type Affiliation,
   type AffiliationView,
   type DirectoryRecord,
+  type PersonRef,
   type RecordDetail,
   type RecordKind,
 } from '@ceed/shared';
@@ -170,6 +171,49 @@ export async function linksOf(record: DirectoryRecord): Promise<AffiliationView[
     if (found) views.push({ affiliation, record: found });
   }
   return views.sort((a, b) => a.record.name.localeCompare(b.record.name));
+}
+
+/** Resolves ids to what a screen needs to show, in the order they were given. */
+export async function peopleByIds(ids: string[]): Promise<PersonRef[]> {
+  if (!ids.length) return [];
+  const rows = await all<PersonRef>(`select id, name from records where id = any($1::text[])`, [ids]);
+  return ids.map((id) => rows.find((r) => r.id === id)).filter((r): r is PersonRef => Boolean(r));
+}
+
+/**
+ * Scoring is what makes somebody a jury member, so the role fills itself in
+ * rather than having to be set before a committee can be composed.
+ */
+export async function markAsJury(ids: string[]): Promise<void> {
+  if (!ids.length) return;
+  await (await db()).query(
+    `update records set roles = roles || '["Jury"]'::jsonb
+      where id = any($1::text[]) and kind = 'person' and not roles @> '["Jury"]'::jsonb`,
+    [ids],
+  );
+}
+
+/** Where a person is used, so deleting them cannot punch a hole in a ranking. */
+export async function usesOf(id: string): Promise<string[]> {
+  const uses: string[] = [];
+  const sittings = await all<{ name: string }>(
+    `select name from committee_sessions where jury @> $1::jsonb order by name`,
+    [JSON.stringify([id])],
+  );
+  for (const s of sittings) uses.push(`sits on ${s.name}`);
+
+  const blocks = await all<{ name: string }>(
+    `select name from blocks where config -> 'evaluators' @> $1::jsonb order by name`,
+    [JSON.stringify([id])],
+  );
+  for (const b of blocks) uses.push(`evaluates on ${b.name}`);
+
+  const scores = await all<{ n: number }>(
+    `select count(*)::int as n from evaluation_scores where evaluator_id = $1`,
+    [id],
+  );
+  if (scores[0]?.n) uses.push(`${scores[0].n} score${scores[0].n === 1 ? '' : 's'} given`);
+  return uses;
 }
 
 export async function recordDetail(id: string): Promise<RecordDetail | null> {

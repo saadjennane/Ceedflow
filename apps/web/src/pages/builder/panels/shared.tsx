@@ -5,14 +5,13 @@ import {
   type Candidate,
   type EvaluationCriterion,
   type EvaluationScore,
+  type PersonRef,
 } from '@ceed/shared';
 import { useState } from 'react';
 import { api } from '../../../lib/api';
 import { NumberField, SelectField, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
 import { useToast } from '../../../ui/Overlays';
-
-export const evaluatorId = (name: string) => `ev_${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
 
 export function OutcomeBadge({ outcomes, id }: { outcomes: BlockOutcome[]; id: string | null }) {
   const outcome = outcomes.find((o) => o.id === id);
@@ -253,10 +252,11 @@ export function ScoreEditor({
   sessionId?: string;
   candidate: Candidate;
   criteria: EvaluationCriterion[];
-  evaluator: string;
-  /** Whose marks these are. Until evaluators log in, the team enters for them. */
-  evaluators?: string[];
-  onEvaluator?: (name: string) => void;
+  /** The person whose marks these are, from the directory. */
+  evaluator: PersonRef;
+  /** Until evaluators log in, the team enters on their behalf. */
+  evaluators?: PersonRef[];
+  onEvaluator?: (id: string) => void;
   existing?: EvaluationScore;
   requireComment?: boolean;
   onSaved: () => void;
@@ -274,8 +274,8 @@ export function ScoreEditor({
     try {
       await api.post(`/api/blocks/${blockId}/scores`, {
         candidateId: candidate.id,
-        evaluatorId: evaluatorId(evaluator),
-        evaluatorName: evaluator,
+        evaluatorId: evaluator.id,
+        evaluatorName: evaluator.name,
         sessionId: sessionId ?? null,
         marks,
         comment,
@@ -295,15 +295,15 @@ export function ScoreEditor({
       <div className="row" style={{ gap: 8 }}>
         <span className="eyebrow">Marks for {candidate.orgName}, entered as</span>
         {evaluators && evaluators.length > 1 && onEvaluator ? (
-          <select className="status-select" value={evaluator} onChange={(e) => onEvaluator(e.target.value)}>
-            {evaluators.map((name) => (
-              <option key={name} value={name}>
-                {name}
+          <select className="status-select" value={evaluator.id} onChange={(e) => onEvaluator(e.target.value)}>
+            {evaluators.map((person) => (
+              <option key={person.id} value={person.id}>
+                {person.name}
               </option>
             ))}
           </select>
         ) : (
-          <strong style={{ fontSize: 12.5 }}>{evaluator}</strong>
+          <strong style={{ fontSize: 12.5 }}>{evaluator.name}</strong>
         )}
       </div>
       {criteria.map((criterion) => (

@@ -1,5 +1,6 @@
 import { orderedBlocks, type Block, type EvaluationConfig, type TrackWithPhases } from '@ceed/shared';
-import { DateField, SelectField, TagField } from '../../../ui/Field';
+import { PeoplePicker } from '../../directory/PeoplePicker';
+import { DateField, SelectField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
 import { CriteriaEditor, OutcomeEditor } from './shared';
 
@@ -64,12 +65,11 @@ export function EvaluationSetup({
           own jury. The evaluator list below is not used.
         </div>
       ) : (
-        <TagField
+        <PeoplePicker
           label="Evaluators"
-          values={config.evaluators}
+          value={config.evaluators}
           onChange={(v) => patch({ evaluators: v })}
-          help="Who scores. Names for now — they become directory profiles once Community is built."
-          placeholder="Add an evaluator"
+          help="From the directory. Each of them scores every candidate on the grid."
         />
       )}
 

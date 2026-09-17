@@ -5,6 +5,7 @@ import {
   type Candidate,
   type EvaluationCriterion,
   type EvaluationScore,
+  type PersonRef,
   type SelectionConfig,
   type TrackWithPhases,
 } from '@ceed/shared';
@@ -14,7 +15,7 @@ import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
 import { ConfirmDialog, useToast } from '../../ui/Overlays';
-import { ScoreEditor, evaluatorId } from '../builder/panels/shared';
+import { ScoreEditor } from '../builder/panels/shared';
 
 /* ------------------------------------------------------------------ */
 /* What the two endpoints return                                       */
@@ -33,7 +34,8 @@ interface ScoringGroup {
   sessionId: string | null;
   name: string;
   heldOn: string | null;
-  evaluators: string[];
+  /** People from the directory, resolved by the view. */
+  evaluators: PersonRef[];
   rows: ScoringRow[];
 }
 
@@ -72,7 +74,7 @@ interface Line {
   scoring: ScoringRow | null;
   decision: DecisionRow | null;
   sessionId: string | null;
-  evaluators: string[];
+  evaluators: PersonRef[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -206,7 +208,7 @@ function Moment({
    * One table per sitting, each showing only the jury that sat on it. Pooling
    * them would give every row a column of dashes for the panels it never saw.
    */
-  const sections: { key: string; name: string; heldOn: string | null; evaluators: string[]; lines: Line[] }[] = (
+  const sections: { key: string; name: string; heldOn: string | null; evaluators: PersonRef[]; lines: Line[] }[] = (
     scoring?.groups ?? []
   ).map((group) => ({
     key: group.sessionId ?? 'all',
@@ -385,7 +387,7 @@ function Moment({
                 <span className="badge num">{section.lines.length}</span>
                 {section.evaluators.length > 0 ? (
                   <span className="faint" style={{ fontSize: 12 }}>
-                    scored by {section.evaluators.join(', ')}
+                    scored by {section.evaluators.map((e) => e.name).join(', ')}
                   </span>
                 ) : (
                   <span className="badge warn">No jury scored these</span>
@@ -421,9 +423,9 @@ function Moment({
                   )}
                   <tr>
                     <th>Candidate</th>
-                    {section.evaluators.map((name) => (
-                      <th key={name} style={{ textAlign: 'right' }}>
-                        {name.split(' ')[0]}
+                    {section.evaluators.map((person) => (
+                      <th key={person.id} style={{ textAlign: 'right' }}>
+                        {person.name.split(' ')[0]}
                       </th>
                     ))}
                     {scoring && <th style={{ textAlign: 'right' }}>Score</th>}
@@ -436,7 +438,8 @@ function Moment({
                 </thead>
                 <tbody>
                   {section.lines.map((line) => {
-                    const me = as[section.key] || section.evaluators[0] || '';
+                    const me =
+                      section.evaluators.find((e) => e.id === as[section.key]) ?? section.evaluators[0] ?? null;
                     const open = openId === line.candidate.id;
                     const arrival = line.decision?.arrival;
                     return (
@@ -474,10 +477,10 @@ function Moment({
                             )}
                           </td>
 
-                          {section.evaluators.map((name) => {
-                            const score = line.scoring?.scores.find((s) => s.evaluatorId === evaluatorId(name));
+                          {section.evaluators.map((person) => {
+                            const score = line.scoring?.scores.find((s) => s.evaluatorId === person.id);
                             return (
-                              <td key={name} className="score muted" style={{ textAlign: 'right' }}>
+                              <td key={person.id} className="score muted" style={{ textAlign: 'right' }}>
                                 {score?.submittedAt ? score.normalised : '—'}
                               </td>
                             );
@@ -554,20 +557,20 @@ function Moment({
                           </td>
                         </tr>
 
-                        {open && evaluation && (
+                        {open && evaluation && me && (
                           <tr>
                             <td colSpan={section.evaluators.length + 5} style={{ background: 'var(--wash)' }}>
                               <ScoreEditor
-                                key={me}
+                                key={me?.id}
                                 blockId={evaluation.id}
                                 sessionId={line.sessionId ?? undefined}
                                 candidate={line.candidate}
                                 criteria={criteria}
-                                evaluator={me}
+                                evaluator={me!}
                                 evaluators={section.evaluators}
-                                onEvaluator={(name) => setAs((a) => ({ ...a, [section.key]: name }))}
+                                onEvaluator={(id) => setAs((a) => ({ ...a, [section.key]: id }))}
                                 requireComment={scoring?.requireComment}
-                                existing={line.scoring?.scores.find((s) => s.evaluatorId === evaluatorId(me))}
+                                existing={line.scoring?.scores.find((s) => s.evaluatorId === me!.id)}
                                 onSaved={() => {
                                   setOpenId(null);
                                   view.reload();
