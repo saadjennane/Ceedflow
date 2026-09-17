@@ -158,12 +158,17 @@ export async function committeeView(blockId: string): Promise<CommitteeView | nu
   };
 }
 
-/** Seats startups on the first free slots of a sitting, in the order given. */
+/**
+ * Seats startups on a sitting. When the team owns the timetable they take the
+ * first free slots; when the startups pick their own, they are left unplaced so
+ * the choice is genuinely theirs.
+ */
 export async function seatOnFreeSlots(sessionId: string, candidateIds: string[]): Promise<number> {
   const added = await repo.assignToSession(sessionId, candidateIds);
   const blockId = await repo.sessionBlockId(sessionId);
   if (!blockId) return added;
   const view = await committeeView(blockId);
+  if (view?.config.rsvpMode === 'slots') return added;
   const sv = view?.sessions.find((s) => s.session.id === sessionId);
   if (!sv) return added;
 

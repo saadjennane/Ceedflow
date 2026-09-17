@@ -251,6 +251,12 @@ export const evaluationConfigSchema = z.object({
 /* Selection committee — one block, N sittings                          */
 /* ------------------------------------------------------------------ */
 
+/**
+ * How a seated startup gets its time.
+ * - 'slots'   the startup picks from what is free, Calendly-style.
+ * - 'confirm' the team gives it a time, the startup confirms or declines it.
+ * - 'none'    no invitation at all; the team places everyone and tells them how it likes.
+ */
 export const RSVP_MODES = ['none', 'confirm', 'slots'] as const;
 export type RsvpMode = (typeof RSVP_MODES)[number];
 
@@ -259,7 +265,6 @@ export type RsvpMode = (typeof RSVP_MODES)[number];
  * in the same phase does that, per committee.
  */
 export const committeeConfigSchema = z.object({
-  /** How an assigned startup answers: not at all, yes/no, or by picking a slot. */
   rsvpMode: z.enum(RSVP_MODES).default('slots'),
   rsvpDeadline: z.string().nullable().default(null),
 });

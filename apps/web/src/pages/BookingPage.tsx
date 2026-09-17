@@ -52,6 +52,8 @@ export function BookingPage() {
   }
 
   const data = page.data;
+  // Either the startup picks its time, or the team gave it one to confirm.
+  const picks = data.mode === 'slots';
   const state = done?.state ?? data.rsvpState;
   const bookedIndex = done ? done.slotIndex : data.slotIndex;
   const booked = bookedIndex === null ? null : data.slots.find((s) => s.index === bookedIndex);
@@ -65,6 +67,7 @@ export function BookingPage() {
         rsvpState,
         slotIndex: rsvpState === 'confirmed' && data.mode === 'slots' ? chosen : null,
       });
+      setChosen(null);
       setDone({ state: result.rsvpState, slotIndex: result.slotIndex });
       window.scrollTo({ top: 0 });
     } catch (err) {
@@ -90,13 +93,15 @@ export function BookingPage() {
             <dt>When</dt>
             <dd>
               {formatDate(data.session.heldOn)}
-              {booked && (
+              {booked ? (
                 <>
                   {' · '}
                   <strong className="num">
                     {booked.startsAt}–{booked.endsAt}
                   </strong>
                 </>
+              ) : (
+                !picks && <span className="faint"> · time to be confirmed by the team</span>
               )}
             </dd>
             {data.session.location && (
@@ -116,8 +121,8 @@ export function BookingPage() {
               <Icon name="check" size={15} />
               <div>
                 <strong>You are confirmed.</strong>
-                {booked ? ` See you at ${booked.startsAt}.` : ' The team will confirm your time.'} Changing your mind?
-                Pick another time below.
+                {booked ? ` See you at ${booked.startsAt}.` : ' The team will confirm your time.'}
+                {picks && ' Changing your mind? Pick another time below.'}
               </div>
             </div>
           )}
@@ -136,7 +141,17 @@ export function BookingPage() {
             </span>
           )}
 
-          {data.mode === 'slots' && (
+          {!picks && booked && state !== 'confirmed' && (
+            <div className="callout">
+              <Icon name="clock" size={15} />
+              <div>
+                The team has put you at <strong className="num">{booked.startsAt}</strong>. Confirm that it works, or
+                tell us if it does not and we will find another time.
+              </div>
+            </div>
+          )}
+
+          {picks && (
             <>
               <div className="public-sep" />
               <h3 className="section-title">Pick your time</h3>
@@ -176,10 +191,10 @@ export function BookingPage() {
           <div className="row" style={{ marginTop: 6 }}>
             <button
               className="btn primary"
-              disabled={sending || (data.mode === 'slots' && chosen === null && bookedIndex === null)}
+              disabled={sending || (picks && chosen === null && bookedIndex === null)}
               onClick={() => respond('confirmed')}
             >
-              {sending ? 'Sending…' : data.mode === 'slots' ? 'Confirm this time' : 'Confirm'}
+              {sending ? 'Sending…' : booked || picks ? 'Confirm this time' : 'Confirm I can attend'}
             </button>
             <button className="btn" disabled={sending} onClick={() => respond('declined')}>
               I cannot make it

@@ -13,7 +13,7 @@ import { useRef, useState } from 'react';
 import { api } from '../../../lib/api';
 import { formatDate } from '../../../lib/format';
 import { useAsync } from '../../../lib/useAsync';
-import { DateField, NumberField, SelectField, TagField, TextField } from '../../../ui/Field';
+import { DateField, NumberField, TagField, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
 import { ConfirmDialog, Modal, useToast } from '../../../ui/Overlays';
 import { OutcomeBadge } from './shared';
@@ -44,18 +44,50 @@ export function CommitteeSetup({
 
       <div className="public-sep" />
 
-      <h3 className="section-title">How startups answer</h3>
-      <SelectField
-        label="Invitation"
-        value={config.rsvpMode}
-        onChange={(v) => patch({ rsvpMode: v as CommitteeConfig['rsvpMode'] })}
-        options={[
-          { value: 'slots', label: 'They pick a time from the sitting' },
-          { value: 'confirm', label: 'They confirm or decline' },
-          { value: 'none', label: 'No invitation — the team places them' },
-        ]}
-        help="Each seated startup gets a personal link. With times, the slots come from the sitting's own hours."
-      />
+      <h3 className="section-title">How each startup gets its time</h3>
+      <div className="field">
+        <div className="pick-list">
+          <button
+            type="button"
+            className={config.rsvpMode === 'slots' ? 'pick on' : 'pick'}
+            onClick={() => patch({ rsvpMode: 'slots' })}
+          >
+            <Icon name={config.rsvpMode === 'slots' ? 'check' : 'square'} />
+            <div>
+              <strong>The startup picks its own time</strong>
+              <span>
+                Its link shows the free slots of the sitting and it takes one, Calendly-style. Seating a startup
+                leaves it unplaced until it chooses, and two cannot hold the same slot.
+              </span>
+            </div>
+          </button>
+          <button
+            type="button"
+            className={config.rsvpMode === 'confirm' ? 'pick on' : 'pick'}
+            onClick={() => patch({ rsvpMode: 'confirm' })}
+          >
+            <Icon name={config.rsvpMode === 'confirm' ? 'check' : 'square'} />
+            <div>
+              <strong>You give it a time, it confirms</strong>
+              <span>
+                You build the timetable; its link shows the time you set and asks it to confirm or decline. Declining
+                frees the slot and leaves the startup in <em>Not placed</em>.
+              </span>
+            </div>
+          </button>
+          <button
+            type="button"
+            className={config.rsvpMode === 'none' ? 'pick on' : 'pick'}
+            onClick={() => patch({ rsvpMode: 'none' })}
+          >
+            <Icon name={config.rsvpMode === 'none' ? 'check' : 'square'} />
+            <div>
+              <strong>No invitation</strong>
+              <span>The team places everyone and tells them however it likes. The links stop working.</span>
+            </div>
+          </button>
+        </div>
+      </div>
       {config.rsvpMode !== 'none' && (
         <DateField
           label="Answer by"
@@ -180,6 +212,25 @@ export function CommitteeSittings({
           <div>
             <strong>Nothing scores these sittings.</strong> Drop an <strong>Evaluation</strong> block into this phase
             and it picks the committee up on its own — that is where the jury's grid and marks live.
+          </div>
+        </div>
+      )}
+
+      {config.rsvpMode !== 'none' && (
+        <div className="callout">
+          <Icon name={config.rsvpMode === 'slots' ? 'link' : 'calendar'} size={15} />
+          <div>
+            {config.rsvpMode === 'slots' ? (
+              <>
+                <strong>The startups pick their own times.</strong> Send each one its link and the timetable fills in
+                as they answer. You can still place someone yourself by dragging them onto a slot.
+              </>
+            ) : (
+              <>
+                <strong>You set the timetable.</strong> Place every startup, then send each one its link to confirm
+                the time you gave it. A startup that declines drops back to <em>Not placed</em>, freeing its slot.
+              </>
+            )}
           </div>
         </div>
       )}
@@ -329,7 +380,9 @@ export function CommitteeSittings({
                     <Icon name="plus" size={13} /> Seat from the pool
                   </button>
                   <span className="faint" style={{ fontSize: 12 }}>
-                    Drag a startup onto another time to swap them over.
+                    {config.rsvpMode === 'slots'
+                      ? 'Startups place themselves. Drag one onto a time to place it yourself.'
+                      : 'Drag a startup onto another time to swap them over.'}
                   </span>
                 </div>
               </div>

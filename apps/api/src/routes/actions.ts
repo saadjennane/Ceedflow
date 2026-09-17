@@ -83,6 +83,9 @@ export async function actionRoutes(app: FastifyInstance) {
     const found = await repo.findAssignmentByToken(token);
     if (!found || !found.block) return notFound(reply, 'This invitation does not exist.');
     const config = found.block.config as CommitteeConfig;
+    if (config.rsvpMode === 'none') {
+      throw new HttpError(403, 'This committee is arranged by the team. You have nothing to answer here.');
+    }
     const context = await repo.blockContext(found.block.id);
     const detail = context ? await repo.getEditionDetail(context.editionId) : null;
     const slots = sessionSlots(found.session);
@@ -130,7 +133,13 @@ export async function actionRoutes(app: FastifyInstance) {
       throw new HttpError(403, 'The deadline to answer has passed. Get in touch with the team.');
     }
 
-    let slotIndex: number | null = null;
+    if (config.rsvpMode === 'none') {
+      throw new HttpError(403, 'This committee is arranged by the team. You have nothing to answer here.');
+    }
+
+    // Declining frees the time either way: the seat stays, the slot opens up.
+    let slotIndex: number | null | undefined = input.rsvpState === 'declined' ? null : undefined;
+
     if (input.rsvpState === 'confirmed' && config.rsvpMode === 'slots') {
       if (input.slotIndex === null || input.slotIndex === undefined) {
         throw new HttpError(422, 'Pick a time before confirming.', { slotIndex: 'Pick a slot.' });
@@ -144,7 +153,8 @@ export async function actionRoutes(app: FastifyInstance) {
 
     await repo.respondToAssignment(found.assignment.id, input.rsvpState, slotIndex);
     reply.code(200);
-    return { rsvpState: input.rsvpState, slotIndex };
+    const after = await repo.findAssignmentById(found.assignment.id);
+    return { rsvpState: input.rsvpState, slotIndex: after?.slotIndex ?? null };
   });
 
   /* ---------------- sourcing outreach ---------------- */

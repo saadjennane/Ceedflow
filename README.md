@@ -111,9 +111,16 @@ fifteen minutes is six slots, and changing either re-cuts the day. The timetable
 order with the breaks drawn in; dragging a startup onto another time trades the two over, and
 dragging one out of the timetable leaves it seated but unplaced.
 
-The pool is whatever the selection before the phase sent through. Seat startups from it and they
-take the first free slots. Each seated startup gets a personal link at `/book/:token` where it
-confirms, declines, or picks its own time; two startups cannot hold the same slot.
+The pool is whatever the selection before the phase sent through. Seat startups from it, then give
+each one its personal link at `/book/:token`. How that link behaves is the committee's choice:
+
+- **The startup picks its own time.** Its link shows what is free and it takes a slot, Calendly-
+  style. Seating leaves it unplaced so the choice is genuinely its own, and two startups cannot
+  hold the same slot — whoever asks second is told to pick another.
+- **You give it a time, it confirms.** You build the timetable; the link shows the time you set and
+  asks it to confirm or decline. Declining frees the slot and drops the startup back to *Not
+  placed*, where it is obvious it still needs one.
+- **No invitation.** The team arranges everything off-platform and the links stop working.
 
 ### An Evaluation in a committee's phase scores that committee
 

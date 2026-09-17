@@ -833,12 +833,24 @@ export async function findAssignmentByToken(token: string) {
   return { assignment, session, candidate, block, siblings };
 }
 
+/**
+ * Records an answer. `slotIndex` undefined keeps the time already held — which is
+ * what confirming a time the team gave has to do.
+ */
 export async function respondToAssignment(
   id: string,
   rsvpState: string,
-  slotIndex: number | null,
+  slotIndex?: number | null,
 ): Promise<void> {
-  await (await db()).query(
+  const conn = await db();
+  if (slotIndex === undefined) {
+    await conn.query('update committee_assignments set rsvp_state = $2, responded_at = now() where id = $1', [
+      id,
+      rsvpState,
+    ]);
+    return;
+  }
+  await conn.query(
     'update committee_assignments set rsvp_state = $2, slot_index = $3, responded_at = now() where id = $1',
     [id, rsvpState, slotIndex],
   );
