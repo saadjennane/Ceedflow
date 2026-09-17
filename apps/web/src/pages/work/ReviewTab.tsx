@@ -195,14 +195,38 @@ function Moment({
       });
   }
 
-  const lines = [...byCandidate.values()].sort(
-    (a, b) =>
-      (b.scoring?.consensus ?? b.decision?.score ?? -1) - (a.scoring?.consensus ?? a.decision?.score ?? -1) ||
-      a.candidate.orgName.localeCompare(b.candidate.orgName),
-  );
+  const byScore = (a: Line, b: Line) =>
+    (b.scoring?.consensus ?? b.decision?.score ?? -1) - (a.scoring?.consensus ?? a.decision?.score ?? -1) ||
+    a.candidate.orgName.localeCompare(b.candidate.orgName);
 
-  // Every group's jury, in order, so the per-evaluator columns are stable.
-  const evaluators = [...new Set((scoring?.groups ?? []).flatMap((g) => g.evaluators))];
+  const lines = [...byCandidate.values()].sort(byScore);
+
+  /**
+   * One table per sitting, each showing only the jury that sat on it. Pooling
+   * them would give every row a column of dashes for the panels it never saw.
+   */
+  const sections: { key: string; name: string; heldOn: string | null; evaluators: string[]; lines: Line[] }[] = (
+    scoring?.groups ?? []
+  ).map((group) => ({
+    key: group.sessionId ?? 'all',
+    name: group.name,
+    heldOn: group.heldOn,
+    evaluators: group.evaluators,
+    lines: group.rows.map((r) => byCandidate.get(r.candidate.id)!).filter(Boolean).sort(byScore),
+  }));
+
+  // Anyone on the selection's list that no sitting scored still has to be decided.
+  const scored = new Set(sections.flatMap((s) => s.lines.map((l) => l.candidate.id)));
+  const unscored = lines.filter((l) => !scored.has(l.candidate.id));
+  if (unscored.length) {
+    sections.push({
+      key: 'unscored',
+      name: sections.length ? 'Not scored' : '',
+      heldOn: null,
+      evaluators: [],
+      lines: unscored,
+    });
+  }
 
   const reload = () => {
     view.reload();
@@ -347,187 +371,218 @@ function Moment({
           <p>Candidates arrive once they pass the selection before it.</p>
         </div>
       ) : (
-        <div className="table-wrap">
-          <table className="data score-table">
-            <thead>
-              {evaluation && selection && (
-                <tr>
-                  <th style={{ borderBottom: 0 }} />
-                  <th
-                    colSpan={evaluators.length + 1}
-                    style={{ borderBottom: 0, textAlign: 'center', color: 'var(--blue)' }}
-                  >
-                    {evaluation.name}
-                  </th>
-                  <th
-                    colSpan={2}
-                    style={{
-                      borderBottom: 0,
-                      textAlign: 'center',
-                      color: 'var(--blue)',
-                      borderLeft: '1px solid var(--line-strong)',
-                    }}
-                  >
-                    {selection.name}
-                  </th>
-                  <th style={{ borderBottom: 0 }} />
-                </tr>
-              )}
-              <tr>
-                <th>Candidate</th>
-                {evaluators.map((name) => (
-                  <th key={name} style={{ textAlign: 'right' }}>
-                    {name.split(' ')[0]}
-                  </th>
-                ))}
-                {scoring && <th style={{ textAlign: 'right' }}>Score</th>}
-                {evaluation && (
-                  <th style={{ borderLeft: selection ? '1px solid var(--line-strong)' : undefined }}>Status</th>
+        sections.map((section) => (
+          <section key={section.key} className="stack" style={{ gap: 8 }}>
+            {section.name && (
+              <div className="row wrap">
+                <strong style={{ fontFamily: 'var(--display)', fontSize: 13.5 }}>{section.name}</strong>
+                {section.heldOn && (
+                  <span className="faint" style={{ fontSize: 12 }}>
+                    {formatDate(section.heldOn)}
+                  </span>
                 )}
-                {selection && <th>Decision</th>}
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((line) => {
-                const me = as.all || line.evaluators[0] || evaluators[0] || '';
-                const open = openId === line.candidate.id;
-                const arrival = line.decision?.arrival;
-                return (
-                  <Fragment key={line.candidate.id}>
+                <span className="badge num">{section.lines.length}</span>
+                {section.evaluators.length > 0 ? (
+                  <span className="faint" style={{ fontSize: 12 }}>
+                    scored by {section.evaluators.join(', ')}
+                  </span>
+                ) : (
+                  <span className="badge warn">No jury scored these</span>
+                )}
+              </div>
+            )}
+
+            <div className="table-wrap">
+              <table className="data score-table">
+                <thead>
+                  {evaluation && selection && (
                     <tr>
-                      <td className="name">
-                        {line.candidate.orgName}
-                        {arrival === 'manual' && (
-                          <span className="badge info" style={{ marginLeft: 7 }} title="Put on this list by the team">
-                            Added by hand
-                          </span>
-                        )}
-                        {arrival === 'status' && (
-                          <span className="badge info" style={{ marginLeft: 7 }} title="On this list because of its status">
-                            By status
-                          </span>
-                        )}
-                        {line.decision?.stale && (
-                          <span className="badge warn" style={{ marginLeft: 7 }} title="The rule now says otherwise">
-                            Rule moved on
-                          </span>
-                        )}
-                        {line.decision?.pending && (
-                          <span className="badge warn" style={{ marginLeft: 7 }} title="Joined the list after the last publication">
-                            Not announced
-                          </span>
-                        )}
-                      </td>
-
-                      {evaluators.map((name) => {
-                        const score = line.scoring?.scores.find((s) => s.evaluatorId === evaluatorId(name));
-                        return (
-                          <td key={name} className="score muted" style={{ textAlign: 'right' }}>
-                            {score?.submittedAt ? score.normalised : '—'}
-                          </td>
-                        );
-                      })}
-
-                      {scoring && (
-                        <td className="score" style={{ textAlign: 'right' }}>
-                          {line.scoring?.consensus ?? '—'}
-                        </td>
-                      )}
-
-                      {evaluation && (
-                        <td style={{ borderLeft: selection ? '1px solid var(--line-strong)' : undefined }}>
-                          <select
-                            className="status-select"
-                            value={line.scoring?.outcomeId ?? ''}
-                            disabled={!line.scoring || !outcomes.length}
-                            onChange={(e) => setStatus(line.candidate.id, e.target.value)}
-                          >
-                            <option value="" disabled>
-                              —
-                            </option>
-                            {outcomes.map((o) => (
-                              <option key={o.id} value={o.id}>
-                                {o.label}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                      )}
-
-                      {selection && (
-                        <td style={{ width: 200 }}>
-                          {line.decision ? (
-                            <div className="seg" role="group">
-                              <button
-                                className={line.decision.outcome === 'pass' ? 'on' : ''}
-                                disabled={busy}
-                                onClick={() => setDecision(line.candidate.id, 'pass')}
-                              >
-                                {passLabel}
-                              </button>
-                              <button
-                                className={line.decision.outcome === 'fail' ? 'on' : ''}
-                                disabled={busy}
-                                onClick={() => setDecision(line.candidate.id, 'fail')}
-                              >
-                                {failLabel}
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="faint">not on this list</span>
-                          )}
-                        </td>
-                      )}
-
-                      <td style={{ width: 84 }}>
-                        {line.scoring && criteria.length > 0 && (
-                          <div className="row" style={{ gap: 7 }}>
-                            <div className="bar" style={{ flex: 1 }}>
-                              <i style={{ width: `${line.scoring.consensus ?? 0}%` }} />
-                            </div>
-                            <button
-                              className="btn ghost icon sm"
-                              disabled={!me}
-                              title={me ? 'Enter marks' : 'No evaluator on this block'}
-                              aria-label="Score"
-                              onClick={() => setOpenId(open ? null : line.candidate.id)}
-                            >
-                              <Icon name={open ? 'chevronDown' : 'edit'} size={13} />
-                            </button>
-                          </div>
-                        )}
-                      </td>
+                      <th style={{ borderBottom: 0 }} />
+                      <th
+                        colSpan={section.evaluators.length + 1}
+                        style={{ borderBottom: 0, textAlign: 'center', color: 'var(--blue)' }}
+                      >
+                        {evaluation.name}
+                      </th>
+                      <th
+                        colSpan={2}
+                        style={{
+                          borderBottom: 0,
+                          textAlign: 'center',
+                          color: 'var(--blue)',
+                          borderLeft: '1px solid var(--line-strong)',
+                        }}
+                      >
+                        {selection.name}
+                      </th>
+                      <th style={{ borderBottom: 0 }} />
                     </tr>
-
-                    {open && evaluation && (
-                      <tr>
-                        <td colSpan={evaluators.length + 5} style={{ background: 'var(--wash)' }}>
-                          <ScoreEditor
-                            key={me}
-                            blockId={evaluation.id}
-                            sessionId={line.sessionId ?? undefined}
-                            candidate={line.candidate}
-                            criteria={criteria}
-                            evaluator={me}
-                            evaluators={line.evaluators.length ? line.evaluators : evaluators}
-                            onEvaluator={(name) => setAs({ all: name })}
-                            requireComment={scoring?.requireComment}
-                            existing={line.scoring?.scores.find((s) => s.evaluatorId === evaluatorId(me))}
-                            onSaved={() => {
-                              setOpenId(null);
-                              view.reload();
-                            }}
-                          />
-                        </td>
-                      </tr>
+                  )}
+                  <tr>
+                    <th>Candidate</th>
+                    {section.evaluators.map((name) => (
+                      <th key={name} style={{ textAlign: 'right' }}>
+                        {name.split(' ')[0]}
+                      </th>
+                    ))}
+                    {scoring && <th style={{ textAlign: 'right' }}>Score</th>}
+                    {evaluation && (
+                      <th style={{ borderLeft: selection ? '1px solid var(--line-strong)' : undefined }}>Status</th>
                     )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                    {selection && <th>Decision</th>}
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {section.lines.map((line) => {
+                    const me = as[section.key] || section.evaluators[0] || '';
+                    const open = openId === line.candidate.id;
+                    const arrival = line.decision?.arrival;
+                    return (
+                      <Fragment key={line.candidate.id}>
+                        <tr>
+                          <td className="name">
+                            {line.candidate.orgName}
+                            {arrival === 'manual' && (
+                              <span className="badge info" style={{ marginLeft: 7 }} title="Put on this list by the team">
+                                Added by hand
+                              </span>
+                            )}
+                            {arrival === 'status' && (
+                              <span
+                                className="badge info"
+                                style={{ marginLeft: 7 }}
+                                title="On this list because of the status it carries"
+                              >
+                                By status
+                              </span>
+                            )}
+                            {line.decision?.stale && (
+                              <span className="badge warn" style={{ marginLeft: 7 }} title="The rule now says otherwise">
+                                Rule moved on
+                              </span>
+                            )}
+                            {line.decision?.pending && (
+                              <span
+                                className="badge warn"
+                                style={{ marginLeft: 7 }}
+                                title="Joined the list after the last publication"
+                              >
+                                Not announced
+                              </span>
+                            )}
+                          </td>
+
+                          {section.evaluators.map((name) => {
+                            const score = line.scoring?.scores.find((s) => s.evaluatorId === evaluatorId(name));
+                            return (
+                              <td key={name} className="score muted" style={{ textAlign: 'right' }}>
+                                {score?.submittedAt ? score.normalised : '—'}
+                              </td>
+                            );
+                          })}
+
+                          {scoring && (
+                            <td className="score" style={{ textAlign: 'right' }}>
+                              {line.scoring?.consensus ?? '—'}
+                            </td>
+                          )}
+
+                          {evaluation && (
+                            <td style={{ borderLeft: selection ? '1px solid var(--line-strong)' : undefined }}>
+                              <select
+                                className="status-select"
+                                value={line.scoring?.outcomeId ?? ''}
+                                disabled={!line.scoring || !outcomes.length}
+                                onChange={(e) => setStatus(line.candidate.id, e.target.value)}
+                              >
+                                <option value="" disabled>
+                                  —
+                                </option>
+                                {outcomes.map((o) => (
+                                  <option key={o.id} value={o.id}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                          )}
+
+                          {selection && (
+                            <td style={{ width: 200 }}>
+                              {line.decision ? (
+                                <div className="seg" role="group">
+                                  <button
+                                    className={line.decision.outcome === 'pass' ? 'on' : ''}
+                                    disabled={busy}
+                                    onClick={() => setDecision(line.candidate.id, 'pass')}
+                                  >
+                                    {passLabel}
+                                  </button>
+                                  <button
+                                    className={line.decision.outcome === 'fail' ? 'on' : ''}
+                                    disabled={busy}
+                                    onClick={() => setDecision(line.candidate.id, 'fail')}
+                                  >
+                                    {failLabel}
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="faint">not on this list</span>
+                              )}
+                            </td>
+                          )}
+
+                          <td style={{ width: 84 }}>
+                            {line.scoring && criteria.length > 0 && (
+                              <div className="row" style={{ gap: 7 }}>
+                                <div className="bar" style={{ flex: 1 }}>
+                                  <i style={{ width: `${line.scoring.consensus ?? 0}%` }} />
+                                </div>
+                                <button
+                                  className="btn ghost icon sm"
+                                  disabled={!me}
+                                  title={me ? 'Enter marks' : 'No jury on this sitting'}
+                                  aria-label="Score"
+                                  onClick={() => setOpenId(open ? null : line.candidate.id)}
+                                >
+                                  <Icon name={open ? 'chevronDown' : 'edit'} size={13} />
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+
+                        {open && evaluation && (
+                          <tr>
+                            <td colSpan={section.evaluators.length + 5} style={{ background: 'var(--wash)' }}>
+                              <ScoreEditor
+                                key={me}
+                                blockId={evaluation.id}
+                                sessionId={line.sessionId ?? undefined}
+                                candidate={line.candidate}
+                                criteria={criteria}
+                                evaluator={me}
+                                evaluators={section.evaluators}
+                                onEvaluator={(name) => setAs((a) => ({ ...a, [section.key]: name }))}
+                                requireComment={scoring?.requireComment}
+                                existing={line.scoring?.scores.find((s) => s.evaluatorId === evaluatorId(me))}
+                                onSaved={() => {
+                                  setOpenId(null);
+                                  view.reload();
+                                }}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ))
       )}
 
       <p className="faint" style={{ margin: 0, fontSize: 12 }}>
