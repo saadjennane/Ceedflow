@@ -23,6 +23,11 @@ export interface SelectionRow {
   computed: 'pass' | 'fail';
   outcome: 'pass' | 'fail';
   overridden: boolean;
+  /**
+   * Publishing freezes each decision, so a late score or a changed rule does not
+   * move a cohort that has been announced. This says the rule has since drifted.
+   */
+  stale: boolean;
 }
 
 export interface SelectionView {
@@ -159,14 +164,16 @@ export async function selectionView(blockId: string): Promise<SelectionView | nu
   const rows: SelectionRow[] = roster.map((candidate) => {
     const computed: 'pass' | 'fail' = passes.has(candidate.id) ? 'pass' : 'fail';
     const saved = stored.get(candidate.id);
+    const outcome = saved?.outcome ?? computed;
     return {
       candidate,
       score: scoreOf(candidate.id),
       outcomeId: statuses?.get(candidate.id)?.outcomeId ?? null,
       arrival: arrivalOf(candidate.id) as Arrival,
       computed,
-      outcome: saved?.outcome ?? computed,
+      outcome,
       overridden: saved?.overridden ?? false,
+      stale: Boolean(saved) && !saved?.overridden && outcome !== computed,
     };
   });
 
@@ -291,7 +298,16 @@ export async function publishSelection(blockId: string): Promise<SelectionView |
   return selectionView(blockId);
 }
 
+/**
+ * Withdrawing a publication releases the decisions it froze, so the rule drives
+ * the list again. Calls made by hand are kept — they were never the rule's.
+ */
 export async function unpublishSelection(blockId: string): Promise<SelectionView | null> {
+  const view = await selectionView(blockId);
+  if (!view) return null;
+  for (const row of view.rows) {
+    if (!row.overridden) await repo.clearOutcome(blockId, row.candidate.id);
+  }
   await repo.updateBlock(blockId, { config: { publishedAt: null } });
   return selectionView(blockId);
 }

@@ -141,8 +141,9 @@ export function SelectionSetup({
       {!upstreamScoring.length && config.method !== 'manual' && (
         <div className="callout warn">
           <Icon name="alert" size={15} />
-          Nothing before this block produces a score, so no candidate has one and none will pass automatically. Add an
-          evaluation or a committee upstream, or switch to deciding by hand.
+          Nothing before this block produces a score, so this rule can never pass anyone. Either put an evaluation or a
+          committee upstream, or set the cut to <strong>decided by hand</strong> — which is what you want if this
+          selection is made from the list itself.
         </div>
       )}
     </>
@@ -163,6 +164,7 @@ interface SelectionRow {
   computed: 'pass' | 'fail';
   outcome: 'pass' | 'fail';
   overridden: boolean;
+  stale: boolean;
 }
 
 interface PoolRow {
@@ -300,6 +302,29 @@ export function SelectionDecision({ block, onChanged }: { block: Block; onChange
         </div>
       )}
 
+      {!view.data.sourceBlockId && (
+        <div className="callout">
+          <Icon name="filter" size={15} />
+          <div>
+            <strong>Nothing upstream produces a score,</strong> so points cannot decide anything here and nobody passes
+            on their own. That is a perfectly good way to run a cut — choose who passes below, or bring startups in
+            already marked with <em>Add startups</em>. If you meant the score to decide, put an evaluation or a
+            committee before this block.
+          </div>
+        </div>
+      )}
+
+      {rows.some((r) => r.stale) && (
+        <div className="callout warn">
+          <Icon name="alert" size={15} />
+          <div>
+            <strong>The scores have moved since this was published.</strong> The rows marked <em>Rule moved on</em>
+            {' '}keep the decision that was announced. Withdraw the publication to let the rule decide again, or change
+            those rows by hand.
+          </div>
+        </div>
+      )}
+
       <div className="row wrap">
         {addedCount > 0 && (
           <span className="badge info num">
@@ -369,6 +394,15 @@ export function SelectionDecision({ block, onChanged }: { block: Block; onChange
                       {row.overridden && (
                         <span className="badge" style={{ marginLeft: 7 }} title="Changed from what the rule produced">
                           Changed by hand
+                        </span>
+                      )}
+                      {row.stale && (
+                        <span
+                          className="badge warn"
+                          style={{ marginLeft: 7 }}
+                          title={`The rule now says ${row.computed === 'pass' ? config.passLabel : config.failLabel}, but the published decision stands.`}
+                        >
+                          Rule moved on
                         </span>
                       )}
                     </td>
@@ -443,7 +477,16 @@ export function SelectionDecision({ block, onChanged }: { block: Block; onChange
       {confirmPublish && (
         <ConfirmDialog
           title={isCohort ? 'Publish the cohort?' : 'Publish the shortlist?'}
-          body={`${passCount} candidate${passCount === 1 ? '' : 's'} marked ${config.passLabel.toLowerCase()}, ${failCount} marked ${config.failLabel.toLowerCase()}. Each candidate's status is updated, and the blocks after this one start from the ones who passed. You can withdraw the publication afterwards.`}
+          body={
+            passCount === 0
+              ? `This rejects all ${failCount} of them — nobody passes. ${
+                  view.data.sourceBlockId
+                    ? 'Check the passing score before you announce that.'
+                    : 'Nothing upstream produces a score, so the rule cannot pass anyone; pick who passes first.'
+                } Every candidate's status is set to ${config.failLabel.toLowerCase()}, and every block after this one starts from nobody.`
+              : `${passCount} candidate${passCount === 1 ? '' : 's'} marked ${config.passLabel.toLowerCase()}, ${failCount} marked ${config.failLabel.toLowerCase()}. Each candidate's status is updated, and the blocks after this one start from the ones who passed. You can withdraw the publication afterwards.`
+          }
+          destructive={passCount === 0}
           confirmLabel="Publish"
           onClose={() => setConfirmPublish(false)}
           onConfirm={publish}
