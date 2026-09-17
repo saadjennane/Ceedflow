@@ -227,9 +227,14 @@ full), and a catch-up panel of 09:00–10:30 at 15 minutes. Sixteen startups con
 two never answered and one pulled out — so every RSVP state is on screen, and the three who did not
 pitch carry no jury score, which is exactly why they are not in the cohort.
 
-The final selection takes the top 11 on the jury's marks; one startup the ranking left just outside
-was put back by hand, which is the twelfth seat and shows as **Changed by hand**. Withdraw the
-publication from the Decisions tab to replay the last step yourself.
+The jury judges a pitch, not a file, so its marks are **independent of the screening**: a strong
+application can land badly in the room and a modest one can shine. SportIQ goes 84 on paper to 60
+after its pitch, Terra Nova 76 to 89. That is the point of giving the jury its own grid.
+
+The final selection takes the top 11 on the jury's marks. Two startups tie at 60 on the cut line;
+the ranking keeps one, and the team put the other back by hand for the twelfth seat, which shows as
+**Changed by hand**. Withdraw the publication from the Decisions tab to replay the last step
+yourself.
 
 Plus **SheLeads** (a draft 2027 edition on the standard template and a completed 2025 one) and
 **Impact Booster** with no edition yet.

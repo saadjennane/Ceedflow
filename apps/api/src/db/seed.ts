@@ -532,20 +532,30 @@ async function main() {
       }
       await repo.moveAssignmentToSlot(row.assignment.id, free.shift() ?? null);
       await repo.respondToAssignment(row.assignment.id, 'confirmed');
-      for (const juror of session.session.jury) {
-        const spec = CANDIDATES.find((c) => c.orgName === row.candidate.orgName);
-        const base = spec ? marksFor(spec)[0] : [7, 7, 7, 7, 7];
+      // The jury judges a pitch, not a file. Stage presence is its own trait, so a
+      // strong application can land badly in the room and a modest one can shine.
+      const spec = CANDIDATES.find((c) => c.orgName === row.candidate.orgName);
+      const fileMarks = spec ? marksFor(spec)[0] : [7, 7, 7, 7, 7];
+      const onPaper = fileMarks.reduce((a, b) => a + b, 0) / fileMarks.length;
+      const hash = [...row.candidate.orgName].reduce((n, ch, i) => n + ch.charCodeAt(0) * (i + 1), 0);
+      const stage = (hash % 7) - 3; // -3 to +3, and unrelated to the file
+      // Capped at 9 so a perfect card stays rare, and floored so nobody is absurd.
+      const inTheRoom = Math.max(3, Math.min(9, onPaper + stage * 0.7));
+      for (const [index, juror] of session.session.jury.entries()) {
         await repo.upsertScore({
           blockId: juryScoring.id,
           sessionId: session.session.id,
           candidateId: row.candidate.id,
           evaluatorId: `ev_${juror.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
           evaluatorName: juror,
-          // The jury sees the pitch, not the file: marks drift from the screening.
           marks: Object.fromEntries(
-            JURY_CRITERIA.map((c, i) => [c.id, Math.max(1, Math.min(10, (base[i % base.length] ?? 7) + ((seat + i) % 3) - 1))]),
+            JURY_CRITERIA.map((c, i) => [
+              c.id,
+              // Spread wide enough that the ranking rarely has to break a tie.
+              Math.max(1, Math.min(10, Math.round(inTheRoom + ((hash * (i + 2) + index * 13) % 5) - 2))),
+            ]),
           ),
-          comment: 'Convincing on stage.',
+          comment: stage >= 2 ? 'Better in the room than on paper.' : stage <= -2 ? 'The file promised more.' : 'Solid, no surprises.',
           submit: true,
         });
       }

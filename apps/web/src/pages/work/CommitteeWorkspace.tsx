@@ -223,6 +223,7 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
                               outcomes={evaluation?.outcomes ?? []}
                               rsvp={config.rsvpMode !== 'none'}
                               busy={busy}
+                              scoredBy={evaluation?.name ?? null}
                               onDragStart={() => {
                                 drag.current = { kind: 'seat', row };
                               }}
@@ -329,6 +330,16 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
             </aside>
           </div>
 
+          <div className="callout">
+            <Icon name="alert" size={15} />
+            <div>
+              <strong>What a seat shows.</strong> The first chip is the answer to the invitation — whether the startup
+              accepted that time. The number and the coloured label are its score out of 100 and the status{' '}
+              {evaluation ? <strong>{evaluation.name}</strong> : 'an evaluation'} gave it after the pitch — not its
+              screening result.
+            </div>
+          </div>
+
           <p className="faint" style={{ margin: 0, fontSize: 12 }}>
             Drag a startup from the pool onto a time, from one time to another to swap them over, or back to the pool
             to take it off. A free slot can also be filled with a click.
@@ -381,6 +392,7 @@ function Seat({
   outcomes,
   rsvp,
   busy,
+  scoredBy,
   onDragStart,
   onCopyLink,
   onRemove,
@@ -389,6 +401,8 @@ function Seat({
   outcomes: BlockOutcome[];
   rsvp: boolean;
   busy: boolean;
+  /** Named on every chip, because a seat carries three unrelated facts. */
+  scoredBy: string | null;
   onDragStart: () => void;
   onCopyLink: () => void;
   onRemove: () => void;
@@ -402,10 +416,32 @@ function Seat({
       <div className="seated-main">
         <div className="seated-name">{row.candidate.orgName}</div>
         <div className="seated-meta">
-          {rsvp && <span className={RSVP_TONE[row.assignment.rsvpState]}>{row.assignment.rsvpState}</span>}
-          {row.score !== null && <span className="num faint">{row.score}</span>}
+          {rsvp && (
+            <span
+              className={RSVP_TONE[row.assignment.rsvpState]}
+              title={
+                row.assignment.rsvpState === 'confirmed'
+                  ? 'Accepted this time'
+                  : row.assignment.rsvpState === 'declined'
+                    ? 'Cannot make it'
+                    : 'Has not answered the invitation yet'
+              }
+            >
+              {row.assignment.rsvpState}
+            </span>
+          )}
+          {row.score !== null && (
+            <span className="num faint" title={scoredBy ? `Score out of 100 from ${scoredBy}` : 'Score out of 100'}>
+              {row.score}
+            </span>
+          )}
           {status && (
-            <span className={status.tone === 'neutral' ? 'badge' : `badge ${status.tone}`}>{status.label}</span>
+            <span
+              className={status.tone === 'neutral' ? 'badge' : `badge ${status.tone}`}
+              title={scoredBy ? `Status put on it by ${scoredBy}` : 'Status'}
+            >
+              {status.label}
+            </span>
           )}
         </div>
       </div>
