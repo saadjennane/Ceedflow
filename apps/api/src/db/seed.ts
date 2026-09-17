@@ -64,7 +64,22 @@ interface SeedCandidate {
   founded: number;
   problem: string;
   traction: string;
-  marks: [number, number, number, number, number][];
+  /** Explicit marks from the three screening evaluators, or a quality to derive them from. */
+  marks?: [number, number, number, number, number][];
+  quality?: number;
+}
+
+/** Three evaluators rarely agree exactly; this spreads a quality into marks that differ. */
+function marksFor(spec: SeedCandidate): [number, number, number, number, number][] {
+  if (spec.marks) return spec.marks;
+  const base = spec.quality ?? 6;
+  const seed = [...spec.orgName].reduce((n, c) => n + c.charCodeAt(0), 0);
+  return [0, 1, 2].map((evaluator) =>
+    ([0, 1, 2, 3, 4] as const).map((criterion) => {
+      const jitter = ((seed + evaluator * 7 + criterion * 3) % 5) - 2;
+      return Math.max(1, Math.min(10, base + jitter));
+    }),
+  ) as [number, number, number, number, number][];
 }
 
 const CANDIDATES: SeedCandidate[] = [
@@ -151,6 +166,140 @@ const CANDIDATES: SeedCandidate[] = [
     problem: 'Freight forwarders reconcile customs paperwork by email, and a single missing document holds a container for days.',
     traction: '39 forwarders, 4 800 containers processed, average clearance down from 6 days to 3.',
     marks: [[8, 8, 9, 9, 6], [9, 8, 9, 10, 6], [8, 9, 9, 9, 7]],
+  },
+
+  /* ---- the rest of the intake, sketched more lightly ---- */
+  {
+    orgName: 'Nakhla Bio', contactName: 'Zineb Haddad', email: 'zineb@nakhlabio.ma', phone: '+212 663 12 90 41',
+    source: 'Partner referral', stage: 'Early revenue', sector: 'Agritech', city: 'Agadir', team: 8, revenue: 640000, founded: 2021,
+    problem: 'Date growers in the Draa valley sell an undifferentiated crop at the wholesale price, whatever its quality.',
+    traction: 'Sorting and packing for 21 cooperatives, exports to two French distributors.', quality: 8,
+  },
+  {
+    orgName: 'Tabib Direct', contactName: 'Othmane Rachidi', email: 'othmane@tabibdirect.ma', phone: '+212 664 55 30 12',
+    source: 'LinkedIn', stage: 'Early revenue', sector: 'Healthtech', city: 'Casablanca', team: 6, revenue: 380000, founded: 2023,
+    problem: 'Pharmacies guess at what to restock, so a third of their shelf is money standing still.',
+    traction: '90 pharmacies, stock-outs down by half in the first quarter.', quality: 8,
+  },
+  {
+    orgName: 'Cash Plus Labs', contactName: 'Hind Belkadi', email: 'hind@cashpluslabs.ma', phone: '+212 665 71 24 88',
+    source: 'CEED alumni', stage: 'Growth', sector: 'Fintech', city: 'Casablanca', team: 12, revenue: 1900000, founded: 2020,
+    problem: 'A small merchant who takes only cash cannot prove a turnover, so no bank will lend to it.',
+    traction: '1 400 merchants, 62 million MAD processed, a first credit product with a partner bank.', quality: 9,
+  },
+  {
+    orgName: 'Argan Source', contactName: 'Malak Ait Ben', email: 'malak@argansource.ma', phone: '+212 666 18 44 07',
+    source: 'Partner referral', stage: 'Early revenue', sector: 'Agritech', city: 'Agadir', team: 5, revenue: 410000, founded: 2022,
+    problem: 'Argan cooperatives sell to intermediaries who capture most of the margin abroad.',
+    traction: '9 cooperatives, direct contracts with 4 cosmetics brands.', quality: 7,
+  },
+  {
+    orgName: 'Mekki Trucking', contactName: 'Ilyas Mekki', email: 'ilyas@mekkitrucking.ma', phone: '+212 667 02 77 39',
+    source: 'LinkedIn', stage: 'Early revenue', sector: 'Logistics', city: 'Casablanca', team: 10, revenue: 880000, founded: 2021,
+    problem: 'Half the lorries on the Casablanca–Tanger road drive back empty.',
+    traction: '240 hauliers on the platform, 31% of return trips now filled.', quality: 8,
+  },
+  {
+    orgName: 'Kotoubia Code', contactName: 'Amine Sefrioui', email: 'amine@kotoubiacode.ma', phone: '+212 668 33 19 60',
+    source: 'University', stage: 'Early revenue', sector: 'Edtech', city: 'Marrakech', team: 7, revenue: 290000, founded: 2022,
+    problem: 'Companies cannot find junior developers, while graduates cannot find a first job.',
+    traction: '3 cohorts, 78 graduates, 64% hired within three months.', quality: 7,
+  },
+  {
+    orgName: 'Barid Green', contactName: 'Soukaina Naji', email: 'soukaina@baridgreen.ma', phone: '+212 669 40 55 23',
+    source: 'Instagram', stage: 'Prototype', sector: 'Cleantech', city: 'Rabat', team: 4, revenue: 45000, founded: 2024,
+    problem: 'Parcel deliveries in central Rabat are made by two-stroke scooters nobody wants to breathe behind.',
+    traction: 'Twelve electric scooters leased to three courier firms.', quality: 7,
+  },
+  {
+    orgName: 'Souiri Stay', contactName: 'Nizar Bouzid', email: 'nizar@souiristay.ma', phone: '+212 660 27 81 14',
+    source: 'Instagram', stage: 'Early revenue', sector: 'Retail tech', city: 'Marrakech', team: 4, revenue: 230000, founded: 2023,
+    problem: 'Guesthouses in Essaouira lose bookings every time a request arrives while nobody is at the desk.',
+    traction: '38 guesthouses, bookings answered in four minutes on average.', quality: 6,
+  },
+  {
+    orgName: 'Zitoun Analytics', contactName: 'Yassir Lamrani', email: 'yassir@zitoun.ma', phone: '+212 661 66 03 92',
+    source: 'University', stage: 'Prototype', sector: 'Agritech', city: 'Fès', team: 3, revenue: 0, founded: 2024,
+    problem: 'Olive mills cannot tell a good harvest from a mediocre one until the oil is already pressed.',
+    traction: 'Two mills testing the sensor over one season.', quality: 6,
+  },
+  {
+    orgName: 'Medina Maps', contactName: 'Rania Tahiri', email: 'rania@medinamaps.ma', phone: '+212 662 90 37 55',
+    source: 'Instagram', stage: 'Prototype', sector: 'Retail tech', city: 'Fès', team: 3, revenue: 20000, founded: 2024,
+    problem: 'Artisan workshops in the medina are invisible to anyone who is not already standing in front of them.',
+    traction: '210 workshops mapped, 4 000 monthly visitors.', quality: 6,
+  },
+  {
+    orgName: 'Sahara Solar', contactName: 'Khalid Moutawakil', email: 'khalid@saharasolar.ma', phone: '+212 663 74 12 08',
+    source: 'Partner referral', stage: 'Early revenue', sector: 'Cleantech', city: 'Agadir', team: 9, revenue: 1200000, founded: 2020,
+    problem: 'Agricultural pumping runs on diesel in a region that has sun eleven months a year.',
+    traction: '46 farms converted, payback under three years.', quality: 9,
+  },
+  {
+    orgName: 'Hanouty Pay', contactName: 'Mounir Skalli', email: 'mounir@hanoutypay.ma', phone: '+212 664 21 65 77',
+    source: 'CEED alumni', stage: 'Prototype', sector: 'Fintech', city: 'Casablanca', team: 5, revenue: 0, founded: 2024,
+    problem: 'Corner shops extend credit in a notebook and write off what they cannot chase.',
+    traction: '70 shops in beta, 480 000 MAD of ledgers digitised.', quality: 6,
+  },
+  {
+    orgName: 'Tanja Textile', contactName: 'Widad Ziani', email: 'widad@tanjatextile.ma', phone: '+212 665 39 04 26',
+    source: 'LinkedIn', stage: 'Growth', sector: 'Retail tech', city: 'Tanger', team: 16, revenue: 2800000, founded: 2019,
+    problem: 'Textile subcontractors take orders on WhatsApp and lose track of which batch is where.',
+    traction: '19 factories, 140 000 pieces tracked a month.', quality: 7,
+  },
+  {
+    orgName: 'Sihati', contactName: 'Aya Bennis', email: 'aya@sihati.ma', phone: '+212 666 58 71 30',
+    source: 'LinkedIn', stage: 'Prototype', sector: 'Healthtech', city: 'Rabat', team: 4, revenue: 0, founded: 2025,
+    problem: 'Diabetic patients leave the consultation with a diet sheet written for someone else.',
+    traction: 'Pilot with one hospital, 60 patients.', quality: 5,
+  },
+  {
+    orgName: 'Oujda Fresh', contactName: 'Bilal Haddaoui', email: 'bilal@oujdafresh.ma', phone: '+212 667 83 46 11',
+    source: 'University', stage: 'Idea', sector: 'Logistics', city: 'Casablanca', team: 2, revenue: 0, founded: 2025,
+    problem: 'Produce spoils between the field and the market for want of a cold chain anyone can afford.',
+    traction: 'Two interviews with wholesalers. Nothing built yet.', quality: 3,
+  },
+  {
+    orgName: 'Chaabi Learn', contactName: 'Nada Filali', email: 'nada@chaabilearn.ma', phone: '+212 668 11 29 74',
+    source: 'Instagram', stage: 'Idea', sector: 'Edtech', city: 'Casablanca', team: 2, revenue: 0, founded: 2025,
+    problem: 'Adults who left school early have nowhere to learn to read that does not treat them as children.',
+    traction: 'A prototype lesson tested with nine adults.', quality: 4,
+  },
+  {
+    orgName: 'Rif Hydro', contactName: 'Tarik Amrani', email: 'tarik@rifhydro.ma', phone: '+212 669 65 92 18',
+    source: 'Partner referral', stage: 'Idea', sector: 'Cleantech', city: 'Tanger', team: 2, revenue: 0, founded: 2025,
+    problem: 'Mountain villages rely on a spring that runs dry earlier every year.',
+    traction: 'A feasibility note. No pilot.', quality: 3,
+  },
+  {
+    orgName: 'Casa Rides', contactName: 'Sami Berrada', email: 'sami@casarides.ma', phone: '+212 660 74 38 52',
+    source: 'Instagram', stage: 'Prototype', sector: 'Logistics', city: 'Casablanca', team: 3, revenue: 0, founded: 2024,
+    problem: 'Company shuttle buses run half empty on routes nobody has revisited in years.',
+    traction: 'One employer piloting with 80 staff.', quality: 5,
+  },
+  {
+    orgName: 'Amal Care', contactName: 'Salima Ouhadi', email: 'salima@amalcare.ma', phone: '+212 661 45 17 93',
+    source: 'CEED alumni', stage: 'Prototype', sector: 'Healthtech', city: 'Marrakech', team: 4, revenue: 60000, founded: 2023,
+    problem: 'Families looking for home care for an elderly parent find only word of mouth.',
+    traction: '30 carers vetted, 45 families served.', quality: 6,
+  },
+  {
+    orgName: 'Tifinagh Type', contactName: 'Idir Ouzzine', email: 'idir@tifinaghtype.ma', phone: '+212 662 32 80 46',
+    source: 'University', stage: 'Idea', sector: 'Edtech', city: 'Rabat', team: 2, revenue: 0, founded: 2025,
+    problem: 'Amazigh is an official language with almost no usable typefaces or keyboards.',
+    traction: 'One typeface drawn, released free.', quality: 4,
+  },
+  {
+    orgName: 'Meknes Malt', contactName: 'Ayoub Cherkaoui', email: 'ayoub@meknesmalt.ma', phone: '+212 663 96 51 20',
+    source: 'LinkedIn', stage: 'Early revenue', sector: 'Agritech', city: 'Fès', team: 6, revenue: 350000, founded: 2022,
+    problem: 'Brewers import malt that could be grown and malted two hundred kilometres away.',
+    traction: 'First malting line running, two brewery customers.', quality: 7,
+  },
+  {
+    orgName: 'Darna Design', contactName: 'Loubna Ghali', email: 'loubna@darnadesign.ma', phone: '+212 664 08 63 71',
+    source: 'Instagram', stage: 'Early revenue', sector: 'Retail tech', city: 'Casablanca', team: 5, revenue: 270000, founded: 2023,
+    problem: 'Furniture makers sell through showrooms that take half the price and hold the customer.',
+    traction: '24 workshops selling direct, 1 100 orders last year.', quality: 6,
   },
 ];
 
@@ -260,7 +409,7 @@ async function main() {
     config: {
       outputKind: 'cohort',
       method: 'top_n',
-      topN: 6,
+      topN: 11,
       sourceBlockId: juryScoring.id,
       passLabel: 'Selected',
       failLabel: 'Not selected',
@@ -303,7 +452,7 @@ async function main() {
       },
     });
     for (const [index, evaluator] of EVALUATORS.entries()) {
-      const marks = spec.marks[index];
+      const marks = marksFor(spec)[index];
       await repo.upsertScore({
         blockId: evaluation.id,
         candidateId: candidate.id,
@@ -349,28 +498,43 @@ async function main() {
   const { committeeView, seatOnFreeSlots } = await import('../services/committee.js');
   // The pool is whoever the shortlist sent through.
   const waiting = (await committeeView(committee.id))!.pool.map((p) => p.candidate.id);
-  await seatOnFreeSlots(juryDay.id, waiting.slice(0, 8));
-  await seatOnFreeSlots(catchUp.id, waiting.slice(8));
+  // The big day takes what it can hold; the rest go to the catch-up panel.
+  await seatOnFreeSlots(juryDay.id, waiting.slice(0, 15));
+  await seatOnFreeSlots(catchUp.id, waiting.slice(15));
 
   /* ---- The startups have booked their times; the jury has scored them ---- */
   // The committee runs Calendly-style, so seating leaves everyone unplaced until
-  // they choose. This plays those choices out, bar one that has not answered.
+  // they choose. This plays those choices out.
   const view = (await committeeView(committee.id))!;
+
+  // Who drifts is picked by rank, not by position: the ones who go quiet sit
+  // around the middle of the screening, and the one who pulls out is last.
+  const rough = (orgName: string) => {
+    const spec = CANDIDATES.find((c) => c.orgName === orgName);
+    const marks = spec ? marksFor(spec)[0] : [7, 7, 7, 7, 7];
+    return marks.reduce((a, b) => a + b, 0) / marks.length;
+  };
+  const byRank = view.sessions
+    .flatMap((s) => s.assignments)
+    .sort((a, b) => rough(b.candidate.orgName) - rough(a.candidate.orgName));
+  const middle = Math.floor(byRank.length / 2);
+  const silent = new Set([byRank[middle]?.candidate.id, byRank[middle + 1]?.candidate.id]);
+  const withdrew = byRank[byRank.length - 1]?.candidate.id;
+
   let seat = 0;
   for (const session of view.sessions) {
     const free = session.slots.map((s) => s.index);
     for (const row of session.assignments) {
-      // One startup has not answered yet, so the invitation screen has something to show.
-      if (seat === 4) {
-        seat++;
-        free.shift();
+      if (silent.has(row.candidate.id)) continue;
+      if (row.candidate.id === withdrew) {
+        await repo.respondToAssignment(row.assignment.id, 'declined', null);
         continue;
       }
       await repo.moveAssignmentToSlot(row.assignment.id, free.shift() ?? null);
       await repo.respondToAssignment(row.assignment.id, 'confirmed');
       for (const juror of session.session.jury) {
         const spec = CANDIDATES.find((c) => c.orgName === row.candidate.orgName);
-        const base = spec ? spec.marks[0] : [7, 7, 7, 7, 7];
+        const base = spec ? marksFor(spec)[0] : [7, 7, 7, 7, 7];
         await repo.upsertScore({
           blockId: juryScoring.id,
           sessionId: session.session.id,
@@ -389,6 +553,15 @@ async function main() {
     }
   }
   await applyOutcomes((await repo.getBlock(juryScoring.id))!);
+
+  /* ---- The cohort is announced, with one startup fished back by hand ---- */
+  const { addToSelection } = await import('../services/selection.js');
+  const beforeCut = (await import('../services/selection.js')).selectionView;
+  const cut = (await beforeCut(finalSelection.id))!;
+  // The jury argued for one the ranking left just outside; the team put it back.
+  const wildcard = cut.rows.filter((r) => r.outcome === 'fail' && r.score !== null)[0];
+  if (wildcard) await addToSelection(finalSelection.id, { candidateIds: [wildcard.candidate.id], outcome: 'pass' });
+  await publishSelection(finalSelection.id);
 
   /* ---- Two more programmes, so the list looks like a real account ---- */
   const she = await repo.createProgram({

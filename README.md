@@ -212,24 +212,22 @@ a human or a form actually entered.
 
 ## What the seed gives you
 
-**CEED Grow → Grow 2026**, running, with a three-phase workflow and 12 candidates.
+**CEED Grow → Grow 2026**, running, with a three-phase workflow and a funnel played out to the end:
+**34 applicants → 19 shortlisted → a cohort of 12**, matching the edition's 12 seats.
 
-The call went out to six partner addresses. Three evaluators scored every applicant, and the
-statuses that earned (8 retained, 2 on hold, 2 not retained) are written. The shortlist is
-published (12 → 9), and those nine are the committee's pool.
+The call went out to six partner addresses, and applications arrived across the whole window through
+the five channels the sourcing block declared — so the Source column actually compares. Three
+evaluators scored every applicant and the statuses that earned are written (Retained / On hold /
+Not retained).
 
-The committee phase holds three blocks in a row: **Jury day**, **Jury scoring**, **Final
-selection**. Jury day runs two sittings — a full day of 09:00–12:30 and 14:00–17:00 at 25 minutes
-(15 slots), and a short catch-up panel of 09:00–10:30 at 15 minutes (6 slots). Eight startups are
-seated on the first, one on the second; all have booked except one, left pending so the invitation
-screen has something to show. Jury scoring picks the committee up because it sits in its phase, so
-each panel is marked by its own jury, and the **final selection reads those scores, not the
-screening's**. It is configured as top 6 and **not** published, so the last step of the funnel is
-there to walk through.
+The jury day runs two sittings: a full day of 09:00–12:30 and 14:00–17:00 at 25 minutes (15 slots,
+full), and a catch-up panel of 09:00–10:30 at 15 minutes. Sixteen startups confirmed their time,
+two never answered and one pulled out — so every RSVP state is on screen, and the three who did not
+pitch carry no jury score, which is exactly why they are not in the cohort.
 
-The application form is live and runs over three named pages — copy its link from the Application
-block to submit as a candidate would, and copy an invitation link from the Jury day to book as a
-startup would.
+The final selection takes the top 11 on the jury's marks; one startup the ranking left just outside
+was put back by hand, which is the twelfth seat and shows as **Changed by hand**. Withdraw the
+publication from the Decisions tab to replay the last step yourself.
 
 Plus **SheLeads** (a draft 2027 edition on the standard template and a completed 2025 one) and
 **Impact Booster** with no edition yet.
