@@ -243,6 +243,8 @@ export function ScoreEditor({
   candidate,
   criteria,
   evaluator,
+  evaluators,
+  onEvaluator,
   existing,
   requireComment,
   onSaved,
@@ -252,6 +254,9 @@ export function ScoreEditor({
   candidate: Candidate;
   criteria: EvaluationCriterion[];
   evaluator: string;
+  /** Whose marks these are. Until evaluators log in, the team enters for them. */
+  evaluators?: string[];
+  onEvaluator?: (name: string) => void;
   existing?: EvaluationScore;
   requireComment?: boolean;
   onSaved: () => void;
@@ -287,8 +292,19 @@ export function ScoreEditor({
 
   return (
     <div className="stack" style={{ padding: '6px 0 10px' }}>
-      <div className="eyebrow">
-        {evaluator} scoring {candidate.orgName}
+      <div className="row" style={{ gap: 8 }}>
+        <span className="eyebrow">Marks for {candidate.orgName}, entered as</span>
+        {evaluators && evaluators.length > 1 && onEvaluator ? (
+          <select className="status-select" value={evaluator} onChange={(e) => onEvaluator(e.target.value)}>
+            {evaluators.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <strong style={{ fontSize: 12.5 }}>{evaluator}</strong>
+        )}
       </div>
       {criteria.map((criterion) => (
         <div key={criterion.id} className="row" style={{ gap: 12 }}>

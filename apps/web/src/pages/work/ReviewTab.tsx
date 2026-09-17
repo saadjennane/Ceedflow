@@ -326,22 +326,6 @@ function Moment({
             <span className="num">{lines.filter((l) => l.scoring?.consensus !== null && l.scoring).length}</span> scored
           </span>
         )}
-        {evaluators.length > 1 && (
-          <label className="row" style={{ gap: 7, fontSize: 12.5 }}>
-            <span className="faint">Scoring as</span>
-            <select
-              className="status-select"
-              value={as.all || evaluators[0]}
-              onChange={(e) => setAs({ all: e.target.value })}
-            >
-              {evaluators.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
         <div className="spacer" />
         {/* Nothing to press in the steady state: publishing is for the first
             announcement, and for catching up when the rule has moved since. */}
@@ -505,7 +489,7 @@ function Moment({
                             <button
                               className="btn ghost icon sm"
                               disabled={!me}
-                              title={me ? `Score as ${me}` : 'No evaluator on this block'}
+                              title={me ? 'Enter marks' : 'No evaluator on this block'}
                               aria-label="Score"
                               onClick={() => setOpenId(open ? null : line.candidate.id)}
                             >
@@ -520,11 +504,14 @@ function Moment({
                       <tr>
                         <td colSpan={evaluators.length + 5} style={{ background: 'var(--wash)' }}>
                           <ScoreEditor
+                            key={me}
                             blockId={evaluation.id}
                             sessionId={line.sessionId ?? undefined}
                             candidate={line.candidate}
                             criteria={criteria}
                             evaluator={me}
+                            evaluators={line.evaluators.length ? line.evaluators : evaluators}
+                            onEvaluator={(name) => setAs({ all: name })}
                             requireComment={scoring?.requireComment}
                             existing={line.scoring?.scores.find((s) => s.evaluatorId === evaluatorId(me))}
                             onSaved={() => {

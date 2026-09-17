@@ -80,6 +80,10 @@ edition actually does: a blank edition shows none of them. Each tab follows one 
 block you are working on, then the plan of work — and every block links through to the other side,
 so Setup is one click from the work and the work one click from Setup.
 
+Marks are entered on behalf of an evaluator, since evaluators have no login yet: whose marks they
+are is chosen inside the score editor, where it belongs, not above the table where it would read as
+a filter. That control disappears the day evaluators sign in for themselves.
+
 The committee is the most spatial of them: the sittings across the top, **the jury above** and
 **the day below in one column per stretch of hours**, with the pool as a rail alongside. A startup
 is dragged from the rail onto a time, from one time to another to swap two over, or back to the
