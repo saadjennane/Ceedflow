@@ -603,9 +603,12 @@ async function main() {
     colour: '#C77400',
   });
 
+  await seedDirectory();
+
   const programs = await repo.listPrograms();
+  const directory = await (await db()).query<{ n: number }>('select count(*)::int as n from records');
   console.log(
-    `seeded ${programs.length} programmes, ${programs.reduce((n, p) => n + p.editions.length, 0)} editions, ${CANDIDATES.length} candidates`,
+    `seeded ${directory[0].n} directory records, ${programs.length} programmes, ${programs.reduce((n, p) => n + p.editions.length, 0)} editions, ${CANDIDATES.length} candidates`,
   );
   await (await db()).close();
 }
@@ -614,3 +617,84 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
+
+/* ------------------------------------------------------------------ */
+/* The directory                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Seeded from the world that already exists, and with the three ways a record
+ * arrives all represented: most of the pool was imported from a file, a handful
+ * were typed in by the team, and a few organisations opened their own page.
+ */
+async function seedDirectory() {
+  const dir = await import('./directory.js');
+
+  /* ---- The CEED side and its network ---- */
+  const staff: [string, string, string[], string][] = [
+    ['Saad Jennane', 'saad@ceed.ma', ['CEED team'], 'Program director.'],
+    ['Sarah Benali', 'sarah@ceed.ma', ['CEED team', 'Mentor', 'Jury'], 'Senior program manager. Go-to-market and pricing.'],
+    ['Karim Alaoui', 'karim@ceed.ma', ['CEED team', 'Mentor', 'Jury', 'Investor'], 'Investment advisor. Finance and fundraising.'],
+    ['Nawal Cherkaoui', 'nawal@ceed.ma', ['CEED team', 'Mentor', 'Jury'], 'Program coordinator. Operations and impact.'],
+    ['Driss Benjelloun', 'driss@ceed.ma', ['Mentor', 'Jury'], 'Partner at a Casablanca law firm. Legal and governance.'],
+    ['Fatima Zahra Ouali', 'fatima@ceed.ma', ['Mentor', 'Jury'], 'CTO. Engineering and scaling.'],
+  ];
+  for (const [name, email, roles, bio] of staff) {
+    await dir.createRecord({
+      kind: 'person', name, roles, email, bio,
+      city: 'Casablanca', country: 'Morocco',
+      origin: 'manual', ownership: 'Claimed',
+    });
+  }
+
+  const partners: [string, string[], string, string, string][] = [
+    ['OCP Group', ['Corporate', 'Partner'], 'innovation@ocpgroup.ma', 'Casablanca', 'Phosphates group running open innovation challenges.'],
+    ['Attijari Ventures', ['Investor', 'Partner'], 'contact@attijariventures.ma', 'Casablanca', 'Corporate venture arm investing in Moroccan fintech.'],
+    ['Maroc Numeric Fund', ['Investor'], 'deals@mnf.ma', 'Casablanca', 'Early-stage technology fund.'],
+    ['Ministry of Health', ['Institution', 'Partner'], 'partenariats@sante.gov.ma', 'Rabat', 'Public partner of the health programs.'],
+  ];
+  for (const [name, roles, email, city, bio] of partners) {
+    await dir.createRecord({
+      kind: 'org', name, roles, email, city, bio,
+      country: 'Morocco', origin: 'manual', ownership: 'Unclaimed',
+    });
+  }
+
+  /* ---- The startups, each with the founder who holds it ---- */
+  for (const [index, spec] of CANDIDATES.entries()) {
+    // Two opened their own page; a few were invited and answered; the rest sit
+    // as CEED imported them.
+    const ownership = index < 2 ? 'Claimed' : index < 7 ? 'Invited' : 'Unclaimed';
+    const origin = index < 2 ? 'signup' : 'import';
+
+    const org = await dir.createRecord({
+      kind: 'org',
+      name: spec.orgName,
+      roles: ['Startup'],
+      email: spec.email,
+      phone: spec.phone,
+      city: spec.city,
+      country: 'Morocco',
+      website: `www.${spec.orgName.toLowerCase().replace(/[^a-z0-9]+/g, '')}.ma`,
+      bio: spec.problem,
+      tags: [spec.sector, spec.stage],
+      origin,
+      ownership,
+    });
+
+    if (!spec.contactName) continue;
+    const person = await dir.createRecord({
+      kind: 'person',
+      name: spec.contactName,
+      email: spec.email,
+      phone: spec.phone,
+      city: spec.city,
+      country: 'Morocco',
+      bio: `Founder of ${spec.orgName}.`,
+      origin,
+      ownership: ownership === 'Claimed' ? 'Claimed' : 'Unclaimed',
+    });
+    await dir.linkRecords({ personId: person.id, orgId: org.id, role: 'Founder & CEO', since: String(spec.founded) });
+  }
+}

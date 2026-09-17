@@ -22,4 +22,6 @@ export const idOf = {
   field: () => newId('fld'),
   criterion: () => newId('crt'),
   candidate: () => newId('cnd'),
+  record: () => newId('rec'),
+  affiliation: () => newId('aff'),
 };

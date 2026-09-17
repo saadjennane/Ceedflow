@@ -11,9 +11,7 @@ const TOP = [
   { label: 'Tasks', icon: 'check' },
 ];
 
-const COMMUNITY = [
-  { label: 'Organisations', icon: 'layers' },
-  { label: 'Individuals', icon: 'users' },
+const COMMUNITY_LATER = [
   { label: 'CRM', icon: 'compass' },
   { label: 'Campaigns', icon: 'send' },
 ];
@@ -43,7 +41,15 @@ export function Shell() {
         ))}
 
         <div className="eyebrow nav-group">Community</div>
-        {COMMUNITY.map((item) => (
+        <NavLink to="/organisations" className={({ isActive }) => (isActive ? 'nav-item on' : 'nav-item')}>
+          <Icon name="layers" />
+          Organisations
+        </NavLink>
+        <NavLink to="/individuals" className={({ isActive }) => (isActive ? 'nav-item on' : 'nav-item')}>
+          <Icon name="users" />
+          Individuals
+        </NavLink>
+        {COMMUNITY_LATER.map((item) => (
           <Soon key={item.label} {...item} />
         ))}
 

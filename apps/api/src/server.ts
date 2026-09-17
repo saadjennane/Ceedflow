@@ -3,6 +3,7 @@ import Fastify from 'fastify';
 import { migrate } from './db/client.js';
 import { actionRoutes } from './routes/actions.js';
 import { builderRoutes } from './routes/builder.js';
+import { directoryRoutes } from './routes/directory.js';
 import { funnelRoutes } from './routes/funnel.js';
 import { programRoutes } from './routes/programs.js';
 import { HttpError } from './routes/util.js';
@@ -25,6 +26,7 @@ await app.register(programRoutes);
 await app.register(builderRoutes);
 await app.register(funnelRoutes);
 await app.register(actionRoutes);
+await app.register(directoryRoutes);
 
 await migrate();
 

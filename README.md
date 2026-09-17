@@ -32,6 +32,38 @@ apps/api          Fastify + raw SQL, migrations in src/db/migrations
 apps/web          React + TypeScript + Vite
 ```
 
+## The directory
+
+One internal directory behind two sidebar entries. **Organisations** and **Individuals** are the same
+kind of row — `kind` is what separates them — and an **affiliation** joins one to the other. A person
+belongs to zero or several organisations; an organisation is held by one or several people.
+
+Roles are **statuses** for now: labels a record carries (Startup, Corporate, Investor, Institution,
+Partner for an organisation; Mentor, Investor, Jury, CEED team for a person). Field sets per role
+come later; the model leaves room and the screens do not ask for it.
+
+**Three ways in, and they are what produce the three page states.**
+
+| How the record arrives | State it lands in |
+| --- | --- |
+| Imported from a CSV, or pasted straight out of Excel | **Unclaimed** — CEED maintains it |
+| Typed in by the team | **Unclaimed** |
+| The organisation opens its own page at `/join` | **Claimed** — it maintains itself |
+
+**Invited** is the state in between, and it is CEED's move: inviting an unclaimed page asks somebody
+to take it over. That is why an organisation is expected to carry at least one person — *a page is
+claimed by a person, not by a mailbox*, so inviting an organisation with nobody attached is refused
+and says what is missing. The list counts those organisations at the top rather than letting them sit
+unnoticed.
+
+The import never destroys: a record already in the directory is **completed, never overwritten**, and
+matching ignores case, accents and punctuation. A preview says exactly what each row would do before
+anything is written. When the file carries a contact column, the organisation arrives with the person
+who holds it — created and linked in the same pass.
+
+A startup that opens its own page when CEED had already imported it **takes that page over** rather
+than creating a twin, so its history follows it.
+
 ## Where each block's result shows up
 
 | Block | What it produces | Where you see it |
