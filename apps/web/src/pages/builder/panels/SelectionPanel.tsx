@@ -30,7 +30,10 @@ export function SelectionSetup({
 }) {
   const ordered = orderedBlocks(track);
   const index = ordered.findIndex((b) => b.id === block.id);
-  const upstreamEvaluations = ordered.slice(0, index === -1 ? undefined : index).filter((b) => b.type === 'evaluation');
+  // A committee scores too, so the jury's marks can drive the cut.
+  const upstreamScoring = ordered
+    .slice(0, index === -1 ? undefined : index)
+    .filter((b) => b.type === 'evaluation' || b.type === 'committee');
   const otherCohort = ordered.find(
     (b) => b.type === 'selection' && b.id !== block.id && (b.config as SelectionConfig).outputKind === 'cohort',
   );
@@ -86,12 +89,15 @@ export function SelectionSetup({
         value={config.sourceBlockId ?? ''}
         onChange={(v) => patch({ sourceBlockId: v || null })}
         placeholder={
-          upstreamEvaluations.length
-            ? `Nearest evaluation before this block (${upstreamEvaluations[upstreamEvaluations.length - 1].name})`
-            : 'No evaluation upstream yet'
+          upstreamScoring.length
+            ? `Nearest scoring block before this one (${upstreamScoring[upstreamScoring.length - 1].name})`
+            : 'Nothing upstream scores yet'
         }
-        options={upstreamEvaluations.map((b) => ({ value: b.id, label: b.name }))}
-        help="Only evaluation blocks placed before this one can feed it."
+        options={upstreamScoring.map((b) => ({
+          value: b.id,
+          label: `${b.name} · ${b.type === 'committee' ? 'committee' : 'evaluation'}`,
+        }))}
+        help="An evaluation or a selection committee placed before this block — both produce a score out of 100."
       />
 
       <SelectField
@@ -131,11 +137,11 @@ export function SelectionSetup({
         <TextField label="Label for those who do not" value={config.failLabel} onChange={(v) => patch({ failLabel: v })} />
       </div>
 
-      {!upstreamEvaluations.length && config.method !== 'manual' && (
+      {!upstreamScoring.length && config.method !== 'manual' && (
         <div className="callout warn">
           <Icon name="alert" size={15} />
-          There is no evaluation block before this one, so no candidate has a score and none will pass automatically.
-          Add one, or switch to deciding by hand.
+          Nothing before this block produces a score, so no candidate has one and none will pass automatically. Add an
+          evaluation or a committee upstream, or switch to deciding by hand.
         </div>
       )}
     </>

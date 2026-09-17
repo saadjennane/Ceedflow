@@ -42,9 +42,10 @@ export function blockLine(block: Block): BlockLine {
   switch (block.type) {
     case 'sourcing': {
       const c = block.config as SourcingConfig;
-      const bits = ['Open the call and track where candidates come from'];
+      const emails = c.outreach.recipients.kind === 'list' ? c.outreach.recipients.emails.length : 0;
+      const bits = ['Send the call out and track where candidates come from'];
       if (c.channels.length) bits.push(plural(c.channels.length, 'channel'));
-      if (c.target) bits.push(`target ${c.target}`);
+      if (emails) bits.push(plural(emails, 'recipient'));
       return {
         description: bits.join(' · '),
         date: c.opensAt,
@@ -78,13 +79,14 @@ export function blockLine(block: Block): BlockLine {
     }
     case 'committee': {
       const c = block.config as CommitteeConfig;
-      const bits = ['Jury session with startups and evaluators'];
-      if (c.juryIds.length) bits.push(plural(c.juryIds.length, 'jury member'));
-      if (c.location) bits.push(c.location);
+      const bits = ['Run the jury sittings and score the startups'];
+      if (c.criteria.length) bits.push(`${c.criteria.length} criteria`);
+      if (c.rsvpMode === 'slots') bits.push('startups pick a time');
+      else if (c.rsvpMode === 'confirm') bits.push('startups confirm');
       return {
         description: bits.join(' · '),
-        date: c.heldAt,
-        progress: progressOf(c.heldAt, c.heldAt),
+        date: c.rsvpDeadline,
+        progress: null,
         chips,
       };
     }

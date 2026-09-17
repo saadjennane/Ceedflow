@@ -1,14 +1,13 @@
 import {
-  consensusScore,
   orderedBlocks,
   type Block,
   type Candidate,
   type CandidateStatus,
-  type EvaluationConfig,
   type SelectionConfig,
   type TrackWithPhases,
 } from '@ceed/shared';
 import * as repo from '../db/repo.js';
+import { scoresByCandidate } from './scoring.js';
 
 export interface SelectionRow {
   candidate: Candidate;
@@ -50,7 +49,10 @@ export async function intakeFor(track: TrackWithPhases, blockId: string, candida
   return candidates.filter((c) => passed.has(c.id));
 }
 
-/** The evaluation block feeding a selection: explicit, else the nearest one upstream. */
+/**
+ * The block feeding a selection its scores: explicit, else the nearest scoring
+ * block upstream. A committee scores too, so a jury day can drive the cut.
+ */
 function resolveSource(track: TrackWithPhases, block: Block): Block | null {
   const config = block.config as SelectionConfig;
   const ordered = orderedBlocks(track);
@@ -59,7 +61,7 @@ function resolveSource(track: TrackWithPhases, block: Block): Block | null {
   return (
     ordered
       .slice(0, index === -1 ? ordered.length : index)
-      .filter((b) => b.type === 'evaluation')
+      .filter((b) => b.type === 'evaluation' || b.type === 'committee')
       .pop() ?? null
   );
 }
@@ -77,17 +79,11 @@ export async function selectionView(blockId: string): Promise<SelectionView | nu
   const intake = (await intakeFor(track, blockId, all)).filter((c) => c.status !== 'Withdrawn');
 
   const source = resolveSource(track, block);
-  const criteria = source ? ((source.config as EvaluationConfig).criteria ?? []) : [];
-  const scores = source ? await repo.listScores(source.id) : [];
+  const grouped = source ? await scoresByCandidate(source) : null;
 
   const scored = intake.map((candidate) => ({
     candidate,
-    score: source
-      ? consensusScore(
-          scores.filter((s) => s.candidateId === candidate.id),
-          criteria,
-        )
-      : null,
+    score: grouped?.get(candidate.id)?.consensus ?? null,
   }));
 
   // A candidate with no score never passes automatically — the team decides.

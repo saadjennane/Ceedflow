@@ -50,13 +50,35 @@ setup panel — no migration.
 
 ### The five blocks in this slice
 
-| Block | What it holds |
+Every block carries an **action**. Anything purely descriptive belongs in the program
+description and the edition's own fields, not in a block.
+
+| Block | Its action |
 | --- | --- |
-| **Sourcing** | The call: dates, target, channels, who can apply. Channels feed the source list. |
-| **Application** | A form the public fills in. Publishing it gives a link at `/apply/:token`; every submission creates a candidate in that track. |
-| **Evaluation** | Weighted criteria and a set of evaluators. Marks become a score out of 100; a candidate's score is the average across evaluators who submitted. |
-| **Selection committee** | The sitting: date, place, jury, and which candidates are reviewed. It records the meeting, not the decision. |
-| **Selection** | The cut. Reads scores from an evaluation upstream, applies a rule (threshold, top N, or by hand), and publishes who moves on. |
+| **Sourcing** | Send the prospecting message and hold the channels the call runs on. Channels feed the source list on the form. |
+| **Application** | Publish a form. Every submission creates a candidate in the track — this is what fills the pool. |
+| **Evaluation** | Score startups on a weighted grid, and **put a status on each one**. That status is what the next block reads. |
+| **Selection committee** | Run the sittings: create committees, fill them, let the startups book a time, let the jury score them on its own grid. Out comes a scored list with a status. |
+| **Selection** | Cut the funnel: who moves to the next phase, or who forms the cohort. |
+
+### Statuses, and the difference with a Selection
+
+An evaluation and a committee both **qualify** a startup with a configurable status
+(Retained / On hold / Not retained by default). A status can be earned from the score — each
+one carries a threshold — or set by hand, and a hand-made one is never overwritten when you
+re-apply. A Selection is different: it **cuts**, writing the funnel decision and opening the gate
+for everything downstream.
+
+### The committee: one block, N sittings
+
+This is the first application of the block-versus-instance rule. The grid, the statuses and the
+invitation settings live on the block, so scores compare across sittings; each sitting carries its
+own date, window, minutes per startup, place and jury. **Slots are never stored** — the window and
+the time per startup are the truth, so moving a sitting from 25 to 20 minutes re-cuts the day.
+
+Startups are assigned to a sitting in one go from a status the evaluation gave them, or picked by
+hand from the pool. Each assigned startup gets a personal link at `/book/:token` where it confirms,
+declines, or picks its time; two startups cannot take the same slot.
 
 ### One Selection concept, two outputs
 
@@ -90,15 +112,28 @@ a human or a form actually entered.
 | GET | `/api/editions/:id/funnel` | counts at each funnel node |
 | GET/POST | `/api/public/forms/:token` | the public application form and its submissions |
 | GET | `/api/blocks/:id/evaluation` · POST `/api/blocks/:id/scores` | |
-| GET | `/api/blocks/:id/committee` | |
+| GET | `/api/blocks/:id/committee` | sittings, slots, assignments, scores, statuses, and the pool |
+| POST | `/api/blocks/:id/sessions` · PATCH/DELETE `/api/sessions/:id` | the sittings |
+| POST | `/api/sessions/:id/assign` · DELETE `/api/assignments/:id` | by hand, or in one go from a status |
+| GET/POST | `/api/public/book/:token` | the startup's own invitation |
+| POST | `/api/blocks/:id/outcomes` · `.../outcomes/apply` | a status by hand, or every status the scores earn |
+| GET/POST | `/api/blocks/:id/outreach` · `.../outreach/send` | the prospecting message and its trace |
 | GET | `/api/blocks/:id/selection` · POST `.../publish`, `.../unpublish`, `.../outcome` | |
 
 ## What the seed gives you
 
-**CEED Grow → Grow 2026**, running, with a three-phase workflow and 12 candidates who have been
-scored by three evaluators. The shortlist is published (12 → 9); the final selection is configured
-as top 6 but **not** published, so the last step of the funnel is there to walk through. The
-application form is live — copy its link from the Application block to submit as a candidate would.
+**CEED Grow → Grow 2026**, running, with a three-phase workflow and 12 candidates.
+
+The call went out to six partner addresses. Three evaluators scored every applicant, and the
+statuses that earned (8 retained, 2 on hold, 2 not retained) are written. The shortlist is
+published (12 → 9). The jury day holds two sittings — a morning panel of nine slots and an
+afternoon one — filled from those statuses; the startups have booked their times except one, left
+pending so the invitation screen has something to show. The jury has scored on its own grid, and
+the **final selection reads the jury's scores, not the screening's**. It is configured as top 6 and
+**not** published, so the last step of the funnel is there to walk through.
+
+The application form is live — copy its link from the Application block to submit as a candidate
+would, and copy an invitation link from the Jury day to book as a startup would.
 
 Plus **SheLeads** (a draft 2027 edition on the standard template and a completed 2025 one) and
 **Impact Booster** with no edition yet.
@@ -113,8 +148,10 @@ anything countable. Cyan appears only in the primary gradient and on progress; s
 
 ## Next
 
-1. Deliverables and RSVP as capabilities attached to blocks, not as block types.
-2. Workshop and mentoring, with the block-versus-instance rule (one block, N sessions).
-3. The community directory, which turns today's free-text evaluators and jury members into real
-   profiles.
-4. The member space: the same data read through a startup's, a mentor's and a juror's eyes.
+1. A mail provider behind the Sourcing action — today a send is composed, addressed and recorded,
+   but nothing is delivered.
+2. The community directory, which turns today's free-text evaluators, jury members and pasted
+   prospect addresses into real profiles and an audience query.
+3. Deliverables as a capability attached to blocks, not as a block type.
+4. Workshop and mentoring, reusing the sittings pattern the committee established.
+5. The member space: the same data read through a startup's, a mentor's and a juror's eyes.

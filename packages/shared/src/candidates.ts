@@ -96,6 +96,21 @@ export function consensusScore(scores: EvaluationScore[], criteria: ScoredCriter
 /* Selection outcomes                                                  */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The status an evaluation or a committee put on a candidate. Separate from the
+ * funnel decision a Selection makes — this one qualifies, it does not cut.
+ */
+export const blockOutcomeRowSchema = z.object({
+  blockId: z.string(),
+  candidateId: z.string(),
+  outcomeId: z.string(),
+  /** True once a human moved it away from what the score proposed. */
+  overridden: z.boolean().default(false),
+  decidedAt: z.string(),
+});
+
+export type BlockOutcomeRow = z.infer<typeof blockOutcomeRowSchema>;
+
 export const selectionOutcomeSchema = z.object({
   blockId: z.string(),
   candidateId: z.string(),

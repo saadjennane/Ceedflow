@@ -1,16 +1,15 @@
 import {
   candidateSchema,
-  consensusScore,
-  normalisedScore,
   setOutcomeInput,
   submitApplicationInput,
+  proposedOutcome,
   type ApplicationConfig,
-  type CommitteeConfig,
   type EvaluationConfig,
 } from '@ceed/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import * as repo from '../db/repo.js';
+import { applyOutcomes, outcomesOf, scoresByCandidate } from '../services/scoring.js';
 import { funnelFor, intakeFor, overrideOutcome, publishSelection, selectionView, unpublishSelection } from '../services/selection.js';
 import { HttpError, notFound, parse } from './util.js';
 
@@ -18,6 +17,7 @@ const scoreInput = z.object({
   candidateId: z.string(),
   evaluatorId: z.string().min(1),
   evaluatorName: z.string().optional(),
+  sessionId: z.string().nullable().optional(),
   marks: z.record(z.number()).default({}),
   comment: z.string().optional(),
   submit: z.boolean().optional(),
@@ -148,43 +148,66 @@ export async function funnelRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const found = await intakeForBlock(id);
     if (!found || found.context.block.type !== 'evaluation') return notFound(reply, 'Evaluation block not found.');
-    const config = found.context.block.config as EvaluationConfig;
-    const scores = await repo.listScores(id);
+    const block = found.context.block;
+    const config = block.config as EvaluationConfig;
+    const outcomes = outcomesOf(block);
+    const grouped = await scoresByCandidate(block);
+    const stored = new Map((await repo.listBlockOutcomes(id)).map((o) => [o.candidateId, o]));
     return {
-      block: found.context.block,
+      block,
       criteria: config.criteria,
       evaluators: config.evaluators,
+      requireComment: config.requireComment,
+      outcomes,
       rows: found.intake
         .filter((c) => c.status !== 'Withdrawn')
         .map((candidate) => {
-          const mine = scores.filter((s) => s.candidateId === candidate.id);
+          const entry = grouped.get(candidate.id);
+          const saved = stored.get(candidate.id);
           return {
             candidate,
-            scores: mine.map((s) => ({ ...s, normalised: normalisedScore(s.marks, config.criteria) })),
-            consensus: consensusScore(mine, config.criteria),
-            submitted: mine.filter((s) => s.submittedAt).length,
+            scores: entry?.scores ?? [],
+            consensus: entry?.consensus ?? null,
+            submitted: entry?.submitted ?? 0,
+            outcomeId: saved?.outcomeId ?? null,
+            proposedOutcomeId: proposedOutcome(entry?.consensus ?? null, outcomes),
+            overridden: saved?.overridden ?? false,
           };
         }),
     };
   });
 
-  app.post('/api/blocks/:id/scores', async (req) => {
+  /** Writes the status each score earns, leaving hand-made ones alone. */
+  app.post('/api/blocks/:id/outcomes/apply', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const input = parse(scoreInput, req.body);
-    return repo.upsertScore({ ...input, blockId: id });
+    const block = await repo.getBlock(id);
+    if (!block) return notFound(reply, 'Block not found.');
+    return { written: await applyOutcomes(block) };
   });
 
-  /* ---------------- committee ---------------- */
-
-  app.get('/api/blocks/:id/committee', async (req, reply) => {
+  app.post('/api/blocks/:id/outcomes', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const found = await intakeForBlock(id);
-    if (!found || found.context.block.type !== 'committee') return notFound(reply, 'Committee not found.');
-    const config = found.context.block.config as CommitteeConfig;
-    const assigned = config.candidateIds.length
-      ? found.intake.filter((c) => config.candidateIds.includes(c.id))
-      : found.intake;
-    return { block: found.context.block, jury: config.juryIds, candidates: assigned, available: found.intake };
+    const block = await repo.getBlock(id);
+    if (!block) return notFound(reply, 'Block not found.');
+    const input = parse(z.object({ candidateId: z.string(), outcomeId: z.string() }), req.body);
+    const grouped = await scoresByCandidate(block);
+    const proposed = proposedOutcome(grouped.get(input.candidateId)?.consensus ?? null, outcomesOf(block));
+    await repo.setBlockOutcome(id, input.candidateId, input.outcomeId, input.outcomeId !== proposed);
+    reply.code(204);
+  });
+
+  app.post('/api/blocks/:id/scores', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const input = parse(scoreInput, req.body);
+    const block = await repo.getBlock(id);
+    if (!block) return notFound(reply, 'Block not found.');
+    const config = block.config as { requireComment?: boolean };
+    if (input.submit && config.requireComment && !input.comment?.trim()) {
+      throw new HttpError(422, 'This block asks every evaluator for a comment.', {
+        comment: 'Add a comment before submitting.',
+      });
+    }
+    return repo.upsertScore({ ...input, blockId: id });
   });
 
   /* ---------------- selection ---------------- */

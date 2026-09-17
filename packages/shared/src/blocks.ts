@@ -141,12 +141,58 @@ export type FormField = z.infer<typeof formFieldSchema>;
 /* Per-type configuration                                              */
 /* ------------------------------------------------------------------ */
 
+/**
+ * A status a block can put on a candidate. Configurable per block, because the
+ * vocabulary differs between a screening and a jury day.
+ */
+export const blockOutcomeSchema = z.object({
+  id: z.string(),
+  label: z.string().min(1),
+  tone: z.enum(['ok', 'warn', 'stop', 'neutral']).default('neutral'),
+  /** Proposed automatically once the score reaches this. Null = never proposed. */
+  minScore: z.number().nullable().default(null),
+});
+
+export type BlockOutcome = z.infer<typeof blockOutcomeSchema>;
+
+export const DEFAULT_OUTCOMES: BlockOutcome[] = [
+  { id: 'retained', label: 'Retained', tone: 'ok', minScore: 70 },
+  { id: 'hold', label: 'On hold', tone: 'warn', minScore: 55 },
+  { id: 'rejected', label: 'Not retained', tone: 'stop', minScore: null },
+];
+
+/** The status a score earns: the best band it reaches. No score, no status. */
+export function proposedOutcome(score: number | null, outcomes: BlockOutcome[]): string | null {
+  if (score === null) return null;
+  const bands = outcomes
+    .filter((o) => o.minScore !== null)
+    .sort((a, b) => (b.minScore ?? 0) - (a.minScore ?? 0));
+  return bands.find((o) => score >= (o.minScore ?? 0))?.id ?? outcomes[outcomes.length - 1]?.id ?? null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Sourcing — the outreach that opens the call                         */
+/* ------------------------------------------------------------------ */
+
+export const outreachRecipientsSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('list'), emails: z.array(z.string()).default([]) }),
+  /** Reserved for the directory's audience engine. Not selectable yet. */
+  z.object({ kind: z.literal('audience'), query: z.string().default('') }),
+]);
+
+export type OutreachRecipients = z.infer<typeof outreachRecipientsSchema>;
+
 export const sourcingConfigSchema = z.object({
   opensAt: z.string().nullable().default(null),
   closesAt: z.string().nullable().default(null),
-  target: z.number().int().min(0).default(0),
   channels: z.array(z.string()).default([]),
-  eligibility: z.string().default(''),
+  outreach: z
+    .object({
+      subject: z.string().default(''),
+      body: z.string().default(''),
+      recipients: outreachRecipientsSchema.default({ kind: 'list', emails: [] }),
+    })
+    .default({ subject: '', body: '', recipients: { kind: 'list', emails: [] } }),
 });
 
 export const applicationConfigSchema = z.object({
@@ -176,22 +222,90 @@ export const evaluationConfigSchema = z.object({
   criteria: z.array(evaluationCriterionSchema).default([]),
   /** Who scores. Names for now; they become directory references later. */
   evaluators: z.array(z.string()).default([]),
-  /** Evaluators see each other's scores once they have submitted their own. */
-  revealPeers: z.boolean().default(false),
   requireComment: z.boolean().default(false),
-  /** Which candidates land here: everyone still in the funnel, or an explicit list. */
-  intake: z.enum(['funnel', 'explicit']).default('funnel'),
+  /** The statuses this evaluation can put on a candidate. */
+  outcomes: z.array(blockOutcomeSchema).default(DEFAULT_OUTCOMES),
 });
 
+/* ------------------------------------------------------------------ */
+/* Selection committee — one block, N sittings                          */
+/* ------------------------------------------------------------------ */
+
+export const RSVP_MODES = ['none', 'confirm', 'slots'] as const;
+export type RsvpMode = (typeof RSVP_MODES)[number];
+
 export const committeeConfigSchema = z.object({
-  heldAt: z.string().nullable().default(null),
-  location: z.string().default(''),
-  durationMinutes: z.number().int().min(0).default(120),
-  juryIds: z.array(z.string()).default([]),
-  /** Empty means every candidate still in the funnel. */
-  candidateIds: z.array(z.string()).default([]),
-  agenda: z.string().default(''),
+  /** The jury's grid. It lives on the block so scores compare across sittings. */
+  criteria: z.array(evaluationCriterionSchema).default([]),
+  requireComment: z.boolean().default(false),
+  outcomes: z.array(blockOutcomeSchema).default(DEFAULT_OUTCOMES),
+  /** How an assigned startup answers: not at all, yes/no, or by picking a slot. */
+  rsvpMode: z.enum(RSVP_MODES).default('slots'),
+  rsvpDeadline: z.string().nullable().default(null),
+  /** Bulk assignment reads statuses from this block — an evaluation before this one. */
+  sourceBlockId: z.string().nullable().default(null),
+  /** Which of that block's statuses qualify for the committee. */
+  intakeOutcomeIds: z.array(z.string()).default([]),
 });
+
+/** One sitting. Its slots are derived from the window and the time per startup. */
+export const committeeSessionSchema = z.object({
+  id: z.string(),
+  blockId: z.string(),
+  name: z.string().min(1),
+  heldOn: z.string().nullable().default(null),
+  /** 'HH:MM', local to the edition's city. */
+  startsAt: z.string().default('09:00'),
+  endsAt: z.string().default('13:00'),
+  minutesPerStartup: z.number().int().min(5).default(25),
+  location: z.string().default(''),
+  jury: z.array(z.string()).default([]),
+  position: z.number().int().default(0),
+});
+
+export type CommitteeSession = z.infer<typeof committeeSessionSchema>;
+
+export interface CommitteeSlot {
+  index: number;
+  startsAt: string;
+  endsAt: string;
+}
+
+const toMinutes = (time: string) => {
+  const [h, m] = time.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+};
+
+const toClock = (minutes: number) =>
+  `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+
+/** Slots are never stored — the window and the time per startup are the truth. */
+export function sessionSlots(session: Pick<CommitteeSession, 'startsAt' | 'endsAt' | 'minutesPerStartup'>): CommitteeSlot[] {
+  const start = toMinutes(session.startsAt);
+  const end = toMinutes(session.endsAt);
+  const step = Math.max(5, session.minutesPerStartup);
+  const slots: CommitteeSlot[] = [];
+  for (let at = start, i = 0; at + step <= end; at += step, i++) {
+    slots.push({ index: i, startsAt: toClock(at), endsAt: toClock(at + step) });
+  }
+  return slots;
+}
+
+export const RSVP_STATES = ['pending', 'confirmed', 'declined'] as const;
+export type RsvpState = (typeof RSVP_STATES)[number];
+
+export const committeeAssignmentSchema = z.object({
+  id: z.string(),
+  sessionId: z.string(),
+  candidateId: z.string(),
+  /** The candidate's personal link to confirm or pick a slot. */
+  token: z.string(),
+  rsvpState: z.enum(RSVP_STATES).default('pending'),
+  slotIndex: z.number().int().nullable().default(null),
+  respondedAt: z.string().nullable().default(null),
+});
+
+export type CommitteeAssignment = z.infer<typeof committeeAssignmentSchema>;
 
 export const SELECTION_METHODS = ['threshold', 'top_n', 'manual'] as const;
 export type SelectionMethod = (typeof SELECTION_METHODS)[number];
@@ -202,7 +316,7 @@ export const selectionConfigSchema = z.object({
   method: z.enum(SELECTION_METHODS).default('threshold'),
   threshold: z.number().min(0).default(70),
   topN: z.number().int().min(1).default(10),
-  /** Which evaluation block feeds the score. Null = the most recent one before this block. */
+  /** Which scoring block feeds it — an evaluation or a committee. Null = the nearest one upstream. */
   sourceBlockId: z.string().nullable().default(null),
   passLabel: z.string().default('Shortlisted'),
   failLabel: z.string().default('Not selected'),

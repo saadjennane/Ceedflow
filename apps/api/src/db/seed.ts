@@ -26,6 +26,23 @@ const CRITERIA: EvaluationCriterion[] = [
   { id: 'c_impact', label: 'Impact and job creation', help: '', weight: 1, max: 10 },
 ];
 
+/** The jury's own grid: what a panel can judge from a pitch, not from a file. */
+const JURY_CRITERIA: EvaluationCriterion[] = [
+  { id: 'j_pitch', label: 'Clarity of the pitch', help: 'Is the proposition understood in two minutes?', weight: 2, max: 10 },
+  { id: 'j_team', label: 'Founders on stage', help: 'Conviction, command of the numbers, honesty about risk.', weight: 3, max: 10 },
+  { id: 'j_model', label: 'Business model', help: 'Does the money add up, and can it scale?', weight: 3, max: 10 },
+  { id: 'j_fit', label: 'Fit with the program', help: 'Will six months here change their trajectory?', weight: 2, max: 10 },
+];
+
+const PROSPECTS = [
+  'contact@technopark.ma',
+  'startups@um6p.ma',
+  'hello@lafabrique.ma',
+  'incubateur@enactus.ma',
+  'reseau@cluster-digital.ma',
+  'contact@impacthub-casa.ma',
+];
+
 interface SeedCandidate {
   orgName: string;
   contactName: string;
@@ -170,9 +187,20 @@ async function main() {
     config: {
       opensAt: '2026-09-01',
       closesAt: '2026-10-10',
-      target: 60,
       channels: ['LinkedIn', 'Instagram', 'Partner referral', 'University', 'CEED alumni'],
-      eligibility: 'Registered in Morocco, at least two founders working full time, first revenue in the last 12 months.',
+      outreach: {
+        subject: 'Grow 2026 is open — six months of support for Moroccan startups',
+        body: [
+          'Hello,',
+          '',
+          'CEED Grow opens its 2026 edition. We take twelve startups with first revenue and a team ready to scale, for six months of structured support in Casablanca.',
+          '',
+          'Applications close on 10 October. Could you pass the call on to the founders around you?',
+          '',
+          'The CEED Morocco team',
+        ].join('\n'),
+        recipients: { kind: 'list', emails: PROSPECTS },
+      },
     },
   });
 
@@ -210,17 +238,33 @@ async function main() {
   const committee = await repo.createBlock(committeePhase.id, 'committee', 'Jury day');
   await repo.updateBlock(committee.id, {
     config: {
-      heldAt: '2026-11-12',
-      location: 'CEED Morocco, Casablanca',
-      durationMinutes: 300,
-      juryIds: JURY,
-      agenda: 'Fifteen minutes of pitch and ten of questions per startup. Deliberation at the end of the day.',
+      criteria: JURY_CRITERIA,
+      requireComment: true,
+      sourceBlockId: evaluation.id,
+      intakeOutcomeIds: ['retained', 'hold'],
+      rsvpMode: 'slots',
+      rsvpDeadline: '2026-11-05',
     },
   });
   const finalSelection = await repo.createBlock(committeePhase.id, 'selection', 'Final selection');
   await repo.updateBlock(finalSelection.id, {
-    config: { outputKind: 'cohort', method: 'top_n', topN: 6, passLabel: 'Selected', failLabel: 'Not selected' },
+    config: {
+      outputKind: 'cohort',
+      method: 'top_n',
+      topN: 6,
+      sourceBlockId: committee.id,
+      passLabel: 'Selected',
+      failLabel: 'Not selected',
+    },
   });
+
+  /* ---- The call went out to the partner network ---- */
+  await repo.recordSend(
+    sourcing.id,
+    'Grow 2026 is open — six months of support for Moroccan startups',
+    'CEED Grow opens its 2026 edition. Applications close on 10 October.',
+    PROSPECTS,
+  );
 
   /* ---- Candidates, with their applications and their scores ---- */
   // Applications trickle in across the call window rather than all landing at once.
@@ -263,9 +307,71 @@ async function main() {
     }
   }
 
-  /* ---- The shortlist is already out; the final selection is not ---- */
+  /* ---- Statuses from the screening, then the shortlist ---- */
+  const { applyOutcomes } = await import('../services/scoring.js');
+  const evaluationBlock = (await repo.getBlock(evaluation.id))!;
+  await applyOutcomes(evaluationBlock);
+
   const { publishSelection } = await import('../services/selection.js');
   await publishSelection(shortlisting.id);
+
+  /* ---- Two sittings, filled from the screening statuses ---- */
+  const morning = await repo.createSession(committee.id, {
+    name: 'Morning panel',
+    heldOn: '2026-11-12',
+    startsAt: '09:00',
+    endsAt: '13:00',
+    minutesPerStartup: 25,
+    location: 'CEED Morocco, Casablanca',
+    jury: JURY.slice(0, 3),
+  });
+  const afternoon = await repo.createSession(committee.id, {
+    name: 'Afternoon panel',
+    heldOn: '2026-11-12',
+    startsAt: '14:00',
+    endsAt: '17:00',
+    minutesPerStartup: 25,
+    location: 'CEED Morocco, Casablanca',
+    jury: [JURY[0], JURY[3], JURY[4]],
+  });
+
+  const { assignByOutcome, committeeView } = await import('../services/committee.js');
+  await assignByOutcome(morning.id, ['retained']);
+  await assignByOutcome(afternoon.id, ['hold']);
+
+  /* ---- Most startups have picked their slot; the jury has scored them ---- */
+  const view = (await committeeView(committee.id))!;
+  let seat = 0;
+  for (const session of view.sessions) {
+    for (const [index, row] of session.assignments.entries()) {
+      // One startup has not answered yet, so the RSVP screen has something to show.
+      if (seat === 4) {
+        seat++;
+        continue;
+      }
+      await repo.respondToAssignment(row.assignment.id, 'confirmed', index);
+      for (const juror of session.session.jury) {
+        const spec = CANDIDATES.find((c) => c.orgName === row.candidate.orgName);
+        const base = spec ? spec.marks[0] : [7, 7, 7, 7, 7];
+        await repo.upsertScore({
+          blockId: committee.id,
+          sessionId: session.session.id,
+          candidateId: row.candidate.id,
+          evaluatorId: `ev_${juror.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+          evaluatorName: juror,
+          // The jury sees the pitch, not the file: marks drift from the screening.
+          marks: Object.fromEntries(
+            JURY_CRITERIA.map((c, i) => [c.id, Math.max(1, Math.min(10, (base[i % base.length] ?? 7) + ((seat + i) % 3) - 1))]),
+          ),
+          comment: 'Convincing on stage.',
+          submit: true,
+        });
+      }
+      seat++;
+    }
+  }
+  const committeeBlock = (await repo.getBlock(committee.id))!;
+  await applyOutcomes(committeeBlock);
 
   /* ---- Two more programmes, so the list looks like a real account ---- */
   const she = await repo.createProgram({

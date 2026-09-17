@@ -14,14 +14,17 @@ import { api } from '../../lib/api';
 import { Icon } from '../../ui/Icon';
 import { ConfirmDialog, Drawer, useToast } from '../../ui/Overlays';
 import { ApplicationSetup, ApplicationSubmissions } from './panels/ApplicationPanel';
-import { CommitteeSetup } from './panels/CommitteePanel';
+import { CommitteeSetup, CommitteeSittings } from './panels/CommitteePanel';
 import { EvaluationScoring, EvaluationSetup } from './panels/EvaluationPanel';
 import { SelectionDecision, SelectionSetup } from './panels/SelectionPanel';
-import { SourcingSetup } from './panels/SourcingPanel';
+import { SourcingOutreach, SourcingSetup } from './panels/SourcingPanel';
 
+/** Every block has an action; this is where that action lives. */
 const WORK_TAB: Partial<Record<string, string>> = {
+  sourcing: 'Outreach',
   application: 'Submissions',
   evaluation: 'Scoring',
+  committee: 'Committees',
   selection: 'Decision',
 };
 
@@ -29,19 +32,21 @@ export function BlockDrawer({
   block,
   track,
   candidates,
+  initialTab,
   onClose,
   onChanged,
 }: {
   block: Block;
   track: TrackWithPhases;
   candidates: Candidate[];
+  initialTab?: 'setup' | 'work';
   onClose: () => void;
   onChanged: () => void;
 }) {
   const meta = BLOCK_TYPE_META[block.type];
   const [name, setName] = useState(block.name);
   const [draft, setDraft] = useState<Record<string, unknown>>(block.config as Record<string, unknown>);
-  const [tab, setTab] = useState<'setup' | 'work'>('setup');
+  const [tab, setTab] = useState<'setup' | 'work'>(initialTab ?? 'setup');
   const [confirm, setConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
@@ -124,7 +129,7 @@ export function BlockDrawer({
               <EvaluationSetup config={draft as unknown as EvaluationConfig} patch={patch} />
             )}
             {block.type === 'committee' && (
-              <CommitteeSetup config={draft as unknown as CommitteeConfig} patch={patch} candidates={candidates} />
+              <CommitteeSetup block={block} config={draft as unknown as CommitteeConfig} patch={patch} track={track} />
             )}
             {block.type === 'selection' && (
               <SelectionSetup block={block} config={draft as unknown as SelectionConfig} patch={patch} track={track} />
@@ -138,10 +143,16 @@ export function BlockDrawer({
           </>
         ) : (
           <>
+            {block.type === 'sourcing' && <SourcingOutreach block={block} dirty={dirty} />}
             {block.type === 'application' && (
               <ApplicationSubmissions block={block} candidates={candidates} config={draft as unknown as ApplicationConfig} />
             )}
-            {block.type === 'evaluation' && <EvaluationScoring block={block} dirty={dirty} />}
+            {block.type === 'evaluation' && (
+              <EvaluationScoring block={block} dirty={dirty} onChanged={onChanged} />
+            )}
+            {block.type === 'committee' && (
+              <CommitteeSittings block={block} dirty={dirty} onChanged={onChanged} />
+            )}
             {block.type === 'selection' && <SelectionDecision block={block} onChanged={onChanged} />}
           </>
         )}

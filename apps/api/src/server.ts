@@ -1,6 +1,7 @@
 import cors from '@fastify/cors';
 import Fastify from 'fastify';
 import { migrate } from './db/client.js';
+import { actionRoutes } from './routes/actions.js';
 import { builderRoutes } from './routes/builder.js';
 import { funnelRoutes } from './routes/funnel.js';
 import { programRoutes } from './routes/programs.js';
@@ -23,6 +24,7 @@ app.get('/api/health', async () => ({ ok: true }));
 await app.register(programRoutes);
 await app.register(builderRoutes);
 await app.register(funnelRoutes);
+await app.register(actionRoutes);
 
 await migrate();
 

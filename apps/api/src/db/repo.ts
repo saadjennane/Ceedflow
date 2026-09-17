@@ -6,7 +6,10 @@ import {
   parseBlockConfig,
   type Block,
   type BlockType,
+  type BlockOutcomeRow,
   type Candidate,
+  type CommitteeAssignment,
+  type CommitteeSession,
   type Edition,
   type EditionDetail,
   type EvaluationScore,
@@ -576,18 +579,20 @@ export async function upsertScore(input: {
   candidateId: string;
   evaluatorId: string;
   evaluatorName?: string;
+  sessionId?: string | null;
   marks: Record<string, number>;
   comment?: string;
   submit?: boolean;
 }): Promise<EvaluationScore> {
   const conn = await db();
   await conn.query(
-    `insert into evaluation_scores (id, block_id, candidate_id, evaluator_id, evaluator_name, marks, comment, submitted_at)
-     values ($1,$2,$3,$4,$5,$6,$7, case when $8 then now() else null end)
+    `insert into evaluation_scores (id, block_id, candidate_id, evaluator_id, evaluator_name, marks, comment, submitted_at, session_id)
+     values ($1,$2,$3,$4,$5,$6,$7, case when $8 then now() else null end, $9)
      on conflict (block_id, candidate_id, evaluator_id) do update
        set marks = excluded.marks,
            comment = excluded.comment,
            evaluator_name = excluded.evaluator_name,
+           session_id = coalesce(excluded.session_id, evaluation_scores.session_id),
            submitted_at = case when $8 then now() else evaluation_scores.submitted_at end`,
     [
       newId('scr'),
@@ -598,6 +603,7 @@ export async function upsertScore(input: {
       JSON.stringify(input.marks),
       input.comment ?? '',
       input.submit ?? false,
+      input.sessionId ?? null,
     ],
   );
   return (await one<EvaluationScore>(
@@ -666,4 +672,203 @@ async function patchRow(
   }
   if (!sets.length) return;
   await (await db()).query(`update ${table} set ${sets.join(', ')} where id = $1`, params);
+}
+
+/* ------------------------------------------------------------------ */
+/* Committee sittings                                                  */
+/* ------------------------------------------------------------------ */
+
+const SESSION_COLS = `id, block_id as "blockId", name, held_on::text as "heldOn", starts_at as "startsAt",
+  ends_at as "endsAt", minutes_per_startup as "minutesPerStartup", location, jury, position`;
+const ASSIGNMENT_COLS = `id, session_id as "sessionId", candidate_id as "candidateId", token,
+  rsvp_state as "rsvpState", slot_index as "slotIndex", responded_at::text as "respondedAt"`;
+
+export async function listSessions(blockId: string): Promise<CommitteeSession[]> {
+  return all<CommitteeSession>(`select ${SESSION_COLS} from committee_sessions where block_id = $1 order by position`, [
+    blockId,
+  ]);
+}
+
+export async function createSession(blockId: string, patch: Record<string, unknown>): Promise<CommitteeSession> {
+  const conn = await db();
+  const id = newId('ses');
+  const next = await one<{ n: number }>(
+    'select coalesce(max(position), -1) + 1 as n from committee_sessions where block_id = $1',
+    [blockId],
+  );
+  const position = next?.n ?? 0;
+  await conn.query(
+    `insert into committee_sessions (id, block_id, name, held_on, starts_at, ends_at, minutes_per_startup, location, jury, position)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [
+      id,
+      blockId,
+      (patch.name as string)?.trim() || `Committee ${position + 1}`,
+      (patch.heldOn as string) ?? null,
+      (patch.startsAt as string) ?? '09:00',
+      (patch.endsAt as string) ?? '13:00',
+      (patch.minutesPerStartup as number) ?? 25,
+      (patch.location as string) ?? '',
+      JSON.stringify(patch.jury ?? []),
+      position,
+    ],
+  );
+  return (await one<CommitteeSession>(`select ${SESSION_COLS} from committee_sessions where id = $1`, [id]))!;
+}
+
+export async function updateSession(id: string, patch: Record<string, unknown>): Promise<CommitteeSession | null> {
+  if (patch.jury !== undefined) {
+    await (await db()).query('update committee_sessions set jury = $2 where id = $1', [id, JSON.stringify(patch.jury)]);
+  }
+  await patchRow('committee_sessions', id, patch, {
+    name: 'name',
+    heldOn: 'held_on',
+    startsAt: 'starts_at',
+    endsAt: 'ends_at',
+    minutesPerStartup: 'minutes_per_startup',
+    location: 'location',
+  });
+  return one<CommitteeSession>(`select ${SESSION_COLS} from committee_sessions where id = $1`, [id]);
+}
+
+export async function deleteSession(id: string): Promise<void> {
+  await (await db()).query('delete from committee_sessions where id = $1', [id]);
+}
+
+export async function sessionBlockId(sessionId: string): Promise<string | null> {
+  const row = await one<{ blockId: string }>('select block_id as "blockId" from committee_sessions where id = $1', [
+    sessionId,
+  ]);
+  return row?.blockId ?? null;
+}
+
+/* ---- assignments ---- */
+
+export async function listAssignments(blockId: string): Promise<CommitteeAssignment[]> {
+  return all<CommitteeAssignment>(
+    `select ${ASSIGNMENT_COLS} from committee_assignments
+      where session_id in (select id from committee_sessions where block_id = $1)`,
+    [blockId],
+  );
+}
+
+/** Adds candidates to a sitting, skipping any already assigned anywhere in the block. */
+export async function assignToSession(sessionId: string, candidateIds: string[]): Promise<number> {
+  if (!candidateIds.length) return 0;
+  const conn = await db();
+  const blockId = await sessionBlockId(sessionId);
+  if (!blockId) return 0;
+  const taken = new Set((await listAssignments(blockId)).map((a) => a.candidateId));
+  const fresh = candidateIds.filter((id) => !taken.has(id));
+  await conn.tx(async () => {
+    for (const candidateId of fresh) {
+      await conn.query(
+        'insert into committee_assignments (id, session_id, candidate_id, token) values ($1,$2,$3,$4)',
+        [newId('asg'), sessionId, candidateId, newId('bk').replace('bk_', '')],
+      );
+    }
+  });
+  return fresh.length;
+}
+
+export async function unassign(assignmentId: string): Promise<void> {
+  await (await db()).query('delete from committee_assignments where id = $1', [assignmentId]);
+}
+
+export async function findAssignmentByToken(token: string) {
+  const assignment = await one<CommitteeAssignment>(
+    `select ${ASSIGNMENT_COLS} from committee_assignments where token = $1`,
+    [token],
+  );
+  if (!assignment) return null;
+  const session = await one<CommitteeSession>(`select ${SESSION_COLS} from committee_sessions where id = $1`, [
+    assignment.sessionId,
+  ]);
+  const candidate = await one<Candidate>(`select ${CANDIDATE_COLS} from candidates where id = $1`, [
+    assignment.candidateId,
+  ]);
+  if (!session || !candidate) return null;
+  const block = await getBlock(session.blockId);
+  const siblings = await all<CommitteeAssignment>(
+    `select ${ASSIGNMENT_COLS} from committee_assignments where session_id = $1`,
+    [session.id],
+  );
+  return { assignment, session, candidate, block, siblings };
+}
+
+export async function respondToAssignment(
+  id: string,
+  rsvpState: string,
+  slotIndex: number | null,
+): Promise<void> {
+  await (await db()).query(
+    'update committee_assignments set rsvp_state = $2, slot_index = $3, responded_at = now() where id = $1',
+    [id, rsvpState, slotIndex],
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Statuses put on candidates by an evaluation or a committee          */
+/* ------------------------------------------------------------------ */
+
+export async function listBlockOutcomes(blockId: string): Promise<BlockOutcomeRow[]> {
+  return all<BlockOutcomeRow>(
+    `select block_id as "blockId", candidate_id as "candidateId", outcome_id as "outcomeId",
+            overridden, decided_at::text as "decidedAt" from block_outcomes where block_id = $1`,
+    [blockId],
+  );
+}
+
+export async function setBlockOutcome(
+  blockId: string,
+  candidateId: string,
+  outcomeId: string,
+  overridden: boolean,
+): Promise<void> {
+  await (await db()).query(
+    `insert into block_outcomes (block_id, candidate_id, outcome_id, overridden, decided_at)
+     values ($1,$2,$3,$4, now())
+     on conflict (block_id, candidate_id) do update
+       set outcome_id = excluded.outcome_id, overridden = excluded.overridden, decided_at = now()`,
+    [blockId, candidateId, outcomeId, overridden],
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Sourcing outreach                                                   */
+/* ------------------------------------------------------------------ */
+
+export interface OutreachSend {
+  id: string;
+  blockId: string;
+  subject: string;
+  body: string;
+  recipients: string[];
+  sentAt: string;
+}
+
+export async function listSends(blockId: string): Promise<OutreachSend[]> {
+  return all<OutreachSend>(
+    `select id, block_id as "blockId", subject, body, recipients, sent_at::text as "sentAt"
+       from outreach_sends where block_id = $1 order by sent_at desc`,
+    [blockId],
+  );
+}
+
+export async function recordSend(
+  blockId: string,
+  subject: string,
+  body: string,
+  recipients: string[],
+): Promise<OutreachSend> {
+  const id = newId('snd');
+  await (await db()).query(
+    'insert into outreach_sends (id, block_id, subject, body, recipients) values ($1,$2,$3,$4,$5)',
+    [id, blockId, subject, body, JSON.stringify(recipients)],
+  );
+  return (await one<OutreachSend>(
+    `select id, block_id as "blockId", subject, body, recipients, sent_at::text as "sentAt"
+       from outreach_sends where id = $1`,
+    [id],
+  ))!;
 }

@@ -35,17 +35,23 @@ interface FunnelStep {
 export function BuilderCanvas({
   edition,
   track,
+  openBlockId,
+  openBlockTab,
+  onOpenBlock,
   onSelectTrack,
   onChanged,
   onPublish,
 }: {
   edition: EditionDetail;
   track: TrackWithPhases;
+  openBlockId: string | null;
+  openBlockTab?: 'setup' | 'work';
+  onOpenBlock: (id: string | null) => void;
   onSelectTrack: (id: string) => void;
   onChanged: () => void;
   onPublish: () => void;
 }) {
-  const [openBlockId, setOpenBlockId] = useState<string | null>(null);
+  const setOpenBlockId = onOpenBlock;
   const [addingPhase, setAddingPhase] = useState(false);
   const [phaseName, setPhaseName] = useState('');
   const [search, setSearch] = useState('');
@@ -242,6 +248,7 @@ export function BuilderCanvas({
         <BlockDrawer
           block={openBlock}
           track={track}
+          initialTab={openBlockTab}
           candidates={candidates.data ?? []}
           onClose={() => setOpenBlockId(null)}
           onChanged={() => {

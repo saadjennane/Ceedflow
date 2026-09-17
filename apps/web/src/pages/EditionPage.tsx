@@ -35,6 +35,17 @@ export function EditionPage() {
   const [params, setParams] = useSearchParams();
   const tab: Tab = params.get('tab') === 'candidates' ? 'candidates' : 'builder';
   const trackId = params.get('track');
+  // The open block lives in the URL too, so a block is a link you can send.
+  const openBlockId = params.get('block');
+  const setOpenBlockId = (next: string | null) =>
+    setParams(
+      (p) => {
+        if (next) p.set('block', next);
+        else p.delete('block');
+        return p;
+      },
+      { replace: true },
+    );
   const setTab = (next: Tab) =>
     setParams((p) => {
       if (next === 'builder') p.delete('tab');
@@ -146,6 +157,9 @@ export function EditionPage() {
         <BuilderCanvas
           edition={detail}
           track={track}
+          openBlockId={openBlockId}
+          openBlockTab={params.get('btab') === 'work' ? 'work' : undefined}
+          onOpenBlock={setOpenBlockId}
           onSelectTrack={setTrackId}
           onChanged={refresh}
           onPublish={() => setStatus('Published')}
