@@ -78,7 +78,9 @@ blocks exist, never typed in.
 A work tab appears only when the track holds a block of its kind, so the tab bar reads out what the
 edition actually does: a blank edition shows none of them. Each tab follows one shape — pick which
 block you are working on, then the plan of work — and every block links through to the other side,
-so Setup is one click from the work and the work one click from Setup.
+so Setup is one click from the work and the work one click from Setup. A block's Setup opens as a
+drawer **over whatever screen you are on**, so closing it never moves you; the URL carries the open
+tab, the block being worked on and the block being configured as three separate things.
 
 Marks are entered on behalf of an evaluator, since evaluators have no login yet: whose marks they
 are is chosen inside the score editor, where it belongs, not above the table where it would read as

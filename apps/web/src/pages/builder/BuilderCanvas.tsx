@@ -3,7 +3,6 @@ import {
   BLOCK_TYPE_META,
   type Block,
   type BlockType,
-  type Candidate,
   type EditionDetail,
   type PhaseWithBlocks,
   type SelectionConfig,
@@ -17,7 +16,6 @@ import { DateField, TextField } from '../../ui/Field';
 import { Icon } from '../../ui/Icon';
 import { ConfirmDialog, Modal, useToast } from '../../ui/Overlays';
 import { TrackBar } from '../EditionPage';
-import { BlockDrawer } from './BlockDrawer';
 import { PROGRESS_TONE, blockLine, progressOf } from './blockSummary';
 
 /** What is being dragged. dataTransfer cannot be read during dragover, so it lives here. */
@@ -35,21 +33,17 @@ interface FunnelStep {
 export function BuilderCanvas({
   edition,
   track,
-  openBlockId,
   onOpenBlock,
   onSelectTrack,
   onChanged,
   onPublish,
-  onOpenWork,
 }: {
   edition: EditionDetail;
   track: TrackWithPhases;
-  openBlockId: string | null;
   onOpenBlock: (id: string | null) => void;
   onSelectTrack: (id: string) => void;
   onChanged: () => void;
   onPublish: () => void;
-  onOpenWork: (tab: string, blockId: string) => void;
 }) {
   const setOpenBlockId = onOpenBlock;
   const [addingPhase, setAddingPhase] = useState(false);
@@ -60,10 +54,6 @@ export function BuilderCanvas({
   const drag = useRef<DragPayload | null>(null);
   const toast = useToast();
 
-  const candidates = useAsync(
-    () => api.get<Candidate[]>(`/api/editions/${edition.id}/candidates?trackId=${track.id}`),
-    `${edition.id}:${track.id}`,
-  );
   const funnel = useAsync(
     () => api.get<FunnelStep[]>(`/api/editions/${edition.id}/funnel?trackId=${track.id}`),
     `${edition.id}:${track.id}:${JSON.stringify(track.phases.map((p) => p.blocks.map((b) => b.id)))}`,
@@ -80,7 +70,6 @@ export function BuilderCanvas({
   }, [funnel.data]);
 
   const phases = track.phases;
-  const openBlock = phases.flatMap((p) => p.blocks).find((b) => b.id === openBlockId) ?? null;
   const hasCohortSelection = phases
     .flatMap((p) => p.blocks)
     .some((b) => b.type === 'selection' && (b.config as SelectionConfig).outputKind === 'cohort');
@@ -244,21 +233,6 @@ export function BuilderCanvas({
         </div>
       </div>
 
-      {openBlock && (
-        <BlockDrawer
-          block={openBlock}
-          track={track}
-          onOpenBlock={setOpenBlockId}
-          onOpenWork={onOpenWork}
-          candidates={candidates.data ?? []}
-          onClose={() => setOpenBlockId(null)}
-          onChanged={() => {
-            onChanged();
-            candidates.reload();
-            funnel.reload();
-          }}
-        />
-      )}
 
       {addingPhase && (
         <Modal

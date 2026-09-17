@@ -7,6 +7,7 @@ import { useAsync } from '../lib/useAsync';
 import { DateField, TextField } from '../ui/Field';
 import { Icon } from '../ui/Icon';
 import { ConfirmDialog, Modal, useToast } from '../ui/Overlays';
+import { BlockDrawer } from './builder/BlockDrawer';
 import { BuilderCanvas } from './builder/BuilderCanvas';
 import { CandidatesTab } from './candidates/CandidatesTab';
 import { WorkTab } from './work/WorkTab';
@@ -36,8 +37,10 @@ export function EditionPage() {
   const [params, setParams] = useSearchParams();
   const asked = params.get('tab') ?? 'builder';
   const trackId = params.get('track');
-  // The open block lives in the URL too, so a block is a link you can send.
+  // Two different things, so two parameters: which block the tab is working on,
+  // and which block's Setup drawer is open over it.
   const openBlockId = params.get('block');
+  const setupId = params.get('setup');
   const setOpenBlockId = (next: string | null) =>
     setParams(
       (p) => {
@@ -47,6 +50,23 @@ export function EditionPage() {
       },
       { replace: true },
     );
+  const setSetupId = (next: string | null) =>
+    setParams(
+      (p) => {
+        if (next) p.set('setup', next);
+        else p.delete('setup');
+        return p;
+      },
+      { replace: true },
+    );
+  /** Sends you to where a block's work happens, closing any drawer on the way. */
+  const goToWork = (next: string, blockId: string) =>
+    setParams((p) => {
+      p.set('tab', next);
+      p.set('block', blockId);
+      p.delete('setup');
+      return p;
+    });
   const setTab = (next: Tab) =>
     setParams((p) => {
       if (next === 'builder') p.delete('tab');
@@ -87,6 +107,7 @@ export function EditionPage() {
   };
 
   const cohortSize = candidates.data?.filter((c) => c.status === 'Selected').length ?? 0;
+  const setupBlock = track.phases.flatMap((p) => p.blocks).find((b) => b.id === setupId) ?? null;
   const present = new Set(track.phases.flatMap((p) => p.blocks.map((b) => b.type)));
   const workTabs = WORK_TABS.filter((t) => t.types.some((type) => present.has(type)));
   const tab: Tab = (['startups', ...workTabs.map((t) => t.key)] as string[]).includes(asked)
@@ -157,18 +178,10 @@ export function EditionPage() {
         <BuilderCanvas
           edition={detail}
           track={track}
-          openBlockId={openBlockId}
-          onOpenBlock={setOpenBlockId}
+          onOpenBlock={setSetupId}
           onSelectTrack={setTrackId}
           onChanged={refresh}
           onPublish={() => setStatus('Published')}
-          onOpenWork={(next, blockId) => {
-            setParams((p) => {
-              p.set('tab', next);
-              p.set('block', blockId);
-              return p;
-            });
-          }}
         />
       ) : (
         <div className="page">
@@ -188,16 +201,24 @@ export function EditionPage() {
               currentBlockId={openBlockId}
               onSelectBlock={setOpenBlockId}
               onChanged={refresh}
-              onOpenSetup={(id) =>
-                setParams((p) => {
-                  p.delete('tab');
-                  p.set('block', id);
-                  return p;
-                })
-              }
+              onOpenSetup={setSetupId}
+              onOpenWork={goToWork}
             />
           )}
         </div>
+      )}
+
+      {setupBlock && (
+        <BlockDrawer
+          block={setupBlock}
+          track={track}
+          candidates={candidates.data ?? []}
+          currentTab={tab}
+          onClose={() => setSetupId(null)}
+          onChanged={refresh}
+          onOpenBlock={setSetupId}
+          onOpenWork={goToWork}
+        />
       )}
 
       {editing && (

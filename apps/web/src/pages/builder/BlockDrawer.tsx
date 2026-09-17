@@ -34,6 +34,7 @@ export function BlockDrawer({
   block,
   track,
   candidates,
+  currentTab,
   onClose,
   onChanged,
   onOpenBlock,
@@ -42,6 +43,8 @@ export function BlockDrawer({
   block: Block;
   track: TrackWithPhases;
   candidates: Candidate[];
+  /** So the way through is not offered when you are already there. */
+  currentTab?: string;
   onClose: () => void;
   onChanged: () => void;
   onOpenBlock: (id: string) => void;
@@ -112,7 +115,7 @@ export function BlockDrawer({
           </>
         }
       >
-        {workTab && (
+        {workTab && workTab.tab !== currentTab && (
           <div className="callout">
             <Icon name="arrowRight" size={15} />
             <div style={{ flex: 1 }}>

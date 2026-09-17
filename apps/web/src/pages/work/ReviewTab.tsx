@@ -91,7 +91,8 @@ export function ReviewTab({
   onChanged: () => void;
 }) {
   const moments = funnelMoments(track);
-  const moment = moments.find((m) => m.id === currentId) ?? moments[0] ?? null;
+  const moment =
+    moments.find((m) => m.id === currentId || m.evaluation?.id === currentId) ?? moments[0] ?? null;
 
   if (!moment) {
     return (

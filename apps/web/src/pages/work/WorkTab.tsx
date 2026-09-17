@@ -11,6 +11,7 @@ export function WorkTab({
   currentBlockId,
   onSelectBlock,
   onOpenSetup,
+  onOpenWork,
   onChanged,
 }: {
   tab: 'outreach' | 'committees' | 'review';
@@ -18,6 +19,7 @@ export function WorkTab({
   currentBlockId: string | null;
   onSelectBlock: (id: string) => void;
   onOpenSetup: (id: string) => void;
+  onOpenWork: (tab: string, blockId: string) => void;
   onChanged: () => void;
 }) {
   if (tab === 'review') {
@@ -52,7 +54,7 @@ export function WorkTab({
       type="committee"
       empty={{ title: 'No selection committee', body: 'Add one in the builder to run jury sittings.' }}
     >
-      {(block) => <CommitteeWorkspace block={block} onOpenBlock={onSelectBlock} />}
+      {(block) => <CommitteeWorkspace block={block} onOpenBlock={(id) => onOpenWork('review', id)} />}
     </WorkspaceShell>
   );
 }
