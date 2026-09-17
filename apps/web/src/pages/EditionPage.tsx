@@ -1,4 +1,4 @@
-import { EDITION_STATUSES, type Candidate, type EditionDetail } from '@ceed/shared';
+import { EDITION_STATUSES, type BlockType, type Candidate, type EditionDetail } from '@ceed/shared';
 import { useCallback, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -9,31 +9,32 @@ import { Icon } from '../ui/Icon';
 import { ConfirmDialog, Modal, useToast } from '../ui/Overlays';
 import { BuilderCanvas } from './builder/BuilderCanvas';
 import { CandidatesTab } from './candidates/CandidatesTab';
+import { WorkTab } from './work/WorkTab';
 import '../ui/builder.css';
 import '../ui/programs.css';
 
-type Tab = 'builder' | 'candidates';
+type Tab = 'builder' | 'candidates' | 'outreach' | 'committees' | 'scoring' | 'decisions';
 
-/** The edition's tabs, in the order the prototype settled on. Unbuilt ones stay visible and inert. */
-const TABS: { key: string; label: string; built: boolean }[] = [
-  { key: 'overview', label: 'Overview', built: false },
-  { key: 'builder', label: 'Builder', built: true },
-  { key: 'candidates', label: 'Candidates', built: true },
-  { key: 'cohort', label: 'Cohort', built: false },
-  { key: 'activities', label: 'Activities', built: false },
-  { key: 'deliverables', label: 'Deliverables', built: false },
-  { key: 'team', label: 'Team', built: false },
-  { key: 'reports', label: 'Reports', built: false },
-  { key: 'public', label: 'Public Page', built: false },
-  { key: 'settings', label: 'Settings', built: false },
+/**
+ * The builder composes the workflow; these run it. A work tab only appears when
+ * the track holds a block of its kind, so the bar reads out what the edition does.
+ */
+const WORK_TABS: { key: Tab; label: string; type: BlockType }[] = [
+  { key: 'outreach', label: 'Outreach', type: 'sourcing' },
+  { key: 'committees', label: 'Committees', type: 'committee' },
+  { key: 'scoring', label: 'Scoring', type: 'evaluation' },
+  { key: 'decisions', label: 'Decisions', type: 'selection' },
 ];
+
+/** Still to build. They stay visible and inert so the shape of the product reads. */
+const LATER_TABS = ['Cohort', 'Activities', 'Deliverables', 'Team', 'Reports', 'Public Page', 'Settings'];
 
 export function EditionPage() {
   const { editionId = '' } = useParams();
   const edition = useAsync(() => api.get<EditionDetail>(`/api/editions/${editionId}`), editionId);
   // The open tab and track live in the URL, so a link points at what you were looking at.
   const [params, setParams] = useSearchParams();
-  const tab: Tab = params.get('tab') === 'candidates' ? 'candidates' : 'builder';
+  const asked = params.get('tab') ?? 'builder';
   const trackId = params.get('track');
   // The open block lives in the URL too, so a block is a link you can send.
   const openBlockId = params.get('block');
@@ -50,6 +51,8 @@ export function EditionPage() {
     setParams((p) => {
       if (next === 'builder') p.delete('tab');
       else p.set('tab', next);
+      p.delete('block');
+      p.delete('btab');
       return p;
     });
   const setTrackId = (next: string) =>
@@ -86,6 +89,11 @@ export function EditionPage() {
   };
 
   const cohortSize = candidates.data?.filter((c) => c.status === 'Selected').length ?? 0;
+  const present = new Set(track.phases.flatMap((p) => p.blocks.map((b) => b.type)));
+  const workTabs = WORK_TABS.filter((t) => present.has(t.type));
+  const tab: Tab = (['candidates', ...workTabs.map((t) => t.key)] as string[]).includes(asked)
+    ? (asked as Tab)
+    : 'builder';
 
   return (
     <>
@@ -132,25 +140,26 @@ export function EditionPage() {
       </header>
 
       <nav className="tabbar" role="tablist" aria-label="Edition">
-        {TABS.map((t) =>
-          t.built ? (
-            <button
-              key={t.key}
-              role="tab"
-              className={tab === t.key ? 'tab on' : 'tab'}
-              onClick={() => setTab(t.key as Tab)}
-            >
-              {t.label}
-              {t.key === 'candidates' && candidates.data?.length ? (
-                <span className="tab-count num">{candidates.data.length}</span>
-              ) : null}
-            </button>
-          ) : (
-            <span key={t.key} className="tab off" title="Not built yet">
-              {t.label}
-            </span>
-          ),
-        )}
+        <span className="tab off" title="Not built yet">
+          Overview
+        </span>
+        <button role="tab" className={tab === 'builder' ? 'tab on' : 'tab'} onClick={() => setTab('builder')}>
+          Builder
+        </button>
+        <button role="tab" className={tab === 'candidates' ? 'tab on' : 'tab'} onClick={() => setTab('candidates')}>
+          Candidates
+          {candidates.data?.length ? <span className="tab-count num">{candidates.data.length}</span> : null}
+        </button>
+        {workTabs.map((t) => (
+          <button key={t.key} role="tab" className={tab === t.key ? 'tab on' : 'tab'} onClick={() => setTab(t.key)}>
+            {t.label}
+          </button>
+        ))}
+        {LATER_TABS.map((label) => (
+          <span key={label} className="tab off" title="Not built yet">
+            {label}
+          </span>
+        ))}
       </nav>
 
       {tab === 'builder' ? (
@@ -158,16 +167,39 @@ export function EditionPage() {
           edition={detail}
           track={track}
           openBlockId={openBlockId}
-          openBlockTab={params.get('btab') === 'work' ? 'work' : undefined}
           onOpenBlock={setOpenBlockId}
           onSelectTrack={setTrackId}
           onChanged={refresh}
           onPublish={() => setStatus('Published')}
+          onOpenWork={(next, blockId) => {
+            setParams((p) => {
+              p.set('tab', next);
+              p.set('block', blockId);
+              return p;
+            });
+          }}
         />
       ) : (
         <div className="page">
           <TrackBar edition={detail} currentTrackId={track.id} onSelect={setTrackId} onChanged={refresh} />
-          <CandidatesTab edition={detail} track={track} candidates={candidates.data ?? []} onChanged={refresh} />
+          {tab === 'candidates' ? (
+            <CandidatesTab edition={detail} track={track} candidates={candidates.data ?? []} onChanged={refresh} />
+          ) : (
+            <WorkTab
+              tab={tab}
+              track={track}
+              currentBlockId={openBlockId}
+              onSelectBlock={setOpenBlockId}
+              onChanged={refresh}
+              onOpenSetup={(id) =>
+                setParams((p) => {
+                  p.delete('tab');
+                  p.set('block', id);
+                  return p;
+                })
+              }
+            />
+          )}
         </div>
       )}
 

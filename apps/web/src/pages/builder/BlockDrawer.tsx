@@ -14,41 +14,43 @@ import { api } from '../../lib/api';
 import { Icon } from '../../ui/Icon';
 import { ConfirmDialog, Drawer, useToast } from '../../ui/Overlays';
 import { ApplicationSetup, ApplicationSubmissions } from './panels/ApplicationPanel';
-import { CommitteeSetup, CommitteeSittings } from './panels/CommitteePanel';
-import { EvaluationScoring, EvaluationSetup } from './panels/EvaluationPanel';
-import { SelectionDecision, SelectionSetup } from './panels/SelectionPanel';
-import { SourcingOutreach, SourcingSetup } from './panels/SourcingPanel';
+import { CommitteeSetup } from './panels/CommitteePanel';
+import { EvaluationSetup } from './panels/EvaluationPanel';
+import { SelectionSetup } from './panels/SelectionPanel';
+import { SourcingSetup } from './panels/SourcingPanel';
 
-/** Every block has an action; this is where that action lives. */
-const WORK_TAB: Partial<Record<string, string>> = {
-  sourcing: 'Outreach',
-  application: 'Submissions',
-  evaluation: 'Scoring',
-  committee: 'Committees',
-  selection: 'Decision',
+/**
+ * The block's action does not live here — it lives in the edition's work tabs.
+ * This is the way through to it.
+ */
+const WORK_TAB: Partial<Record<string, { tab: string; label: string }>> = {
+  sourcing: { tab: 'outreach', label: 'Outreach' },
+  committee: { tab: 'committees', label: 'Committees' },
+  evaluation: { tab: 'scoring', label: 'Scoring' },
+  selection: { tab: 'decisions', label: 'Decisions' },
 };
 
 export function BlockDrawer({
   block,
   track,
   candidates,
-  initialTab,
   onClose,
   onChanged,
   onOpenBlock,
+  onOpenWork,
 }: {
   block: Block;
   track: TrackWithPhases;
   candidates: Candidate[];
-  initialTab?: 'setup' | 'work';
   onClose: () => void;
   onChanged: () => void;
   onOpenBlock: (id: string) => void;
+  onOpenWork: (tab: string, blockId: string) => void;
 }) {
   const meta = BLOCK_TYPE_META[block.type];
   const [name, setName] = useState(block.name);
   const [draft, setDraft] = useState<Record<string, unknown>>(block.config as Record<string, unknown>);
-  const [tab, setTab] = useState<'setup' | 'work'>(initialTab ?? 'setup');
+
   const [confirm, setConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
@@ -111,57 +113,47 @@ export function BlockDrawer({
         }
       >
         {workTab && (
-          <div className="drawer-tabs" style={{ margin: '-20px -20px 0', position: 'sticky', top: -20, zIndex: 2 }}>
-            <button className={tab === 'setup' ? 'on' : ''} onClick={() => setTab('setup')}>
-              Setup
-            </button>
-            <button className={tab === 'work' ? 'on' : ''} onClick={() => setTab('work')}>
-              {workTab}
-            </button>
+          <div className="callout">
+            <Icon name="arrowRight" size={15} />
+            <div style={{ flex: 1 }}>
+              This is where <strong>{block.name}</strong> is set up. The work itself happens in{' '}
+              <strong>{workTab.label}</strong>.
+              <div style={{ marginTop: 7 }}>
+                <button
+                  className="btn sm"
+                  disabled={dirty}
+                  title={dirty ? 'Save your changes first' : undefined}
+                  onClick={() => onOpenWork(workTab.tab, block.id)}
+                >
+                  Open in {workTab.label}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
-        {tab === 'setup' ? (
-          <>
-            {block.type === 'sourcing' && <SourcingSetup config={draft as unknown as SourcingConfig} patch={patch} />}
-            {block.type === 'application' && (
-              <ApplicationSetup block={block} config={draft as unknown as ApplicationConfig} patch={patch} />
-            )}
-            {block.type === 'evaluation' && (
-              <EvaluationSetup
-                block={block}
-                config={draft as unknown as EvaluationConfig}
-                patch={patch}
-                track={track}
-              />
-            )}
-            {block.type === 'committee' && (
-              <CommitteeSetup config={draft as unknown as CommitteeConfig} patch={patch} />
-            )}
-            {block.type === 'selection' && (
-              <SelectionSetup block={block} config={draft as unknown as SelectionConfig} patch={patch} track={track} />
-            )}
-            {!meta.implemented && (
-              <div className="callout">
-                <Icon name="alert" size={15} />
-                This block type is part of the model but is not built yet.
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            {block.type === 'sourcing' && <SourcingOutreach block={block} dirty={dirty} />}
-            {block.type === 'application' && (
-              <ApplicationSubmissions block={block} candidates={candidates} config={draft as unknown as ApplicationConfig} />
-            )}
-            {block.type === 'evaluation' && (
-              <EvaluationScoring block={block} dirty={dirty} onChanged={onChanged} />
-            )}
-            {block.type === 'committee' && (
-              <CommitteeSittings block={block} dirty={dirty} onChanged={onChanged} onOpenBlock={onOpenBlock} />
-            )}
-            {block.type === 'selection' && <SelectionDecision block={block} onChanged={onChanged} />}
-          </>
+        {block.type === 'sourcing' && <SourcingSetup config={draft as unknown as SourcingConfig} patch={patch} />}
+        {block.type === 'application' && (
+          <ApplicationSetup block={block} config={draft as unknown as ApplicationConfig} patch={patch} />
+        )}
+        {block.type === 'evaluation' && (
+          <EvaluationSetup block={block} config={draft as unknown as EvaluationConfig} patch={patch} track={track} />
+        )}
+        {block.type === 'committee' && (
+          <CommitteeSetup config={draft as unknown as CommitteeConfig} patch={patch} />
+        )}
+        {block.type === 'selection' && (
+          <SelectionSetup block={block} config={draft as unknown as SelectionConfig} patch={patch} track={track} />
+        )}
+        {!meta.implemented && (
+          <div className="callout">
+            <Icon name="alert" size={15} />
+            This block type is part of the model but is not built yet.
+          </div>
+        )}
+
+        {block.type === 'application' && (
+          <ApplicationSubmissions block={block} candidates={candidates} config={draft as unknown as ApplicationConfig} />
         )}
       </Drawer>
 

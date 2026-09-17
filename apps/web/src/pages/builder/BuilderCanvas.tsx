@@ -36,20 +36,20 @@ export function BuilderCanvas({
   edition,
   track,
   openBlockId,
-  openBlockTab,
   onOpenBlock,
   onSelectTrack,
   onChanged,
   onPublish,
+  onOpenWork,
 }: {
   edition: EditionDetail;
   track: TrackWithPhases;
   openBlockId: string | null;
-  openBlockTab?: 'setup' | 'work';
   onOpenBlock: (id: string | null) => void;
   onSelectTrack: (id: string) => void;
   onChanged: () => void;
   onPublish: () => void;
+  onOpenWork: (tab: string, blockId: string) => void;
 }) {
   const setOpenBlockId = onOpenBlock;
   const [addingPhase, setAddingPhase] = useState(false);
@@ -248,8 +248,8 @@ export function BuilderCanvas({
         <BlockDrawer
           block={openBlock}
           track={track}
-          initialTab={openBlockTab}
           onOpenBlock={setOpenBlockId}
+          onOpenWork={onOpenWork}
           candidates={candidates.data ?? []}
           onClose={() => setOpenBlockId(null)}
           onChanged={() => {

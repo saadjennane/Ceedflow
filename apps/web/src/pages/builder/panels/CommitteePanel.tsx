@@ -472,7 +472,7 @@ function SeatedStartup({
 
 /* ------------------------------------------------------------------ */
 
-function SessionModal({
+export function SessionModal({
   blockId,
   session,
   onClose,

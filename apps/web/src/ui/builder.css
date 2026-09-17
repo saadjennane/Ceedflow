@@ -1102,3 +1102,203 @@ dl.answers dd {
   border-color: var(--blue);
   box-shadow: 0 0 0 3px var(--glow);
 }
+
+/* ---- work tabs ---- */
+
+.work-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.work-pick {
+  display: inline-flex;
+  gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px;
+  flex-wrap: wrap;
+}
+
+.work-title {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+/* ---- the jury, above the day ---- */
+
+.jury-strip {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  flex-wrap: wrap;
+}
+
+.juror {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--wash);
+  border-radius: 999px;
+  padding: 3px 11px 3px 3px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.juror-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--blue), color-mix(in srgb, var(--blue) 70%, var(--cyan)));
+  color: #fff;
+  font-family: var(--display);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* ---- the day, in columns ---- */
+
+.day {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.day-col {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+
+.day-col > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.day-col > header .num {
+  font-size: 11.5px;
+}
+
+.day-slots {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.slot-free {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  flex: 1;
+}
+
+.slot-free:hover:not(:disabled) {
+  color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.slot-free:disabled {
+  cursor: default;
+}
+
+/* ---- the pool rail ---- */
+
+.pool-rail {
+  background: var(--wash);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-lg);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.pool-rail.over {
+  border-color: var(--blue);
+  border-style: solid;
+  box-shadow: 0 0 0 3px var(--glow);
+}
+
+.pool-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 7px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: grab;
+}
+
+.pool-chip:active {
+  cursor: grabbing;
+}
+
+.pool-chip.seated-chip {
+  border-style: dashed;
+}
+
+/* ---- a seat inside a day column: name above, state below ---- */
+
+.day .slot-row {
+  align-items: flex-start;
+  padding: 7px 9px;
+}
+
+.day .slot-time {
+  padding-top: 3px;
+}
+
+.seated-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.seated-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.seat-actions {
+  display: flex;
+  gap: 1px;
+  opacity: 0;
+  transition: opacity 0.12s;
+  flex: none;
+}
+
+.slot-row:hover .seat-actions,
+.slot-row:focus-within .seat-actions {
+  opacity: 1;
+}
+
+.day {
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+}

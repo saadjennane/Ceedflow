@@ -32,6 +32,31 @@ apps/api          Fastify + raw SQL, migrations in src/db/migrations
 apps/web          React + TypeScript + Vite
 ```
 
+## Where things happen
+
+**The builder composes; the tabs run.** A block's drawer holds its configuration and nothing else —
+that is part of building the workflow. The work itself lives in the edition's own tabs, beside
+Candidates:
+
+| Tab | What you do there |
+| --- | --- |
+| **Candidates** | The pool and the funnel counts |
+| **Outreach** | Compose and send the prospecting message |
+| **Committees** | Run the sittings: jury, timetable, who pitches when |
+| **Scoring** | Mark candidates against a grid and give them a status |
+| **Decisions** | Cut the funnel and publish |
+
+A work tab appears only when the track holds a block of its kind, so the tab bar reads out what the
+edition actually does: a blank edition shows none of them. Each tab follows one shape — pick which
+block you are working on, then the plan of work — and every block links through to the other side,
+so Setup is one click from the work and the work one click from Setup.
+
+The committee is the most spatial of them: the sittings across the top, **the jury above** and
+**the day below in one column per stretch of hours**, with the pool as a rail alongside. A startup
+is dragged from the rail onto a time, from one time to another to swap two over, or back to the
+rail to take it off; a free slot can also be filled with a click, so the timetable is not
+drag-only.
+
 ## The model
 
 **Program → Edition → Track → Phase → Block.**

@@ -352,17 +352,22 @@ async function main() {
   await seatOnFreeSlots(juryDay.id, waiting.slice(0, 8));
   await seatOnFreeSlots(catchUp.id, waiting.slice(8));
 
-  /* ---- Most startups have confirmed their slot; the jury has scored them ---- */
+  /* ---- The startups have booked their times; the jury has scored them ---- */
+  // The committee runs Calendly-style, so seating leaves everyone unplaced until
+  // they choose. This plays those choices out, bar one that has not answered.
   const view = (await committeeView(committee.id))!;
   let seat = 0;
   for (const session of view.sessions) {
+    const free = session.slots.map((s) => s.index);
     for (const row of session.assignments) {
       // One startup has not answered yet, so the invitation screen has something to show.
       if (seat === 4) {
         seat++;
+        free.shift();
         continue;
       }
-      await repo.respondToAssignment(row.assignment.id, 'confirmed', row.assignment.slotIndex);
+      await repo.moveAssignmentToSlot(row.assignment.id, free.shift() ?? null);
+      await repo.respondToAssignment(row.assignment.id, 'confirmed');
       for (const juror of session.session.jury) {
         const spec = CANDIDATES.find((c) => c.orgName === row.candidate.orgName);
         const base = spec ? spec.marks[0] : [7, 7, 7, 7, 7];
