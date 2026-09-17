@@ -424,11 +424,6 @@ function Moment({
                             By status
                           </span>
                         )}
-                        {line.decision?.overridden && (
-                          <span className="badge" style={{ marginLeft: 7 }} title="Moved away from what the rule produced">
-                            Changed by hand
-                          </span>
-                        )}
                         {line.decision?.stale && (
                           <span className="badge warn" style={{ marginLeft: 7 }} title="The rule now says otherwise">
                             Rule moved on
@@ -473,11 +468,6 @@ function Moment({
                               </option>
                             ))}
                           </select>
-                          {line.scoring?.overridden && (
-                            <span className="badge info" style={{ marginLeft: 6 }} title="Chosen rather than earned by the score">
-                              By hand
-                            </span>
-                          )}
                         </td>
                       )}
 
