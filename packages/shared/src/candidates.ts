@@ -1,5 +1,15 @@
 import { z } from 'zod';
 
+/** How a cohort member's time in the program is going. */
+export const COHORT_STATUSES = ['Active', 'At risk', 'Graduated'] as const;
+export type CohortStatus = (typeof COHORT_STATUSES)[number];
+
+export const COHORT_TONE: Record<CohortStatus, 'ok' | 'warn' | 'info'> = {
+  Active: 'ok',
+  'At risk': 'warn',
+  Graduated: 'info',
+};
+
 /**
  * A candidate is the row that moves through the funnel. It is created by a
  * public application submission, or added by hand by the CEED team.
@@ -27,6 +37,9 @@ export const candidateSchema = z.object({
   phone: z.string().default(''),
   source: z.string().default(''),
   status: z.enum(CANDIDATE_STATUSES).default('Applied'),
+  /** Who mentors it once it is in the cohort. Empty until someone is named. */
+  mentor: z.string().default(''),
+  cohortStatus: z.enum(COHORT_STATUSES).default('Active'),
   /** Answers to the application form, keyed by field id. */
   answers: z.record(z.unknown()).default({}),
   submittedAt: z.string(),

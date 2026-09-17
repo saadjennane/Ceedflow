@@ -68,11 +68,9 @@ export function EditionPage() {
   const tracks = detail?.tracks ?? [];
   const track = useMemo(() => tracks.find((t) => t.id === trackId) ?? tracks[0] ?? null, [tracks, trackId]);
 
-  const candidates = useAsync(
-    () =>
-      track ? api.get<Candidate[]>(`/api/editions/${editionId}/candidates?trackId=${track.id}`) : Promise.resolve([]),
-    `${editionId}:${track?.id ?? ''}`,
-  );
+  // Every candidate of the edition: the cohort spans tracks even though the
+  // funnel does not, so the table filters rather than the fetch.
+  const candidates = useAsync(() => api.get<Candidate[]>(`/api/editions/${editionId}/candidates`), editionId);
 
   const refresh = useCallback(() => {
     edition.reload();

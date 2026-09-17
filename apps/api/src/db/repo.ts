@@ -30,14 +30,15 @@ import { all, db, one } from './client.js';
 
 const PROGRAM_COLS = `id, name, code, type, summary, partner, colour, created_at::text as "createdAt"`;
 const EDITION_COLS = `id, program_id as "programId", name, status, starts_on::text as "startsOn",
-  ends_on::text as "endsOn", city, seats, position, created_at::text as "createdAt"`;
+  ends_on::text as "endsOn", city, seats, mentors, position, created_at::text as "createdAt"`;
 const TRACK_COLS = `id, edition_id as "editionId", name, is_default as "isDefault", position`;
 const PHASE_COLS = `id, track_id as "trackId", name, starts_on::text as "startsOn",
   ends_on::text as "endsOn", position`;
 const BLOCK_COLS = `id, phase_id as "phaseId", type, name, position, config`;
 const CANDIDATE_COLS = `id, edition_id as "editionId", track_id as "trackId",
   origin_block_id as "originBlockId", org_name as "orgName", contact_name as "contactName",
-  email, phone, source, status, answers, submitted_at::text as "submittedAt"`;
+  email, phone, source, status, mentor, cohort_status as "cohortStatus", answers,
+  submitted_at::text as "submittedAt"`;
 const SCORE_COLS = `id, block_id as "blockId", candidate_id as "candidateId",
   evaluator_id as "evaluatorId", evaluator_name as "evaluatorName", marks, comment,
   submitted_at::text as "submittedAt"`;
@@ -254,6 +255,9 @@ export async function createEdition(programId: string, input: Parameters<typeof 
 }
 
 export async function updateEdition(id: string, patch: Record<string, unknown>): Promise<Edition | null> {
+  if (patch.mentors !== undefined) {
+    await (await db()).query('update editions set mentors = $2 where id = $1', [id, JSON.stringify(patch.mentors)]);
+  }
   await patchRow('editions', id, patch, {
     name: 'name',
     status: 'status',
@@ -541,6 +545,8 @@ export async function updateCandidate(id: string, patch: Record<string, unknown>
     source: 'source',
     status: 'status',
     trackId: 'track_id',
+    mentor: 'mentor',
+    cohortStatus: 'cohort_status',
   });
   return one<Candidate>(`select ${CANDIDATE_COLS} from candidates where id = $1`, [id]);
 }

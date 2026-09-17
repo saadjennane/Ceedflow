@@ -45,6 +45,8 @@ export const editionSchema = z.object({
   endsOn: z.string().nullable().default(null),
   city: z.string().default(''),
   seats: z.number().int().min(0).default(0),
+  /** The mentors this edition can draw on. Names for now. */
+  mentors: z.array(z.string()).default([]),
   position: z.number().int().default(0),
   createdAt: z.string(),
 });
@@ -164,6 +166,7 @@ export type CreateEditionInput = z.input<typeof createEditionInput>;
 export const updateEditionInput = z.object({
   name: z.string().min(1).optional(),
   status: z.enum(EDITION_STATUSES).optional(),
+  mentors: z.array(z.string()).optional(),
   startsOn: z.string().nullable().optional(),
   endsOn: z.string().nullable().optional(),
   city: z.string().optional(),

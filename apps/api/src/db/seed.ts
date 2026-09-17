@@ -331,7 +331,10 @@ async function main() {
     edition: { name: 'Grow 2026', startsOn: '2026-09-01', endsOn: '2027-02-28', city: 'Casablanca', seats: 12 },
   });
   const editionId = grow.editions[0].id;
-  await repo.updateEdition(editionId, { status: 'Running' });
+  await repo.updateEdition(editionId, {
+    status: 'Running',
+    mentors: ['Sarah Benali', 'Karim Alaoui', 'Nawal Cherkaoui', 'Driss Benjelloun', 'Fatima Zahra Ouali'],
+  });
 
   const detail = (await repo.getEditionDetail(editionId))!;
   const trackId = detail.tracks[0].id;
@@ -572,6 +575,16 @@ async function main() {
   const wildcard = cut.rows.filter((r) => r.outcome === 'fail' && r.score !== null)[0];
   if (wildcard) await addToSelection(finalSelection.id, { candidateIds: [wildcard.candidate.id], outcome: 'pass' });
   await publishSelection(finalSelection.id);
+
+  /* ---- The cohort is under way: mentors assigned, one already off track ---- */
+  const cohort = (await repo.listCandidates(editionId)).filter((c) => c.status === 'Selected');
+  const bench = ['Sarah Benali', 'Karim Alaoui', 'Nawal Cherkaoui', 'Driss Benjelloun'];
+  for (const [index, member] of cohort.entries()) {
+    await repo.updateCandidate(member.id, {
+      mentor: bench[index % bench.length],
+      cohortStatus: index === 3 ? 'At risk' : index === 7 ? 'Graduated' : 'Active',
+    });
+  }
 
   /* ---- Two more programmes, so the list looks like a real account ---- */
   const she = await repo.createProgram({

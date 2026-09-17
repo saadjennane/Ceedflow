@@ -83,7 +83,17 @@ export async function funnelRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const patch = parse(
       candidateSchema
-        .pick({ orgName: true, contactName: true, email: true, phone: true, source: true, status: true, trackId: true })
+        .pick({
+          orgName: true,
+          contactName: true,
+          email: true,
+          phone: true,
+          source: true,
+          status: true,
+          trackId: true,
+          mentor: true,
+          cohortStatus: true,
+        })
         .partial(),
       req.body,
     );

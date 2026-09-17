@@ -50,7 +50,7 @@ Candidates:
 
 | Tab | What you do there |
 | --- | --- |
-| **Startups** | The pool and the funnel counts, with the cohort as a second segment |
+| **Startups** | The cohort first once it exists, then the candidates and the funnel counts |
 | **Outreach** | Compose and send the prospecting message |
 | **Committees** | Run the sittings: jury, timetable, who pitches when |
 | **Review** | One moment of the funnel: what an evaluation measured, and what the selection after it made of that |
@@ -63,7 +63,17 @@ is a gap you see rather than something you find by comparing two screens. An eva
 on, or a selection with nothing to measure, simply shows the half it has.
 
 The cohort is not a screen either: it is the candidates a Selection marked *Selected*, so it is a
-segment of the same table.
+segment of the same tab — and the one that opens first once a cohort exists, because that is what
+the team looks at from then on.
+
+It is also the only view scoped to the **edition** rather than a track: a cohort is the edition's
+promotion, and a startup stays in the track it was selected on. Its table carries what the program
+knows rather than what the application said — track, mentor, progress, status — each editable in
+place, with a **Columns** picker to bring in application answers or drop what is not useful.
+Withdrawing marks the startup withdrawn without touching the selection that chose it.
+
+Progress is deliberately blank: it will be computed from deliverables and sessions once those
+blocks exist, never typed in.
 
 A work tab appears only when the track holds a block of its kind, so the tab bar reads out what the
 edition actually does: a blank edition shows none of them. Each tab follows one shape — pick which

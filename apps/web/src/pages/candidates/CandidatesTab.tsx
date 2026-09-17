@@ -16,6 +16,7 @@ import { useAsync } from '../../lib/useAsync';
 import { SelectField, TextField } from '../../ui/Field';
 import { Icon } from '../../ui/Icon';
 import { ConfirmDialog, Drawer, Modal, useToast } from '../../ui/Overlays';
+import { CohortTable } from './CohortTable';
 
 interface FunnelStep {
   blockId: string;
@@ -50,10 +51,15 @@ export function CandidatesTab({
     return blocks.flatMap((b) => (b.config as ApplicationConfig).fields);
   }, [track]);
 
-  // The cohort is not another list: it is the candidates a Selection marked Selected.
-  const [segment, setSegment] = useState<'all' | 'cohort'>('all');
+  // The cohort is not another list: it is the candidates a Selection marked
+  // Selected, across every track. The funnel below it is the track's.
   const cohort = candidates.filter((c) => c.status === 'Selected');
-  const scope = segment === 'cohort' ? cohort : candidates;
+  const inTrack = candidates.filter((c) => c.trackId === track.id);
+  // Once a cohort exists it is what the team looks at, so it opens first — but
+  // only until someone picks, and never decided before the data has arrived.
+  const [chosen, setSegment] = useState<'all' | 'cohort' | null>(null);
+  const segment = chosen ?? (cohort.length ? 'cohort' : 'all');
+  const scope = segment === 'cohort' ? cohort : inTrack;
 
   const [shown, setShown] = useState<string[] | null>(null);
   const columns = shown ?? fields.filter((f) => f.showInTable).map((f) => f.id);
@@ -110,24 +116,26 @@ export function CandidatesTab({
     <div className="stack" style={{ gap: 18 }}>
       <div className="row">
         <div className="work-pick">
+          {cohort.length > 0 && (
+            <button className={segment === 'cohort' ? 'track on' : 'track'} onClick={() => setSegment('cohort')}>
+              Cohort <span className="num">{cohort.length}</span>
+            </button>
+          )}
           <button className={segment === 'all' ? 'track on' : 'track'} onClick={() => setSegment('all')}>
-            All candidates <span className="num">{candidates.length}</span>
-          </button>
-          <button
-            className={segment === 'cohort' ? 'track on' : 'track'}
-            onClick={() => setSegment('cohort')}
-            disabled={!cohort.length}
-            title={cohort.length ? undefined : 'No selection has formed a cohort yet'}
-          >
-            Cohort <span className="num">{cohort.length}</span>
+            Candidates <span className="num">{inTrack.length}</span>
           </button>
         </div>
-        {segment === 'cohort' && (
-          <span className="faint" style={{ fontSize: 12.5 }}>
-            The startups a Selection marked <strong>Selected</strong>.
-          </span>
+        <div className="spacer" />
+        {segment === 'all' && (
+          <button className="btn primary sm" onClick={() => setAdding(true)}>
+            <Icon name="plus" size={13} /> Add candidate
+          </button>
         )}
       </div>
+
+      {segment === 'cohort' && (
+        <CohortTable edition={edition} members={cohort} fields={fields} onChanged={onChanged} />
+      )}
 
       {segment === 'all' && funnel.data && funnel.data.length > 1 && (
         <div className="funnel">
@@ -147,6 +155,7 @@ export function CandidatesTab({
         </div>
       )}
 
+      {segment === 'all' && (
       <div className="row wrap">
         <div className="search">
           <Icon name="search" size={14} />
@@ -172,12 +181,10 @@ export function CandidatesTab({
         <button className="btn" onClick={() => setPicking(true)} disabled={!fields.length}>
           <Icon name="grid" size={14} /> Columns
         </button>
-        <button className="btn primary" onClick={() => setAdding(true)}>
-          <Icon name="plus" /> Add candidate
-        </button>
       </div>
+      )}
 
-      {!scope.length ? (
+      {segment === 'all' && (!scope.length ? (
         <div className="empty">
           <h3>No candidate yet</h3>
           <p>
@@ -221,7 +228,7 @@ export function CandidatesTab({
             </tbody>
           </table>
         </div>
-      )}
+      ))}
 
       {picking && (
         <Modal
