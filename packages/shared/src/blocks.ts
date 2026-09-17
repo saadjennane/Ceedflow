@@ -133,9 +133,20 @@ export const formFieldSchema = z.object({
   options: z.array(z.string()).default([]),
   /** Shown as a column in the candidates table by default. */
   showInTable: z.boolean().default(false),
+  /** Which page of the form the question sits on. Ignored on a one-page form. */
+  pageId: z.string().default(''),
 });
 
 export type FormField = z.infer<typeof formFieldSchema>;
+
+/** A step of a multi-page form. */
+export const formPageSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1),
+  intro: z.string().default(''),
+});
+
+export type FormPage = z.infer<typeof formPageSchema>;
 
 /* ------------------------------------------------------------------ */
 /* Per-type configuration                                              */
@@ -203,6 +214,9 @@ export const applicationConfigSchema = z.object({
   /** Public form is reachable at /apply/:token while true. */
   published: z.boolean().default(false),
   publicToken: z.string().default(''),
+  /** Everything on one page, or split into named steps. */
+  layout: z.enum(['single', 'paged']).default('single'),
+  pages: z.array(formPageSchema).default([]),
   fields: z.array(formFieldSchema).default([]),
 });
 
@@ -346,6 +360,23 @@ export type BlockConfigMap = {
 };
 
 export type AnyBlockConfig = BlockConfigMap[ImplementedBlockType] | Record<string, unknown>;
+
+/**
+ * The form as the applicant walks it. One page or several, both sides read it
+ * the same way, and a question whose page was deleted still shows up on the first.
+ */
+export function formPages(config: ApplicationConfig): { page: FormPage; fields: FormField[] }[] {
+  if (config.layout !== 'paged' || !config.pages.length) {
+    return [{ page: { id: '', name: 'Your application', intro: '' }, fields: config.fields }];
+  }
+  const known = new Set(config.pages.map((p) => p.id));
+  return config.pages.map((page, index) => ({
+    page,
+    fields: config.fields.filter(
+      (field) => field.pageId === page.id || (index === 0 && !known.has(field.pageId)),
+    ),
+  }));
+}
 
 export function isImplemented(type: BlockType): type is ImplementedBlockType {
   return (IMPLEMENTED_BLOCK_TYPES as readonly string[]).includes(type);

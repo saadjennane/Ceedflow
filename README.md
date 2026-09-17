@@ -56,10 +56,22 @@ description and the edition's own fields, not in a block.
 | Block | Its action |
 | --- | --- |
 | **Sourcing** | Send the prospecting message and hold the channels the call runs on. Channels feed the source list on the form. |
-| **Application** | Publish a form. Every submission creates a candidate in the track — this is what fills the pool. |
+| **Application** | Publish a form — one page, or split into named steps. Every submission creates a candidate in the track, which is what fills the pool. |
 | **Evaluation** | Score startups on a weighted grid, and **put a status on each one**. That status is what the next block reads. |
 | **Selection committee** | Run the sittings: create committees, fill them, let the startups book a time, let the jury score them on its own grid. Out comes a scored list with a status. |
 | **Selection** | Cut the funnel: who moves to the next phase, or who forms the cohort. |
+
+### The form: one page or several
+
+A form is either a single scroll or a sequence of named pages. Pages hold no questions of their
+own — each question carries the page it sits on, so switching layout, renaming a page or removing
+one never loses a question: removing a page moves its questions to the one before it, and a
+question whose page has gone still appears on the first.
+
+The applicant always starts on *About you* (organisation, contact, email), then walks the
+configured pages. A page will not let them move on until its required answers are filled, and the
+server still checks every required answer across every page on submit — so a crafted request
+cannot skip one. If it rejects, the applicant lands back on the first page that needs something.
 
 ### Statuses, and the difference with a Selection
 
@@ -132,8 +144,9 @@ pending so the invitation screen has something to show. The jury has scored on i
 the **final selection reads the jury's scores, not the screening's**. It is configured as top 6 and
 **not** published, so the last step of the funnel is there to walk through.
 
-The application form is live — copy its link from the Application block to submit as a candidate
-would, and copy an invitation link from the Jury day to book as a startup would.
+The application form is live and runs over three named pages — copy its link from the Application
+block to submit as a candidate would, and copy an invitation link from the Jury day to book as a
+startup would.
 
 Plus **SheLeads** (a draft 2027 edition on the standard template and a completed 2025 one) and
 **Impact Booster** with no edition yet.

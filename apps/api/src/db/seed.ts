@@ -2,20 +2,27 @@
  * Realistic starting data. Run with `npm run seed --workspace=@ceed/api`.
  * Wipes the programme tables first, so it is safe to re-run.
  */
-import type { EvaluationCriterion, FormField } from '@ceed/shared';
+import type { EvaluationCriterion, FormField, FormPage } from '@ceed/shared';
 import { db, migrate } from './client.js';
 import * as repo from './repo.js';
 
+/** Grow 2026 asks its questions over three steps rather than one long page. */
+const PAGES: FormPage[] = [
+  { id: 'p_startup', name: 'The startup', intro: 'A few facts so we can place you.' },
+  { id: 'p_team', name: 'Team and numbers', intro: 'Where you stand today. Rough figures are fine.' },
+  { id: 'p_project', name: 'Your project', intro: 'The part the review panel actually reads. Take your time.' },
+];
+
 const FIELDS: FormField[] = [
-  { id: 'f_stage', type: 'select', label: 'Stage', help: '', required: true, options: ['Idea', 'Prototype', 'Early revenue', 'Growth'], showInTable: true },
-  { id: 'f_sector', type: 'select', label: 'Sector', help: '', required: true, options: ['Agritech', 'Edtech', 'Fintech', 'Healthtech', 'Logistics', 'Cleantech', 'Retail tech'], showInTable: true },
-  { id: 'f_city', type: 'select', label: 'City', help: '', required: true, options: ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Fès'], showInTable: true },
-  { id: 'f_founded', type: 'number', label: 'Year founded', help: '', required: false, options: [], showInTable: false },
-  { id: 'f_team', type: 'number', label: 'Team size', help: 'Founders and employees, full-time equivalent.', required: true, options: [], showInTable: true },
-  { id: 'f_revenue', type: 'number', label: 'Revenue over the last 12 months (MAD)', help: 'Enter 0 if you have not sold yet.', required: false, options: [], showInTable: false },
-  { id: 'f_problem', type: 'long_text', label: 'What problem are you solving?', help: 'Three or four sentences.', required: true, options: [], showInTable: false },
-  { id: 'f_traction', type: 'long_text', label: 'What traction can you show?', help: 'Users, pilots, letters of intent, revenue.', required: true, options: [], showInTable: false },
-  { id: 'f_website', type: 'url', label: 'Website or deck', help: '', required: false, options: [], showInTable: false },
+  { id: 'f_stage', pageId: 'p_startup', type: 'select', label: 'Stage', help: '', required: true, options: ['Idea', 'Prototype', 'Early revenue', 'Growth'], showInTable: true },
+  { id: 'f_sector', pageId: 'p_startup', type: 'select', label: 'Sector', help: '', required: true, options: ['Agritech', 'Edtech', 'Fintech', 'Healthtech', 'Logistics', 'Cleantech', 'Retail tech'], showInTable: true },
+  { id: 'f_city', pageId: 'p_startup', type: 'select', label: 'City', help: '', required: true, options: ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Fès'], showInTable: true },
+  { id: 'f_founded', pageId: 'p_startup', type: 'number', label: 'Year founded', help: '', required: false, options: [], showInTable: false },
+  { id: 'f_team', pageId: 'p_team', type: 'number', label: 'Team size', help: 'Founders and employees, full-time equivalent.', required: true, options: [], showInTable: true },
+  { id: 'f_revenue', pageId: 'p_team', type: 'number', label: 'Revenue over the last 12 months (MAD)', help: 'Enter 0 if you have not sold yet.', required: false, options: [], showInTable: false },
+  { id: 'f_problem', pageId: 'p_project', type: 'long_text', label: 'What problem are you solving?', help: 'Three or four sentences.', required: true, options: [], showInTable: false },
+  { id: 'f_traction', pageId: 'p_project', type: 'long_text', label: 'What traction can you show?', help: 'Users, pilots, letters of intent, revenue.', required: true, options: [], showInTable: false },
+  { id: 'f_website', pageId: 'p_project', type: 'url', label: 'Website or deck', help: '', required: false, options: [], showInTable: false },
 ];
 
 const CRITERIA: EvaluationCriterion[] = [
@@ -210,8 +217,10 @@ async function main() {
       opensAt: '2026-09-01',
       closesAt: '2026-10-10',
       published: true,
-      intro: 'Applications for Grow 2026 are open until 10 October. Expect about twenty minutes — you can see every question before you start.',
+      intro: 'Applications for Grow 2026 are open until 10 October. Three short steps, about twenty minutes. Nothing is sent until you reach the end.',
       confirmation: 'Thank you. We have your application and will come back to you by 25 October.',
+      layout: 'paged',
+      pages: PAGES,
       fields: FIELDS,
     },
   });
