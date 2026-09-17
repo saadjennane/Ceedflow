@@ -74,7 +74,9 @@ drag-only.
 - A **programme** is the parent: CEED Grow. It holds nothing that runs.
 - An **edition** is one run of it: Grow 2026, its own dates, city, seats and candidates.
 - A **track** is a parallel path inside an edition. Every edition has one from the start
-  ("Main workflow"); extra tracks are added when a cohort splits by theme.
+  ("Main workflow"); extra tracks are added when a cohort splits by theme. Tracks are created,
+  renamed and deleted in the builder only — the work tabs get a plain switcher, and nothing at all
+  while there is a single track, since one track is not a choice.
 - A **phase** is a stage in time. Phases run in order and can be dragged to reorder.
 - A **block** is a thing that happens. Blocks live in a phase and can be dragged within it or
   into another phase.

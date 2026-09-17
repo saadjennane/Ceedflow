@@ -181,7 +181,13 @@ export function EditionPage() {
         />
       ) : (
         <div className="page">
-          <TrackBar edition={detail} currentTrackId={track.id} onSelect={setTrackId} onChanged={refresh} />
+          <TrackBar
+            edition={detail}
+            currentTrackId={track.id}
+            onSelect={setTrackId}
+            onChanged={refresh}
+            manage={false}
+          />
           {tab === 'candidates' ? (
             <CandidatesTab edition={detail} track={track} candidates={candidates.data ?? []} onChanged={refresh} />
           ) : (
@@ -227,11 +233,14 @@ export function TrackBar({
   currentTrackId,
   onSelect,
   onChanged,
+  manage = true,
 }: {
   edition: EditionDetail;
   currentTrackId: string;
   onSelect: (id: string) => void;
   onChanged: () => void;
+  /** Tracks are created, renamed and deleted in the builder. Elsewhere this only switches. */
+  manage?: boolean;
 }) {
   const [editor, setEditor] = useState<null | 'add' | 'rename'>(null);
   const [name, setName] = useState('');
@@ -258,6 +267,24 @@ export function TrackBar({
     setName('');
     setEditor(null);
   };
+
+  // One track is not a choice; showing a bar for it is noise.
+  if (!manage && tracks.length < 2) return null;
+
+  if (!manage) {
+    return (
+      <div className="track-bar">
+        <span className="track-label">Track</span>
+        {tracks.map((t) => (
+          <button key={t.id} className={t.id === current.id ? 'track on' : 'track'} onClick={() => onSelect(t.id)}>
+            {t.name}
+          </button>
+        ))}
+        <div className="spacer" />
+        <span className="track-hint">Tracks are set up in the builder</span>
+      </div>
+    );
+  }
 
   return (
     <>
