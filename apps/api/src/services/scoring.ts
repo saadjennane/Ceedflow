@@ -5,26 +5,25 @@ import {
   proposedOutcome,
   type Block,
   type BlockOutcome,
-  type CommitteeConfig,
   type EvaluationConfig,
   type EvaluationCriterion,
   type EvaluationScore,
 } from '@ceed/shared';
 import * as repo from '../db/repo.js';
 
-/** Evaluation and committee both score against a grid held on the block. */
+/** Only an Evaluation scores. A committee organises the sittings it scores in. */
 export function isScoringBlock(block: Block): boolean {
-  return block.type === 'evaluation' || block.type === 'committee';
+  return block.type === 'evaluation';
 }
 
 export function criteriaOf(block: Block): EvaluationCriterion[] {
   if (!isScoringBlock(block)) return [];
-  return ((block.config as EvaluationConfig | CommitteeConfig).criteria ?? []) as EvaluationCriterion[];
+  return (block.config as EvaluationConfig).criteria ?? [];
 }
 
 export function outcomesOf(block: Block): BlockOutcome[] {
   if (!isScoringBlock(block)) return [];
-  const outcomes = (block.config as EvaluationConfig | CommitteeConfig).outcomes;
+  const outcomes = (block.config as EvaluationConfig).outcomes;
   return outcomes?.length ? outcomes : DEFAULT_OUTCOMES;
 }
 

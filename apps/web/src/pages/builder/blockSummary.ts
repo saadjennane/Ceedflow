@@ -79,9 +79,8 @@ export function blockLine(block: Block): BlockLine {
     }
     case 'committee': {
       const c = block.config as CommitteeConfig;
-      const bits = ['Run the jury sittings and score the startups'];
-      if (c.criteria.length) bits.push(`${c.criteria.length} criteria`);
-      if (c.rsvpMode === 'slots') bits.push('startups pick a time');
+      const bits = ['Run the jury sittings'];
+      if (c.rsvpMode === 'slots') bits.push('startups pick their time');
       else if (c.rsvpMode === 'confirm') bits.push('startups confirm');
       return {
         description: bits.join(' · '),

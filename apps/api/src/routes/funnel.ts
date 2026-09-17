@@ -5,11 +5,13 @@ import {
   formPages,
   proposedOutcome,
   type ApplicationConfig,
+  type Candidate,
   type EvaluationConfig,
 } from '@ceed/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import * as repo from '../db/repo.js';
+import { committeeForEvaluation, committeeView } from '../services/committee.js';
 import { applyOutcomes, outcomesOf, scoresByCandidate } from '../services/scoring.js';
 import {
   addToSelection,
@@ -159,32 +161,63 @@ export async function funnelRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const found = await intakeForBlock(id);
     if (!found || found.context.block.type !== 'evaluation') return notFound(reply, 'Evaluation block not found.');
+
     const block = found.context.block;
     const config = block.config as EvaluationConfig;
     const outcomes = outcomesOf(block);
     const grouped = await scoresByCandidate(block);
     const stored = new Map((await repo.listBlockOutcomes(id)).map((o) => [o.candidateId, o]));
+
+    const row = (candidate: Candidate) => {
+      const entry = grouped.get(candidate.id);
+      const saved = stored.get(candidate.id);
+      return {
+        candidate,
+        scores: entry?.scores ?? [],
+        consensus: entry?.consensus ?? null,
+        submitted: entry?.submitted ?? 0,
+        outcomeId: saved?.outcomeId ?? null,
+        proposedOutcomeId: proposedOutcome(entry?.consensus ?? null, outcomes),
+        overridden: saved?.overridden ?? false,
+      };
+    };
+
+    // An evaluation sitting in a committee's phase scores that committee: its
+    // candidates are the ones on each sitting, and each jury scores its own panel.
+    const committee = committeeForEvaluation(found.track, id);
+    if (committee) {
+      const view = await committeeView(committee.id);
+      return {
+        block,
+        criteria: config.criteria,
+        requireComment: config.requireComment,
+        outcomes,
+        scope: { blockId: committee.id, name: committee.name },
+        groups: (view?.sessions ?? []).map((session) => ({
+          sessionId: session.session.id,
+          name: session.session.name,
+          heldOn: session.session.heldOn,
+          evaluators: session.session.jury,
+          rows: session.assignments.map((a) => row(a.candidate)),
+        })),
+      };
+    }
+
     return {
       block,
       criteria: config.criteria,
-      evaluators: config.evaluators,
       requireComment: config.requireComment,
       outcomes,
-      rows: found.intake
-        .filter((c) => c.status !== 'Withdrawn')
-        .map((candidate) => {
-          const entry = grouped.get(candidate.id);
-          const saved = stored.get(candidate.id);
-          return {
-            candidate,
-            scores: entry?.scores ?? [],
-            consensus: entry?.consensus ?? null,
-            submitted: entry?.submitted ?? 0,
-            outcomeId: saved?.outcomeId ?? null,
-            proposedOutcomeId: proposedOutcome(entry?.consensus ?? null, outcomes),
-            overridden: saved?.overridden ?? false,
-          };
-        }),
+      scope: null,
+      groups: [
+        {
+          sessionId: null,
+          name: '',
+          heldOn: null,
+          evaluators: config.evaluators,
+          rows: found.intake.filter((c) => c.status !== 'Withdrawn').map(row),
+        },
+      ],
     };
   });
 

@@ -35,6 +35,7 @@ export function BlockDrawer({
   initialTab,
   onClose,
   onChanged,
+  onOpenBlock,
 }: {
   block: Block;
   track: TrackWithPhases;
@@ -42,6 +43,7 @@ export function BlockDrawer({
   initialTab?: 'setup' | 'work';
   onClose: () => void;
   onChanged: () => void;
+  onOpenBlock: (id: string) => void;
 }) {
   const meta = BLOCK_TYPE_META[block.type];
   const [name, setName] = useState(block.name);
@@ -126,10 +128,15 @@ export function BlockDrawer({
               <ApplicationSetup block={block} config={draft as unknown as ApplicationConfig} patch={patch} />
             )}
             {block.type === 'evaluation' && (
-              <EvaluationSetup config={draft as unknown as EvaluationConfig} patch={patch} />
+              <EvaluationSetup
+                block={block}
+                config={draft as unknown as EvaluationConfig}
+                patch={patch}
+                track={track}
+              />
             )}
             {block.type === 'committee' && (
-              <CommitteeSetup block={block} config={draft as unknown as CommitteeConfig} patch={patch} track={track} />
+              <CommitteeSetup config={draft as unknown as CommitteeConfig} patch={patch} />
             )}
             {block.type === 'selection' && (
               <SelectionSetup block={block} config={draft as unknown as SelectionConfig} patch={patch} track={track} />
@@ -151,7 +158,7 @@ export function BlockDrawer({
               <EvaluationScoring block={block} dirty={dirty} onChanged={onChanged} />
             )}
             {block.type === 'committee' && (
-              <CommitteeSittings block={block} dirty={dirty} onChanged={onChanged} />
+              <CommitteeSittings block={block} dirty={dirty} onChanged={onChanged} onOpenBlock={onOpenBlock} />
             )}
             {block.type === 'selection' && <SelectionDecision block={block} onChanged={onChanged} />}
           </>

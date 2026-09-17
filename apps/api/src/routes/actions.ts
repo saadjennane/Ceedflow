@@ -2,14 +2,15 @@ import { sessionSlots, type CommitteeConfig, type SourcingConfig } from '@ceed/s
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import * as repo from '../db/repo.js';
-import { assignByOutcome, committeeView } from '../services/committee.js';
+import { committeeView, seatOnFreeSlots } from '../services/committee.js';
 import { HttpError, notFound, parse } from './util.js';
+
+const clock = z.string().regex(/^\d{2}:\d{2}$/, 'Use HH:MM.');
 
 const sessionInput = z.object({
   name: z.string().optional(),
   heldOn: z.string().nullable().optional(),
-  startsAt: z.string().optional(),
-  endsAt: z.string().optional(),
+  windows: z.array(z.object({ startsAt: clock, endsAt: clock })).min(1).optional(),
   minutesPerStartup: z.number().int().min(5).optional(),
   location: z.string().optional(),
   jury: z.array(z.string()).optional(),
@@ -53,18 +54,20 @@ export async function actionRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const blockId = await repo.sessionBlockId(id);
     if (!blockId) return notFound(reply, 'Committee not found.');
-    const input = parse(
-      z.object({
-        candidateIds: z.array(z.string()).optional(),
-        fromOutcomeIds: z.array(z.string()).optional(),
-      }),
-      req.body,
-    );
-    const added = input.fromOutcomeIds?.length
-      ? await assignByOutcome(id, input.fromOutcomeIds)
-      : await repo.assignToSession(id, input.candidateIds ?? []);
-    const view = await committeeView(blockId);
-    return { added, view };
+    const input = parse(z.object({ candidateIds: z.array(z.string()).min(1) }), req.body);
+    const added = await seatOnFreeSlots(id, input.candidateIds);
+    return { added, view: await committeeView(blockId) };
+  });
+
+  /** Drag a startup onto a slot. Whoever holds it trades places. */
+  app.post('/api/assignments/:id/slot', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { slotIndex } = parse(z.object({ slotIndex: z.number().int().min(0).nullable() }), req.body);
+    await repo.moveAssignmentToSlot(id, slotIndex);
+    const assignment = await repo.findAssignmentById(id);
+    if (!assignment) return notFound(reply, 'Assignment not found.');
+    const blockId = await repo.sessionBlockId(assignment.sessionId);
+    return blockId ? committeeView(blockId) : notFound(reply, 'Committee not found.');
   });
 
   app.delete('/api/assignments/:id', async (req, reply) => {

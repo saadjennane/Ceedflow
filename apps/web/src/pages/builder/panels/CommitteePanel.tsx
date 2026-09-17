@@ -1,5 +1,5 @@
 import {
-  orderedBlocks,
+  windowMinutes,
   type Block,
   type BlockOutcome,
   type Candidate,
@@ -7,89 +7,40 @@ import {
   type CommitteeConfig,
   type CommitteeSession,
   type CommitteeSlot,
-  type EvaluationCriterion,
-  type TrackWithPhases,
+  type TimeWindow,
 } from '@ceed/shared';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { api } from '../../../lib/api';
 import { formatDate } from '../../../lib/format';
 import { useAsync } from '../../../lib/useAsync';
 import { DateField, NumberField, SelectField, TagField, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
 import { ConfirmDialog, Modal, useToast } from '../../../ui/Overlays';
-import { CriteriaEditor, OutcomeBadge, OutcomeEditor, ScoreEditor } from './shared';
+import { OutcomeBadge } from './shared';
 
 /* ------------------------------------------------------------------ */
 /* Setup                                                               */
 /* ------------------------------------------------------------------ */
 
 export function CommitteeSetup({
-  block,
   config,
   patch,
-  track,
 }: {
-  block: Block;
   config: CommitteeConfig;
   patch: (partial: Partial<CommitteeConfig>) => void;
-  track: TrackWithPhases;
 }) {
-  const ordered = orderedBlocks(track);
-  const index = ordered.findIndex((b) => b.id === block.id);
-  const upstream = ordered.slice(0, index === -1 ? undefined : index).filter((b) => b.type === 'evaluation');
-  const source = config.sourceBlockId
-    ? upstream.find((b) => b.id === config.sourceBlockId)
-    : upstream[upstream.length - 1];
-  const sourceOutcomes = (source?.config as { outcomes?: BlockOutcome[] } | undefined)?.outcomes ?? [];
-
   return (
     <>
       <div className="callout">
         <Icon name="gavel" size={15} />
-        The committee runs the sittings: you create them, fill them with startups, let those startups book a time, and
-        the jury scores them on the grid below. What comes out is a scored list with a status on each startup.
+        The committee organises the sittings: who is seen, when, and how the startups answer. It does not score — an{' '}
+        <strong>Evaluation</strong> block dropped into this same phase does that, sitting by sitting.
       </div>
 
-      <h3 className="section-title">Who gets invited</h3>
-      <SelectField
-        label="Statuses come from"
-        value={config.sourceBlockId ?? ''}
-        onChange={(v) => patch({ sourceBlockId: v || null })}
-        placeholder={
-          upstream.length
-            ? `Nearest evaluation before this block (${upstream[upstream.length - 1].name})`
-            : 'No evaluation upstream yet'
-        }
-        options={upstream.map((b) => ({ value: b.id, label: b.name }))}
-        help="Bulk assignment pulls startups by the status that evaluation gave them."
-      />
-
-      {sourceOutcomes.length > 0 && (
-        <div className="field">
-          <label>Statuses that qualify</label>
-          <div className="row wrap">
-            {sourceOutcomes.map((outcome) => {
-              const on = config.intakeOutcomeIds.includes(outcome.id);
-              return (
-                <button
-                  key={outcome.id}
-                  type="button"
-                  className={on ? 'track on' : 'track'}
-                  onClick={() =>
-                    patch({
-                      intakeOutcomeIds: on
-                        ? config.intakeOutcomeIds.filter((id) => id !== outcome.id)
-                        : [...config.intakeOutcomeIds, outcome.id],
-                    })
-                  }
-                >
-                  {on && <Icon name="check" size={12} />} {outcome.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      <h3 className="section-title">Who is seen</h3>
+      <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+        Whoever the selection before this phase sent through. They wait in the pool until you seat them on a sitting.
+      </p>
 
       <div className="public-sep" />
 
@@ -103,7 +54,7 @@ export function CommitteeSetup({
           { value: 'confirm', label: 'They confirm or decline' },
           { value: 'none', label: 'No invitation — the team places them' },
         ]}
-        help="Each assigned startup gets a personal link. With times, the slots come from the sitting's window and the minutes per startup."
+        help="Each seated startup gets a personal link. With times, the slots come from the sitting's own hours."
       />
       {config.rsvpMode !== 'none' && (
         <DateField
@@ -113,27 +64,12 @@ export function CommitteeSetup({
           help="After this date the link stops accepting answers."
         />
       )}
-
-      <div className="public-sep" />
-      <CriteriaEditor criteria={config.criteria} onChange={(criteria) => patch({ criteria })} />
-
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={config.requireComment}
-          onChange={(e) => patch({ requireComment: e.target.checked })}
-        />
-        <span>Ask every juror for a written comment</span>
-      </label>
-
-      <div className="public-sep" />
-      <OutcomeEditor outcomes={config.outcomes} onChange={(outcomes) => patch({ outcomes })} />
     </>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* Committees — the action                                             */
+/* Sittings — the action                                               */
 /* ------------------------------------------------------------------ */
 
 interface AssignmentView {
@@ -143,7 +79,6 @@ interface AssignmentView {
   score: number | null;
   submitted: number;
   outcomeId: string | null;
-  overridden: boolean;
 }
 
 interface SessionView {
@@ -155,11 +90,10 @@ interface SessionView {
 
 interface CommitteeView {
   config: CommitteeConfig;
-  criteria: EvaluationCriterion[];
-  outcomes: BlockOutcome[];
   sessions: SessionView[];
-  pool: { candidate: Candidate; outcomeId: string | null }[];
-  source: { blockId: string; name: string; outcomes: BlockOutcome[] } | null;
+  pool: { candidate: Candidate }[];
+  intakeFrom: string | null;
+  evaluation: { blockId: string; name: string; criteria: number; outcomes: BlockOutcome[] } | null;
 }
 
 const RSVP_TONE: Record<string, string> = {
@@ -168,45 +102,54 @@ const RSVP_TONE: Record<string, string> = {
   declined: 'badge stop',
 };
 
-export function CommitteeSittings({ block, dirty, onChanged }: { block: Block; dirty: boolean; onChanged: () => void }) {
+export function CommitteeSittings({
+  block,
+  dirty,
+  onChanged,
+  onOpenBlock,
+}: {
+  block: Block;
+  dirty: boolean;
+  onChanged: () => void;
+  onOpenBlock: (id: string) => void;
+}) {
   const view = useAsync(() => api.get<CommitteeView>(`/api/blocks/${block.id}/committee`), block.id);
-  const [editing, setEditing] = useState<SessionView | 'new' | null>(null);
+  const [editing, setEditing] = useState<CommitteeSession | 'new' | null>(null);
   const [picking, setPicking] = useState<SessionView | null>(null);
-  const [scoring, setScoring] = useState<{ session: SessionView; row: AssignmentView } | null>(null);
-  const [as, setAs] = useState('');
   const [busy, setBusy] = useState(false);
+  const drag = useRef<AssignmentView | null>(null);
+  const [over, setOver] = useState<string | null>(null);
   const toast = useToast();
 
   if (view.error) return <div className="empty">{view.error}</div>;
   if (!view.data) return <div className="empty">Loading…</div>;
 
-  const { sessions, pool, outcomes, criteria, config, source } = view.data;
-  const assigned = sessions.reduce((n, s) => n + s.assignments.length, 0);
+  const { sessions, pool, evaluation, intakeFrom, config } = view.data;
+  const seated = sessions.reduce((n, s) => n + s.assignments.length, 0);
   const confirmed = sessions.reduce(
     (n, s) => n + s.assignments.filter((a) => a.assignment.rsvpState === 'confirmed').length,
     0,
   );
-  const scored = sessions.reduce((n, s) => n + s.assignments.filter((a) => a.score !== null).length, 0);
-  const pendingStatus = sessions
-    .flatMap((s) => s.assignments)
-    .filter((a) => a.score !== null && !a.outcomeId).length;
 
-  const applyAll = async () => {
+  const moveTo = async (assignmentId: string, slotIndex: number | null) => {
     setBusy(true);
     try {
-      const { written } = await api.post<{ written: number }>(`/api/blocks/${block.id}/outcomes/apply`);
-      view.reload();
-      onChanged();
-      toast(written ? `${written} status${written === 1 ? '' : 'es'} written.` : 'Nothing to write.');
+      view.set(await api.post<CommitteeView>(`/api/assignments/${assignmentId}/slot`, { slotIndex }));
     } finally {
       setBusy(false);
+      setOver(null);
+      drag.current = null;
     }
   };
 
-  const setOutcome = async (candidateId: string, outcomeId: string) => {
-    await api.post(`/api/blocks/${block.id}/outcomes`, { candidateId, outcomeId });
+  const copyLink = (row: AssignmentView) => {
+    navigator.clipboard?.writeText(`${window.location.origin}/book/${row.assignment.token}`);
+    toast('Invitation link copied.');
+  };
+
+  const removeSeat = async (row: AssignmentView) => {
+    await api.del(`/api/assignments/${row.assignment.id}`);
     view.reload();
-    onChanged();
   };
 
   return (
@@ -218,205 +161,176 @@ export function CommitteeSittings({ block, dirty, onChanged }: { block: Block; d
         </div>
       )}
 
+      {evaluation ? (
+        <div className="callout ok">
+          <Icon name="star" size={15} />
+          <div style={{ flex: 1 }}>
+            Scored by <strong>{evaluation.name}</strong>, in this phase — {evaluation.criteria} criteria, each jury
+            marking its own panel.
+            <div style={{ marginTop: 7 }}>
+              <button className="btn sm" onClick={() => onOpenBlock(evaluation.blockId)}>
+                <Icon name="arrowRight" size={13} /> Open {evaluation.name}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="callout warn">
+          <Icon name="alert" size={15} />
+          <div>
+            <strong>Nothing scores these sittings.</strong> Drop an <strong>Evaluation</strong> block into this phase
+            and it picks the committee up on its own — that is where the jury's grid and marks live.
+          </div>
+        </div>
+      )}
+
       <div className="row wrap">
         <span className="badge info num">{sessions.length} sittings</span>
-        <span className="badge num">{assigned} assigned</span>
-        <span className="badge num">{confirmed} confirmed</span>
-        <span className="badge num">{scored} scored</span>
-        {pool.length > 0 && <span className="badge warn num">{pool.length} still in the pool</span>}
+        <span className="badge num">{seated} seated</span>
+        {config.rsvpMode !== 'none' && <span className="badge num">{confirmed} confirmed</span>}
+        <span className={pool.length ? 'badge warn num' : 'badge num'}>{pool.length} in the pool</span>
         <div className="spacer" />
-        {criteria.length > 0 && (
-          <button className="btn primary sm" disabled={busy || !pendingStatus} onClick={applyAll}>
-            <Icon name="check" size={13} /> Apply statuses{pendingStatus ? ` (${pendingStatus})` : ''}
-          </button>
-        )}
         <button className="btn sm" onClick={() => setEditing('new')}>
           <Icon name="plus" size={13} /> Add committee
         </button>
       </div>
 
-      {!criteria.length && (
-        <div className="callout warn">
-          <Icon name="alert" size={15} />
-          The jury has no grid. Add criteria in Setup, otherwise this committee produces no score and the Selection
-          after it has nothing to cut on.
-        </div>
+      {intakeFrom && (
+        <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+          The pool is whoever <strong>{intakeFrom}</strong> sent through.
+        </p>
       )}
 
       {!sessions.length ? (
         <div className="empty">
           <h3>No committee yet</h3>
-          <p>Create a sitting, give it a window and a time per startup, and its slots appear on their own.</p>
+          <p>Create a sitting, give it its hours and a time per startup, and its slots appear on their own.</p>
           <button className="btn primary" onClick={() => setEditing('new')}>
             <Icon name="plus" /> Add committee
           </button>
         </div>
       ) : (
         sessions.map((sv) => {
-          const over = sv.assignments.length > sv.capacity;
-          const jurors = sv.session.jury;
-          const me = as && jurors.includes(as) ? as : jurors[0] ?? '';
+          const placed = new Map(
+            sv.assignments
+              .filter((a) => a.assignment.slotIndex !== null)
+              .map((a) => [a.assignment.slotIndex as number, a]),
+          );
+          const unplaced = sv.assignments.filter((a) => a.assignment.slotIndex === null);
+          const crowded = sv.assignments.length > sv.capacity;
+
           return (
             <section className="card" key={sv.session.id}>
               <div className="rowcard-head" style={{ padding: '12px 14px', borderBottom: '1px solid var(--line)' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontFamily: 'var(--display)', fontSize: 14 }}>{sv.session.name}</div>
                   <div className="faint" style={{ fontSize: 12 }}>
-                    {formatDate(sv.session.heldOn)} · {sv.session.startsAt}–{sv.session.endsAt} ·{' '}
+                    {formatDate(sv.session.heldOn)} ·{' '}
+                    {sv.session.windows.map((w) => `${w.startsAt}–${w.endsAt}`).join(' + ')} ·{' '}
                     <span className="num">{sv.session.minutesPerStartup}</span> min each
                     {sv.session.location && ` · ${sv.session.location}`}
                   </div>
                 </div>
-                <span className={over ? 'badge stop num' : 'badge num'} title="Assigned of available slots">
+                <span className={crowded ? 'badge stop num' : 'badge num'} title="Seated of slots available">
                   {sv.assignments.length}/{sv.capacity}
                 </span>
-                {jurors.length > 0 && (
-                  <span className="badge" title={jurors.join(', ')}>
-                    <Icon name="users" size={12} /> {jurors.length}
+                {sv.session.jury.length > 0 && (
+                  <span className="badge" title={sv.session.jury.join(', ')}>
+                    <Icon name="users" size={12} /> {sv.session.jury.length}
                   </span>
                 )}
-                <button className="btn ghost icon sm" onClick={() => setEditing(sv)} aria-label="Edit committee">
+                <button className="btn ghost icon sm" onClick={() => setEditing(sv.session)} aria-label="Edit committee">
                   <Icon name="settings" size={14} />
                 </button>
               </div>
 
-              {over && (
-                <div style={{ padding: '10px 14px 0' }}>
-                  <div className="callout warn">
-                    <Icon name="alert" size={15} />
-                    More startups than slots. Widen the window, shorten the time per startup, or move someone to another
-                    sitting.
-                  </div>
+              <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div className="slot-rows">
+                  {sv.slots.map((slot, i) => {
+                    const breaking = i > 0 && slot.windowIndex !== sv.slots[i - 1].windowIndex;
+                    const row = placed.get(slot.index);
+                    const key = `${sv.session.id}:${slot.index}`;
+                    return (
+                      <div key={slot.index}>
+                        {breaking && <div className="slot-break">break</div>}
+                        <div
+                          className={`slot-row${over === key ? ' over' : ''}${row ? '' : ' free'}`}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            setOver(key);
+                          }}
+                          onDragLeave={() => setOver((o) => (o === key ? null : o))}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            if (drag.current) moveTo(drag.current.assignment.id, slot.index);
+                          }}
+                        >
+                          <span className="slot-time num">{slot.startsAt}</span>
+                          {row ? (
+                            <SeatedStartup
+                              row={row}
+                              outcomes={evaluation?.outcomes ?? []}
+                              rsvp={config.rsvpMode !== 'none'}
+                              busy={busy}
+                              onDragStart={() => {
+                                drag.current = row;
+                              }}
+                              onCopyLink={() => copyLink(row)}
+                              onRemove={() => removeSeat(row)}
+                            />
+                          ) : (
+                            <span className="faint" style={{ fontSize: 12.5 }}>
+                              free
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
 
-              <div style={{ padding: 12 }}>
-                {!sv.assignments.length ? (
-                  <div className="phase-empty">Nobody assigned yet.</div>
-                ) : (
-                  <div className="table-wrap" style={{ border: 0 }}>
-                    <table className="data score-table">
-                      <thead>
-                        <tr>
-                          <th style={{ width: 90 }}>Time</th>
-                          <th>Startup</th>
-                          <th>Invitation</th>
-                          <th style={{ textAlign: 'right' }}>Score</th>
-                          <th>Status</th>
-                          <th />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sv.assignments.map((row) => (
-                          <tr key={row.assignment.id}>
-                            <td className="num muted">{row.slot ? row.slot.startsAt : '—'}</td>
-                            <td className="name">{row.candidate.orgName}</td>
-                            <td>
-                              <span className={RSVP_TONE[row.assignment.rsvpState]}>{row.assignment.rsvpState}</span>
-                            </td>
-                            <td className="score" style={{ textAlign: 'right' }}>
-                              {row.score ?? '—'}
-                            </td>
-                            <td>
-                              {outcomes.length ? (
-                                <select
-                                  className="status-select"
-                                  value={row.outcomeId ?? ''}
-                                  onChange={(e) => setOutcome(row.candidate.id, e.target.value)}
-                                >
-                                  <option value="" disabled>
-                                    —
-                                  </option>
-                                  {outcomes.map((o) => (
-                                    <option key={o.id} value={o.id}>
-                                      {o.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <OutcomeBadge outcomes={outcomes} id={row.outcomeId} />
-                              )}
-                            </td>
-                            <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                              {config.rsvpMode !== 'none' && (
-                                <button
-                                  className="btn ghost icon sm"
-                                  title="Copy the startup's invitation link"
-                                  aria-label="Copy invitation link"
-                                  onClick={() => {
-                                    navigator.clipboard?.writeText(
-                                      `${window.location.origin}/book/${row.assignment.token}`,
-                                    );
-                                    toast('Invitation link copied.');
-                                  }}
-                                >
-                                  <Icon name="link" size={13} />
-                                </button>
-                              )}
-                              <button
-                                className="btn ghost icon sm"
-                                disabled={!criteria.length || !me}
-                                title={me ? `Score as ${me}` : 'Add jury members to this committee first'}
-                                aria-label="Score"
-                                onClick={() => setScoring({ session: sv, row })}
-                              >
-                                <Icon name="star" size={13} />
-                              </button>
-                              <button
-                                className="btn ghost icon sm"
-                                aria-label="Remove from this committee"
-                                onClick={async () => {
-                                  await api.del(`/api/assignments/${row.assignment.id}`);
-                                  view.reload();
-                                }}
-                              >
-                                <Icon name="x" size={13} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                <div
+                  className={`unplaced${over === `${sv.session.id}:none` ? ' over' : ''}`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setOver(`${sv.session.id}:none`);
+                  }}
+                  onDragLeave={() => setOver((o) => (o === `${sv.session.id}:none` ? null : o))}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (drag.current) moveTo(drag.current.assignment.id, null);
+                  }}
+                >
+                  <span className="eyebrow">Not placed</span>
+                  {unplaced.length ? (
+                    unplaced.map((row) => (
+                      <SeatedStartup
+                        key={row.assignment.id}
+                        row={row}
+                        outcomes={evaluation?.outcomes ?? []}
+                        rsvp={config.rsvpMode !== 'none'}
+                        busy={busy}
+                        onDragStart={() => {
+                          drag.current = row;
+                        }}
+                        onCopyLink={() => copyLink(row)}
+                        onRemove={() => removeSeat(row)}
+                      />
+                    ))
+                  ) : (
+                    <span className="faint" style={{ fontSize: 12.5 }}>
+                      Drag a startup here to take it off the timetable without removing it.
+                    </span>
+                  )}
+                </div>
 
-                <div className="row wrap" style={{ marginTop: 10 }}>
+                <div className="row">
                   <button className="btn sm" onClick={() => setPicking(sv)} disabled={!pool.length}>
-                    <Icon name="plus" size={13} /> Add from the pool
+                    <Icon name="plus" size={13} /> Seat from the pool
                   </button>
-                  {source && config.intakeOutcomeIds.length > 0 && (
-                    <button
-                      className="btn sm"
-                      disabled={busy || !pool.some((p) => p.outcomeId && config.intakeOutcomeIds.includes(p.outcomeId))}
-                      onClick={async () => {
-                        setBusy(true);
-                        try {
-                          const { added } = await api.post<{ added: number }>(
-                            `/api/sessions/${sv.session.id}/assign`,
-                            { fromOutcomeIds: config.intakeOutcomeIds },
-                          );
-                          view.reload();
-                          toast(added ? `${added} startup${added === 1 ? '' : 's'} assigned.` : 'Nobody matched.');
-                        } finally {
-                          setBusy(false);
-                        }
-                      }}
-                    >
-                      <Icon name="users" size={13} /> Add everyone qualified by {source.name}
-                    </button>
-                  )}
-                  {jurors.length > 1 && (
-                    <label className="row" style={{ gap: 7, fontSize: 12.5, marginLeft: 'auto' }}>
-                      <span className="faint">Scoring as</span>
-                      <select className="status-select" value={me} onChange={(e) => setAs(e.target.value)}>
-                        {jurors.map((name) => (
-                          <option key={name} value={name}>
-                            {name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
+                  <span className="faint" style={{ fontSize: 12 }}>
+                    Drag a startup onto another time to swap them over.
+                  </span>
                 </div>
               </div>
             </section>
@@ -426,14 +340,14 @@ export function CommitteeSittings({ block, dirty, onChanged }: { block: Block; d
 
       {pool.length > 0 && (
         <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
-          Still unassigned: {pool.map((p) => p.candidate.orgName).join(', ')}.
+          Waiting in the pool: {pool.map((p) => p.candidate.orgName).join(', ')}.
         </p>
       )}
 
       {editing && (
         <SessionModal
           blockId={block.id}
-          session={editing === 'new' ? null : editing.session}
+          session={editing === 'new' ? null : editing}
           onClose={() => setEditing(null)}
           onSaved={() => {
             view.reload();
@@ -445,38 +359,61 @@ export function CommitteeSittings({ block, dirty, onChanged }: { block: Block; d
       {picking && (
         <PoolModal
           pool={pool}
-          outcomes={source?.outcomes ?? []}
           sessionName={picking.session.name}
+          free={picking.capacity - picking.assignments.length}
           onClose={() => setPicking(null)}
           onPick={async (candidateIds) => {
             await api.post(`/api/sessions/${picking.session.id}/assign`, { candidateIds });
             view.reload();
-            toast(`${candidateIds.length} assigned to ${picking.session.name}.`);
+            toast(`${candidateIds.length} seated on ${picking.session.name}.`);
           }}
         />
       )}
-
-      {scoring && (
-        <Modal
-          title={`Score ${scoring.row.candidate.orgName}`}
-          subtitle={`${scoring.session.session.name} · ${formatDate(scoring.session.session.heldOn)}`}
-          onClose={() => setScoring(null)}
-        >
-          <ScoreEditor
-            blockId={block.id}
-            sessionId={scoring.session.session.id}
-            candidate={scoring.row.candidate}
-            criteria={criteria}
-            evaluator={as && scoring.session.session.jury.includes(as) ? as : scoring.session.session.jury[0] ?? ''}
-            requireComment={config.requireComment}
-            onSaved={() => {
-              setScoring(null);
-              view.reload();
-            }}
-          />
-        </Modal>
-      )}
     </>
+  );
+}
+
+function SeatedStartup({
+  row,
+  outcomes,
+  rsvp,
+  busy,
+  onDragStart,
+  onCopyLink,
+  onRemove,
+}: {
+  row: AssignmentView;
+  outcomes: BlockOutcome[];
+  rsvp: boolean;
+  busy: boolean;
+  onDragStart: () => void;
+  onCopyLink: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="seated" draggable={!busy} onDragStart={onDragStart}>
+      <span className="grip">
+        <Icon name="drag" size={13} />
+      </span>
+      <span className="seated-name">{row.candidate.orgName}</span>
+      {rsvp && <span className={RSVP_TONE[row.assignment.rsvpState]}>{row.assignment.rsvpState}</span>}
+      {row.score !== null && <span className="num faint">{row.score}</span>}
+      <OutcomeBadge outcomes={outcomes} id={row.outcomeId} />
+      <div className="spacer" />
+      {rsvp && (
+        <button
+          className="btn ghost icon sm"
+          onClick={onCopyLink}
+          title="Copy the invitation link"
+          aria-label="Copy invitation link"
+        >
+          <Icon name="link" size={13} />
+        </button>
+      )}
+      <button className="btn ghost icon sm" onClick={onRemove} title="Take off this committee" aria-label="Remove">
+        <Icon name="x" size={13} />
+      </button>
+    </div>
   );
 }
 
@@ -496,8 +433,7 @@ function SessionModal({
   const [draft, setDraft] = useState({
     name: session?.name ?? '',
     heldOn: session?.heldOn ?? null,
-    startsAt: session?.startsAt ?? '09:00',
-    endsAt: session?.endsAt ?? '13:00',
+    windows: session?.windows ?? [{ startsAt: '09:00', endsAt: '12:30' }],
     minutesPerStartup: session?.minutesPerStartup ?? 25,
     location: session?.location ?? '',
     jury: session?.jury ?? [],
@@ -506,16 +442,17 @@ function SessionModal({
   const toast = useToast();
   const set = (patch: Partial<typeof draft>) => setDraft((d) => ({ ...d, ...patch }));
 
-  const [h1, m1] = draft.startsAt.split(':').map(Number);
-  const [h2, m2] = draft.endsAt.split(':').map(Number);
-  const span = (h2 || 0) * 60 + (m2 || 0) - ((h1 || 0) * 60 + (m1 || 0));
-  const slots = span > 0 ? Math.floor(span / Math.max(5, draft.minutesPerStartup)) : 0;
+  const setWindow = (index: number, partial: Partial<TimeWindow>) =>
+    set({ windows: draft.windows.map((w, i) => (i === index ? { ...w, ...partial } : w)) });
+
+  const minutes = windowMinutes(draft.windows);
+  const slots = Math.floor(minutes / Math.max(5, draft.minutesPerStartup));
 
   return (
     <>
       <Modal
         title={session ? 'Committee' : 'New committee'}
-        subtitle="A sitting of the jury. Its slots come from the window and the time per startup."
+        subtitle="A sitting of the jury. Its slots come from the hours it runs and the time each startup gets."
         onClose={onClose}
         footer={
           <>
@@ -547,29 +484,79 @@ function SessionModal({
           label="Name"
           value={draft.name}
           onChange={(v) => set({ name: v })}
-          placeholder="Morning panel"
+          placeholder="Jury day"
           hint="optional"
         />
         <div className="grid-2">
           <DateField label="Held on" value={draft.heldOn} onChange={(v) => set({ heldOn: v })} />
-          <TextField label="Where" value={draft.location} onChange={(v) => set({ location: v })} placeholder="CEED Morocco, Casablanca" />
+          <TextField
+            label="Where"
+            value={draft.location}
+            onChange={(v) => set({ location: v })}
+            placeholder="CEED Morocco, Casablanca"
+          />
         </div>
-        <div className="grid-2">
-          <TextField label="From" value={draft.startsAt} onChange={(v) => set({ startsAt: v })} type="time" />
-          <TextField label="To" value={draft.endsAt} onChange={(v) => set({ endsAt: v })} type="time" />
+
+        <div className="field">
+          <label>Hours</label>
+          <div className="help">
+            A committee can run all day. Add a stretch for each block of pitches and leave the breaks out.
+          </div>
+          <div className="rows">
+            {draft.windows.map((window, index) => (
+              <div className="row" key={index}>
+                <input
+                  className="input"
+                  type="time"
+                  value={window.startsAt}
+                  aria-label="From"
+                  onChange={(e) => setWindow(index, { startsAt: e.target.value })}
+                />
+                <span className="faint">→</span>
+                <input
+                  className="input"
+                  type="time"
+                  value={window.endsAt}
+                  aria-label="To"
+                  onChange={(e) => setWindow(index, { endsAt: e.target.value })}
+                />
+                <button
+                  className="btn ghost icon sm"
+                  disabled={draft.windows.length === 1}
+                  aria-label="Remove this stretch"
+                  onClick={() => set({ windows: draft.windows.filter((_, i) => i !== index) })}
+                >
+                  <Icon name="trash" size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            className="btn sm"
+            style={{ alignSelf: 'flex-start', marginTop: 6 }}
+            onClick={() => set({ windows: [...draft.windows, { startsAt: '14:00', endsAt: '17:00' }] })}
+          >
+            <Icon name="plus" size={13} /> Add a stretch
+          </button>
         </div>
+
         <NumberField
           label="Minutes per startup"
           value={draft.minutesPerStartup}
           onChange={(v) => set({ minutesPerStartup: v })}
           min={5}
-          help={slots ? `That makes ${slots} slot${slots === 1 ? '' : 's'}.` : 'The window is too short for a single slot.'}
+          help={
+            slots
+              ? `${minutes} minutes on offer — that makes ${slots} slot${slots === 1 ? '' : 's'}.`
+              : 'Not enough time for a single slot.'
+          }
         />
+
         <TagField
           label="Jury"
           values={draft.jury}
           onChange={(v) => set({ jury: v })}
-          help="Who sits on this panel. They are the names that can score here."
+          help="Who sits on this panel. They are the names that can score it."
           placeholder="Add a jury member"
         />
       </Modal>
@@ -577,7 +564,7 @@ function SessionModal({
       {confirm && session && (
         <ConfirmDialog
           title={`Delete ${session.name}?`}
-          body="Its assignments go with it. Scores already given stay on the block."
+          body="The startups seated on it go back to the pool. Scores already given stay on the evaluation."
           confirmLabel="Delete committee"
           destructive
           onClose={() => setConfirm(false)}
@@ -595,22 +582,22 @@ function SessionModal({
 
 function PoolModal({
   pool,
-  outcomes,
   sessionName,
+  free,
   onClose,
   onPick,
 }: {
-  pool: { candidate: Candidate; outcomeId: string | null }[];
-  outcomes: BlockOutcome[];
+  pool: { candidate: Candidate }[];
   sessionName: string;
+  free: number;
   onClose: () => void;
   onPick: (candidateIds: string[]) => Promise<void>;
 }) {
   const [chosen, setChosen] = useState<string[]>([]);
   return (
     <Modal
-      title={`Add to ${sessionName}`}
-      subtitle="Startups that reached this block and are not on any sitting yet."
+      title={`Seat on ${sessionName}`}
+      subtitle="Startups the previous selection sent through, not yet on a sitting. They take the first free slots."
       onClose={onClose}
       footer={
         <>
@@ -625,13 +612,19 @@ function PoolModal({
               onClose();
             }}
           >
-            Add {chosen.length || ''}
+            Seat {chosen.length || ''}
           </button>
         </>
       }
     >
+      {chosen.length > free && (
+        <div className="callout warn">
+          <Icon name="alert" size={15} />
+          Only {free} slot{free === 1 ? '' : 's'} left on this sitting. The rest are seated but left unplaced.
+        </div>
+      )}
       <div className="rows">
-        {pool.map(({ candidate, outcomeId }) => (
+        {pool.map(({ candidate }) => (
           <label className="check rowcard" style={{ padding: '9px 11px' }} key={candidate.id}>
             <input
               type="checkbox"
@@ -646,11 +639,9 @@ function PoolModal({
                 {candidate.contactName}
               </div>
             </span>
-            <OutcomeBadge outcomes={outcomes} id={outcomeId} />
           </label>
         ))}
       </div>
     </Modal>
   );
 }
-

@@ -249,6 +249,7 @@ export function BuilderCanvas({
           block={openBlock}
           track={track}
           initialTab={openBlockTab}
+          onOpenBlock={setOpenBlockId}
           candidates={candidates.data ?? []}
           onClose={() => setOpenBlockId(null)}
           onChanged={() => {

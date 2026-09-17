@@ -246,14 +246,14 @@ async function main() {
   await repo.updatePhase(committeePhase.id, { startsOn: '2026-11-05', endsOn: '2026-11-20' });
   const committee = await repo.createBlock(committeePhase.id, 'committee', 'Jury day');
   await repo.updateBlock(committee.id, {
-    config: {
-      criteria: JURY_CRITERIA,
-      requireComment: true,
-      sourceBlockId: evaluation.id,
-      intakeOutcomeIds: ['retained', 'hold'],
-      rsvpMode: 'slots',
-      rsvpDeadline: '2026-11-05',
-    },
+    config: { rsvpMode: 'slots', rsvpDeadline: '2026-11-05' },
+  });
+
+  // The grid stays in its own block. Sitting in the committee's phase is what
+  // makes this evaluation score that committee, sitting by sitting.
+  const juryScoring = await repo.createBlock(committeePhase.id, 'evaluation', 'Jury scoring');
+  await repo.updateBlock(juryScoring.id, {
+    config: { criteria: JURY_CRITERIA, requireComment: true, opensAt: '2026-11-12', closesAt: '2026-11-20' },
   });
   const finalSelection = await repo.createBlock(committeePhase.id, 'selection', 'Final selection');
   await repo.updateBlock(finalSelection.id, {
@@ -261,7 +261,7 @@ async function main() {
       outputKind: 'cohort',
       method: 'top_n',
       topN: 6,
-      sourceBlockId: committee.id,
+      sourceBlockId: juryScoring.id,
       passLabel: 'Selected',
       failLabel: 'Not selected',
     },
@@ -325,45 +325,49 @@ async function main() {
   await publishSelection(shortlisting.id);
 
   /* ---- Two sittings, filled from the screening statuses ---- */
-  const morning = await repo.createSession(committee.id, {
-    name: 'Morning panel',
+  // A sitting runs the whole day, with the lunch break cut out of it.
+  const juryDay = await repo.createSession(committee.id, {
+    name: 'Jury day',
     heldOn: '2026-11-12',
-    startsAt: '09:00',
-    endsAt: '13:00',
+    windows: [
+      { startsAt: '09:00', endsAt: '12:30' },
+      { startsAt: '14:00', endsAt: '17:00' },
+    ],
     minutesPerStartup: 25,
     location: 'CEED Morocco, Casablanca',
     jury: JURY.slice(0, 3),
   });
-  const afternoon = await repo.createSession(committee.id, {
-    name: 'Afternoon panel',
-    heldOn: '2026-11-12',
-    startsAt: '14:00',
-    endsAt: '17:00',
-    minutesPerStartup: 25,
-    location: 'CEED Morocco, Casablanca',
+  const catchUp = await repo.createSession(committee.id, {
+    name: 'Catch-up panel',
+    heldOn: '2026-11-14',
+    windows: [{ startsAt: '09:00', endsAt: '10:30' }],
+    minutesPerStartup: 15,
+    location: 'Online',
     jury: [JURY[0], JURY[3], JURY[4]],
   });
 
-  const { assignByOutcome, committeeView } = await import('../services/committee.js');
-  await assignByOutcome(morning.id, ['retained']);
-  await assignByOutcome(afternoon.id, ['hold']);
+  const { committeeView, seatOnFreeSlots } = await import('../services/committee.js');
+  // The pool is whoever the shortlist sent through.
+  const waiting = (await committeeView(committee.id))!.pool.map((p) => p.candidate.id);
+  await seatOnFreeSlots(juryDay.id, waiting.slice(0, 8));
+  await seatOnFreeSlots(catchUp.id, waiting.slice(8));
 
-  /* ---- Most startups have picked their slot; the jury has scored them ---- */
+  /* ---- Most startups have confirmed their slot; the jury has scored them ---- */
   const view = (await committeeView(committee.id))!;
   let seat = 0;
   for (const session of view.sessions) {
-    for (const [index, row] of session.assignments.entries()) {
-      // One startup has not answered yet, so the RSVP screen has something to show.
+    for (const row of session.assignments) {
+      // One startup has not answered yet, so the invitation screen has something to show.
       if (seat === 4) {
         seat++;
         continue;
       }
-      await repo.respondToAssignment(row.assignment.id, 'confirmed', index);
+      await repo.respondToAssignment(row.assignment.id, 'confirmed', row.assignment.slotIndex);
       for (const juror of session.session.jury) {
         const spec = CANDIDATES.find((c) => c.orgName === row.candidate.orgName);
         const base = spec ? spec.marks[0] : [7, 7, 7, 7, 7];
         await repo.upsertScore({
-          blockId: committee.id,
+          blockId: juryScoring.id,
           sessionId: session.session.id,
           candidateId: row.candidate.id,
           evaluatorId: `ev_${juror.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
@@ -379,8 +383,7 @@ async function main() {
       seat++;
     }
   }
-  const committeeBlock = (await repo.getBlock(committee.id))!;
-  await applyOutcomes(committeeBlock);
+  await applyOutcomes((await repo.getBlock(juryScoring.id))!);
 
   /* ---- Two more programmes, so the list looks like a real account ---- */
   const she = await repo.createProgram({

@@ -58,7 +58,7 @@ description and the edition's own fields, not in a block.
 | **Sourcing** | Send the prospecting message and hold the channels the call runs on. Channels feed the source list on the form. |
 | **Application** | Publish a form — one page, or split into named steps. Every submission creates a candidate in the track, which is what fills the pool. |
 | **Evaluation** | Score startups on a weighted grid, and **put a status on each one**. That status is what the next block reads. |
-| **Selection committee** | Run the sittings: create committees, fill them, let the startups book a time, let the jury score them on its own grid. Out comes a scored list with a status. |
+| **Selection committee** | Run the sittings: create committees, seat startups on them, let those startups book a time. It organises; it does not score. |
 | **Selection** | Cut the funnel: who moves to the next phase, or who forms the cohort. |
 
 ### The form: one page or several
@@ -101,14 +101,31 @@ for everything downstream.
 
 ### The committee: one block, N sittings
 
-This is the first application of the block-versus-instance rule. The grid, the statuses and the
-invitation settings live on the block, so scores compare across sittings; each sitting carries its
-own date, window, minutes per startup, place and jury. **Slots are never stored** — the window and
-the time per startup are the truth, so moving a sitting from 25 to 20 minutes re-cuts the day.
+This is the first application of the block-versus-instance rule. The block holds only how startups
+are invited; each sitting carries its own date, jury, place, time per startup, and **the stretches
+of the day it runs** — a jury day is 09:00–12:30 and 14:00–17:00, with the lunch break simply not
+being a stretch.
 
-Startups are assigned to a sitting in one go from a status the evaluation gave them, or picked by
-hand from the pool. Each assigned startup gets a personal link at `/book/:token` where it confirms,
-declines, or picks its time; two startups cannot take the same slot.
+**Slots are never stored.** The stretches and the time per startup are the truth: 09:00–10:30 at
+fifteen minutes is six slots, and changing either re-cuts the day. The timetable shows them in
+order with the breaks drawn in; dragging a startup onto another time trades the two over, and
+dragging one out of the timetable leaves it seated but unplaced.
+
+The pool is whatever the selection before the phase sent through. Seat startups from it and they
+take the first free slots. Each seated startup gets a personal link at `/book/:token` where it
+confirms, declines, or picks its own time; two startups cannot hold the same slot.
+
+### An Evaluation in a committee's phase scores that committee
+
+The grid stays in the Evaluation block — one block, one action. Dropping an Evaluation into a
+committee's phase is what links them: its candidates become the ones seated on each sitting, and
+**each sitting is marked by its own jury** rather than by a global evaluator list. The link is
+resolved automatically but shown on both blocks, and can be pinned elsewhere or turned off, so the
+convenience of position never becomes a hidden rule.
+
+That is also the division of labour between the two containers: **a phase is where blocks compose,
+a track is where the funnel flows.** A Selection still looks back across the whole track for the
+scores it cuts on.
 
 ### One Selection concept, two outputs
 
@@ -142,9 +159,9 @@ a human or a form actually entered.
 | GET | `/api/editions/:id/funnel` | counts at each funnel node |
 | GET/POST | `/api/public/forms/:token` | the public application form and its submissions |
 | GET | `/api/blocks/:id/evaluation` · POST `/api/blocks/:id/scores` | |
-| GET | `/api/blocks/:id/committee` | sittings, slots, assignments, scores, statuses, and the pool |
-| POST | `/api/blocks/:id/sessions` · PATCH/DELETE `/api/sessions/:id` | the sittings |
-| POST | `/api/sessions/:id/assign` · DELETE `/api/assignments/:id` | by hand, or in one go from a status |
+| GET | `/api/blocks/:id/committee` | sittings, slots, who is seated, and the pool |
+| POST | `/api/blocks/:id/sessions` · PATCH/DELETE `/api/sessions/:id` | the sittings and their hours |
+| POST | `/api/sessions/:id/assign` · `/api/assignments/:id/slot` · DELETE `/api/assignments/:id` | seat, move between slots, remove |
 | GET/POST | `/api/public/book/:token` | the startup's own invitation |
 | POST | `/api/blocks/:id/outcomes` · `.../outcomes/apply` | a status by hand, or every status the scores earn |
 | GET/POST | `/api/blocks/:id/outreach` · `.../outreach/send` | the prospecting message and its trace |
@@ -157,11 +174,16 @@ a human or a form actually entered.
 
 The call went out to six partner addresses. Three evaluators scored every applicant, and the
 statuses that earned (8 retained, 2 on hold, 2 not retained) are written. The shortlist is
-published (12 → 9). The jury day holds two sittings — a morning panel of nine slots and an
-afternoon one — filled from those statuses; the startups have booked their times except one, left
-pending so the invitation screen has something to show. The jury has scored on its own grid, and
-the **final selection reads the jury's scores, not the screening's**. It is configured as top 6 and
-**not** published, so the last step of the funnel is there to walk through.
+published (12 → 9), and those nine are the committee's pool.
+
+The committee phase holds three blocks in a row: **Jury day**, **Jury scoring**, **Final
+selection**. Jury day runs two sittings — a full day of 09:00–12:30 and 14:00–17:00 at 25 minutes
+(15 slots), and a short catch-up panel of 09:00–10:30 at 15 minutes (6 slots). Eight startups are
+seated on the first, one on the second; all have booked except one, left pending so the invitation
+screen has something to show. Jury scoring picks the committee up because it sits in its phase, so
+each panel is marked by its own jury, and the **final selection reads those scores, not the
+screening's**. It is configured as top 6 and **not** published, so the last step of the funnel is
+there to walk through.
 
 The application form is live and runs over three named pages — copy its link from the Application
 block to submit as a candidate would, and copy an invitation link from the Jury day to book as a

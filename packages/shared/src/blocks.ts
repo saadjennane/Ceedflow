@@ -234,11 +234,17 @@ export const evaluationConfigSchema = z.object({
   opensAt: z.string().nullable().default(null),
   closesAt: z.string().nullable().default(null),
   criteria: z.array(evaluationCriterionSchema).default([]),
-  /** Who scores. Names for now; they become directory references later. */
+  /** Who scores. Ignored when the evaluation scores a committee: its juries do. */
   evaluators: z.array(z.string()).default([]),
   requireComment: z.boolean().default(false),
   /** The statuses this evaluation can put on a candidate. */
   outcomes: z.array(blockOutcomeSchema).default(DEFAULT_OUTCOMES),
+  /**
+   * The committee whose sittings this evaluation scores. Null resolves to a
+   * committee in the same phase, which is how dropping the two together works.
+   * Name a block to pin it elsewhere, or 'standalone' to score on its own.
+   */
+  scopeBlockId: z.string().nullable().default(null),
 });
 
 /* ------------------------------------------------------------------ */
@@ -248,29 +254,32 @@ export const evaluationConfigSchema = z.object({
 export const RSVP_MODES = ['none', 'confirm', 'slots'] as const;
 export type RsvpMode = (typeof RSVP_MODES)[number];
 
+/**
+ * The committee organises the sittings. It does not score — an Evaluation block
+ * in the same phase does that, per committee.
+ */
 export const committeeConfigSchema = z.object({
-  /** The jury's grid. It lives on the block so scores compare across sittings. */
-  criteria: z.array(evaluationCriterionSchema).default([]),
-  requireComment: z.boolean().default(false),
-  outcomes: z.array(blockOutcomeSchema).default(DEFAULT_OUTCOMES),
   /** How an assigned startup answers: not at all, yes/no, or by picking a slot. */
   rsvpMode: z.enum(RSVP_MODES).default('slots'),
   rsvpDeadline: z.string().nullable().default(null),
-  /** Bulk assignment reads statuses from this block — an evaluation before this one. */
-  sourceBlockId: z.string().nullable().default(null),
-  /** Which of that block's statuses qualify for the committee. */
-  intakeOutcomeIds: z.array(z.string()).default([]),
 });
 
-/** One sitting. Its slots are derived from the window and the time per startup. */
+/** A stretch of the day a sitting actually pitches in. A day has several. */
+export const timeWindowSchema = z.object({
+  startsAt: z.string().default('09:00'),
+  endsAt: z.string().default('12:00'),
+});
+
+export type TimeWindow = z.infer<typeof timeWindowSchema>;
+
+/** One sitting. Its slots are derived from its windows and the time per startup. */
 export const committeeSessionSchema = z.object({
   id: z.string(),
   blockId: z.string(),
   name: z.string().min(1),
   heldOn: z.string().nullable().default(null),
-  /** 'HH:MM', local to the edition's city. */
-  startsAt: z.string().default('09:00'),
-  endsAt: z.string().default('13:00'),
+  /** 'HH:MM', local to the edition's city. A day can run several stretches. */
+  windows: z.array(timeWindowSchema).default([{ startsAt: '09:00', endsAt: '12:00' }]),
   minutesPerStartup: z.number().int().min(5).default(25),
   location: z.string().default(''),
   jury: z.array(z.string()).default([]),
@@ -283,6 +292,8 @@ export interface CommitteeSlot {
   index: number;
   startsAt: string;
   endsAt: string;
+  /** Which stretch of the day it belongs to, so the UI can show the breaks. */
+  windowIndex: number;
 }
 
 const toMinutes = (time: string) => {
@@ -293,16 +304,23 @@ const toMinutes = (time: string) => {
 const toClock = (minutes: number) =>
   `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 
-/** Slots are never stored — the window and the time per startup are the truth. */
-export function sessionSlots(session: Pick<CommitteeSession, 'startsAt' | 'endsAt' | 'minutesPerStartup'>): CommitteeSlot[] {
-  const start = toMinutes(session.startsAt);
-  const end = toMinutes(session.endsAt);
+/** Slots are never stored — the windows and the time per startup are the truth. */
+export function sessionSlots(session: Pick<CommitteeSession, 'windows' | 'minutesPerStartup'>): CommitteeSlot[] {
   const step = Math.max(5, session.minutesPerStartup);
   const slots: CommitteeSlot[] = [];
-  for (let at = start, i = 0; at + step <= end; at += step, i++) {
-    slots.push({ index: i, startsAt: toClock(at), endsAt: toClock(at + step) });
-  }
+  let index = 0;
+  session.windows.forEach((window, windowIndex) => {
+    const end = toMinutes(window.endsAt);
+    for (let at = toMinutes(window.startsAt); at + step <= end; at += step) {
+      slots.push({ index: index++, startsAt: toClock(at), endsAt: toClock(at + step), windowIndex });
+    }
+  });
   return slots;
+}
+
+/** Total pitching time on offer, in minutes. */
+export function windowMinutes(windows: TimeWindow[]): number {
+  return windows.reduce((n, w) => n + Math.max(0, toMinutes(w.endsAt) - toMinutes(w.startsAt)), 0);
 }
 
 export const RSVP_STATES = ['pending', 'confirmed', 'declined'] as const;

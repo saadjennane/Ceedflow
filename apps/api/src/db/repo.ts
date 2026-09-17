@@ -685,8 +685,8 @@ async function patchRow(
 /* Committee sittings                                                  */
 /* ------------------------------------------------------------------ */
 
-const SESSION_COLS = `id, block_id as "blockId", name, held_on::text as "heldOn", starts_at as "startsAt",
-  ends_at as "endsAt", minutes_per_startup as "minutesPerStartup", location, jury, position`;
+const SESSION_COLS = `id, block_id as "blockId", name, held_on::text as "heldOn", windows,
+  minutes_per_startup as "minutesPerStartup", location, jury, position`;
 const ASSIGNMENT_COLS = `id, session_id as "sessionId", candidate_id as "candidateId", token,
   rsvp_state as "rsvpState", slot_index as "slotIndex", responded_at::text as "respondedAt"`;
 
@@ -705,15 +705,14 @@ export async function createSession(blockId: string, patch: Record<string, unkno
   );
   const position = next?.n ?? 0;
   await conn.query(
-    `insert into committee_sessions (id, block_id, name, held_on, starts_at, ends_at, minutes_per_startup, location, jury, position)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    `insert into committee_sessions (id, block_id, name, held_on, windows, minutes_per_startup, location, jury, position)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
     [
       id,
       blockId,
       (patch.name as string)?.trim() || `Committee ${position + 1}`,
       (patch.heldOn as string) ?? null,
-      (patch.startsAt as string) ?? '09:00',
-      (patch.endsAt as string) ?? '13:00',
+      JSON.stringify(patch.windows ?? [{ startsAt: '09:00', endsAt: '12:00' }]),
       (patch.minutesPerStartup as number) ?? 25,
       (patch.location as string) ?? '',
       JSON.stringify(patch.jury ?? []),
@@ -724,14 +723,16 @@ export async function createSession(blockId: string, patch: Record<string, unkno
 }
 
 export async function updateSession(id: string, patch: Record<string, unknown>): Promise<CommitteeSession | null> {
+  const conn = await db();
   if (patch.jury !== undefined) {
-    await (await db()).query('update committee_sessions set jury = $2 where id = $1', [id, JSON.stringify(patch.jury)]);
+    await conn.query('update committee_sessions set jury = $2 where id = $1', [id, JSON.stringify(patch.jury)]);
+  }
+  if (patch.windows !== undefined) {
+    await conn.query('update committee_sessions set windows = $2 where id = $1', [id, JSON.stringify(patch.windows)]);
   }
   await patchRow('committee_sessions', id, patch, {
     name: 'name',
     heldOn: 'held_on',
-    startsAt: 'starts_at',
-    endsAt: 'ends_at',
     minutesPerStartup: 'minutes_per_startup',
     location: 'location',
   });
@@ -778,8 +779,37 @@ export async function assignToSession(sessionId: string, candidateIds: string[])
   return fresh.length;
 }
 
+/** Drops a startup on a slot, trading places with whoever holds it. */
+export async function moveAssignmentToSlot(assignmentId: string, slotIndex: number | null): Promise<void> {
+  const conn = await db();
+  const mine = await one<CommitteeAssignment>(
+    `select ${ASSIGNMENT_COLS} from committee_assignments where id = $1`,
+    [assignmentId],
+  );
+  if (!mine) return;
+  await conn.tx(async () => {
+    if (slotIndex !== null) {
+      const holder = await one<{ id: string }>(
+        'select id from committee_assignments where session_id = $1 and slot_index = $2 and id <> $3',
+        [mine.sessionId, slotIndex, assignmentId],
+      );
+      if (holder) {
+        await conn.query('update committee_assignments set slot_index = $2 where id = $1', [
+          holder.id,
+          mine.slotIndex,
+        ]);
+      }
+    }
+    await conn.query('update committee_assignments set slot_index = $2 where id = $1', [assignmentId, slotIndex]);
+  });
+}
+
 export async function unassign(assignmentId: string): Promise<void> {
   await (await db()).query('delete from committee_assignments where id = $1', [assignmentId]);
+}
+
+export async function findAssignmentById(id: string): Promise<CommitteeAssignment | null> {
+  return one<CommitteeAssignment>(`select ${ASSIGNMENT_COLS} from committee_assignments where id = $1`, [id]);
 }
 
 export async function findAssignmentByToken(token: string) {
