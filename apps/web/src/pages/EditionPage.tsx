@@ -146,7 +146,6 @@ export function EditionPage() {
         </button>
         <button role="tab" className={tab === 'startups' ? 'tab on' : 'tab'} onClick={() => setTab('startups')}>
           Startups
-          {candidates.data?.length ? <span className="tab-count num">{candidates.data.length}</span> : null}
         </button>
         {workTabs.map((t) => (
           <button key={t.key} role="tab" className={tab === t.key ? 'tab on' : 'tab'} onClick={() => setTab(t.key)}>
