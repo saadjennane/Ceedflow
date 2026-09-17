@@ -30,7 +30,7 @@ import { all, db, one } from './client.js';
 
 const PROGRAM_COLS = `id, name, code, type, summary, partner, colour, created_at::text as "createdAt"`;
 const EDITION_COLS = `id, program_id as "programId", name, status, starts_on::text as "startsOn",
-  ends_on::text as "endsOn", city, seats, mentors, position, created_at::text as "createdAt"`;
+  ends_on::text as "endsOn", city, mentors, position, created_at::text as "createdAt"`;
 const TRACK_COLS = `id, edition_id as "editionId", name, is_default as "isDefault", position`;
 const PHASE_COLS = `id, track_id as "trackId", name, starts_on::text as "startsOn",
   ends_on::text as "endsOn", position`;
@@ -79,7 +79,6 @@ export async function createProgram(input: {
     startsOn?: string | null;
     endsOn?: string | null;
     city?: string;
-    seats?: number;
     template?: 'blank' | 'selection_funnel';
   };
 }): Promise<ProgramWithEditions> {
@@ -137,7 +136,6 @@ async function insertEdition(
     startsOn?: string | null;
     endsOn?: string | null;
     city?: string;
-    seats?: number;
     template?: 'blank' | 'selection_funnel';
     copyFromEditionId?: string;
   },
@@ -149,8 +147,8 @@ async function insertEdition(
     [programId],
   );
   await conn.query(
-    `insert into editions (id, program_id, name, starts_on, ends_on, city, seats, position)
-     values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    `insert into editions (id, program_id, name, starts_on, ends_on, city, position)
+     values ($1,$2,$3,$4,$5,$6,$7)`,
     [
       id,
       programId,
@@ -158,7 +156,6 @@ async function insertEdition(
       input.startsOn ?? null,
       input.endsOn ?? null,
       input.city ?? '',
-      input.seats ?? 0,
       next?.n ?? 0,
     ],
   );
@@ -264,7 +261,6 @@ export async function updateEdition(id: string, patch: Record<string, unknown>):
     startsOn: 'starts_on',
     endsOn: 'ends_on',
     city: 'city',
-    seats: 'seats',
   });
   return one<Edition>(`select ${EDITION_COLS} from editions where id = $1`, [id]);
 }

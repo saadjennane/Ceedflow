@@ -91,7 +91,8 @@ drag-only.
 **Program → Edition → Track → Phase → Block.**
 
 - A **programme** is the parent: CEED Grow. It holds nothing that runs.
-- An **edition** is one run of it: Grow 2026, its own dates, city, seats and candidates.
+- An **edition** is one run of it: Grow 2026, its own dates, city and candidates. How many startups it takes is
+  whatever its selection decides, not a number set in advance.
 - A **track** is a parallel path inside an edition. Every edition has one from the start
   ("Main workflow"); extra tracks are added when a cohort splits by theme. Tracks are created,
   renamed and deleted in the builder only — the work tabs get a plain switcher, and nothing at all
@@ -246,7 +247,7 @@ a human or a form actually entered.
 ## What the seed gives you
 
 **CEED Grow → Grow 2026**, running, with a three-phase workflow and a funnel played out to the end:
-**34 applicants → 19 shortlisted → a cohort of 12**, matching the edition's 12 seats.
+**34 applicants → 19 shortlisted → a cohort of 12**.
 
 The call went out to six partner addresses, and applications arrived across the whole window through
 the five channels the sourcing block declared — so the Source column actually compares. Three
@@ -263,8 +264,8 @@ application can land badly in the room and a modest one can shine. SportIQ goes 
 after its pitch, Terra Nova 76 to 89. That is the point of giving the jury its own grid.
 
 The final selection takes the top 11 on the jury's marks. Two startups tie at 60 on the cut line;
-the ranking keeps one, and the team put the other back by hand for the twelfth seat, which shows as
-**Changed by hand**. Withdraw the publication from the Decisions tab to replay the last step
+the ranking keeps one, and the team put the other back by hand, which shows as **Changed by hand**
+and makes the cohort twelve. Withdraw the publication from the Decisions tab to replay the last step
 yourself.
 
 Plus **SheLeads** (a draft 2027 edition on the standard template and a completed 2025 one) and

@@ -148,7 +148,6 @@ export function ProgramsPage() {
                       <th>Status</th>
                       <th>Dates</th>
                       <th>City</th>
-                      <th style={{ textAlign: 'right' }}>Seats</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -165,9 +164,6 @@ export function ProgramsPage() {
                               </td>
                               <td className="muted">{formatRange(edition.startsOn, edition.endsOn)}</td>
                               <td className="muted">{edition.city || '—'}</td>
-                              <td className="num" style={{ textAlign: 'right' }}>
-                                {edition.seats || '—'}
-                              </td>
                             </tr>
                           ))
                         : [
@@ -175,7 +171,7 @@ export function ProgramsPage() {
                               <td className="name">
                                 <span className="prog-chip sm" style={{ background: program.colour }} /> {program.name}
                               </td>
-                              <td colSpan={5} className="faint">
+                              <td colSpan={4} className="faint">
                                 No edition yet ·{' '}
                                 <button className="linklike" onClick={() => setNewEditionFor(program)}>
                                   add one
@@ -225,11 +221,6 @@ function EditionTile({ edition, program }: { edition: Edition; program: ProgramW
         <div className="row">
           <span className={STATUS_TONE[edition.status]}>{edition.status}</span>
           <div className="spacer" />
-          {edition.seats > 0 && (
-            <span className="faint num" title="Seats">
-              {edition.seats} seats
-            </span>
-          )}
         </div>
         <h3>{edition.name}</h3>
         <div className="muted" style={{ fontSize: 12.5 }}>

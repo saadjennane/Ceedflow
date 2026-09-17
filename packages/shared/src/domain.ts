@@ -44,7 +44,6 @@ export const editionSchema = z.object({
   startsOn: z.string().nullable().default(null),
   endsOn: z.string().nullable().default(null),
   city: z.string().default(''),
-  seats: z.number().int().min(0).default(0),
   /** The mentors this edition can draw on. Names for now. */
   mentors: z.array(z.string()).default([]),
   position: z.number().int().default(0),
@@ -136,7 +135,6 @@ export const createProgramInput = z.object({
       startsOn: z.string().nullable().optional(),
       endsOn: z.string().nullable().optional(),
       city: z.string().optional(),
-      seats: z.number().int().min(0).optional(),
       template: z.enum(['blank', 'selection_funnel']).optional(),
     })
     .optional(),

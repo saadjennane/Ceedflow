@@ -76,7 +76,6 @@ export function ProgramPage() {
                   <th>Status</th>
                   <th>Dates</th>
                   <th>City</th>
-                  <th style={{ textAlign: 'right' }}>Seats</th>
                   <th />
                 </tr>
               </thead>
@@ -89,9 +88,6 @@ export function ProgramPage() {
                     </td>
                     <td className="muted">{formatRange(edition.startsOn, edition.endsOn)}</td>
                     <td className="muted">{edition.city || '—'}</td>
-                    <td className="num" style={{ textAlign: 'right' }}>
-                      {edition.seats || '—'}
-                    </td>
                     <td style={{ textAlign: 'right' }}>
                       <Icon name="chevronRight" size={14} />
                     </td>

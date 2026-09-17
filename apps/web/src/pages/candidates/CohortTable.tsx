@@ -69,12 +69,6 @@ export function CohortTable({
         <span className="faint" style={{ fontSize: 12.5 }}>
           <span className="num">{members.length}</span> startup{members.length === 1 ? '' : 's'} selected across{' '}
           <span className="num">{usedTracks.length}</span> track{usedTracks.length === 1 ? '' : 's'}
-          {edition.seats > 0 && (
-            <>
-              {' '}
-              · <span className="num">{edition.seats}</span> seats
-            </>
-          )}
         </span>
         <div className="spacer" />
         <button className="btn sm" onClick={() => setPicking(true)}>

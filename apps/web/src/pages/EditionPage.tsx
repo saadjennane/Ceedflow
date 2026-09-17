@@ -4,7 +4,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { formatRange } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
-import { DateField, NumberField, TextField } from '../ui/Field';
+import { DateField, TextField } from '../ui/Field';
 import { Icon } from '../ui/Icon';
 import { ConfirmDialog, Modal, useToast } from '../ui/Overlays';
 import { BuilderCanvas } from './builder/BuilderCanvas';
@@ -119,12 +119,6 @@ export function EditionPage() {
         <span className="ed-meta">
           {formatRange(detail.startsOn, detail.endsOn)}
           {detail.city && <> · {detail.city}</>}
-          {detail.seats > 0 && (
-            <>
-              {' · '}
-              <span className="num">{detail.seats}</span> seats
-            </>
-          )}
           {cohortSize > 0 && (
             <>
               {' · '}
@@ -383,7 +377,6 @@ function EditEditionModal({
     startsOn: edition.startsOn,
     endsOn: edition.endsOn,
     city: edition.city,
-    seats: edition.seats,
   });
   const [saving, setSaving] = useState(false);
   const set = (patch: Partial<typeof draft>) => setDraft((d) => ({ ...d, ...patch }));
@@ -418,10 +411,7 @@ function EditEditionModal({
         <DateField label="Starts on" value={draft.startsOn} onChange={(v) => set({ startsOn: v })} />
         <DateField label="Ends on" value={draft.endsOn} onChange={(v) => set({ endsOn: v })} />
       </div>
-      <div className="grid-2">
-        <TextField label="City" value={draft.city} onChange={(v) => set({ city: v })} />
-        <NumberField label="Seats" value={draft.seats} onChange={(v) => set({ seats: v })} min={0} />
-      </div>
+      <TextField label="City" value={draft.city} onChange={(v) => set({ city: v })} />
     </Modal>
   );
 }

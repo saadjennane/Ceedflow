@@ -328,7 +328,7 @@ async function main() {
     summary: 'Six months of structured support for Moroccan startups with first revenue and a team ready to scale.',
     partner: 'Attijariwafa Bank Foundation',
     colour: '#2F5BFF',
-    edition: { name: 'Grow 2026', startsOn: '2026-09-01', endsOn: '2027-02-28', city: 'Casablanca', seats: 12 },
+    edition: { name: 'Grow 2026', startsOn: '2026-09-01', endsOn: '2027-02-28', city: 'Casablanca' },
   });
   const editionId = grow.editions[0].id;
   await repo.updateEdition(editionId, {
@@ -588,9 +588,9 @@ async function main() {
     summary: 'Twelve weeks for women founders at pre-revenue stage, in Rabat and Fès.',
     partner: 'US Embassy Rabat',
     colour: '#00A36A',
-    edition: { name: 'SheLeads 2027', startsOn: '2027-01-12', endsOn: '2027-04-10', city: 'Rabat', seats: 15, template: 'selection_funnel' },
+    edition: { name: 'SheLeads 2027', startsOn: '2027-01-12', endsOn: '2027-04-10', city: 'Rabat', template: 'selection_funnel' },
   });
-  await repo.createEdition(she.id, { name: 'SheLeads 2025', startsOn: '2025-01-15', endsOn: '2025-04-15', city: 'Fès', seats: 15 });
+  await repo.createEdition(she.id, { name: 'SheLeads 2025', startsOn: '2025-01-15', endsOn: '2025-04-15', city: 'Fès' });
   const past = (await repo.getProgram(she.id))!.editions.find((e) => e.name === 'SheLeads 2025')!;
   await repo.updateEdition(past.id, { status: 'Completed' });
 

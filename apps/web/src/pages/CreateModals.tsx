@@ -1,7 +1,7 @@
 import { PROGRAM_TYPES, type Edition, type ProgramWithEditions } from '@ceed/shared';
 import { useState } from 'react';
 import { ApiError, api } from '../lib/api';
-import { DateField, NumberField, SelectField, TextArea, TextField } from '../ui/Field';
+import { DateField, SelectField, TextArea, TextField } from '../ui/Field';
 import { Icon } from '../ui/Icon';
 import { Modal, useToast } from '../ui/Overlays';
 
@@ -43,7 +43,6 @@ export function CreateProgramModal({
   const [startsOn, setStartsOn] = useState<string | null>(null);
   const [endsOn, setEndsOn] = useState<string | null>(null);
   const [city, setCity] = useState('Casablanca');
-  const [seats, setSeats] = useState(12);
   const [template, setTemplate] = useState<'blank' | 'selection_funnel'>('selection_funnel');
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -62,7 +61,7 @@ export function CreateProgramModal({
         summary,
         partner,
         colour,
-        edition: { name: editionLabel, startsOn, endsOn, city, seats, template },
+        edition: { name: editionLabel, startsOn, endsOn, city, template },
       });
       onCreated(program);
       onClose();
@@ -164,10 +163,7 @@ export function CreateProgramModal({
             <DateField label="Starts on" value={startsOn} onChange={setStartsOn} />
             <DateField label="Ends on" value={endsOn} onChange={setEndsOn} />
           </div>
-          <div className="grid-2">
-            <TextField label="City" value={city} onChange={setCity} />
-            <NumberField label="Seats" value={seats} onChange={setSeats} min={0} help="How many make the cohort." />
-          </div>
+          <TextField label="City" value={city} onChange={setCity} />
           <div className="field">
             <label>Start the workflow from</label>
             <div className="pick-list">
@@ -214,7 +210,6 @@ export function CreateEditionModal({
   const [startsOn, setStartsOn] = useState<string | null>(null);
   const [endsOn, setEndsOn] = useState<string | null>(null);
   const [city, setCity] = useState('');
-  const [seats, setSeats] = useState(12);
   const [source, setSource] = useState<string>('selection_funnel');
   const [saving, setSaving] = useState(false);
   const toast = useToast();
@@ -224,7 +219,7 @@ export function CreateEditionModal({
   const submit = async () => {
     setSaving(true);
     try {
-      const body: Record<string, unknown> = { name: name.trim(), startsOn, endsOn, city, seats };
+      const body: Record<string, unknown> = { name: name.trim(), startsOn, endsOn, city };
       if (source.startsWith('copy:')) body.copyFromEditionId = source.slice(5);
       else body.template = source;
       const edition = await api.post<Edition>(`/api/programs/${programId}/editions`, body);
@@ -267,10 +262,7 @@ export function CreateEditionModal({
         <DateField label="Starts on" value={startsOn} onChange={setStartsOn} />
         <DateField label="Ends on" value={endsOn} onChange={setEndsOn} />
       </div>
-      <div className="grid-2">
-        <TextField label="City" value={city} onChange={setCity} placeholder="Casablanca" />
-        <NumberField label="Seats" value={seats} onChange={setSeats} min={0} />
-      </div>
+      <TextField label="City" value={city} onChange={setCity} placeholder="Casablanca" />
       <SelectField
         label="Workflow"
         value={source}
