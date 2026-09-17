@@ -12,7 +12,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import * as repo from '../db/repo.js';
 import { committeeForEvaluation, committeeView } from '../services/committee.js';
-import { applyOutcomes, outcomesOf, scoresByCandidate } from '../services/scoring.js';
+import { outcomesByCandidate, outcomesOf, scoresByCandidate, setOutcomeByHand } from '../services/scoring.js';
 import {
   addToSelection,
   funnelFor,
@@ -176,19 +176,19 @@ export async function funnelRoutes(app: FastifyInstance) {
     const config = block.config as EvaluationConfig;
     const outcomes = outcomesOf(block);
     const grouped = await scoresByCandidate(block);
-    const stored = new Map((await repo.listBlockOutcomes(id)).map((o) => [o.candidateId, o]));
+    const statuses = await outcomesByCandidate(block);
 
     const row = (candidate: Candidate) => {
       const entry = grouped.get(candidate.id);
-      const saved = stored.get(candidate.id);
+      const status = statuses.get(candidate.id);
       return {
         candidate,
         scores: entry?.scores ?? [],
         consensus: entry?.consensus ?? null,
         submitted: entry?.submitted ?? 0,
-        outcomeId: saved?.outcomeId ?? null,
+        outcomeId: status?.outcomeId ?? null,
         proposedOutcomeId: proposedOutcome(entry?.consensus ?? null, outcomes),
-        overridden: saved?.overridden ?? false,
+        overridden: status?.overridden ?? false,
       };
     };
 
@@ -231,22 +231,12 @@ export async function funnelRoutes(app: FastifyInstance) {
     };
   });
 
-  /** Writes the status each score earns, leaving hand-made ones alone. */
-  app.post('/api/blocks/:id/outcomes/apply', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const block = await repo.getBlock(id);
-    if (!block) return notFound(reply, 'Block not found.');
-    return { written: await applyOutcomes(block) };
-  });
-
   app.post('/api/blocks/:id/outcomes', async (req, reply) => {
     const { id } = req.params as { id: string };
     const block = await repo.getBlock(id);
     if (!block) return notFound(reply, 'Block not found.');
     const input = parse(z.object({ candidateId: z.string(), outcomeId: z.string() }), req.body);
-    const grouped = await scoresByCandidate(block);
-    const proposed = proposedOutcome(grouped.get(input.candidateId)?.consensus ?? null, outcomesOf(block));
-    await repo.setBlockOutcome(id, input.candidateId, input.outcomeId, input.outcomeId !== proposed);
+    await setOutcomeByHand(block, input.candidateId, input.outcomeId);
     reply.code(204);
   });
 

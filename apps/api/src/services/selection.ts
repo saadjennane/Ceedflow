@@ -8,7 +8,7 @@ import {
   type TrackWithPhases,
 } from '@ceed/shared';
 import * as repo from '../db/repo.js';
-import { outcomesOf, scoresByCandidate } from './scoring.js';
+import { outcomesByCandidate, outcomesOf, scoresByCandidate } from './scoring.js';
 
 /** How a startup got onto this list. */
 export type Arrival = 'funnel' | 'manual' | 'status';
@@ -102,11 +102,12 @@ export async function selectionView(blockId: string): Promise<SelectionView | nu
 
   const source = resolveSource(track, block);
   const grouped = source ? await scoresByCandidate(source) : null;
-  const statuses = source ? new Map((await repo.listBlockOutcomes(source.id)).map((o) => [o.candidateId, o])) : null;
+  const statuses = source ? await outcomesByCandidate(source) : null;
 
   // Any block upstream that hands out statuses can recruit into this list.
-  const index = orderedBlocks(track).findIndex((b) => b.id === blockId);
-  const statusSources = orderedBlocks(track)
+  const ordered = orderedBlocks(track);
+  const index = ordered.findIndex((b) => b.id === blockId);
+  const statusSources = ordered
     .slice(0, index === -1 ? undefined : index)
     .filter((b) => b.type === 'evaluation' || b.type === 'committee')
     .map((b) => ({ blockId: b.id, name: b.name, type: b.type, outcomes: outcomesOf(b) }));
@@ -116,9 +117,8 @@ export async function selectionView(blockId: string): Promise<SelectionView | nu
     : source
       ? (statusSources.find((b) => b.blockId === source.id) ?? null)
       : null;
-  const recruiting = includeFrom
-    ? new Map((await repo.listBlockOutcomes(includeFrom.blockId)).map((o) => [o.candidateId, o]))
-    : null;
+  const recruitingBlock = includeFrom ? ordered.find((b) => b.id === includeFrom.blockId) : null;
+  const recruiting = recruitingBlock ? await outcomesByCandidate(recruitingBlock) : null;
 
   /* ---- Who is on the list ---- */
   const fromFunnel = new Set((await intakeFor(track, blockId, everyone)).map((c) => c.id));

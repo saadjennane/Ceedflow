@@ -50,21 +50,37 @@ export async function scoresByCandidate(block: Block): Promise<Map<string, Candi
   return grouped;
 }
 
+export interface CandidateOutcome {
+  outcomeId: string | null;
+  /** True when a human chose it rather than the score earning it. */
+  overridden: boolean;
+}
+
 /**
- * Writes the status the score earns onto every scored candidate, leaving alone
- * any a human has already moved by hand.
+ * The status each candidate carries. It follows from the score — the bands are
+ * the whole point of configuring them — so nothing is stored until a human
+ * disagrees. That removes the class of bugs where a score moved and a status
+ * stayed behind.
  */
-export async function applyOutcomes(block: Block): Promise<number> {
+export async function outcomesByCandidate(block: Block): Promise<Map<string, CandidateOutcome>> {
   const outcomes = outcomesOf(block);
   const grouped = await scoresByCandidate(block);
   const stored = new Map((await repo.listBlockOutcomes(block.id)).map((o) => [o.candidateId, o]));
-  let written = 0;
+
+  const result = new Map<string, CandidateOutcome>();
   for (const [candidateId, entry] of grouped) {
-    if (stored.get(candidateId)?.overridden) continue;
-    const proposed = proposedOutcome(entry.consensus, outcomes);
-    if (!proposed) continue;
-    await repo.setBlockOutcome(block.id, candidateId, proposed, false);
-    written++;
+    result.set(candidateId, { outcomeId: proposedOutcome(entry.consensus, outcomes), overridden: false });
   }
-  return written;
+  for (const [candidateId, row] of stored) {
+    result.set(candidateId, { outcomeId: row.outcomeId, overridden: true });
+  }
+  return result;
+}
+
+/** Sets a status by hand — or clears it, when the choice is what the score said anyway. */
+export async function setOutcomeByHand(block: Block, candidateId: string, outcomeId: string): Promise<void> {
+  const grouped = await scoresByCandidate(block);
+  const proposed = proposedOutcome(grouped.get(candidateId)?.consensus ?? null, outcomesOf(block));
+  if (outcomeId === proposed) await repo.clearBlockOutcome(block.id, candidateId);
+  else await repo.setBlockOutcome(block.id, candidateId, outcomeId, true);
 }

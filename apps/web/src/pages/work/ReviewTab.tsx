@@ -203,9 +203,6 @@ function Moment({
 
   // Every group's jury, in order, so the per-evaluator columns are stable.
   const evaluators = [...new Set((scoring?.groups ?? []).flatMap((g) => g.evaluators))];
-  const pendingStatus = lines.filter(
-    (l) => l.scoring && l.scoring.consensus !== null && !l.scoring.overridden && l.scoring.outcomeId !== l.scoring.proposedOutcomeId,
-  ).length;
 
   const reload = () => {
     view.reload();
@@ -224,18 +221,6 @@ function Moment({
     try {
       await api.post(`/api/blocks/${selection.id}/selection/outcome`, { candidateId, outcome });
       reload();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const applyAll = async () => {
-    if (!evaluation) return;
-    setBusy(true);
-    try {
-      const { written } = await api.post<{ written: number }>(`/api/blocks/${evaluation.id}/outcomes/apply`);
-      reload();
-      toast(written ? `${written} status${written === 1 ? '' : 'es'} written.` : 'Nothing to write.');
     } finally {
       setBusy(false);
     }
@@ -358,20 +343,16 @@ function Moment({
           </label>
         )}
         <div className="spacer" />
-        {evaluation && (
-          <button className="btn sm" disabled={busy || !pendingStatus} onClick={applyAll}>
-            <Icon name="check" size={13} /> Apply statuses{pendingStatus ? ` (${pendingStatus})` : ''}
-          </button>
-        )}
-        {decision && (
+        {/* Nothing to press in the steady state: publishing is for the first
+            announcement, and for catching up when the rule has moved since. */}
+        {decision && (!decision.published || outOfLine > 0) && (
           <button
-            className={decision.published && !outOfLine ? 'btn' : 'btn primary'}
-            disabled={busy || !lines.length || (decision.published && !outOfLine)}
-            title={decision.published && !outOfLine ? 'Everything announced matches the rule' : undefined}
+            className="btn primary"
+            disabled={busy || !lines.length}
             onClick={() => setConfirmPublish(true)}
           >
             <Icon name="check" size={14} />
-            {decision.published ? `Publish again${outOfLine ? ` (${outOfLine})` : ''}` : 'Publish'}
+            {decision.published ? `Publish again (${outOfLine})` : 'Publish'}
           </button>
         )}
       </div>
@@ -492,6 +473,11 @@ function Moment({
                               </option>
                             ))}
                           </select>
+                          {line.scoring?.overridden && (
+                            <span className="badge info" style={{ marginLeft: 6 }} title="Chosen rather than earned by the score">
+                              By hand
+                            </span>
+                          )}
                         </td>
                       )}
 
@@ -568,8 +554,9 @@ function Moment({
       )}
 
       <p className="faint" style={{ margin: 0, fontSize: 12 }}>
-        A decision can always be changed by hand, whatever the rule says — the candidate and every block downstream
-        follow immediately. One that differs from the rule is marked, and publishing again never undoes it.
+        A status follows from the score on its own; choose another and it sticks. A decision can always be changed by
+        hand, whatever the rule says — the candidate's status and every block downstream follow immediately, with no
+        second step.
       </p>
 
       {confirmPublish && cfg && (

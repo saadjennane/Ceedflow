@@ -149,11 +149,15 @@ hand-added startup can be taken back off.
 
 ### Statuses, and the difference with a Selection
 
-An evaluation and a committee both **qualify** a startup with a configurable status
-(Retained / On hold / Not retained by default). A status can be earned from the score — each
-one carries a threshold — or set by hand, and a hand-made one is never overwritten when you
-re-apply. A Selection is different: it **cuts**, writing the funnel decision and opening the gate
-for everything downstream.
+An evaluation **qualifies** a startup with a configurable status (Retained / On hold / Not retained
+by default). The status **follows from the score** — each one carries a threshold, and that is the
+whole point of configuring them — so nothing is stored and there is no step to run: change a mark
+and the status follows. Choosing another status stores that choice instead, and choosing what the
+score said anyway clears it back to derived. There is no way for a score and a status to drift
+apart.
+
+A Selection is different: it **cuts**, writing the funnel decision and opening the gate for
+everything downstream.
 
 ### The committee: one block, N sittings
 

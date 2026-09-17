@@ -468,11 +468,7 @@ async function main() {
     }
   }
 
-  /* ---- Statuses from the screening, then the shortlist ---- */
-  const { applyOutcomes } = await import('../services/scoring.js');
-  const evaluationBlock = (await repo.getBlock(evaluation.id))!;
-  await applyOutcomes(evaluationBlock);
-
+  /* ---- The shortlist. Statuses follow from the scores on their own ---- */
   const { publishSelection } = await import('../services/selection.js');
   await publishSelection(shortlisting.id);
 
@@ -565,8 +561,6 @@ async function main() {
       seat++;
     }
   }
-  await applyOutcomes((await repo.getBlock(juryScoring.id))!);
-
   /* ---- The cohort is announced, with one startup fished back by hand ---- */
   const { addToSelection } = await import('../services/selection.js');
   const beforeCut = (await import('../services/selection.js')).selectionView;

@@ -887,6 +887,13 @@ export async function listBlockOutcomes(blockId: string): Promise<BlockOutcomeRo
   );
 }
 
+export async function clearBlockOutcome(blockId: string, candidateId: string): Promise<void> {
+  await (await db()).query('delete from block_outcomes where block_id = $1 and candidate_id = $2', [
+    blockId,
+    candidateId,
+  ]);
+}
+
 export async function setBlockOutcome(
   blockId: string,
   candidateId: string,

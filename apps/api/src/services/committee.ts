@@ -12,7 +12,7 @@ import {
   type TrackWithPhases,
 } from '@ceed/shared';
 import * as repo from '../db/repo.js';
-import { outcomesOf, scoresByCandidate } from './scoring.js';
+import { outcomesByCandidate, outcomesOf, scoresByCandidate } from './scoring.js';
 import { intakeFor } from './selection.js';
 
 export interface AssignmentView {
@@ -105,9 +105,7 @@ export async function committeeView(blockId: string): Promise<CommitteeView | nu
 
   const evaluation = evaluationForCommittee(track, blockId);
   const grouped = evaluation ? await scoresByCandidate(evaluation) : null;
-  const statuses = evaluation
-    ? new Map((await repo.listBlockOutcomes(evaluation.id)).map((o) => [o.candidateId, o]))
-    : null;
+  const statuses = evaluation ? await outcomesByCandidate(evaluation) : null;
 
   const sessionViews: SessionView[] = sessions.map((session) => {
     const slots = sessionSlots(session);
