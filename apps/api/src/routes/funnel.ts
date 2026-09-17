@@ -21,7 +21,6 @@ import {
   publishSelection,
   removeFromSelection,
   selectionView,
-  unpublishSelection,
 } from '../services/selection.js';
 import { HttpError, notFound, parse } from './util.js';
 
@@ -275,11 +274,6 @@ export async function funnelRoutes(app: FastifyInstance) {
   app.post('/api/blocks/:id/selection/publish', async (req, reply) => {
     const { id } = req.params as { id: string };
     return (await publishSelection(id)) ?? notFound(reply, 'Selection block not found.');
-  });
-
-  app.post('/api/blocks/:id/selection/unpublish', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    return (await unpublishSelection(id)) ?? notFound(reply, 'Selection block not found.');
   });
 
   /** Put startups on the list the funnel did not send: by name, or by status. */

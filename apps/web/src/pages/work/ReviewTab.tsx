@@ -54,6 +54,7 @@ interface DecisionRow {
   outcome: 'pass' | 'fail';
   overridden: boolean;
   stale: boolean;
+  pending: boolean;
 }
 
 interface DecisionPayload {
@@ -240,17 +241,21 @@ function Moment({
     }
   };
 
-  const publish = async (on: boolean) => {
+  const publish = async () => {
     if (!selection) return;
     setBusy(true);
     try {
-      await api.post(`/api/blocks/${selection.id}/selection/${on ? 'publish' : 'unpublish'}`);
+      await api.post(`/api/blocks/${selection.id}/selection/publish`);
       reload();
-      toast(on ? 'Published.' : 'Publication withdrawn. Decisions made by hand are kept.');
+      toast('Published.');
     } finally {
       setBusy(false);
     }
   };
+
+  // What publishing again would change: rows the rule has moved past, and rows
+  // that joined the list after the last publication.
+  const outOfLine = (decision?.rows ?? []).filter((r) => r.stale || r.pending).length;
 
   const cfg = decision?.config;
   const passLabel = cfg?.passLabel ?? 'Passed';
@@ -305,7 +310,8 @@ function Moment({
             <Icon name="check" size={15} />
             <div style={{ flex: 1 }}>
               <strong>Published {cfg?.publishedAt ? `on ${formatDate(cfg.publishedAt)}` : ''}.</strong> Changing a
-              decision below updates that candidate straight away — that is how a withdrawal or a repêchage is handled.
+              decision below updates that candidate straight away, and changes who the blocks downstream see — that is
+              how a withdrawal or a repêchage is handled.
             </div>
           </div>
         ) : (
@@ -315,11 +321,16 @@ function Moment({
           </div>
         ))}
 
-      {lines.some((l) => l.decision?.stale) && (
+      {decision?.published && outOfLine > 0 && (
         <div className="callout warn">
           <Icon name="alert" size={15} />
-          The scores have moved since this was published. The rows marked <em>Rule moved on</em> keep the decision that
-          was announced.
+          <div>
+            <strong>
+              {outOfLine} row{outOfLine === 1 ? '' : 's'} out of line with the rule.
+            </strong>{' '}
+            A late score, or a startup added since. What was announced still stands until you publish again — which
+            applies the rule afresh and keeps every call you made by hand.
+          </div>
         </div>
       )}
 
@@ -352,16 +363,17 @@ function Moment({
             <Icon name="check" size={13} /> Apply statuses{pendingStatus ? ` (${pendingStatus})` : ''}
           </button>
         )}
-        {decision &&
-          (decision.published ? (
-            <button className="btn" disabled={busy} onClick={() => publish(false)}>
-              Withdraw publication
-            </button>
-          ) : (
-            <button className="btn primary" disabled={busy || !lines.length} onClick={() => setConfirmPublish(true)}>
-              <Icon name="check" size={14} /> Publish
-            </button>
-          ))}
+        {decision && (
+          <button
+            className={decision.published && !outOfLine ? 'btn' : 'btn primary'}
+            disabled={busy || !lines.length || (decision.published && !outOfLine)}
+            title={decision.published && !outOfLine ? 'Everything announced matches the rule' : undefined}
+            onClick={() => setConfirmPublish(true)}
+          >
+            <Icon name="check" size={14} />
+            {decision.published ? `Publish again${outOfLine ? ` (${outOfLine})` : ''}` : 'Publish'}
+          </button>
+        )}
       </div>
 
       {!lines.length ? (
@@ -437,8 +449,13 @@ function Moment({
                           </span>
                         )}
                         {line.decision?.stale && (
-                          <span className="badge warn" style={{ marginLeft: 7 }}>
+                          <span className="badge warn" style={{ marginLeft: 7 }} title="The rule now says otherwise">
                             Rule moved on
+                          </span>
+                        )}
+                        {line.decision?.pending && (
+                          <span className="badge warn" style={{ marginLeft: 7 }} title="Joined the list after the last publication">
+                            Not announced
                           </span>
                         )}
                       </td>
@@ -551,22 +568,30 @@ function Moment({
       )}
 
       <p className="faint" style={{ margin: 0, fontSize: 12 }}>
-        A decision can always be changed by hand, whatever the rule says. One that differs is marked, and withdrawing
-        the publication keeps it while releasing the rest.
+        A decision can always be changed by hand, whatever the rule says — the candidate and every block downstream
+        follow immediately. One that differs from the rule is marked, and publishing again never undoes it.
       </p>
 
       {confirmPublish && cfg && (
         <ConfirmDialog
-          title={cfg.outputKind === 'cohort' ? 'Publish the cohort?' : 'Publish the shortlist?'}
+          title={
+            decision?.published
+              ? 'Publish again?'
+              : cfg.outputKind === 'cohort'
+                ? 'Publish the cohort?'
+                : 'Publish the shortlist?'
+          }
           body={
-            decision && decision.passCount === 0
+            decision?.published
+              ? `${outOfLine} row${outOfLine === 1 ? '' : 's'} take what the rule says now; the ones you changed by hand keep your call. Every candidate's status is rewritten.`
+              : decision && decision.passCount === 0
               ? `This rejects all ${decision.failCount} of them — nobody passes. Every candidate's status is set to ${failLabel.toLowerCase()}.`
               : `${decision?.passCount} marked ${passLabel.toLowerCase()}, ${decision?.failCount} marked ${failLabel.toLowerCase()}. Each candidate's status is updated, and the blocks after this one start from the ones who passed.`
           }
           destructive={decision?.passCount === 0}
-          confirmLabel="Publish"
+          confirmLabel={decision?.published ? 'Publish again' : 'Publish'}
           onClose={() => setConfirmPublish(false)}
-          onConfirm={() => publish(true)}
+          onConfirm={publish}
         />
       )}
     </>

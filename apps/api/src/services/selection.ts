@@ -28,6 +28,8 @@ export interface SelectionRow {
    * move a cohort that has been announced. This says the rule has since drifted.
    */
   stale: boolean;
+  /** On the list since the last publication, so nothing has been announced for it. */
+  pending: boolean;
 }
 
 export interface SelectionView {
@@ -174,6 +176,7 @@ export async function selectionView(blockId: string): Promise<SelectionView | nu
       outcome,
       overridden: saved?.overridden ?? false,
       stale: Boolean(saved) && !saved?.overridden && outcome !== computed,
+      pending: Boolean(config.publishedAt) && !saved,
     };
   });
 
@@ -282,33 +285,23 @@ async function writeStatuses(blockId: string): Promise<void> {
 }
 
 /**
- * Writes the decision: outcomes are stored per candidate, and the candidate's
- * own status reflects the last published selection they went through.
+ * Publishing applies the rule as it stands, keeps the calls made by hand, writes
+ * each candidate's status and opens the gate downstream. Run it again whenever a
+ * late score or a new arrival has left the announced decision out of line — it
+ * is one explicit act rather than a state to toggle off and on.
  */
 export async function publishSelection(blockId: string): Promise<SelectionView | null> {
   const view = await selectionView(blockId);
   if (!view) return null;
 
   for (const row of view.rows) {
-    await repo.setOutcome(blockId, row.candidate.id, row.outcome, row.overridden);
+    // A hand-made call is kept; everything else takes what the rule says now.
+    const outcome = row.overridden ? row.outcome : row.computed;
+    await repo.setOutcome(blockId, row.candidate.id, outcome, row.overridden);
   }
 
   await writeStatuses(blockId);
   await repo.updateBlock(blockId, { config: { publishedAt: new Date().toISOString() } });
-  return selectionView(blockId);
-}
-
-/**
- * Withdrawing a publication releases the decisions it froze, so the rule drives
- * the list again. Calls made by hand are kept — they were never the rule's.
- */
-export async function unpublishSelection(blockId: string): Promise<SelectionView | null> {
-  const view = await selectionView(blockId);
-  if (!view) return null;
-  for (const row of view.rows) {
-    if (!row.overridden) await repo.clearOutcome(blockId, row.candidate.id);
-  }
-  await repo.updateBlock(blockId, { config: { publishedAt: null } });
   return selectionView(blockId);
 }
 

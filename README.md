@@ -196,10 +196,18 @@ There is no separate "preselection". A selection either produces a **shortlist**
 open, and whoever passes carries on to the blocks after it — or **the cohort**, the last cut, whose
 passing candidates are the startups of the edition.
 
-Publishing writes the result onto each candidate's status and opens the gate for every block
-downstream. Each decision stays reversible afterwards: change one row and that candidate updates
-straight away, which is how a withdrawal or a repêchage is handled. A decision changed away from
-what the rule produced is marked as changed by hand.
+Publishing applies the rule as it stands, keeps the calls made by hand, writes the result onto each
+candidate's status, and opens the gate for every block downstream.
+
+Each decision stays reversible afterwards, and that is the ordinary way to change one: flip a row
+and the candidate's status is rewritten and the blocks downstream see the change immediately — no
+unpublishing, no intermediate state. A decision moved away from what the rule produced is marked as
+changed by hand, and nothing ever overwrites it.
+
+Publishing can simply be run again. When a late score or a startup added since has left a row out of
+line, the screen says how many and what was announced still stands until you say otherwise. There is
+no withdraw: taking a publication back reopened the gate downstream and left the cohort showing
+startups the funnel no longer had, which is worse than the problem it solved.
 
 ### Derived, not stored
 
