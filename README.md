@@ -32,6 +32,16 @@ apps/api          Fastify + raw SQL, migrations in src/db/migrations
 apps/web          React + TypeScript + Vite
 ```
 
+## Where each block's result shows up
+
+| Block | What it produces | Where you see it |
+| --- | --- | --- |
+| **Sourcing** | A recorded send | **Outreach** — the trace of what went out, to how many |
+| **Application** | Candidates | **Candidates** — the table, and the first step of the funnel |
+| **Evaluation** | A score out of 100 and a status | **Scoring** — and the status reappears as a column in Decisions and on each seat of a committee timetable |
+| **Selection committee** | A timetable and the answers to it | **Committees** — who pitches when, who confirmed |
+| **Selection** | A published verdict | **Decisions** — then it spreads: the Status column in Candidates, the funnel strip, the cohort count in the edition header, and the intake of every block downstream |
+
 ## Where things happen
 
 **The builder composes; the tabs run.** A block's drawer holds its configuration and nothing else —
@@ -80,7 +90,7 @@ description and the edition's own fields, not in a block.
 
 | Block | Its action |
 | --- | --- |
-| **Sourcing** | Send the prospecting message and hold the channels the call runs on. Channels feed the source list on the form. |
+| **Sourcing** | Send the prospecting message, and declare the channels the call runs on — which is what the application form asks candidates to pick from. |
 | **Application** | Publish a form — one page, or split into named steps. Every submission creates a candidate in the track, which is what fills the pool. |
 | **Evaluation** | Score startups on a weighted grid, and **put a status on each one**. That status is what the next block reads. |
 | **Selection committee** | Run the sittings: create committees, seat startups on them, let those startups book a time. It organises; it does not score. |

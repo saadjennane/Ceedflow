@@ -13,7 +13,7 @@ import { useMemo, useState } from 'react';
 import { api } from '../../lib/api';
 import { Icon } from '../../ui/Icon';
 import { ConfirmDialog, Drawer, useToast } from '../../ui/Overlays';
-import { ApplicationSetup, ApplicationSubmissions } from './panels/ApplicationPanel';
+import { ApplicationSetup } from './panels/ApplicationPanel';
 import { CommitteeSetup } from './panels/CommitteePanel';
 import { EvaluationSetup } from './panels/EvaluationPanel';
 import { SelectionSetup } from './panels/SelectionPanel';
@@ -153,7 +153,13 @@ export function BlockDrawer({
         )}
 
         {block.type === 'application' && (
-          <ApplicationSubmissions block={block} candidates={candidates} config={draft as unknown as ApplicationConfig} />
+          <div className="callout">
+            <Icon name="arrowRight" size={15} />
+            <div>
+              Every submission becomes a candidate. You will find them all in the{' '}
+              <strong>Candidates</strong> tab.
+            </div>
+          </div>
         )}
       </Drawer>
 

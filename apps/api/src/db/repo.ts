@@ -3,6 +3,7 @@ import {
   defaultBlockName,
   idOf,
   newId,
+  orderedBlocks,
   parseBlockConfig,
   type Block,
   type BlockType,
@@ -563,7 +564,19 @@ export async function findPublicForm(token: string) {
   const program = edition
     ? await one<Program>(`select ${PROGRAM_COLS} from programs where id = $1`, [edition.programId])
     : null;
-  return { block, trackId: row.trackId, editionId: row.editionId, edition, program };
+
+  // Where the call is running, so the form can ask which one brought them in.
+  const detail = await getEditionDetail(row.editionId);
+  const track = detail?.tracks.find((t) => t.id === row.trackId);
+  const ordered = track ? orderedBlocks(track) : [];
+  const at = ordered.findIndex((b) => b.id === block.id);
+  const sourcing = ordered
+    .slice(0, at === -1 ? ordered.length : at)
+    .filter((b) => b.type === 'sourcing')
+    .pop();
+  const channels = sourcing ? ((sourcing.config as { channels?: string[] }).channels ?? []) : [];
+
+  return { block, trackId: row.trackId, editionId: row.editionId, edition, program, channels };
 }
 
 /* ------------------------------------------------------------------ */

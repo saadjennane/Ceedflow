@@ -112,6 +112,7 @@ export async function funnelRoutes(app: FastifyInstance) {
       colour: found.program?.colour ?? '#2F5BFF',
       blockName: found.block.name,
       intro: config.intro,
+      channels: found.channels,
       layout: config.layout,
       pages: formPages(config).map(({ page, fields }) => ({ ...page, fields })),
       opensAt: config.opensAt,

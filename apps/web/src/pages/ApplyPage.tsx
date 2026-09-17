@@ -20,6 +20,8 @@ interface PublicForm {
   colour: string;
   blockName: string;
   intro: string;
+  /** Where the call is running, as declared by the sourcing block. */
+  channels: string[];
   layout: 'single' | 'paged';
   pages: PublicPage[];
   opensAt: string | null;
@@ -175,11 +177,30 @@ export function ApplyPage() {
       </div>
       <div className="grid-2">
         <Text label="Phone" value={contact.phone} onChange={(v) => setContact((c) => ({ ...c, phone: v }))} />
-        <Text
-          label="How did you hear about us?"
-          value={contact.source}
-          onChange={(v) => setContact((c) => ({ ...c, source: v }))}
-        />
+        {data.channels.length ? (
+          <div className="field">
+            <label>How did you hear about us?</label>
+            <select
+              className="select"
+              value={data.channels.includes(contact.source) ? contact.source : contact.source ? '__other' : ''}
+              onChange={(e) => setContact((c) => ({ ...c, source: e.target.value === '__other' ? 'Other' : e.target.value }))}
+            >
+              <option value="">Choose one</option>
+              {data.channels.map((channel) => (
+                <option key={channel} value={channel}>
+                  {channel}
+                </option>
+              ))}
+              <option value="__other">Somewhere else</option>
+            </select>
+          </div>
+        ) : (
+          <Text
+            label="How did you hear about us?"
+            value={contact.source}
+            onChange={(v) => setContact((c) => ({ ...c, source: v }))}
+          />
+        )}
       </div>
     </>
   );

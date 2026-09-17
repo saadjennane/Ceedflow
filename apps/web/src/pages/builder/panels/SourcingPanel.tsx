@@ -24,8 +24,9 @@ export function SourcingSetup({
     <>
       <div className="callout">
         <Icon name="megaphone" size={15} />
-        Sourcing opens the call: the message you send to your network, and the channels the call runs on. The channels
-        listed here become the options a candidate picks from on the application form.
+        Sourcing opens the call: the message you send to your network, and the channels the call runs on. Those
+        channels are what the application form asks a candidate to pick from, so you can tell afterwards which ones
+        actually brought people in.
       </div>
 
       <div className="grid-2">
