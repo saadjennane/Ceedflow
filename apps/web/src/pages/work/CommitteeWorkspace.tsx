@@ -6,6 +6,7 @@ import {
   type CommitteeConfig,
   type CommitteeSession,
   type CommitteeSlot,
+  type PersonRef,
 } from '@ceed/shared';
 import { useRef, useState } from 'react';
 import { api } from '../../lib/api';
@@ -26,6 +27,8 @@ interface AssignmentView {
 
 interface SessionView {
   session: CommitteeSession;
+  /** The jury as people: the session itself only holds their ids. */
+  jury: PersonRef[];
   slots: CommitteeSlot[];
   assignments: AssignmentView[];
   capacity: number;
@@ -139,17 +142,17 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
           <section className="card jury-strip">
             <div className="eyebrow">Jury</div>
             <div className="row wrap" style={{ flex: 1 }}>
-              {current.session.jury.length ? (
-                current.session.jury.map((name) => (
-                  <span className="juror" key={name}>
+              {current.jury.length ? (
+                current.jury.map((person) => (
+                  <span className="juror" key={person.id}>
                     <span className="juror-mark">
-                      {name
+                      {person.name
                         .split(/\s+/)
                         .slice(0, 2)
                         .map((w) => w[0])
                         .join('')}
                     </span>
-                    {name}
+                    {person.name}
                   </span>
                 ))
               ) : (
