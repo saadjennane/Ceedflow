@@ -639,6 +639,13 @@ export async function setOutcome(
   );
 }
 
+export async function clearOutcome(blockId: string, candidateId: string): Promise<void> {
+  await (await db()).query('delete from selection_outcomes where block_id = $1 and candidate_id = $2', [
+    blockId,
+    candidateId,
+  ]);
+}
+
 export async function clearOutcomes(blockId: string): Promise<void> {
   await (await db()).query('delete from selection_outcomes where block_id = $1', [blockId]);
 }

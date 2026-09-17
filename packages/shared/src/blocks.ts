@@ -332,6 +332,21 @@ export const selectionConfigSchema = z.object({
   topN: z.number().int().min(1).default(10),
   /** Which scoring block feeds it — an evaluation or a committee. Null = the nearest one upstream. */
   sourceBlockId: z.string().nullable().default(null),
+  /**
+   * Startups put on the list by hand, whatever the funnel did with them. This is
+   * how a repêchage or a wildcard gets in without reopening the block upstream.
+   */
+  includeCandidateIds: z.array(z.string()).default([]),
+  /**
+   * Statuses that put a startup on the list on their own — the cut stops being
+   * driven by points alone.
+   */
+  includeOutcomeIds: z.array(z.string()).default([]),
+  /**
+   * Whose statuses those are. Null = the block the score comes from. Pointing it
+   * at an earlier block is what lets a startup the funnel dropped be fished back.
+   */
+  includeFromBlockId: z.string().nullable().default(null),
   passLabel: z.string().default('Shortlisted'),
   failLabel: z.string().default('Not selected'),
   publishedAt: z.string().nullable().default(null),

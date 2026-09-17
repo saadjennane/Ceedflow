@@ -73,6 +73,24 @@ configured pages. A page will not let them move on until its required answers ar
 server still checks every required answer across every page on submit — so a crafted request
 cannot skip one. If it rejects, the applicant lands back on the first page that needs something.
 
+### Getting onto a Selection's list
+
+A Selection does not only see what the funnel sends it. Three things put a startup on its list,
+and the table says which:
+
+- **The funnel** — they passed the selection before this one.
+- **By hand** — the team named them. This is the repêchage and the wildcard: a startup dropped two
+  phases ago can be fished back without reopening anything upstream.
+- **By status** — a standing rule pulls in everyone carrying a chosen status, from *any* block
+  upstream that hands statuses out, not only the one the score comes from. Reaching back to the
+  screening is what lets the *On hold* pile be reconsidered at the final cut. The rule keeps
+  applying as that status is given to others later.
+
+When adding, you choose how they land: passing, not passing, or left to the score rule — which is
+what makes this an override of the points rather than a second run at them. A forced outcome only
+touches the startups that call brings in; someone already on the list keeps their decision. Only a
+hand-added startup can be taken back off.
+
 ### Statuses, and the difference with a Selection
 
 An evaluation and a committee both **qualify** a startup with a configurable status
@@ -131,6 +149,7 @@ a human or a form actually entered.
 | POST | `/api/blocks/:id/outcomes` · `.../outcomes/apply` | a status by hand, or every status the scores earn |
 | GET/POST | `/api/blocks/:id/outreach` · `.../outreach/send` | the prospecting message and its trace |
 | GET | `/api/blocks/:id/selection` · POST `.../publish`, `.../unpublish`, `.../outcome` | |
+| POST | `/api/blocks/:id/selection/add` · `.../remove` | put startups on the list by hand or by status |
 
 ## What the seed gives you
 

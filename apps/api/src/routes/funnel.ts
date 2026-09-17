@@ -11,7 +11,16 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import * as repo from '../db/repo.js';
 import { applyOutcomes, outcomesOf, scoresByCandidate } from '../services/scoring.js';
-import { funnelFor, intakeFor, overrideOutcome, publishSelection, selectionView, unpublishSelection } from '../services/selection.js';
+import {
+  addToSelection,
+  funnelFor,
+  intakeFor,
+  overrideOutcome,
+  publishSelection,
+  removeFromSelection,
+  selectionView,
+  unpublishSelection,
+} from '../services/selection.js';
 import { HttpError, notFound, parse } from './util.js';
 
 const scoreInput = z.object({
@@ -227,6 +236,31 @@ export async function funnelRoutes(app: FastifyInstance) {
   app.post('/api/blocks/:id/selection/unpublish', async (req, reply) => {
     const { id } = req.params as { id: string };
     return (await unpublishSelection(id)) ?? notFound(reply, 'Selection block not found.');
+  });
+
+  /** Put startups on the list the funnel did not send: by name, or by status. */
+  app.post('/api/blocks/:id/selection/add', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const input = parse(
+      z
+        .object({
+          candidateIds: z.array(z.string()).optional(),
+          fromOutcomeIds: z.array(z.string()).optional(),
+          fromBlockId: z.string().nullable().optional(),
+          outcome: z.enum(['pass', 'fail']).optional(),
+        })
+        .refine((v) => v.candidateIds?.length || v.fromOutcomeIds?.length, {
+          message: 'Choose at least one startup or one status.',
+        }),
+      req.body,
+    );
+    return (await addToSelection(id, input)) ?? notFound(reply, 'Selection block not found.');
+  });
+
+  app.post('/api/blocks/:id/selection/remove', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { candidateId } = parse(z.object({ candidateId: z.string() }), req.body);
+    return (await removeFromSelection(id, candidateId)) ?? notFound(reply, 'Selection block not found.');
   });
 
   app.post('/api/blocks/:id/selection/outcome', async (req, reply) => {
