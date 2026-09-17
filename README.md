@@ -50,11 +50,20 @@ Candidates:
 
 | Tab | What you do there |
 | --- | --- |
-| **Candidates** | The pool and the funnel counts |
+| **Startups** | The pool and the funnel counts, with the cohort as a second segment |
 | **Outreach** | Compose and send the prospecting message |
 | **Committees** | Run the sittings: jury, timetable, who pitches when |
-| **Scoring** | Mark candidates against a grid and give them a status |
-| **Decisions** | Cut the funnel and publish |
+| **Review** | One moment of the funnel: what an evaluation measured, and what the selection after it made of that |
+
+A **moment** pairs an evaluation with the selection that cuts on it, because the two showed the same
+list twice — measured against the seeded edition, 34 rows against 34 and then 19 against 19, not a
+candidate apart. One table now carries both halves: the per-evaluator marks and the score on the
+left, the status and the decision on the right. A row with a score and no decision, or the reverse,
+is a gap you see rather than something you find by comparing two screens. An evaluation nothing cuts
+on, or a selection with nothing to measure, simply shows the half it has.
+
+The cohort is not a screen either: it is the candidates a Selection marked *Selected*, so it is a
+segment of the same table.
 
 A work tab appears only when the track holds a block of its kind, so the tab bar reads out what the
 edition actually does: a blank edition shows none of them. Each tab follows one shape — pick which

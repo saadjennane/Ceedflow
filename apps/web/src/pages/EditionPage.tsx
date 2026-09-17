@@ -13,21 +13,21 @@ import { WorkTab } from './work/WorkTab';
 import '../ui/builder.css';
 import '../ui/programs.css';
 
-type Tab = 'builder' | 'candidates' | 'outreach' | 'committees' | 'scoring' | 'decisions';
+type Tab = 'builder' | 'startups' | 'outreach' | 'committees' | 'review';
 
 /**
  * The builder composes the workflow; these run it. A work tab only appears when
  * the track holds a block of its kind, so the bar reads out what the edition does.
  */
-const WORK_TABS: { key: Tab; label: string; type: BlockType }[] = [
-  { key: 'outreach', label: 'Outreach', type: 'sourcing' },
-  { key: 'committees', label: 'Committees', type: 'committee' },
-  { key: 'scoring', label: 'Scoring', type: 'evaluation' },
-  { key: 'decisions', label: 'Decisions', type: 'selection' },
+const WORK_TABS: { key: Tab; label: string; types: BlockType[] }[] = [
+  { key: 'outreach', label: 'Outreach', types: ['sourcing'] },
+  { key: 'committees', label: 'Committees', types: ['committee'] },
+  // Measuring and cutting are one moment of the funnel, so they are one screen.
+  { key: 'review', label: 'Review', types: ['evaluation', 'selection'] },
 ];
 
 /** Still to build. They stay visible and inert so the shape of the product reads. */
-const LATER_TABS = ['Cohort', 'Activities', 'Deliverables', 'Team', 'Reports', 'Public Page', 'Settings'];
+const LATER_TABS = ['Activities', 'Deliverables', 'Reports', 'Settings'];
 
 export function EditionPage() {
   const { editionId = '' } = useParams();
@@ -90,8 +90,8 @@ export function EditionPage() {
 
   const cohortSize = candidates.data?.filter((c) => c.status === 'Selected').length ?? 0;
   const present = new Set(track.phases.flatMap((p) => p.blocks.map((b) => b.type)));
-  const workTabs = WORK_TABS.filter((t) => present.has(t.type));
-  const tab: Tab = (['candidates', ...workTabs.map((t) => t.key)] as string[]).includes(asked)
+  const workTabs = WORK_TABS.filter((t) => t.types.some((type) => present.has(type)));
+  const tab: Tab = (['startups', ...workTabs.map((t) => t.key)] as string[]).includes(asked)
     ? (asked as Tab)
     : 'builder';
 
@@ -146,8 +146,8 @@ export function EditionPage() {
         <button role="tab" className={tab === 'builder' ? 'tab on' : 'tab'} onClick={() => setTab('builder')}>
           Builder
         </button>
-        <button role="tab" className={tab === 'candidates' ? 'tab on' : 'tab'} onClick={() => setTab('candidates')}>
-          Candidates
+        <button role="tab" className={tab === 'startups' ? 'tab on' : 'tab'} onClick={() => setTab('startups')}>
+          Startups
           {candidates.data?.length ? <span className="tab-count num">{candidates.data.length}</span> : null}
         </button>
         {workTabs.map((t) => (
@@ -188,7 +188,7 @@ export function EditionPage() {
             onChanged={refresh}
             manage={false}
           />
-          {tab === 'candidates' ? (
+          {tab === 'startups' ? (
             <CandidatesTab edition={detail} track={track} candidates={candidates.data ?? []} onChanged={refresh} />
           ) : (
             <WorkTab

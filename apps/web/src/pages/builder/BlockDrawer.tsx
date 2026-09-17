@@ -26,8 +26,8 @@ import { SourcingSetup } from './panels/SourcingPanel';
 const WORK_TAB: Partial<Record<string, { tab: string; label: string }>> = {
   sourcing: { tab: 'outreach', label: 'Outreach' },
   committee: { tab: 'committees', label: 'Committees' },
-  evaluation: { tab: 'scoring', label: 'Scoring' },
-  selection: { tab: 'decisions', label: 'Decisions' },
+  evaluation: { tab: 'review', label: 'Review' },
+  selection: { tab: 'review', label: 'Review' },
 };
 
 export function BlockDrawer({
@@ -157,7 +157,7 @@ export function BlockDrawer({
             <Icon name="arrowRight" size={15} />
             <div>
               Every submission becomes a candidate. You will find them all in the{' '}
-              <strong>Candidates</strong> tab.
+              <strong>Startups</strong> tab.
             </div>
           </div>
         )}

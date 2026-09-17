@@ -211,6 +211,49 @@ export function blocksOfType<T extends BlockType>(track: TrackWithPhases, type: 
   return track.phases.flatMap((p) => p.blocks.filter((b) => b.type === type));
 }
 
+/**
+ * A moment of the funnel: what measured, and what cut. An evaluation followed by
+ * a selection is one act split across two blocks, and the screen shows it as one.
+ */
+export interface FunnelMoment {
+  id: string;
+  label: string;
+  evaluation: Block | null;
+  selection: Block | null;
+}
+
+export function funnelMoments(track: TrackWithPhases): FunnelMoment[] {
+  const ordered = orderedBlocks(track);
+  const claimed = new Set<string>();
+  const moments: { at: number; moment: FunnelMoment }[] = [];
+
+  ordered.forEach((block, index) => {
+    if (block.type !== 'selection') return;
+    const pinned = (block.config as { sourceBlockId?: string | null }).sourceBlockId;
+    const source = pinned
+      ? (ordered.find((b) => b.id === pinned && b.type === 'evaluation') ?? null)
+      : (ordered.slice(0, index).filter((b) => b.type === 'evaluation').pop() ?? null);
+    if (source) claimed.add(source.id);
+    moments.push({
+      at: source ? ordered.indexOf(source) : index,
+      moment: {
+        id: block.id,
+        label: source ? `${source.name} → ${block.name}` : block.name,
+        evaluation: source,
+        selection: block,
+      },
+    });
+  });
+
+  // An evaluation nothing cuts on is a moment of its own.
+  ordered.forEach((block, index) => {
+    if (block.type !== 'evaluation' || claimed.has(block.id)) return;
+    moments.push({ at: index, moment: { id: block.id, label: block.name, evaluation: block, selection: null } });
+  });
+
+  return moments.sort((a, b) => a.at - b.at).map((m) => m.moment);
+}
+
 /** Blocks in funnel order across the whole track. */
 export function orderedBlocks(track: TrackWithPhases): Block[] {
   return [...track.phases]

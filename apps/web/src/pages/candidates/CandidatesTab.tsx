@@ -50,6 +50,11 @@ export function CandidatesTab({
     return blocks.flatMap((b) => (b.config as ApplicationConfig).fields);
   }, [track]);
 
+  // The cohort is not another list: it is the candidates a Selection marked Selected.
+  const [segment, setSegment] = useState<'all' | 'cohort'>('all');
+  const cohort = candidates.filter((c) => c.status === 'Selected');
+  const scope = segment === 'cohort' ? cohort : candidates;
+
   const [shown, setShown] = useState<string[] | null>(null);
   const columns = shown ?? fields.filter((f) => f.showInTable).map((f) => f.id);
   const [query, setQuery] = useState('');
@@ -72,7 +77,7 @@ export function CandidatesTab({
 
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const filtered = candidates.filter((c) => {
+    const filtered = scope.filter((c) => {
       if (status && c.status !== status) return false;
       if (!needle) return true;
       return [c.orgName, c.contactName, c.email, c.source, ...Object.values(c.answers).map(String)]
@@ -86,7 +91,7 @@ export function CandidatesTab({
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * sort.dir;
       return String(av).localeCompare(String(bv), undefined, { numeric: true }) * sort.dir;
     });
-  }, [candidates, query, status, sort]);
+  }, [scope, query, status, sort]);
 
   const open = candidates.find((c) => c.id === openId) ?? null;
 
@@ -103,7 +108,28 @@ export function CandidatesTab({
 
   return (
     <div className="stack" style={{ gap: 18 }}>
-      {funnel.data && funnel.data.length > 1 && (
+      <div className="row">
+        <div className="work-pick">
+          <button className={segment === 'all' ? 'track on' : 'track'} onClick={() => setSegment('all')}>
+            All candidates <span className="num">{candidates.length}</span>
+          </button>
+          <button
+            className={segment === 'cohort' ? 'track on' : 'track'}
+            onClick={() => setSegment('cohort')}
+            disabled={!cohort.length}
+            title={cohort.length ? undefined : 'No selection has formed a cohort yet'}
+          >
+            Cohort <span className="num">{cohort.length}</span>
+          </button>
+        </div>
+        {segment === 'cohort' && (
+          <span className="faint" style={{ fontSize: 12.5 }}>
+            The startups a Selection marked <strong>Selected</strong>.
+          </span>
+        )}
+      </div>
+
+      {segment === 'all' && funnel.data && funnel.data.length > 1 && (
         <div className="funnel">
           {funnel.data.map((step, i) => (
             <div key={step.blockId} style={{ display: 'contents' }}>
@@ -140,7 +166,7 @@ export function CandidatesTab({
           ))}
         </select>
         <span className="faint num" style={{ fontSize: 12.5 }}>
-          {rows.length} of {candidates.length}
+          {rows.length} of {scope.length}
         </span>
         <div className="spacer" />
         <button className="btn" onClick={() => setPicking(true)} disabled={!fields.length}>
@@ -151,7 +177,7 @@ export function CandidatesTab({
         </button>
       </div>
 
-      {!candidates.length ? (
+      {!scope.length ? (
         <div className="empty">
           <h3>No candidate yet</h3>
           <p>

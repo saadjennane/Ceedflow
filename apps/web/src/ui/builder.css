@@ -1302,3 +1302,8 @@ dl.answers dd {
 .day {
   grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
 }
+
+/* A decision label must not wrap — it makes every row twice as tall. */
+.seg button {
+  white-space: nowrap;
+}
