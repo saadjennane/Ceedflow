@@ -1,10 +1,4 @@
-import {
-  ORIGIN_LABEL,
-  OWNERSHIP_TONE,
-  type DirectoryRecord,
-  type RecordDetail,
-  type RecordKind,
-} from '@ceed/shared';
+import { ORIGIN_LABEL, type DirectoryRecord, type RecordDetail, type RecordKind } from '@ceed/shared';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
@@ -24,7 +18,6 @@ export function RecordPage() {
   const [linking, setLinking] = useState(false);
   const [unlinking, setUnlinking] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
-  const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -35,19 +28,6 @@ export function RecordPage() {
   const isOrg = record.kind === 'org';
   const backTo = isOrg ? '/organisations' : '/individuals';
 
-  const invite = async () => {
-    setBusy(true);
-    try {
-      const { sentTo } = await api.post<{ sentTo: string }>(`/api/records/${record.id}/invite`);
-      detail.reload();
-      toast(`Invitation recorded for ${sentTo}.`);
-    } catch (err) {
-      toast((err as Error).message, true);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <>
       <header className="topbar">
@@ -55,13 +35,7 @@ export function RecordPage() {
           <Link to={backTo}>{isOrg ? 'Organisations' : 'Individuals'}</Link> ›
         </span>
         <h1>{record.name}</h1>
-        <span className={`badge ${OWNERSHIP_TONE[record.ownership]}`}>{record.ownership}</span>
         <div className="spacer" />
-        {record.ownership !== 'Claimed' && (
-          <button className="btn" disabled={busy} onClick={invite}>
-            <Icon name="send" size={14} /> {record.ownership === 'Invited' ? 'Invite again' : 'Invite to claim'}
-          </button>
-        )}
         <button className="btn" onClick={() => setEditing(true)}>
           <Icon name="edit" size={14} /> Edit
         </button>
@@ -120,10 +94,7 @@ export function RecordPage() {
                 {isOrg ? (
                   <>
                     <h3>Nobody holds this organisation</h3>
-                    <p>
-                      An organisation carries at least one person. Without a contact there is no one to invite to claim
-                      the page.
-                    </p>
+                    <p>An organisation carries at least one person — otherwise nobody can be reached about it.</p>
                   </>
                 ) : (
                   <p>Not attached to any organisation — which is allowed: a person can stand on their own.</p>
@@ -144,7 +115,6 @@ export function RecordPage() {
                         </span>
                       </span>
                     </Link>
-                    <span className={`badge ${OWNERSHIP_TONE[other.ownership]}`}>{other.ownership}</span>
                     <button
                       className="btn ghost icon sm"
                       aria-label="Unlink"
@@ -161,18 +131,13 @@ export function RecordPage() {
 
         <aside className="stack" style={{ gap: 14 }}>
           <div className="card card-pad stack" style={{ gap: 10 }}>
-            <div className="eyebrow">The page</div>
-            <Fact label="State" value={<span className={`badge ${OWNERSHIP_TONE[record.ownership]}`}>{record.ownership}</span>} />
+            <div className="eyebrow">The record</div>
             <Fact label="Came from" value={ORIGIN_LABEL[record.origin]} />
             <Fact label="Added" value={formatDate(record.createdAt)} />
-            {record.invitedAt && <Fact label="Invited" value={formatDate(record.invitedAt)} />}
-            {record.claimedAt && <Fact label="Claimed" value={formatDate(record.claimedAt)} />}
             <p className="faint" style={{ margin: 0, fontSize: 12, lineHeight: 1.5 }}>
-              {record.ownership === 'Claimed'
-                ? 'Maintained by its owner. CEED can still correct it.'
-                : record.ownership === 'Invited'
-                  ? 'An invitation went out. Until it is accepted, CEED maintains this page.'
-                  : 'CEED maintains this page. Claiming it is what lets its owner keep it up to date.'}
+              {record.origin === 'signup'
+                ? 'Filled in by the person themselves. CEED can still correct it.'
+                : 'Kept by the CEED team.'}
             </p>
           </div>
 
@@ -361,7 +326,9 @@ function LinkModal({
                 {o.roles.join(', ') || o.city || '—'}
               </span>
             </span>
-            <span className={`badge ${OWNERSHIP_TONE[o.ownership]}`}>{o.ownership}</span>
+            <span className="faint" style={{ fontSize: 11.5 }}>
+              {o.origin === 'signup' ? 'Registered' : o.origin === 'import' ? 'File' : 'By hand'}
+            </span>
           </button>
         ))}
         {!list.length && <div className="empty">Nobody matches. Create the record instead.</div>}

@@ -5,9 +5,8 @@ create table if not exists records (
   kind        text        not null check (kind in ('org','person')),
   name        text        not null,
   roles       jsonb       not null default '[]'::jsonb,
-  -- Who maintains the page. Follows from how the record arrived.
-  ownership   text        not null default 'Unclaimed'
-                          check (ownership in ('Unclaimed','Invited','Claimed')),
+  -- How the row got here. No claim state: an invitation has nothing to travel on
+  -- and no session to come back to, so it would be a state that never advances.
   origin      text        not null default 'manual'
                           check (origin in ('import','manual','signup')),
   email       text        not null default '',
@@ -17,8 +16,6 @@ create table if not exists records (
   website     text        not null default '',
   bio         text        not null default '',
   tags        jsonb       not null default '[]'::jsonb,
-  invited_at  timestamptz,
-  claimed_at  timestamptz,
   created_at  timestamptz not null default now()
 );
 create index if not exists records_kind_idx on records(kind);

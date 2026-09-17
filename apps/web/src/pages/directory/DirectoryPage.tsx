@@ -1,11 +1,4 @@
-import {
-  OWNERSHIP_STATES,
-  OWNERSHIP_TONE,
-  rolesFor,
-  type DirectoryRecord,
-  type Ownership,
-  type RecordKind,
-} from '@ceed/shared';
+import { ORIGIN_LABEL, rolesFor, type DirectoryRecord, type RecordKind } from '@ceed/shared';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
@@ -33,7 +26,6 @@ export const initials = (name: string) =>
 export function DirectoryPage({ kind }: { kind: RecordKind }) {
   const records = useAsync(() => api.get<RecordRow[]>(`/api/records?kind=${kind}`), kind);
   const [role, setRole] = useState<string | null>(null);
-  const [ownership, setOwnership] = useState<Ownership | null>(null);
   const [query, setQuery] = useState('');
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -46,17 +38,15 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
     return all.filter(
       (r) =>
         (!role || (role === '__none' ? !r.roles.length : r.roles.includes(role))) &&
-        (!ownership || r.ownership === ownership) &&
         (!needle ||
           r.name.toLowerCase().includes(needle) ||
           r.email.toLowerCase().includes(needle) ||
           r.city.toLowerCase().includes(needle) ||
           r.tags.join(' ').toLowerCase().includes(needle)),
     );
-  }, [all, role, ownership, query]);
+  }, [all, role, query]);
 
   const countOf = (r: string) => all.filter((x) => (r === '__none' ? !x.roles.length : x.roles.includes(r))).length;
-  const orphans = isOrg ? all.filter((r) => !r.contacts).length : 0;
 
   return (
     <>
@@ -109,44 +99,28 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
-          <select
-            className="status-select"
-            value={ownership ?? ''}
-            onChange={(e) => setOwnership((e.target.value || null) as Ownership | null)}
-          >
-            <option value="">Any page state</option>
-            {OWNERSHIP_STATES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
           <span className="faint num" style={{ fontSize: 12.5 }}>
             {rows.length} of {all.length}
           </span>
         </div>
 
-        {orphans > 0 && (
-          <div className="callout warn">
-            <Icon name="alert" size={15} />
-            <div>
-              <strong>
-                {orphans} organisation{orphans === 1 ? '' : 's'} with nobody attached.
-              </strong>{' '}
-              An organisation is held by at least one person — without a contact there is nobody to invite to claim the
-              page.
-            </div>
-          </div>
-        )}
-
         {records.error ? (
           <div className="empty">{records.error}</div>
         ) : !all.length ? (
-          <div className="empty">
-            <h3>Nothing in the directory yet</h3>
-            <p>
-              Import a file, add {isOrg ? 'an organisation' : 'a person'} by hand, or let an organisation open its own
-              page.
+          <div className="empty stack" style={{ gap: 10, padding: 40 }}>
+            <h3>The directory is empty</h3>
+            <p>Two ways to fill it, and they meet in the same place.</p>
+            <div className="row" style={{ justifyContent: 'center', gap: 8 }}>
+              <button className="btn primary" onClick={() => setAdding(true)}>
+                <Icon name="plus" size={14} /> Add {isOrg ? 'an organisation' : 'a person'} yourself
+              </button>
+              <button className="btn" onClick={() => setImporting(true)}>
+                <Icon name="arrowRight" size={14} /> Import a file
+              </button>
+            </div>
+            <p className="faint" style={{ fontSize: 12.5, margin: 0 }}>
+              Or send people to <strong>/join</strong>, where they register themselves and describe their
+              organisation.
             </p>
           </div>
         ) : !rows.length ? (
@@ -160,7 +134,6 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
                   <th>Roles</th>
                   <th>City</th>
                   <th>{isOrg ? 'Contacts' : 'Organisations'}</th>
-                  <th>Page</th>
                   <th>Came from</th>
                 </tr>
               </thead>
@@ -201,11 +174,8 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
                         <span className="faint">—</span>
                       )}
                     </td>
-                    <td>
-                      <span className={`badge ${OWNERSHIP_TONE[r.ownership]}`}>{r.ownership}</span>
-                    </td>
-                    <td className="faint" style={{ fontSize: 12 }}>
-                      {r.origin === 'import' ? 'File' : r.origin === 'signup' ? 'Signed up' : 'By hand'}
+                    <td className="faint" style={{ fontSize: 12 }} title={ORIGIN_LABEL[r.origin]}>
+                      {r.origin === 'import' ? 'File' : r.origin === 'signup' ? 'Registered' : 'By hand'}
                     </td>
                   </tr>
                 ))}

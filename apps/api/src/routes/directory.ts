@@ -19,8 +19,8 @@ export async function directoryRoutes(app: FastifyInstance) {
   /* ---- The two lists are one query ---- */
 
   app.get('/api/records', async (req) => {
-    const { kind, role, ownership, q } = req.query as Record<string, string | undefined>;
-    const records = await dir.listRecords({ kind: kind as RecordKind, role, ownership, q });
+    const { kind, role, q } = req.query as Record<string, string | undefined>;
+    const records = await dir.listRecords({ kind: kind as RecordKind, role, q });
     // An organisation with nobody attached cannot be invited, so the list says so.
     const counts = await dir.linkCounts();
     return records.map((r) => ({ ...r, contacts: counts.get(r.id) ?? 0 }));
@@ -64,34 +64,6 @@ export async function directoryRoutes(app: FastifyInstance) {
     reply.code(204);
   });
 
-  /**
-   * Inviting is what moves a page from Unclaimed to Invited — and it needs
-   * somebody to write to, which is the whole reason an organisation is expected
-   * to carry at least one person.
-   */
-  app.post('/api/records/:id/invite', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const record = await dir.getRecord(id);
-    if (!record) return notFound(reply, 'Record not found.');
-    if (record.ownership === 'Claimed') throw new HttpError(422, 'This page is already claimed.');
-
-    // A page is claimed by a person, not by a mailbox: an organisation's own
-    // address is not somebody, so the invitation needs a contact attached.
-    const links = await dir.linksOf(record);
-    const to = record.kind === 'org' ? links.map((l) => l.record.email).find(Boolean) : record.email;
-    if (!to) {
-      throw new HttpError(
-        422,
-        record.kind === 'org'
-          ? links.length
-            ? 'The people attached have no email address — add one before inviting.'
-            : 'Nobody holds this organisation yet. Attach the person who should claim the page.'
-          : 'No email address on this person.',
-      );
-    }
-    return { record: await dir.updateRecord(id, { ownership: 'Invited' }), sentTo: to };
-  });
-
   /* ---- Affiliations ---- */
 
   app.post('/api/affiliations', async (req, reply) => {
@@ -116,30 +88,39 @@ export async function directoryRoutes(app: FastifyInstance) {
     return runImport(input.kind, input.rows, input.dryRun);
   });
 
-  /* ---- The organisation opens its own page ---- */
+  /* ---- Registering yourself ---- */
 
   app.post('/api/public/join', async (req) => {
     const input = parse(signupInput, req.body);
 
-    // Claiming an existing page beats creating a second one: CEED may well have
-    // imported this organisation months ago.
-    let org = await dir.findByName('org', input.name);
-    if (org?.ownership === 'Claimed') {
-      throw new HttpError(422, 'This organisation already has an account. Ask its owner to invite you.');
-    }
-    org = org
-      ? await dir.updateRecord(org.id, {
-          ownership: 'Claimed',
-          email: org.email || input.email,
-          website: org.website || input.website,
-          city: org.city || input.city,
-          bio: org.bio || input.bio,
+    // The person is who is filling this in, so they always exist. Joining a
+    // record CEED already typed in beats creating a twin of it.
+    const person =
+      (await dir.findByName('person', input.contactName)) ??
+      (await dir.createRecord({
+        kind: 'person',
+        name: input.contactName,
+        origin: 'signup',
+        email: input.contactEmail,
+        city: input.contactCity,
+        country: 'Morocco',
+        bio: input.contactBio,
+      }));
+
+    if (!input.name.trim()) return { contact: person, record: null, joined: false };
+
+    const found = await dir.findByName('org', input.name);
+    const org = found
+      ? await dir.updateRecord(found.id, {
+          email: found.email || input.email,
+          website: found.website || input.website,
+          city: found.city || input.city,
+          bio: found.bio || input.bio,
         })
       : await dir.createRecord({
           kind: 'org',
           name: input.name,
           roles: ['Startup'],
-          ownership: 'Claimed',
           origin: 'signup',
           email: input.email,
           website: input.website,
@@ -148,28 +129,15 @@ export async function directoryRoutes(app: FastifyInstance) {
           bio: input.bio,
         });
 
-    const existingPerson = await dir.findByName('person', input.contactName);
-    const person =
-      existingPerson ??
-      (await dir.createRecord({
-        kind: 'person',
-        name: input.contactName,
-        ownership: 'Claimed',
-        origin: 'signup',
-        email: input.contactEmail,
-        city: input.city,
-        country: 'Morocco',
-      }));
     await dir.linkRecords({ personId: person.id, orgId: org!.id, role: input.contactRole || 'Contact' });
-
-    return { record: org, contact: person, claimed: Boolean(existingPerson) };
+    return { contact: person, record: org, joined: Boolean(found) };
   });
 
   app.get('/api/public/join/check', async (req) => {
     const { name } = req.query as { name?: string };
     if (!name?.trim()) return { found: null };
     const org = await dir.findByName('org', name);
-    return { found: org ? { name: org.name, ownership: org.ownership } : null };
+    return { found: org ? { name: org.name, origin: org.origin } : null };
   });
 }
 
@@ -255,7 +223,7 @@ async function runImport(kind: RecordKind, rows: Record<string, string>[], dryRu
         contact: contactName || null,
       });
       if (!dryRun) {
-        record = await dir.createRecord({ kind, name, roles, tags, origin: 'import', ownership: 'Unclaimed', ...patch });
+        record = await dir.createRecord({ kind, name, roles, tags, origin: 'import', ...patch });
         known.set(key, record);
       } else {
         known.set(key, { id: 'preview', name } as DirectoryRecord);
@@ -273,7 +241,6 @@ async function runImport(kind: RecordKind, rows: Record<string, string>[], dryRu
             kind: 'person',
             name: contactName,
             origin: 'import',
-            ownership: 'Unclaimed',
             email: text(row, 'contactEmail'),
             city: patch.city,
             country: patch.country,

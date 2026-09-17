@@ -18,28 +18,17 @@ export const PERSON_ROLES = ['Mentor', 'Investor', 'Jury', 'CEED team'] as const
 export const rolesFor = (kind: RecordKind): readonly string[] => (kind === 'org' ? ORG_ROLES : PERSON_ROLES);
 
 /**
- * Who maintains the page. The three states follow from how the record arrived:
- * imported or typed in by CEED lands Unclaimed, an invitation moves it to
- * Invited, and a record the organisation opened itself is Claimed from the
- * start. Only a claimed page can be maintained by its owner.
+ * How the row got here — the only provenance the first version keeps. Claiming a
+ * page needs an invitation to travel and a session to come back on; neither
+ * exists yet, so a state machine for it would have been decoration.
  */
-export const OWNERSHIP_STATES = ['Unclaimed', 'Invited', 'Claimed'] as const;
-export type Ownership = (typeof OWNERSHIP_STATES)[number];
-
-export const OWNERSHIP_TONE: Record<Ownership, 'ok' | 'warn' | 'neutral'> = {
-  Claimed: 'ok',
-  Invited: 'warn',
-  Unclaimed: 'neutral',
-};
-
-/** How the row got here. Kept because it says how much the data can be trusted. */
 export const RECORD_ORIGINS = ['import', 'manual', 'signup'] as const;
 export type RecordOrigin = (typeof RECORD_ORIGINS)[number];
 
 export const ORIGIN_LABEL: Record<RecordOrigin, string> = {
   import: 'Imported from a file',
   manual: 'Added by the team',
-  signup: 'Opened by the organisation itself',
+  signup: 'Registered themselves',
 };
 
 export const recordSchema = z.object({
@@ -47,7 +36,6 @@ export const recordSchema = z.object({
   kind: z.enum(RECORD_KINDS),
   name: z.string().min(1),
   roles: z.array(z.string()).default([]),
-  ownership: z.enum(OWNERSHIP_STATES).default('Unclaimed'),
   origin: z.enum(RECORD_ORIGINS).default('manual'),
   email: z.string().default(''),
   phone: z.string().default(''),
@@ -56,8 +44,6 @@ export const recordSchema = z.object({
   website: z.string().default(''),
   bio: z.string().default(''),
   tags: z.array(z.string()).default([]),
-  invitedAt: z.string().nullable().default(null),
-  claimedAt: z.string().nullable().default(null),
   createdAt: z.string(),
 });
 
@@ -65,9 +51,10 @@ export type DirectoryRecord = z.infer<typeof recordSchema>;
 
 /**
  * A person belongs to zero or several organisations; an organisation is held by
- * one or several people. The second half is not a database constraint but a
- * completeness rule — an organisation nobody is attached to cannot be invited to
- * claim its page, because there is no one to write to.
+ * one or several people. The second half is a completeness rule rather than a
+ * constraint — the two rows cannot be written in one statement, and a list of
+ * company names with no contacts is a legitimate starting point — but an
+ * organisation nobody is attached to can be reached by nobody either.
  */
 export const affiliationSchema = z.object({
   id: z.string(),
@@ -107,7 +94,6 @@ export const createRecordInput = z.object({
   bio: z.string().default(''),
   tags: z.array(z.string()).default([]),
   origin: z.enum(RECORD_ORIGINS).default('manual'),
-  ownership: z.enum(OWNERSHIP_STATES).default('Unclaimed'),
   /** Attach to an organisation on creation — how a contact arrives with its org. */
   affiliateTo: z.string().nullable().default(null),
   affiliationRole: z.string().default(''),
@@ -115,8 +101,7 @@ export const createRecordInput = z.object({
 
 export const updateRecordInput = createRecordInput
   .omit({ kind: true, affiliateTo: true, affiliationRole: true, origin: true })
-  .partial()
-  .extend({ ownership: z.enum(OWNERSHIP_STATES).optional() });
+  .partial();
 
 export const affiliationInput = z.object({
   personId: z.string(),
@@ -198,15 +183,21 @@ export function parseRoles(raw: string, kind: RecordKind): string[] {
 /* Public signup                                                       */
 /* ------------------------------------------------------------------ */
 
-/** What an organisation fills in to open its own page. Lands Claimed. */
+/**
+ * Registering yourself. The person always exists — they are who fills this in —
+ * and the organisation only when they name one, because a mentor arrives without
+ * a startup behind them.
+ */
 export const signupInput = z.object({
-  kind: z.enum(RECORD_KINDS).default('org'),
-  name: z.string().min(1, 'Tell us the name of your organisation.'),
-  email: z.string().email('Enter a valid email address.'),
-  website: z.string().default(''),
-  city: z.string().default(''),
-  bio: z.string().default(''),
   contactName: z.string().min(1, 'Tell us who you are.'),
   contactEmail: z.string().email('Enter a valid email address.'),
   contactRole: z.string().default(''),
+  contactCity: z.string().default(''),
+  contactBio: z.string().default(''),
+  /** Empty when the person is registering on their own. */
+  name: z.string().default(''),
+  email: z.string().default(''),
+  website: z.string().default(''),
+  city: z.string().default(''),
+  bio: z.string().default(''),
 });

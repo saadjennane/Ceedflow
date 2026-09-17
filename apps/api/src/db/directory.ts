@@ -9,8 +9,8 @@ import {
 } from '@ceed/shared';
 import { db } from './client.js';
 
-const COLS = `id, kind, name, roles, ownership, origin, email, phone, city, country, website, bio,
-  tags, invited_at::text as "invitedAt", claimed_at::text as "claimedAt", created_at::text as "createdAt"`;
+const COLS = `id, kind, name, roles, origin, email, phone, city, country, website, bio,
+  tags, created_at::text as "createdAt"`;
 
 const AFF_COLS = `id, person_id as "personId", org_id as "orgId", role, since`;
 
@@ -24,7 +24,6 @@ async function one<T>(sql: string, params: unknown[] = []): Promise<T | null> {
 export interface RecordFilter {
   kind?: RecordKind;
   role?: string;
-  ownership?: string;
   q?: string;
 }
 
@@ -38,10 +37,6 @@ export async function listRecords(filter: RecordFilter = {}): Promise<DirectoryR
   if (filter.role) {
     params.push(JSON.stringify([filter.role]));
     where.push(`roles @> $${params.length}::jsonb`);
-  }
-  if (filter.ownership) {
-    params.push(filter.ownership);
-    where.push(`ownership = $${params.length}`);
   }
   if (filter.q?.trim()) {
     params.push(`%${filter.q.trim().toLowerCase()}%`);
@@ -67,7 +62,6 @@ export async function createRecord(input: {
   kind: RecordKind;
   name: string;
   roles?: string[];
-  ownership?: string;
   origin?: string;
   email?: string;
   phone?: string;
@@ -78,17 +72,15 @@ export async function createRecord(input: {
   tags?: string[];
 }): Promise<DirectoryRecord> {
   const id = idOf.record();
-  const claimed = input.ownership === 'Claimed';
   await (await db()).query(
-    `insert into records (id, kind, name, roles, ownership, origin, email, phone, city, country,
-       website, bio, tags, claimed_at)
-     values ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14)`,
+    `insert into records (id, kind, name, roles, origin, email, phone, city, country,
+       website, bio, tags)
+     values ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)`,
     [
       id,
       input.kind,
       input.name.trim(),
       JSON.stringify(input.roles ?? []),
-      input.ownership ?? 'Unclaimed',
       input.origin ?? 'manual',
       input.email ?? '',
       input.phone ?? '',
@@ -97,7 +89,6 @@ export async function createRecord(input: {
       input.website ?? '',
       input.bio ?? '',
       JSON.stringify(input.tags ?? []),
-      claimed ? new Date().toISOString() : null,
     ],
   );
   return (await getRecord(id))!;
@@ -111,7 +102,6 @@ const FIELDS: Record<string, string> = {
   country: 'country',
   website: 'website',
   bio: 'bio',
-  ownership: 'ownership',
 };
 
 export async function updateRecord(id: string, patch: Record<string, unknown>): Promise<DirectoryRecord | null> {
@@ -127,9 +117,6 @@ export async function updateRecord(id: string, patch: Record<string, unknown>): 
     params.push(JSON.stringify(patch[key]));
     sets.push(`${key} = $${params.length}::jsonb`);
   }
-  // The two dated states are stamped rather than typed, so the page can say when.
-  if (patch.ownership === 'Invited') sets.push(`invited_at = coalesce(invited_at, now())`);
-  if (patch.ownership === 'Claimed') sets.push(`claimed_at = coalesce(claimed_at, now())`);
   if (sets.length) await (await db()).query(`update records set ${sets.join(', ')} where id = $1`, params);
   return getRecord(id);
 }

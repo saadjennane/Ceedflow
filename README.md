@@ -42,27 +42,23 @@ Roles are **statuses** for now: labels a record carries (Startup, Corporate, Inv
 Partner for an organisation; Mentor, Investor, Jury, CEED team for a person). Field sets per role
 come later; the model leaves room and the screens do not ask for it.
 
-**Three ways in, and they are what produce the three page states.**
+**It starts empty, and fills two ways.** The team adds records itself — one at a time, or a fileful
+at once — and people register themselves at `/join`. There is no claim: an invitation needs
+somewhere to travel and a session to come back on, and neither exists yet, so a page-ownership state
+machine would have been a state that never advances. What is kept is where a record came from.
 
-| How the record arrives | State it lands in |
-| --- | --- |
-| Imported from a CSV, or pasted straight out of Excel | **Unclaimed** — CEED maintains it |
-| Typed in by the team | **Unclaimed** |
-| The organisation opens its own page at `/join` | **Claimed** — it maintains itself |
+Registering is a **form, not an account** — there is no password and nothing to log back into, and
+the page says so rather than implying a login. The person always exists, since they are who fills it
+in; the organisation only when they name one, because a mentor arrives without a startup behind them.
 
-**Invited** is the state in between, and it is CEED's move: inviting an unclaimed page asks somebody
-to take it over. That is why an organisation is expected to carry at least one person — *a page is
-claimed by a person, not by a mailbox*, so inviting an organisation with nobody attached is refused
-and says what is missing. The list counts those organisations at the top rather than letting them sit
-unnoticed.
+The duplicate is the real problem a claim was solving, and it does not go away with it. A person
+registering an organisation the team already typed in **joins that record** instead of creating a
+twin — verified, including that its city survives and only the empty fields are filled.
 
-The import never destroys: a record already in the directory is **completed, never overwritten**, and
-matching ignores case, accents and punctuation. A preview says exactly what each row would do before
-anything is written. When the file carries a contact column, the organisation arrives with the person
-who holds it — created and linked in the same pass.
-
-A startup that opens its own page when CEED had already imported it **takes that page over** rather
-than creating a twin, so its history follows it.
+The import follows the same rule: a record already in the directory is **completed, never
+overwritten**, matching on names stripped of case, accents and punctuation, and a preview says what
+each row would do before anything is written. When the file carries a contact column, the
+organisation arrives with the person who holds it, created and linked in the same pass.
 
 ## Where each block's result shows up
 
