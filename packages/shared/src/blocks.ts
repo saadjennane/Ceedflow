@@ -108,6 +108,7 @@ export const FIELD_TYPES = [
   'date',
   'select',
   'multiselect',
+  'file',
 ] as const;
 
 export type FieldType = (typeof FIELD_TYPES)[number];
@@ -122,7 +123,11 @@ export const FIELD_TYPE_LABEL: Record<FieldType, string> = {
   date: 'Date',
   select: 'Single choice',
   multiselect: 'Multiple choice',
+  file: 'File upload',
 };
+
+/** Anything bigger is refused rather than silently truncated. */
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 export const formFieldSchema = z.object({
   id: z.string(),
@@ -206,6 +211,17 @@ export const sourcingConfigSchema = z.object({
     .default({ subject: '', body: '', recipients: { kind: 'list', emails: [] } }),
 });
 
+/**
+ * A condition the applicant ticks before starting. Informative ones are read and
+ * acknowledged; a gate holds the form shut until every box is ticked.
+ */
+export const eligibilitySchema = z.object({
+  mode: z.enum(['informative', 'gate']).default('informative'),
+  criteria: z.array(z.object({ id: z.string(), label: z.string().min(1) })).default([]),
+});
+
+export type Eligibility = z.infer<typeof eligibilitySchema>;
+
 export const applicationConfigSchema = z.object({
   opensAt: z.string().nullable().default(null),
   closesAt: z.string().nullable().default(null),
@@ -218,6 +234,16 @@ export const applicationConfigSchema = z.object({
   layout: z.enum(['single', 'paged']).default('single'),
   pages: z.array(formPageSchema).default([]),
   fields: z.array(formFieldSchema).default([]),
+  eligibility: eligibilitySchema.default({ mode: 'informative', criteria: [] }),
+
+  /* ---- Settings ---- */
+  /** Applicants may reopen and change what they sent, while the call is open. */
+  allowEditAfterSubmit: z.boolean().default(false),
+  /** Waits on a mail provider. Recorded as intent until one is connected. */
+  confirmationEmail: z.boolean().default(true),
+  notifyOnSubmit: z.array(z.string()).default([]),
+  /** Refuse a second application from the same organisation. */
+  onePerOrganisation: z.boolean().default(true),
 });
 
 export const evaluationCriterionSchema = z.object({

@@ -20,14 +20,20 @@ import { ConfirmDialog, useToast } from '../../../ui/Overlays';
 /* Setup                                                               */
 /* ------------------------------------------------------------------ */
 
+/** The sections of the Application drawer, in the order they are shown. */
+export const APPLICATION_TABS = ['Overview', 'Form', 'Eligibility', 'Settings'] as const;
+export type ApplicationTab = (typeof APPLICATION_TABS)[number];
+
 export function ApplicationSetup({
   block,
   config,
   patch,
+  tab = 'Overview',
 }: {
   block: Block;
   config: ApplicationConfig;
   patch: (partial: Partial<ApplicationConfig>) => void;
+  tab?: ApplicationTab;
 }) {
   const [openFieldId, setOpenFieldId] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -119,8 +125,13 @@ export function ApplicationSetup({
     toast(remaining.length ? `Questions moved to ${remaining[0].name}.` : 'Page removed.');
   };
 
+  if (tab === 'Eligibility') return <EligibilityTab config={config} patch={patch} />;
+  if (tab === 'Settings') return <SettingsTab config={config} patch={patch} />;
+
   return (
     <>
+      {tab === 'Overview' && (
+      <>
       <div className={config.published ? 'callout ok' : 'callout'}>
         <Icon name={config.published ? 'check' : 'link'} size={15} />
         <div style={{ flex: 1 }}>
@@ -183,8 +194,11 @@ export function ApplicationSetup({
         rows={2}
       />
 
-      <div className="public-sep" />
+      </>
+      )}
 
+      {tab === 'Form' && (
+      <>
       <div className="field">
         <label>How the form is laid out</label>
         <div className="pick-list">
@@ -396,6 +410,9 @@ export function ApplicationSetup({
         ))}
       </div>
 
+      </>
+      )}
+
       {confirmPage && (
         <ConfirmDialog
           title={`Remove ${confirmPage.name}?`}
@@ -406,6 +423,192 @@ export function ApplicationSetup({
           onConfirm={() => removePage(confirmPage)}
         />
       )}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Eligibility                                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Conditions the applicant ticks before starting. Informative ones are read and
+ * acknowledged; a gate holds the form shut until every box is ticked.
+ */
+function EligibilityTab({
+  config,
+  patch,
+}: {
+  config: ApplicationConfig;
+  patch: (partial: Partial<ApplicationConfig>) => void;
+}) {
+  const { mode, criteria } = config.eligibility;
+  const set = (partial: Partial<ApplicationConfig['eligibility']>) =>
+    patch({ eligibility: { ...config.eligibility, ...partial } });
+
+  return (
+    <>
+      <div className="callout">
+        <Icon name="filter" size={15} />
+        Who the call is for. The applicant sees these before the first question and ticks them off.
+      </div>
+
+      <div className="field">
+        <label>What the list does</label>
+        <div className="pick-list">
+          <button
+            type="button"
+            className={mode === 'informative' ? 'pick on' : 'pick'}
+            onClick={() => set({ mode: 'informative' })}
+          >
+            <Icon name={mode === 'informative' ? 'check' : 'square'} />
+            <div>
+              <strong>Informative</strong>
+              <span>Read and acknowledged. The applicant can carry on either way.</span>
+            </div>
+          </button>
+          <button type="button" className={mode === 'gate' ? 'pick on' : 'pick'} onClick={() => set({ mode: 'gate' })}>
+            <Icon name={mode === 'gate' ? 'check' : 'square'} />
+            <div>
+              <strong>A gate</strong>
+              <span>
+                Nothing opens until every box is ticked. Use it when a criterion genuinely disqualifies — it stops
+                somebody wasting twenty minutes on a form they cannot pass.
+              </span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <div className="row">
+        <h3 className="section-title">Criteria</h3>
+        <span className="badge num">{criteria.length}</span>
+        <div className="spacer" />
+        <button
+          className="btn sm"
+          onClick={() => set({ criteria: [...criteria, { id: idOf.field().replace('fld_', 'elg_'), label: '' }] })}
+        >
+          <Icon name="plus" size={13} /> Add a criterion
+        </button>
+      </div>
+
+      {!criteria.length ? (
+        <div className="empty" style={{ padding: 24 }}>
+          No criterion. The form opens straight on its first question.
+        </div>
+      ) : (
+        <div className="rows">
+          {criteria.map((c) => (
+            <div className="rowcard" key={c.id} style={{ padding: '9px 11px', display: 'flex', gap: 9 }}>
+              <Icon name="square" size={14} />
+              <input
+                className="input"
+                value={c.label}
+                placeholder="Registered in Morocco for less than five years"
+                onChange={(e) =>
+                  set({ criteria: criteria.map((x) => (x.id === c.id ? { ...x, label: e.target.value } : x)) })
+                }
+              />
+              <button
+                className="btn ghost icon sm"
+                aria-label="Remove criterion"
+                onClick={() => set({ criteria: criteria.filter((x) => x.id !== c.id) })}
+              >
+                <Icon name="trash" size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {mode === 'gate' && criteria.length > 0 && (
+        <div className="callout warn">
+          <Icon name="alert" size={15} />
+          With a gate, somebody who cannot tick every box cannot apply at all. Make each line something they can
+          answer honestly about themselves.
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Settings                                                            */
+/* ------------------------------------------------------------------ */
+
+function SettingsTab({
+  config,
+  patch,
+}: {
+  config: ApplicationConfig;
+  patch: (partial: Partial<ApplicationConfig>) => void;
+}) {
+  return (
+    <>
+      <div className="callout">
+        <Icon name="settings" size={15} />
+        How the call behaves once it is open.
+      </div>
+
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={config.onePerOrganisation}
+          onChange={(e) => patch({ onePerOrganisation: e.target.checked })}
+        />
+        <span>
+          <strong>One application per organisation</strong>
+          <div className="faint" style={{ fontSize: 12 }}>
+            A second attempt is refused rather than creating a duplicate candidate.
+          </div>
+        </span>
+      </label>
+
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={config.allowEditAfterSubmit}
+          onChange={(e) => patch({ allowEditAfterSubmit: e.target.checked })}
+        />
+        <span>
+          <strong>Let applicants change their answers</strong>
+          <div className="faint" style={{ fontSize: 12 }}>
+            They can reopen what they sent while the call is still open.
+          </div>
+        </span>
+      </label>
+
+      <div className="public-sep" />
+
+      <div className="callout warn">
+        <Icon name="alert" size={15} />
+        <div>
+          <strong>No mail provider is connected.</strong> The two below are recorded as intent — they are what will
+          be sent the day one is wired in, and nothing leaves in the meantime.
+        </div>
+      </div>
+
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={config.confirmationEmail}
+          onChange={(e) => patch({ confirmationEmail: e.target.checked })}
+        />
+        <span>
+          <strong>Email the applicant a confirmation</strong>
+          <div className="faint" style={{ fontSize: 12 }}>
+            The message on screen after submitting is shown either way.
+          </div>
+        </span>
+      </label>
+
+      <TagField
+        label="Tell these people about each submission"
+        values={config.notifyOnSubmit}
+        onChange={(v) => patch({ notifyOnSubmit: v })}
+        placeholder="name@ceed.ma"
+        help="Addresses for now. Once the directory backs this, it becomes people."
+      />
     </>
   );
 }

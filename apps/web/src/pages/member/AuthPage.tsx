@@ -1,6 +1,6 @@
 import { type Me } from '@ceed/shared';
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { Icon } from '../../ui/Icon';
 import '../../ui/builder.css';
@@ -16,6 +16,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  /** Where the person was heading before they were asked to sign in. */
+  const next = params.get('next') ?? '/me';
 
   const set = (partial: Partial<typeof form>) => setForm((f) => ({ ...f, ...partial }));
 
@@ -24,7 +27,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
     setErrors({});
     try {
       await api.post<Me>(signup ? '/api/auth/signup' : '/api/auth/login', form);
-      navigate('/me');
+      navigate(next, { replace: true });
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrors(err.fields);
       else setErrors({ _: (err as Error).message });
@@ -44,7 +47,11 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
         <div className="public-body stack" style={{ gap: 14 }}>
           <h1>{signup ? 'Create your account' : 'Sign in'}</h1>
           <p className="public-intro">
-            {signup ? 'One account for you, and the organisation pages you look after.' : 'Welcome back.'}
+            {next.startsWith('/apply')
+              ? 'One step before the form: an account is what lets you pick it up again and follow where your application stands.'
+              : signup
+                ? 'One account for you, and the organisation pages you look after.'
+                : 'Welcome back.'}
           </p>
 
           {errors._ && (
@@ -86,11 +93,13 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
           <p className="faint" style={{ margin: 0, fontSize: 12.5, textAlign: 'center' }}>
             {signup ? (
               <>
-                Already have an account? <Link to="/login">Sign in</Link>
+                Already have an account?{' '}
+                <Link to={`/login?next=${encodeURIComponent(next)}`}>Sign in</Link>
               </>
             ) : (
               <>
-                No account yet? <Link to="/signup">Create one</Link>
+                No account yet?{' '}
+                <Link to={`/signup?next=${encodeURIComponent(next)}`}>Create one</Link>
               </>
             )}
           </p>

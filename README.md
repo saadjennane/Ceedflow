@@ -32,6 +32,39 @@ apps/api          Fastify + raw SQL, migrations in src/db/migrations
 apps/web          React + TypeScript + Vite
 ```
 
+## Applying
+
+**You apply signed in, as one of your organisations.** That is what dissolved the identity block the
+form used to carry: nobody retypes a company name the product already knows. A candidacy is
+therefore a **link between an organisation and an edition** — `candidates.org_id` — and the four
+identity fields are read through the directory rather than stored a second time. The payload kept
+the shape it always had, so no screen had to learn about the join.
+
+It falls out of that shape that a startup accumulates a history across editions, and that **one
+application per organisation** is a rule the database can hold rather than a hope.
+
+The block is configured over four tabs, the way the prototype had them:
+
+| Tab | What it holds |
+| --- | --- |
+| **Overview** | The public link, the opening dates, the introduction and the message after sending |
+| **Form** | One page or several named steps, each with its own description, and the questions |
+| **Eligibility** | Conditions the applicant ticks — informative, or a gate |
+| **Settings** | One application per organisation, edits after sending, and what would be emailed |
+
+**Eligibility is informative or a gate.** Informative: the list is read, ticked, and the form carries
+on either way. A gate: nothing opens until every box is ticked — there is no Continue button to
+press, and the server refuses a submission that skipped it. Use it only where a criterion genuinely
+disqualifies, so nobody spends twenty minutes on a form they cannot pass.
+
+Questions can be a **file**. An attachment is uploaded as soon as it is chosen and claimed when the
+form is sent, so anything never claimed is an abandoned draft. Files live in a table for now, capped
+at 10 MB; a real object store replaces it without touching what points at it, since the answer holds
+an upload id either way.
+
+**Settings that wait on a mail provider say so.** The confirmation email and the notification list
+are recorded as intent, and the tab states plainly that nothing leaves until one is connected.
+
 ## The directory
 
 One internal directory behind two sidebar entries. **Organisations** and **Individuals** are the same

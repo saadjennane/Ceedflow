@@ -1,5 +1,7 @@
 import cookie from '@fastify/cookie';
+import multipart from '@fastify/multipart';
 import cors from '@fastify/cors';
+import { MAX_UPLOAD_BYTES } from '@ceed/shared';
 import Fastify from 'fastify';
 import { migrate } from './db/client.js';
 import { actionRoutes } from './routes/actions.js';
@@ -14,6 +16,7 @@ const app = Fastify({ logger: { transport: undefined, level: 'warn' } });
 
 await app.register(cors, { origin: true, credentials: true });
 await app.register(cookie);
+await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } });
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof HttpError) {

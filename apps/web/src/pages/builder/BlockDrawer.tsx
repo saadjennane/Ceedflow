@@ -13,7 +13,7 @@ import { useMemo, useState } from 'react';
 import { api } from '../../lib/api';
 import { Icon } from '../../ui/Icon';
 import { ConfirmDialog, Drawer, useToast } from '../../ui/Overlays';
-import { ApplicationSetup } from './panels/ApplicationPanel';
+import { APPLICATION_TABS, ApplicationSetup, type ApplicationTab } from './panels/ApplicationPanel';
 import { CommitteeSetup } from './panels/CommitteePanel';
 import { EvaluationSetup } from './panels/EvaluationPanel';
 import { SelectionSetup } from './panels/SelectionPanel';
@@ -55,6 +55,7 @@ export function BlockDrawer({
   const [draft, setDraft] = useState<Record<string, unknown>>(block.config as Record<string, unknown>);
 
   const [confirm, setConfirm] = useState(false);
+  const [appTab, setAppTab] = useState<ApplicationTab>('Overview');
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
@@ -115,7 +116,24 @@ export function BlockDrawer({
           </>
         }
       >
-        {workTab && workTab.tab !== currentTab && (
+        {/* A block with several sides to configure gets tabs, the way the
+            prototype had them. The rest are one panel and need none. */}
+        {block.type === 'application' && (
+          <nav className="drawer-tabs" role="tablist">
+            {APPLICATION_TABS.map((t) => (
+              <button
+                key={t}
+                role="tab"
+                className={t === appTab ? 'tab on' : 'tab'}
+                onClick={() => setAppTab(t)}
+              >
+                {t}
+              </button>
+            ))}
+          </nav>
+        )}
+
+        {workTab && workTab.tab !== currentTab && appTab === 'Overview' && (
           <div className="callout">
             <Icon name="arrowRight" size={15} />
             <div style={{ flex: 1 }}>
@@ -137,7 +155,7 @@ export function BlockDrawer({
 
         {block.type === 'sourcing' && <SourcingSetup config={draft as unknown as SourcingConfig} patch={patch} />}
         {block.type === 'application' && (
-          <ApplicationSetup block={block} config={draft as unknown as ApplicationConfig} patch={patch} />
+          <ApplicationSetup block={block} config={draft as unknown as ApplicationConfig} patch={patch} tab={appTab} />
         )}
         {block.type === 'evaluation' && (
           <EvaluationSetup block={block} config={draft as unknown as EvaluationConfig} patch={patch} track={track} />

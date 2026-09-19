@@ -1,11 +1,13 @@
-import type { FormField } from '@ceed/shared';
+import { MAX_UPLOAD_BYTES, type Eligibility, type FormField } from '@ceed/shared';
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { ApiError, api } from '../lib/api';
+import { useAccount } from '../lib/account';
 import { formatDate } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
 import { Icon } from '../ui/Icon';
 import '../ui/builder.css';
+import '../ui/directory.css';
 
 interface PublicPage {
   id: string;
@@ -20,7 +22,7 @@ interface PublicForm {
   colour: string;
   blockName: string;
   intro: string;
-  /** Where the call is running, as declared by the sourcing block. */
+  eligibility: Eligibility;
   channels: string[];
   layout: 'single' | 'paged';
   pages: PublicPage[];
@@ -35,14 +37,17 @@ const isEmpty = (value: unknown) =>
 export function ApplyPage() {
   const { token = '' } = useParams();
   const form = useAsync(() => api.get<PublicForm>(`/api/public/forms/${token}`), token);
+  const { me, loading: checkingAccount } = useAccount();
+
+  const [orgId, setOrgId] = useState<string>('');
+  const [ticked, setTicked] = useState<string[]>([]);
   const [values, setValues] = useState<Record<string, unknown>>({});
-  const [contact, setContact] = useState({ orgName: '', contactName: '', email: '', phone: '', source: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [step, setStep] = useState(0);
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState<string | null>(null);
 
-  if (form.loading) {
+  if (form.loading || checkingAccount) {
     return (
       <div className="public">
         <div className="public-card">
@@ -54,39 +59,83 @@ export function ApplyPage() {
 
   if (form.error || !form.data) {
     return (
-      <div className="public">
-        <div className="public-card">
-          <div className="public-body">
-            <h1>This form is not available</h1>
-            <p className="public-intro">{form.error ?? 'The link may be wrong, or the call may have closed.'}</p>
-          </div>
-        </div>
-      </div>
+      <Shell>
+        <h1>This form is not available</h1>
+        <p className="public-intro">{form.error ?? 'The link may be wrong, or the call may have closed.'}</p>
+      </Shell>
     );
   }
 
   const data = form.data;
 
-  if (done) {
+  /* Applying is done signed in, so the form knows who is filling it. */
+  if (!me) {
     return (
-      <div className="public">
-        <div className="public-card">
-          <div className="public-top" style={{ background: data.colour }} />
-          <div className="public-body">
-            <span className="badge ok">
-              <Icon name="check" size={13} /> Application received
-            </span>
-            <h1>{data.programName}</h1>
-            <p className="public-intro">{done}</p>
+      <Shell colour={data.colour}>
+        <h1>{data.programName}</h1>
+        <p className="public-intro">{data.intro}</p>
+        <div className="callout">
+          <Icon name="alert" size={15} />
+          <div>
+            <strong>You apply with an account.</strong> It is what lets you pick up an unfinished form, see where your
+            application stands, and apply again next year without retyping anything.
           </div>
         </div>
-      </div>
+        <div className="row" style={{ gap: 8 }}>
+          <Link className="btn primary" to={`/signup?next=${encodeURIComponent(`/apply/${token}`)}`}>
+            Create an account
+          </Link>
+          <Link className="btn" to={`/login?next=${encodeURIComponent(`/apply/${token}`)}`}>
+            I already have one
+          </Link>
+        </div>
+      </Shell>
     );
   }
 
+  if (done) {
+    return (
+      <Shell colour={data.colour}>
+        <span className="badge ok">
+          <Icon name="check" size={13} /> Application received
+        </span>
+        <h1>{data.programName}</h1>
+        <p className="public-intro">{done}</p>
+        <Link className="btn" to="/me">
+          Back to my space
+        </Link>
+      </Shell>
+    );
+  }
+
+  /* An organisation applies, and you may only apply for one you belong to. */
+  if (!me.organisations.length) {
+    return (
+      <Shell colour={data.colour}>
+        <h1>{data.programName}</h1>
+        <div className="callout">
+          <Icon name="alert" size={15} />
+          <div>
+            <strong>An organisation applies, not a person.</strong> Create your organisation page first — it takes a
+            minute, and it is yours from one edition to the next.
+          </div>
+        </div>
+        <Link className="btn primary" to="/me">
+          Create my organisation page
+        </Link>
+      </Shell>
+    );
+  }
+
+  const applyingAs = orgId || me.organisations[0].record.id;
+  const gate = data.eligibility.mode === 'gate';
+  const allTicked = data.eligibility.criteria.every((c) => ticked.includes(c.id));
+  const blockedByGate = gate && !allTicked;
+
+  const hasEligibility = data.eligibility.criteria.length > 0;
   const paged = data.layout === 'paged' && data.pages.length > 0;
-  // Step 0 is always who you are; the configured pages follow.
-  const steps = paged ? ['About you', ...data.pages.map((p) => p.name)] : [];
+  // Step 0 is who is applying, plus the eligibility list when there is one.
+  const steps = paged ? ['Before you start', ...data.pages.map((p) => p.name)] : [];
   const currentPage = paged ? (step === 0 ? null : data.pages[step - 1]) : null;
   const last = !paged || step === steps.length - 1;
 
@@ -99,16 +148,9 @@ export function ApplyPage() {
     });
   };
 
-  /** What must be filled before this step can be left. */
   const checkStep = (): Record<string, string> => {
     const found: Record<string, string> = {};
-    if (!paged || step === 0) {
-      if (!contact.orgName.trim()) found.orgName = 'Tell us the name of your organisation.';
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(contact.email.trim())) found.email = 'Enter a valid email address.';
-    }
-    const fields = paged
-      ? (currentPage?.fields ?? [])
-      : data.pages.flatMap((p) => p.fields);
+    const fields = paged ? (currentPage?.fields ?? []) : data.pages.flatMap((p) => p.fields);
     for (const field of fields) {
       if (field.required && isEmpty(values[field.id])) found[`answers.${field.id}`] = 'This answer is required.';
     }
@@ -130,7 +172,8 @@ export function ApplyPage() {
     setSending(true);
     try {
       const result = await api.post<{ confirmation: string }>(`/api/public/forms/${token}`, {
-        ...contact,
+        orgId: applyingAs,
+        acknowledged: ticked,
         answers: values,
       });
       setDone(result.confirmation);
@@ -138,7 +181,6 @@ export function ApplyPage() {
     } catch (err) {
       if (err instanceof ApiError && err.fields) {
         setErrors(err.fields);
-        // Land the applicant on the first page that still needs something.
         if (paged) {
           const bad = Object.keys(err.fields)
             .filter((k) => k.startsWith('answers.'))
@@ -154,54 +196,67 @@ export function ApplyPage() {
     }
   };
 
-  const contactBlock = (
+  const start = (
     <>
-      <h3 className="section-title">About you</h3>
-      <Text
-        label="Organisation"
-        required
-        value={contact.orgName}
-        onChange={(v) => setContact((c) => ({ ...c, orgName: v }))}
-        error={errors.orgName}
-      />
-      <div className="grid-2">
-        <Text label="Your name" value={contact.contactName} onChange={(v) => setContact((c) => ({ ...c, contactName: v }))} />
-        <Text
-          label="Email"
-          required
-          type="email"
-          value={contact.email}
-          onChange={(v) => setContact((c) => ({ ...c, email: v }))}
-          error={errors.email}
-        />
-      </div>
-      <div className="grid-2">
-        <Text label="Phone" value={contact.phone} onChange={(v) => setContact((c) => ({ ...c, phone: v }))} />
-        {data.channels.length ? (
-          <div className="field">
-            <label>How did you hear about us?</label>
-            <select
-              className="select"
-              value={data.channels.includes(contact.source) ? contact.source : contact.source ? '__other' : ''}
-              onChange={(e) => setContact((c) => ({ ...c, source: e.target.value === '__other' ? 'Other' : e.target.value }))}
-            >
-              <option value="">Choose one</option>
-              {data.channels.map((channel) => (
-                <option key={channel} value={channel}>
-                  {channel}
-                </option>
-              ))}
-              <option value="__other">Somewhere else</option>
-            </select>
+      <h3 className="section-title">Who is applying</h3>
+      {me.organisations.length > 1 ? (
+        <div className="field">
+          <label>Organisation</label>
+          <select className="input" value={applyingAs} onChange={(e) => setOrgId(e.target.value)}>
+            {me.organisations.map((o) => (
+              <option key={o.record.id} value={o.record.id}>
+                {o.record.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : (
+        <div className="rowcard link-row">
+          <span className="rec-mark">
+            {me.organisations[0].record.name
+              .split(/\s+/)
+              .map((w) => w[0])
+              .slice(0, 2)
+              .join('')
+              .toUpperCase()}
+          </span>
+          <span style={{ flex: 1 }}>
+            <strong style={{ fontSize: 13 }}>{me.organisations[0].record.name}</strong>
+            <span className="faint" style={{ display: 'block', fontSize: 12 }}>
+              {me.record.name} · {me.account.email}
+            </span>
+          </span>
+        </div>
+      )}
+
+      {hasEligibility && (
+        <>
+          <h3 className="section-title">Before you start</h3>
+          <p className="faint" style={{ margin: '0 0 8px', fontSize: 12.5 }}>
+            {gate
+              ? 'Every line has to be true to apply to this call.'
+              : 'What this call is looking for. Tick what applies to you.'}
+          </p>
+          <div className="rows">
+            {data.eligibility.criteria.map((c) => (
+              <label className="check rowcard" style={{ padding: '10px 12px' }} key={c.id}>
+                <input
+                  type="checkbox"
+                  checked={ticked.includes(c.id)}
+                  onChange={(e) => setTicked((t) => (e.target.checked ? [...t, c.id] : t.filter((x) => x !== c.id)))}
+                />
+                <span style={{ fontSize: 13 }}>{c.label}</span>
+              </label>
+            ))}
           </div>
-        ) : (
-          <Text
-            label="How did you hear about us?"
-            value={contact.source}
-            onChange={(v) => setContact((c) => ({ ...c, source: v }))}
-          />
-        )}
-      </div>
+          {blockedByGate && (
+            <div className="callout warn">
+              <Icon name="alert" size={15} />
+              This call is only open to organisations that meet every criterion above.
+            </div>
+          )}
+        </>
+      )}
     </>
   );
 
@@ -223,79 +278,80 @@ export function ApplyPage() {
         <div className="public-body">
           <div className="eyebrow">{data.editionName}</div>
           <h1>{data.programName}</h1>
-          {step === 0 && data.intro && <p className="public-intro">{data.intro}</p>}
-          {step === 0 && data.closesAt && (
+          {data.intro && <p className="public-intro">{data.intro}</p>}
+
+          {data.closesAt && (
             <span className="badge warn">
               <Icon name="clock" size={13} /> Closes {formatDate(data.closesAt)}
             </span>
           )}
 
           {paged && (
-            <>
-              <div className="steps">
-                {steps.map((name, i) => (
-                  <div key={name} className={`step${i === step ? ' on' : ''}${i < step ? ' done' : ''}`}>
-                    <span className="step-dot">{i < step ? <Icon name="check" size={11} /> : i + 1}</span>
-                    <span className="step-name">{name}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="public-sep" />
-            </>
-          )}
-
-          {paged ? (
-            step === 0 ? (
-              contactBlock
-            ) : (
-              currentPage && (
-                <>
-                  <h3 className="section-title">{currentPage.name}</h3>
-                  {currentPage.intro && <p className="public-intro">{currentPage.intro}</p>}
-                  {currentPage.fields.length ? fieldsOf(currentPage) : <p className="faint">Nothing to fill in here.</p>}
-                </>
-              )
-            )
-          ) : (
-            <>
-              {contactBlock}
-              {data.pages[0]?.fields.length > 0 && (
-                <>
-                  <div className="public-sep" />
-                  <h3 className="section-title">Your application</h3>
-                  {fieldsOf(data.pages[0])}
-                </>
-              )}
-            </>
+            <div className="steps">
+              {steps.map((name, i) => (
+                <span className={i === step ? 'step on' : i < step ? 'step done' : 'step'} key={name}>
+                  <span className="step-n">{i + 1}</span>
+                  {name}
+                </span>
+              ))}
+            </div>
           )}
 
           {errors._ && (
             <div className="callout warn">
-              <Icon name="alert" size={15} />
-              {errors._}
+              <Icon name="alert" size={15} /> {errors._}
             </div>
           )}
 
-          <div className="row" style={{ marginTop: 6 }}>
+          {paged ? (
+            step === 0 ? (
+              start
+            ) : (
+              <>
+                <h3 className="section-title">{currentPage!.name}</h3>
+                {currentPage!.intro && (
+                  <p className="faint" style={{ margin: '0 0 10px', fontSize: 12.5 }}>
+                    {currentPage!.intro}
+                  </p>
+                )}
+                {fieldsOf(currentPage!)}
+              </>
+            )
+          ) : (
+            <>
+              {start}
+              {data.pages.map((page) => (
+                <div key={page.id}>
+                  {page.intro && (
+                    <p className="faint" style={{ margin: '0 0 10px', fontSize: 12.5 }}>
+                      {page.intro}
+                    </p>
+                  )}
+                  {fieldsOf(page)}
+                </div>
+              ))}
+            </>
+          )}
+
+          <div className="row" style={{ marginTop: 16 }}>
             {paged && step > 0 && (
               <button className="btn" onClick={() => setStep((s) => s - 1)}>
-                <Icon name="chevronLeft" size={14} /> Back
+                Back
               </button>
             )}
+            <div className="spacer" />
             {last ? (
-              <button className="btn primary" disabled={sending} onClick={submit}>
-                {sending ? 'Sending…' : 'Submit application'}
+              <button className="btn primary" disabled={sending || blockedByGate} onClick={submit}>
+                {sending ? 'Sending…' : 'Send my application'}
               </button>
             ) : (
-              <button className="btn primary" onClick={next}>
-                Continue <Icon name="arrowRight" size={14} />
-              </button>
+              /* A gate holds the form shut: there is no way past this step. */
+              !blockedByGate && (
+                <button className="btn primary" onClick={next}>
+                  Continue <Icon name="arrowRight" size={14} />
+                </button>
+              )
             )}
-            <span className="faint" style={{ fontSize: 12.5 }}>
-              {last
-                ? 'You will get a confirmation on screen straight away.'
-                : `Step ${step + 1} of ${steps.length}. Nothing is sent until the last step.`}
-            </span>
           </div>
         </div>
       </div>
@@ -303,38 +359,20 @@ export function ApplyPage() {
   );
 }
 
-function Text({
-  label,
-  value,
-  onChange,
-  required,
-  type = 'text',
-  error,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  required?: boolean;
-  type?: string;
-  error?: string;
-}) {
+function Shell({ children, colour }: { children: React.ReactNode; colour?: string }) {
   return (
-    <div className="field">
-      <label>
-        {label}
-        {required && <span style={{ color: 'var(--stop)' }}> *</span>}
-      </label>
-      <input
-        className="input"
-        type={type}
-        value={value}
-        aria-invalid={Boolean(error)}
-        onChange={(e) => onChange(e.target.value)}
-      />
-      {error && <div className="err">{error}</div>}
+    <div className="public">
+      <div className="public-card">
+        <div className="public-top" style={colour ? { background: colour } : undefined} />
+        <div className="public-body stack" style={{ gap: 14 }}>
+          {children}
+        </div>
+      </div>
     </div>
   );
 }
+
+/* ------------------------------------------------------------------ */
 
 function PublicField({
   field,
@@ -344,7 +382,7 @@ function PublicField({
 }: {
   field: FormField;
   value: unknown;
-  onChange: (value: unknown) => void;
+  onChange: (v: unknown) => void;
   error?: string;
 }) {
   const label = (
@@ -354,83 +392,127 @@ function PublicField({
     </label>
   );
 
-  if (field.type === 'long_text') {
-    return (
-      <div className="field">
-        {label}
-        {field.help && <div className="help">{field.help}</div>}
-        <textarea
-          className="textarea"
-          value={(value as string) ?? ''}
-          aria-invalid={Boolean(error)}
-          onChange={(e) => onChange(e.target.value)}
-        />
-        {error && <div className="err">{error}</div>}
-      </div>
-    );
-  }
-
-  if (field.type === 'select') {
-    return (
-      <div className="field">
-        {label}
-        {field.help && <div className="help">{field.help}</div>}
-        <select
-          className="select"
-          value={(value as string) ?? ''}
-          aria-invalid={Boolean(error)}
-          onChange={(e) => onChange(e.target.value)}
-        >
-          <option value="">Choose one</option>
-          {field.options.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-        {error && <div className="err">{error}</div>}
-      </div>
-    );
-  }
-
-  if (field.type === 'multiselect') {
-    const chosen = (value as string[]) ?? [];
-    return (
-      <div className="field">
-        {label}
-        {field.help && <div className="help">{field.help}</div>}
-        <div className="rows">
-          {field.options.map((option) => (
-            <label className="check" key={option}>
-              <input
-                type="checkbox"
-                checked={chosen.includes(option)}
-                onChange={(e) => onChange(e.target.checked ? [...chosen, option] : chosen.filter((o) => o !== option))}
-              />
-              <span>{option}</span>
-            </label>
-          ))}
-        </div>
-        {error && <div className="err">{error}</div>}
-      </div>
-    );
-  }
-
-  const inputType =
-    field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'email' ? 'email' : 'text';
-
   return (
     <div className="field">
       {label}
-      {field.help && <div className="help">{field.help}</div>}
-      <input
-        className={field.type === 'number' ? 'input num' : 'input'}
-        type={inputType}
-        value={(value as string) ?? ''}
-        aria-invalid={Boolean(error)}
-        onChange={(e) => onChange(field.type === 'number' ? Number(e.target.value) : e.target.value)}
-      />
-      {error && <div className="err">{error}</div>}
+      {field.help && <div className="hint" style={{ marginTop: -2, marginBottom: 5 }}>{field.help}</div>}
+
+      {field.type === 'long_text' ? (
+        <textarea className="textarea" rows={4} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />
+      ) : field.type === 'select' ? (
+        <select className="input" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
+          <option value="">Choose one</option>
+          {field.options.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+      ) : field.type === 'multiselect' ? (
+        <div className="rows">
+          {field.options.map((o) => {
+            const chosen = Array.isArray(value) ? (value as string[]) : [];
+            return (
+              <label className="check rowcard" style={{ padding: '8px 11px' }} key={o}>
+                <input
+                  type="checkbox"
+                  checked={chosen.includes(o)}
+                  onChange={(e) => onChange(e.target.checked ? [...chosen, o] : chosen.filter((x) => x !== o))}
+                />
+                <span style={{ fontSize: 13 }}>{o}</span>
+              </label>
+            );
+          })}
+        </div>
+      ) : field.type === 'file' ? (
+        <FileField field={field} value={value} onChange={onChange} />
+      ) : (
+        <input
+          className={error ? 'input bad' : 'input'}
+          type={
+            field.type === 'email'
+              ? 'email'
+              : field.type === 'number'
+                ? 'number'
+                : field.type === 'date'
+                  ? 'date'
+                  : field.type === 'url'
+                    ? 'url'
+                    : field.type === 'phone'
+                      ? 'tel'
+                      : 'text'
+          }
+          value={String(value ?? '')}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+
+      {error && <div style={{ color: 'var(--stop)', fontSize: 12 }}>{error}</div>}
     </div>
+  );
+}
+
+/** An attachment is sent as soon as it is chosen; submitting claims it. */
+function FileField({
+  field,
+  value,
+  onChange,
+}: {
+  field: FormField;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState('');
+  const current = value as { uploadId: string; filename: string; size: number } | undefined;
+
+  const upload = async (file: File) => {
+    setProblem('');
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setProblem(`That file is ${(file.size / 1024 / 1024).toFixed(1)} MB — the limit is 10 MB.`);
+      return;
+    }
+    setBusy(true);
+    try {
+      const body = new FormData();
+      body.append('fieldId', field.id);
+      body.append('file', file);
+      const res = await fetch('/api/public/uploads', { method: 'POST', body });
+      if (!res.ok) throw new Error((await res.json())?.error ?? 'Upload failed.');
+      const saved = (await res.json()) as { id: string; filename: string; size: number };
+      onChange({ uploadId: saved.id, filename: saved.filename, size: saved.size });
+    } catch (err) {
+      setProblem((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (current) {
+    return (
+      <div className="rowcard link-row">
+        <Icon name="file" size={15} />
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <strong style={{ fontSize: 13 }}>{current.filename}</strong>
+          <span className="faint num" style={{ display: 'block', fontSize: 12 }}>
+            {(current.size / 1024).toFixed(0)} KB
+          </span>
+        </span>
+        <button className="btn ghost sm" onClick={() => onChange(undefined)}>
+          Replace
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <label className="dropzone">
+        <input type="file" disabled={busy} onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
+        <Icon name="file" size={16} />
+        <span>{busy ? 'Sending…' : 'Choose a file — 10 MB at most'}</span>
+      </label>
+      {problem && <div style={{ color: 'var(--stop)', fontSize: 12 }}>{problem}</div>}
+    </>
   );
 }

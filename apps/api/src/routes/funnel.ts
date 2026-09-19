@@ -10,8 +10,10 @@ import {
 } from '@ceed/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import * as dir from '../db/directory.js';
 import { peopleByIds } from '../db/directory.js';
 import * as repo from '../db/repo.js';
+import { SESSION_COOKIE, accountForToken } from '../services/auth.js';
 import { committeeForEvaluation, committeeView } from '../services/committee.js';
 import { outcomesByCandidate, outcomesOf, scoresByCandidate, setOutcomeByHand } from '../services/scoring.js';
 import {
@@ -66,34 +68,42 @@ export async function funnelRoutes(app: FastifyInstance) {
   app.post('/api/editions/:id/candidates', async (req, reply) => {
     const { id } = req.params as { id: string };
     const input = parse(
-      candidateSchema.pick({ trackId: true, orgName: true }).extend({
-        contactName: z.string().optional(),
-        email: z.string().optional(),
-        phone: z.string().optional(),
+      z.object({
+        trackId: z.string(),
+        /** Either an organisation already in the directory, or a name to add. */
+        orgId: z.string().optional(),
+        orgName: z.string().optional(),
         source: z.string().optional(),
         answers: z.record(z.unknown()).optional(),
       }),
       req.body,
     );
+
+    // Adding a candidate by hand puts its organisation in the directory too —
+    // there is nowhere else for a candidacy to point.
+    let orgId = input.orgId;
+    if (!orgId) {
+      const name = (input.orgName ?? '').trim();
+      if (!name) throw new HttpError(422, 'A name is required.', { orgName: 'A name is required.' });
+      const found = await dir.findByName('org', name);
+      orgId = (found ?? (await dir.createRecord({ kind: 'org', name, roles: ['Startup'], origin: 'manual' }))).id;
+    }
+
     reply.code(201);
-    return repo.createCandidate({ ...input, editionId: id, source: input.source || 'Added by CEED' });
+    return repo.createCandidate({
+      trackId: input.trackId,
+      orgId,
+      answers: input.answers,
+      editionId: id,
+      source: input.source || 'Added by CEED',
+    });
   });
 
   app.patch('/api/candidates/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const patch = parse(
       candidateSchema
-        .pick({
-          orgName: true,
-          contactName: true,
-          email: true,
-          phone: true,
-          source: true,
-          status: true,
-          trackId: true,
-          mentor: true,
-          cohortStatus: true,
-        })
+        .pick({ source: true, status: true, trackId: true, mentor: true, cohortStatus: true })
         .partial(),
       req.body,
     );
@@ -122,6 +132,7 @@ export async function funnelRoutes(app: FastifyInstance) {
       colour: found.program?.colour ?? '#2F5BFF',
       blockName: found.block.name,
       intro: config.intro,
+      eligibility: config.eligibility,
       channels: found.channels,
       layout: config.layout,
       pages: formPages(config).map(({ page, fields }) => ({ ...page, fields })),
@@ -141,7 +152,32 @@ export async function funnelRoutes(app: FastifyInstance) {
       throw new HttpError(403, 'This call for applications is closed.');
     }
 
+    // Applying is done signed in: the form knows who is filling it, so nothing
+    // about the applicant is retyped and a candidacy points at a real record.
+    const account = await accountForToken(req.cookies[SESSION_COOKIE]);
+    if (!account) throw new HttpError(401, 'Sign in to apply.');
+
     const input = parse(submitApplicationInput, req.body);
+    const person = await dir.getRecord(account.recordId);
+    const mine = person ? await dir.linksOf(person) : [];
+    if (!mine.some((l) => l.record.id === input.orgId)) {
+      throw new HttpError(403, 'You can only apply for an organisation you belong to.');
+    }
+
+    if (config.onePerOrganisation) {
+      const already = (await repo.listCandidates(found.editionId)).find(
+        (c) => c.orgId === input.orgId && c.originBlockId === found.block.id,
+      );
+      if (already) throw new HttpError(422, 'This organisation has already applied to this call.');
+    }
+
+    // A gate holds the form shut until every criterion is ticked; an
+    // informative list only has to have been read.
+    if (config.eligibility.mode === 'gate') {
+      const unticked = config.eligibility.criteria.filter((c) => !input.acknowledged.includes(c.id));
+      if (unticked.length) throw new HttpError(422, 'Every eligibility criterion has to be confirmed.');
+    }
+
     const missing: Record<string, string> = {};
     for (const field of config.fields) {
       if (!field.required) continue;
@@ -155,15 +191,47 @@ export async function funnelRoutes(app: FastifyInstance) {
       editionId: found.editionId,
       trackId: found.trackId,
       originBlockId: found.block.id,
-      orgName: input.orgName,
-      contactName: input.contactName,
-      email: input.email,
-      phone: input.phone,
+      orgId: input.orgId,
+      personId: account.recordId,
       source: input.source || 'Application form',
       answers: input.answers,
     });
+    // Attachments are uploaded before the form is sent, so they are claimed here.
+    await repo.claimUploads(candidate.id, input.answers);
     reply.code(201);
     return { confirmation: config.confirmation, candidateId: candidate.id };
+  });
+
+  /**
+   * An attachment is uploaded before the form is sent, so it exists on its own
+   * until submitting claims it. Signing in is required: files are not a place
+   * for anonymous writes.
+   */
+  app.post('/api/public/uploads', async (req, reply) => {
+    const account = await accountForToken(req.cookies[SESSION_COOKIE]);
+    if (!account) throw new HttpError(401, 'Sign in to attach a file.');
+
+    const file = await req.file();
+    if (!file) throw new HttpError(422, 'No file received.');
+    const bytes = await file.toBuffer();
+    if (!bytes.length) throw new HttpError(422, 'That file is empty.');
+
+    reply.code(201);
+    return repo.saveUpload({
+      filename: file.filename,
+      mime: file.mimetype,
+      bytes,
+      fieldId: (file.fields.fieldId as { value?: string } | undefined)?.value ?? '',
+    });
+  });
+
+  app.get('/api/uploads/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const upload = await repo.getUpload(id);
+    if (!upload) return notFound(reply, 'File not found.');
+    reply.header('content-type', upload.mime);
+    reply.header('content-disposition', `inline; filename="${upload.filename.replace(/"/g, '')}"`);
+    return reply.send(upload.bytes);
   });
 
   /* ---------------- evaluation ---------------- */

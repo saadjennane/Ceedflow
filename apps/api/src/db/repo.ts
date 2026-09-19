@@ -35,10 +35,24 @@ const TRACK_COLS = `id, edition_id as "editionId", name, is_default as "isDefaul
 const PHASE_COLS = `id, track_id as "trackId", name, starts_on::text as "startsOn",
   ends_on::text as "endsOn", position`;
 const BLOCK_COLS = `id, phase_id as "phaseId", type, name, position, config`;
-const CANDIDATE_COLS = `id, edition_id as "editionId", track_id as "trackId",
-  origin_block_id as "originBlockId", org_name as "orgName", contact_name as "contactName",
-  email, phone, source, status, mentor, cohort_status as "cohortStatus", answers,
-  submitted_at::text as "submittedAt"`;
+/**
+ * A candidate's identity lives in the directory, not in a second copy on this
+ * row. The payload keeps the same shape it always had — orgName, contactName,
+ * email, phone — so nothing downstream had to learn about the join.
+ */
+const CANDIDATE_FROM = `
+  from candidates c
+  join records o on o.id = c.org_id
+  left join records p on p.id = c.person_id`;
+const CANDIDATE_SELECT = `select c.id, c.edition_id as "editionId", c.track_id as "trackId",
+  c.origin_block_id as "originBlockId", c.org_id as "orgId", c.person_id as "personId",
+  o.name as "orgName",
+  coalesce(p.name, '') as "contactName",
+  coalesce(nullif(p.email, ''), o.email, '') as "email",
+  coalesce(nullif(p.phone, ''), o.phone, '') as "phone",
+  c.source, c.status, c.mentor, c.cohort_status as "cohortStatus", c.answers,
+  c.submitted_at::text as "submittedAt"
+  ${CANDIDATE_FROM}`;
 const SCORE_COLS = `id, block_id as "blockId", candidate_id as "candidateId",
   evaluator_id as "evaluatorId", evaluator_name as "evaluatorName", marks, comment,
   submitted_at::text as "submittedAt"`;
@@ -490,10 +504,10 @@ export async function blockContext(
 export async function listCandidates(editionId: string, trackId?: string): Promise<Candidate[]> {
   return trackId
     ? all<Candidate>(
-        `select ${CANDIDATE_COLS} from candidates where edition_id = $1 and track_id = $2 order by submitted_at`,
+        `${CANDIDATE_SELECT} where c.edition_id = $1 and c.track_id = $2 order by c.submitted_at`,
         [editionId, trackId],
       )
-    : all<Candidate>(`select ${CANDIDATE_COLS} from candidates where edition_id = $1 order by submitted_at`, [
+    : all<Candidate>(`${CANDIDATE_SELECT} where c.edition_id = $1 order by c.submitted_at`, [
         editionId,
       ]);
 }
@@ -502,10 +516,10 @@ export async function createCandidate(input: {
   editionId: string;
   trackId: string;
   originBlockId?: string | null;
-  orgName: string;
-  contactName?: string;
-  email?: string;
-  phone?: string;
+  /** The organisation applying, in the directory. */
+  orgId: string;
+  /** Who applied on its behalf. */
+  personId?: string | null;
   source?: string;
   answers?: Record<string, unknown>;
   submittedAt?: string;
@@ -513,38 +527,32 @@ export async function createCandidate(input: {
   const conn = await db();
   const id = idOf.candidate();
   await conn.query(
-    `insert into candidates (id, edition_id, track_id, origin_block_id, org_name, contact_name, email, phone, source, answers, submitted_at)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, coalesce($11::timestamptz, now()))`,
+    `insert into candidates (id, edition_id, track_id, origin_block_id, org_id, person_id, source, answers, submitted_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8, coalesce($9::timestamptz, now()))`,
     [
       id,
       input.editionId,
       input.trackId,
       input.originBlockId ?? null,
-      input.orgName,
-      input.contactName ?? '',
-      input.email ?? '',
-      input.phone ?? '',
+      input.orgId,
+      input.personId ?? null,
       input.source ?? '',
       JSON.stringify(input.answers ?? {}),
       input.submittedAt ?? null,
     ],
   );
-  return (await one<Candidate>(`select ${CANDIDATE_COLS} from candidates where id = $1`, [id]))!;
+  return (await one<Candidate>(`${CANDIDATE_SELECT} where c.id = $1`, [id]))!;
 }
 
 export async function updateCandidate(id: string, patch: Record<string, unknown>): Promise<Candidate | null> {
   await patchRow('candidates', id, patch, {
-    orgName: 'org_name',
-    contactName: 'contact_name',
-    email: 'email',
-    phone: 'phone',
     source: 'source',
     status: 'status',
     trackId: 'track_id',
     mentor: 'mentor',
     cohortStatus: 'cohort_status',
   });
-  return one<Candidate>(`select ${CANDIDATE_COLS} from candidates where id = $1`, [id]);
+  return one<Candidate>(`${CANDIDATE_SELECT} where c.id = $1`, [id]);
 }
 
 export async function deleteCandidate(id: string): Promise<void> {
@@ -836,7 +844,7 @@ export async function findAssignmentByToken(token: string) {
   const session = await one<CommitteeSession>(`select ${SESSION_COLS} from committee_sessions where id = $1`, [
     assignment.sessionId,
   ]);
-  const candidate = await one<Candidate>(`select ${CANDIDATE_COLS} from candidates where id = $1`, [
+  const candidate = await one<Candidate>(`${CANDIDATE_SELECT} where c.id = $1`, [
     assignment.candidateId,
   ]);
   if (!session || !candidate) return null;
@@ -942,4 +950,41 @@ export async function recordSend(
        from outreach_sends where id = $1`,
     [id],
   ))!;
+}
+
+/* ------------------------------------------------------------------ */
+/* Attachments                                                         */
+/* ------------------------------------------------------------------ */
+
+export async function saveUpload(input: {
+  filename: string;
+  mime: string;
+  bytes: Buffer;
+  fieldId: string;
+}): Promise<{ id: string; filename: string; size: number }> {
+  const id = newId('upl');
+  await (await db()).query(
+    'insert into uploads (id, field_id, filename, mime, size, bytes) values ($1,$2,$3,$4,$5,$6)',
+    [id, input.fieldId, input.filename, input.mime, input.bytes.length, input.bytes],
+  );
+  return { id, filename: input.filename, size: input.bytes.length };
+}
+
+/**
+ * A file is uploaded before the form is sent, so it starts with no candidate.
+ * Submitting is what attaches it — anything never claimed is an abandoned draft.
+ */
+export async function claimUploads(candidateId: string, answers: Record<string, unknown>): Promise<void> {
+  const ids = Object.values(answers)
+    .filter((v): v is { uploadId: string } => typeof v === 'object' && v !== null && 'uploadId' in v)
+    .map((v) => v.uploadId);
+  if (!ids.length) return;
+  await (await db()).query('update uploads set candidate_id = $1 where id = any($2::text[])', [candidateId, ids]);
+}
+
+export async function getUpload(id: string) {
+  return one<{ filename: string; mime: string; bytes: Buffer }>(
+    'select filename, mime, bytes from uploads where id = $1',
+    [id],
+  );
 }

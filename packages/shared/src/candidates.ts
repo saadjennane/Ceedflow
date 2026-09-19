@@ -31,6 +31,11 @@ export const candidateSchema = z.object({
   trackId: z.string(),
   /** Where the submission came in: the application block, or 'manual'. */
   originBlockId: z.string().nullable().default(null),
+  /** The organisation this candidacy belongs to, in the directory. */
+  orgId: z.string(),
+  /** Who applied on its behalf, when somebody signed in did. */
+  personId: z.string().nullable().default(null),
+  /* The four below are read through the directory, not stored twice. */
   orgName: z.string().min(1),
   contactName: z.string().default(''),
   email: z.string().default(''),
@@ -140,13 +145,13 @@ export const setOutcomeInput = z.object({
   outcome: z.enum(['pass', 'fail']),
 });
 
+/** Applying is done signed in, as one of your organisations. */
 export const submitApplicationInput = z.object({
-  orgName: z.string().min(1, 'Tell us the name of your organisation.'),
-  contactName: z.string().default(''),
-  email: z.string().email('Enter a valid email address.'),
-  phone: z.string().default(''),
+  orgId: z.string().min(1, 'Choose which organisation is applying.'),
   source: z.string().default(''),
   answers: z.record(z.unknown()).default({}),
+  /** Ids of the eligibility criteria ticked. */
+  acknowledged: z.array(z.string()).default([]),
 });
 
 export type SubmitApplicationInput = z.input<typeof submitApplicationInput>;

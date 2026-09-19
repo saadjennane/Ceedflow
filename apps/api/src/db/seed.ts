@@ -4,14 +4,36 @@
  */
 import type { EvaluationCriterion, FormField, FormPage, PersonRef } from '@ceed/shared';
 import { db, migrate } from './client.js';
+import * as directory from './directory.js';
 import * as repo from './repo.js';
 
 /** Grow 2026 asks its questions over three steps rather than one long page. */
+const ELIGIBILITY = {
+  mode: 'informative' as const,
+  criteria: [
+    { id: 'elg_registered', label: 'Registered as a company in Morocco' },
+    { id: 'elg_age', label: 'Founded less than five years ago' },
+    { id: 'elg_team', label: 'At least two people working on it' },
+    { id: 'elg_mvp', label: 'Something built — a prototype, a product, a first customer' },
+  ],
+};
+
 const PAGES: FormPage[] = [
   { id: 'p_startup', name: 'The startup', intro: 'A few facts so we can place you.' },
   { id: 'p_team', name: 'Team and numbers', intro: 'Where you stand today. Rough figures are fine.' },
   { id: 'p_project', name: 'Your project', intro: 'The part the review panel actually reads. Take your time.' },
 ];
+
+const DECK: FormField = {
+  id: 'f_deck',
+  type: 'file',
+  label: 'Pitch deck',
+  help: 'PDF or slides, 10 MB at most.',
+  required: false,
+  options: [],
+  showInTable: false,
+  pageId: 'p_project',
+};
 
 const FIELDS: FormField[] = [
   { id: 'f_stage', pageId: 'p_startup', type: 'select', label: 'Stage', help: '', required: true, options: ['Idea', 'Prototype', 'Early revenue', 'Growth'], showInTable: true },
@@ -22,7 +44,8 @@ const FIELDS: FormField[] = [
   { id: 'f_revenue', pageId: 'p_team', type: 'number', label: 'Revenue over the last 12 months (MAD)', help: 'Enter 0 if you have not sold yet.', required: false, options: [], showInTable: false },
   { id: 'f_problem', pageId: 'p_project', type: 'long_text', label: 'What problem are you solving?', help: 'Three or four sentences.', required: true, options: [], showInTable: false },
   { id: 'f_traction', pageId: 'p_project', type: 'long_text', label: 'What traction can you show?', help: 'Users, pilots, letters of intent, revenue.', required: true, options: [], showInTable: false },
-  { id: 'f_website', pageId: 'p_project', type: 'url', label: 'Website or deck', help: '', required: false, options: [], showInTable: false },
+  { id: 'f_website', pageId: 'p_project', type: 'url', label: 'Website', help: '', required: false, options: [], showInTable: false },
+  DECK,
 ];
 
 const CRITERIA: EvaluationCriterion[] = [
@@ -403,6 +426,11 @@ async function main() {
       layout: 'paged',
       pages: PAGES,
       fields: FIELDS,
+      eligibility: ELIGIBILITY,
+      onePerOrganisation: true,
+      allowEditAfterSubmit: false,
+      confirmationEmail: true,
+      notifyOnSubmit: ['programs@ceed.ma'],
     },
   });
 
@@ -461,15 +489,48 @@ async function main() {
   for (const [index, spec] of CANDIDATES.entries()) {
     const day = 2 + Math.round((index * 36) / CANDIDATES.length);
     const submittedAt = new Date(Date.UTC(2026, 8, 1 + day, 9 + (index % 8), (index * 13) % 60)).toISOString();
+    // A candidacy points at an organisation, so seeding candidates seeds the
+    // startups and the founders who hold them.
+    const org = await directory.createRecord({
+      kind: 'org',
+      name: spec.orgName,
+      roles: ['Startup'],
+      email: spec.email,
+      phone: spec.phone,
+      city: spec.city,
+      country: 'Morocco',
+      website: `www.${spec.orgName.toLowerCase().replace(/[^a-z0-9]+/g, '')}.ma`,
+      bio: spec.problem,
+      tags: [spec.sector, spec.stage],
+      origin: 'signup',
+    });
+    const [firstName, ...rest] = spec.contactName.split(' ');
+    const founder = await directory.createRecord({
+      kind: 'person',
+      name: spec.contactName,
+      firstName,
+      lastName: rest.join(' '),
+      email: spec.email,
+      phone: spec.phone,
+      city: spec.city,
+      country: 'Morocco',
+      bio: `Founder of ${spec.orgName}.`,
+      origin: 'signup',
+    });
+    await directory.linkRecords({
+      personId: founder.id,
+      orgId: org.id,
+      role: 'Founder & CEO',
+      since: String(spec.founded),
+    });
+
     const candidate = await repo.createCandidate({
       submittedAt,
       editionId,
       trackId,
       originBlockId: application.id,
-      orgName: spec.orgName,
-      contactName: spec.contactName,
-      email: spec.email,
-      phone: spec.phone,
+      orgId: org.id,
+      personId: founder.id,
       source: spec.source,
       answers: {
         f_stage: spec.stage,
