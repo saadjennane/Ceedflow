@@ -55,6 +55,22 @@ empty table.
 That is also why the jury of a committee-scoped evaluation cannot be one list — it differs from one
 panel to the next, and each panel's marks are its own.
 
+## Reviewing, as the person doing it
+
+An evaluator signs in and finds **the panels a committee put them on**, across every edition, each
+with the startups to review and how far they have got. Opening one shows what the startup sent —
+its application answers, labelled by the questions that asked them, with attachments to open — and
+the grid to mark or the verdict to name.
+
+**You see your own marks and nobody else's**, which is the whole point of a panel scoring
+independently. The payload carries one reviewer's work and no other.
+
+Two rules the server holds rather than the screen. **Who is scoring comes from the session, never
+from the request** — an evaluator id in the body is ignored, so nobody files marks under somebody
+else's name. And **a startup that is not on your list is refused**, not merely absent from the page.
+
+A review emptied back to nothing returns to a draft: *sent* has to mean something was.
+
 ## Applying
 
 **You apply signed in, as one of your organisations.** That is what dissolved the identity block the

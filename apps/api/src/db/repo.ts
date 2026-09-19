@@ -607,6 +607,8 @@ export async function upsertScore(input: {
   verdict?: string;
   comment?: string;
   submit?: boolean;
+  /** Emptying a review takes it back to a draft: 'sent' must mean something was. */
+  reopen?: boolean;
 }): Promise<EvaluationScore> {
   const conn = await db();
   await conn.query(
@@ -618,7 +620,7 @@ export async function upsertScore(input: {
            comment = excluded.comment,
            evaluator_name = excluded.evaluator_name,
            session_id = coalesce(excluded.session_id, evaluation_scores.session_id),
-           submitted_at = case when $9 then now() else evaluation_scores.submitted_at end`,
+           submitted_at = case when $9 then now() when $11 then null else evaluation_scores.submitted_at end`,
     [
       newId('scr'),
       input.blockId,
@@ -630,6 +632,7 @@ export async function upsertScore(input: {
       input.comment ?? '',
       input.submit ?? false,
       input.sessionId ?? null,
+      input.reopen ?? false,
     ],
   );
   return (await one<EvaluationScore>(

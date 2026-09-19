@@ -1,8 +1,11 @@
 import { ORG_ROLES, type AffiliationView, type Me } from '@ceed/shared';
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { useAccount } from '../../lib/account';
+import { formatDate } from '../../lib/format';
+import { useAsync } from '../../lib/useAsync';
+import type { ReviewPanel } from './ReviewPage';
 import { Icon } from '../../ui/Icon';
 import { Modal, useToast } from '../../ui/Overlays';
 import '../../ui/builder.css';
@@ -47,6 +50,7 @@ export function MemberPage() {
       </div>
 
       <div className="member-body stack" style={{ gap: 16 }}>
+        <Reviews />
         <Profile me={me} onSaved={reload} />
         <Organisations me={me} onChanged={reload} />
       </div>
@@ -55,6 +59,50 @@ export function MemberPage() {
 }
 
 /* ------------------------------------------------------------------ */
+
+/**
+ * The panels you sit on. Shown first when there are any: somebody who opens
+ * this page during a selection round is here to review, not to edit an address.
+ */
+function Reviews() {
+  const panels = useAsync(() => api.get<ReviewPanel[]>('/api/me/reviews'), 'reviews');
+  const list = panels.data ?? [];
+  if (!list.length) return null;
+
+  const waiting = list.reduce((n, p) => n + (p.items.length - p.done), 0);
+
+  return (
+    <section className="card">
+      <div className="rowcard-head" style={{ padding: '13px 16px' }}>
+        <div style={{ flex: 1 }}>
+          <h2 style={{ fontSize: 16 }}>To review</h2>
+          <p className="faint" style={{ margin: '2px 0 0', fontSize: 12.5 }}>
+            {waiting
+              ? `${waiting} startup${waiting === 1 ? '' : 's'} still waiting on you.`
+              : 'Everything asked of you is done.'}
+          </p>
+        </div>
+      </div>
+      <div className="rows" style={{ padding: 12 }}>
+        {list.map((panel) => (
+          <Link className="rowcard link-row" key={panel.sessionId} to={`/review/${panel.sessionId}`}>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ fontWeight: 600, fontSize: 13 }}>{panel.sessionName}</span>
+              <span className="faint" style={{ display: 'block', fontSize: 12 }}>
+                {panel.programName} · {panel.editionName}
+                {panel.heldOn && panel.format === 'event' ? ` · ${formatDate(panel.heldOn)}` : ''}
+              </span>
+            </span>
+            <span className={panel.done === panel.items.length ? 'badge ok num' : 'badge num'}>
+              {panel.done}/{panel.items.length}
+            </span>
+            <Icon name="chevronRight" size={14} />
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 function Profile({ me, onSaved }: { me: Me; onSaved: () => void }) {
   const [draft, setDraft] = useState({

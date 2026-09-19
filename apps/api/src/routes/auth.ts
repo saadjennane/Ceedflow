@@ -7,7 +7,10 @@ import {
   type Me,
 } from '@ceed/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { z } from 'zod';
 import * as dir from '../db/directory.js';
+import * as repo from '../db/repo.js';
+import { panelFor, reviewsFor } from '../services/reviews.js';
 import {
   SESSION_COOKIE,
   accountForToken,
@@ -18,6 +21,15 @@ import {
   verifyPassword,
 } from '../services/auth.js';
 import { HttpError, notFound, parse } from './util.js';
+
+/** What a reviewer may send. Notably not who they are — that comes from the session. */
+const reviewScoreInput = z.object({
+  candidateId: z.string(),
+  marks: z.record(z.number()).default({}),
+  verdict: z.string().optional(),
+  comment: z.string().optional(),
+  submit: z.boolean().optional(),
+});
 
 /** Sets the session cookie. Same-origin through the dev proxy, so httpOnly works. */
 function setSession(reply: FastifyReply, token: string, expiresAt: Date) {
@@ -161,6 +173,67 @@ export async function authRoutes(app: FastifyInstance) {
     await dir.linkRecords({ personId: account.recordId, orgId: org.id, role: input.myRole });
     reply.code(201);
     return { organisation: org, joined: Boolean(found) };
+  });
+
+  /* ---- Reviewing, for whoever sits on a panel ---- */
+
+  app.get('/api/me/reviews', async (req) => {
+    const account = await require(req);
+    return reviewsFor(account.recordId);
+  });
+
+  app.get('/api/me/reviews/:sessionId', async (req, reply) => {
+    const account = await require(req);
+    const { sessionId } = req.params as { sessionId: string };
+    return (await panelFor(account.recordId, sessionId)) ?? notFound(reply, 'You are not on that panel.');
+  });
+
+  /**
+   * Scoring as yourself. The evaluator is taken from the session and never from
+   * the request, so nobody can file marks under somebody else's name.
+   */
+  app.post('/api/me/reviews/:sessionId/scores', async (req, reply) => {
+    const account = await require(req);
+    const { sessionId } = req.params as { sessionId: string };
+    const input = parse(reviewScoreInput, req.body);
+
+    const panel = await panelFor(account.recordId, sessionId);
+    if (!panel) return notFound(reply, 'You are not on that panel.');
+    if (!panel.evaluation) throw new HttpError(422, 'Nothing scores this panel yet.');
+    if (!panel.items.some((i) => i.candidate.id === input.candidateId)) {
+      throw new HttpError(403, 'That startup is not on your list.');
+    }
+
+    const record = await dir.getRecord(account.recordId);
+    if (input.submit) {
+      if (panel.evaluation.requireComment && !input.comment?.trim()) {
+        throw new HttpError(422, 'This panel asks every reviewer for a comment.', {
+          comment: 'Add a comment before submitting.',
+        });
+      }
+      if (panel.evaluation.method === 'verdict' && !input.verdict) {
+        throw new HttpError(422, 'Pick a verdict before submitting.');
+      }
+    }
+
+    // A review emptied back to nothing is a draft again — 'sent' has to mean
+    // something was.
+    const empty =
+      panel.evaluation.method === 'verdict' ? !input.verdict : Object.keys(input.marks).length === 0;
+
+    await repo.upsertScore({
+      blockId: panel.evaluation.blockId,
+      candidateId: input.candidateId,
+      evaluatorId: account.recordId,
+      evaluatorName: record?.name ?? '',
+      sessionId,
+      marks: input.marks,
+      verdict: input.verdict ?? '',
+      comment: input.comment ?? '',
+      submit: input.submit ?? false,
+      reopen: !input.submit && empty,
+    });
+    return panelFor(account.recordId, sessionId);
   });
 
   app.patch('/api/me/organisations/:id', async (req, reply) => {

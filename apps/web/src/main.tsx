@@ -7,6 +7,7 @@ import { BookingPage } from './pages/BookingPage';
 import { EditionPage } from './pages/EditionPage';
 import { AuthPage } from './pages/member/AuthPage';
 import { MemberPage } from './pages/member/MemberPage';
+import { ReviewPage } from './pages/member/ReviewPage';
 import { DirectoryPage } from './pages/directory/DirectoryPage';
 import { RecordPage } from './pages/directory/RecordPage';
 import { ProgramPage } from './pages/ProgramPage';
@@ -21,6 +22,7 @@ const router = createBrowserRouter([
   { path: '/signup', element: <AuthPage mode="signup" /> },
   { path: '/join', element: <Navigate to="/signup" replace /> },
   { path: '/me', element: <MemberPage /> },
+  { path: '/review/:sessionId', element: <ReviewPage /> },
   {
     path: '/',
     element: <Shell />,
