@@ -69,7 +69,6 @@ export function blockLine(block: Block): BlockLine {
       const c = block.config as EvaluationConfig;
       const bits = ['Score candidates against a grid'];
       if (c.criteria.length) bits.push(`${c.criteria.length} criteria`);
-      if (c.evaluators.length) bits.push(plural(c.evaluators.length, 'evaluator'));
       return {
         description: bits.join(' · '),
         date: c.opensAt,

@@ -21,15 +21,65 @@ export function CommitteeSetup({
     <>
       <div className="callout">
         <Icon name="gavel" size={15} />
-        The committee organises the sittings: who is seen, when, and how the startups answer. It does not score — an{' '}
-        <strong>Evaluation</strong> block dropped into this same phase does that, sitting by sitting.
+        This block says <strong>who reviews</strong>, <strong>which startups</strong>, and — when it is an event —{' '}
+        <strong>when</strong>. It does not score: an <strong>Evaluation</strong> in the same phase supplies the grid.
       </div>
 
-      <h3 className="section-title">Who is seen</h3>
-      <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
-        Whoever the selection before this phase sent through. They wait in the pool until you seat them on a sitting.
-      </p>
+      <h3 className="section-title">How the reviewing happens</h3>
+      <div className="field">
+        <div className="pick-list">
+          <button
+            type="button"
+            className={config.format === 'event' ? 'pick on' : 'pick'}
+            onClick={() => patch({ format: 'event' })}
+          >
+            <Icon name={config.format === 'event' ? 'check' : 'square'} />
+            <div>
+              <strong>An event</strong>
+              <span>
+                A date, hours, and a slot per startup. The panel sits together and the startups are invited.
+              </span>
+            </div>
+          </button>
+          <button
+            type="button"
+            className={config.format === 'async' ? 'pick on' : 'pick'}
+            onClick={() => patch({ format: 'async', rsvpMode: 'none' })}
+          >
+            <Icon name={config.format === 'async' ? 'check' : 'square'} />
+            <div>
+              <strong>Spread over days</strong>
+              <span>
+                People read, call and qualify from their desk. No date, no timetable, nobody to invite — just who
+                reviews and what they take.
+              </span>
+            </div>
+          </button>
+        </div>
+      </div>
 
+      <h3 className="section-title">Which startups each panel takes</h3>
+      <div className="field">
+        <div className="pick-list">
+          <button type="button" className={!config.assign ? 'pick on' : 'pick'} onClick={() => patch({ assign: false })}>
+            <Icon name={!config.assign ? 'check' : 'square'} />
+            <div>
+              <strong>All of them</strong>
+              <span>Every panel reviews the whole intake. The plain case: colleagues reading everything.</span>
+            </div>
+          </button>
+          <button type="button" className={config.assign ? 'pick on' : 'pick'} onClick={() => patch({ assign: true })}>
+            <Icon name={config.assign ? 'check' : 'square'} />
+            <div>
+              <strong>Split between panels</strong>
+              <span>You hand each panel its own startups — one per pitch slot, or a share of the calls to make.</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {config.format === 'async' ? null : (
+      <>
       <div className="public-sep" />
 
       <h3 className="section-title">How each startup gets its time</h3>
@@ -83,6 +133,8 @@ export function CommitteeSetup({
           onChange={(v) => patch({ rsvpDeadline: v })}
           help="After this date the link stops accepting answers."
         />
+      )}
+      </>
       )}
     </>
   );

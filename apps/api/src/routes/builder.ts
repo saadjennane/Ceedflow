@@ -7,7 +7,6 @@ import {
   updatePhaseInput,
 } from '@ceed/shared';
 import type { FastifyInstance } from 'fastify';
-import { markAsJury } from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { notFound, parse } from './util.js';
 
@@ -50,10 +49,7 @@ export async function builderRoutes(app: FastifyInstance) {
   app.patch('/api/blocks/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const patch = parse(updateBlockInput, req.body);
-    const block = await repo.updateBlock(id, patch);
-    // Naming somebody as an evaluator is what makes them one, so the role follows.
-    if (block?.type === 'evaluation') await markAsJury((block.config as { evaluators?: string[] }).evaluators ?? []);
-    return block ?? notFound(reply, 'Block not found.');
+    return (await repo.updateBlock(id, patch)) ?? notFound(reply, 'Block not found.');
   });
 
   app.delete('/api/blocks/:id', async (req, reply) => {

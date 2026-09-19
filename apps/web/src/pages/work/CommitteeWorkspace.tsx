@@ -104,6 +104,16 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
     }
   };
 
+  /** Puts startups on a panel with no timetable behind it. */
+  const putOnPanel = async (session: SessionView, candidateIds: string[]) => {
+    setBusy(true);
+    try {
+      view.set(await api.post<CommitteeView>(`/api/sessions/${session.session.id}/assign`, { candidateIds }));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <>
       {/* ---- which sitting ---- */}
@@ -118,12 +128,17 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
               {sv.session.name}
               <span className="faint" style={{ fontWeight: 400 }}>
                 {' '}
-                · {formatDate(sv.session.heldOn)} · {sv.assignments.length}/{sv.capacity}
+                {/* A date and a capacity mean nothing without a timetable. */}
+                {config.format === 'event'
+                  ? `· ${formatDate(sv.session.heldOn)} · ${sv.assignments.length}/${sv.capacity}`
+                  : config.assign
+                    ? `· ${sv.assignments.length}`
+                    : ''}
               </span>
             </button>
           ))}
           <button className="track add" onClick={() => setEditing('new')}>
-            <Icon name="plus" size={13} /> Add committee
+            <Icon name="plus" size={13} /> Add {config.format === 'event' ? 'a sitting' : 'a panel'}
           </button>
         </div>
       </div>
@@ -160,20 +175,29 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
               )}
             </div>
             <button className="btn sm" onClick={() => setEditing(current.session)}>
-              <Icon name="edit" size={13} /> Edit committee
+              <Icon name="edit" size={13} /> Edit {config.format === 'event' ? 'sitting' : 'panel'}
             </button>
           </section>
 
           <div className="row wrap" style={{ fontSize: 12.5 }}>
-            <span className="faint">
-              {formatDate(current.session.heldOn)} ·{' '}
-              {current.session.windows.map((w) => `${w.startsAt}–${w.endsAt}`).join(' + ')} ·{' '}
-              <span className="num">{current.session.minutesPerStartup}</span> min each
-              {current.session.location && ` · ${current.session.location}`}
-            </span>
-            <span className={current.assignments.length > current.capacity ? 'badge stop num' : 'badge num'}>
-              {current.assignments.length}/{current.capacity}
-            </span>
+            {config.format === 'event' ? (
+              <>
+                <span className="faint">
+                  {formatDate(current.session.heldOn)} ·{' '}
+                  {current.session.windows.map((w) => `${w.startsAt}–${w.endsAt}`).join(' + ')} ·{' '}
+                  <span className="num">{current.session.minutesPerStartup}</span> min each
+                  {current.session.location && ` · ${current.session.location}`}
+                </span>
+                <span className={current.assignments.length > current.capacity ? 'badge stop num' : 'badge num'}>
+                  {current.assignments.length}/{current.capacity}
+                </span>
+              </>
+            ) : (
+              <span className="faint">
+                Spread over days — no timetable.{' '}
+                {config.assign ? 'Each panel takes the startups you give it.' : 'This panel reviews everything.'}
+              </span>
+            )}
             {evaluation ? (
               <button className="linklike" onClick={() => onOpenBlock(evaluation.blockId)}>
                 Scored by {evaluation.name}
@@ -183,7 +207,18 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
             )}
           </div>
 
-          {/* ---- the day, in columns, with the pool alongside ---- */}
+          {/* Asynchronous work has no day to lay out: what matters is who is on
+              this panel's list. */}
+          {config.format === 'async' ? (
+            <AsyncList
+              view={view.data}
+              current={current}
+              busy={busy}
+              onRemove={unseat}
+              onSeat={(ids) => putOnPanel(current, ids)}
+            />
+          ) : (
+          <>
           <div className="day">
             {current.session.windows.map((stretch, windowIndex) => {
               const slots = current.slots.filter((s) => s.windowIndex === windowIndex);
@@ -347,6 +382,8 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
             Drag a startup from the pool onto a time, from one time to another to swap them over, or back to the pool
             to take it off. A free slot can also be filled with a click.
           </p>
+          </>
+          )}
         </>
       )}
 
@@ -463,6 +500,114 @@ function Seat({
           <Icon name="x" size={13} />
         </button>
       </div>
+    </div>
+  );
+}
+
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * Asynchronous reviewing: no day to lay out, so the panel is a list. Without
+ * assignment there is nothing to hand out either — everyone reviews everything,
+ * and the list simply says so.
+ */
+function AsyncList({
+  view,
+  current,
+  busy,
+  onRemove,
+  onSeat,
+}: {
+  view: CommitteeView;
+  current: SessionView;
+  busy: boolean;
+  onRemove: (row: AssignmentView) => void;
+  onSeat: (candidateIds: string[]) => void;
+}) {
+  if (!view.config.assign) {
+    return (
+      <>
+        <div className="callout">
+          <Icon name="users" size={15} />
+          <div>
+            Every startup that reaches this block is on this panel&apos;s list — <strong>{view.pool.length}</strong> of
+            them. Split them between panels from Setup if you would rather share the reading out.
+          </div>
+        </div>
+        <div className="rows">
+          {view.pool.map(({ candidate }) => (
+            <div className="rowcard link-row" key={candidate.id}>
+              <span style={{ flex: 1, fontWeight: 600, fontSize: 13 }}>{candidate.orgName}</span>
+              <span className="faint" style={{ fontSize: 12 }}>
+                {candidate.contactName}
+              </span>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <div className="day">
+      <section className="day-col">
+        <header>
+          <span className="eyebrow">On this panel</span>
+          <span className="badge num">{current.assignments.length}</span>
+        </header>
+        <div className="day-slots">
+          {!current.assignments.length ? (
+            <div className="empty" style={{ padding: 18 }}>
+              Nobody yet. Take startups from the pool alongside.
+            </div>
+          ) : (
+            current.assignments.map((row) => (
+              <div className="slot-row" key={row.assignment.id}>
+                <div className="seated">
+                  <div className="seated-main">
+                    <div className="seated-name">{row.candidate.orgName}</div>
+                    <div className="seated-meta">
+                      {row.score !== null && <span className="num faint">{row.score}</span>}
+                    </div>
+                  </div>
+                  <div className="seat-actions">
+                    <button
+                      className="btn ghost icon sm"
+                      disabled={busy}
+                      aria-label="Take off this panel"
+                      onClick={() => onRemove(row)}
+                    >
+                      <Icon name="x" size={13} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
+
+      <aside className="pool-rail">
+        <div className="eyebrow">Not on a panel</div>
+        {!view.pool.length ? (
+          <div className="faint" style={{ fontSize: 11.5 }}>
+            Everyone is on a panel.
+          </div>
+        ) : (
+          view.pool.map(({ candidate }) => (
+            <button
+              className="pool-chip"
+              key={candidate.id}
+              disabled={busy}
+              onClick={() => onSeat([candidate.id])}
+              title="Put on this panel"
+            >
+              {candidate.orgName}
+            </button>
+          ))
+        )}
+      </aside>
     </div>
   );
 }

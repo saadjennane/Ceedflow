@@ -1,5 +1,4 @@
 import { orderedBlocks, type Block, type EvaluationConfig, type TrackWithPhases } from '@ceed/shared';
-import { PeoplePicker } from '../../directory/PeoplePicker';
 import { DateField, SelectField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
 import { CriteriaEditor, OutcomeEditor } from './shared';
@@ -61,16 +60,17 @@ export function EvaluationSetup({
       {scoped ? (
         <div className="callout ok">
           <Icon name="gavel" size={15} />
-          Scoring <strong>{scoped.name}</strong>: the startups come from its sittings, and each sitting is marked by its
-          own jury. The evaluator list below is not used.
+          Scored by <strong>{scoped.name}</strong>. Who reviews and which startups they take is set there — this block
+          only says with what grid.
         </div>
       ) : (
-        <PeoplePicker
-          label="Evaluators"
-          value={config.evaluators}
-          onChange={(v) => patch({ evaluators: v })}
-          help="From the directory. Each of them scores every candidate on the grid."
-        />
+        <div className="callout warn">
+          <Icon name="alert" size={15} />
+          <div>
+            <strong>Nothing scores this grid.</strong> Who reviews is a committee's to say, so add one in this phase —
+            an event with a date, or asynchronous work spread over days.
+          </div>
+        </div>
       )}
 
       <label className="check">

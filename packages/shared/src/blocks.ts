@@ -68,7 +68,7 @@ export const BLOCK_TYPE_META: Record<BlockType, BlockTypeMeta> = {
   committee: {
     type: 'committee',
     label: 'Selection committee',
-    blurb: 'Convene a jury on a date and assign the candidates they review.',
+    blurb: 'Say who reviews and which startups they take — on a date, or spread over days.',
     icon: 'gavel',
     implemented: true,
   },
@@ -260,16 +260,14 @@ export const evaluationConfigSchema = z.object({
   opensAt: z.string().nullable().default(null),
   closesAt: z.string().nullable().default(null),
   criteria: z.array(evaluationCriterionSchema).default([]),
-  /** Who scores. Ignored when the evaluation scores a committee: its juries do. */
-  /** Ids of people in the directory. Never names: a rename must not orphan a score. */
-  evaluators: z.array(z.string()).default([]),
   requireComment: z.boolean().default(false),
   /** The statuses this evaluation can put on a candidate. */
   outcomes: z.array(blockOutcomeSchema).default(DEFAULT_OUTCOMES),
   /**
-   * The committee whose sittings this evaluation scores. Null resolves to a
-   * committee in the same phase, which is how dropping the two together works.
-   * Name a block to pin it elsewhere, or 'standalone' to score on its own.
+   * The committee whose panels this evaluation scores. Null resolves to one in
+   * the same phase, which is how dropping the two together works; name a block
+   * to pin it elsewhere. An evaluation with no committee has nobody to score
+   * it — who reviews is the committee's to say, always.
    */
   scopeBlockId: z.string().nullable().default(null),
 });
@@ -291,7 +289,23 @@ export type RsvpMode = (typeof RSVP_MODES)[number];
  * The committee organises the sittings. It does not score — an Evaluation block
  * in the same phase does that, per committee.
  */
+/**
+ * Reviewing happens two ways. An **event** is situated: a date, hours, a slot
+ * per startup, invitations. **Asynchronous** work is spread out — people call,
+ * read and qualify from their desk over days. Both need the same thing from the
+ * model: who reviews, and which startups.
+ */
+export const COMMITTEE_FORMATS = ['event', 'async'] as const;
+export type CommitteeFormat = (typeof COMMITTEE_FORMATS)[number];
+
 export const committeeConfigSchema = z.object({
+  format: z.enum(COMMITTEE_FORMATS).default('event'),
+  /**
+   * Startups split across panels, or every startup reviewed by every panel.
+   * Off is the plain case: three colleagues reading the whole intake.
+   */
+  assign: z.boolean().default(true),
+  /** Only meaningful for an event: nobody is invited to asynchronous work. */
   rsvpMode: z.enum(RSVP_MODES).default('slots'),
   rsvpDeadline: z.string().nullable().default(null),
 });
@@ -305,6 +319,10 @@ export const timeWindowSchema = z.object({
 export type TimeWindow = z.infer<typeof timeWindowSchema>;
 
 /** One sitting. Its slots are derived from its windows and the time per startup. */
+/**
+ * A panel: who reviews, and — when the committee is an event — when they sit.
+ * The dates and hours below mean nothing for asynchronous work and are ignored.
+ */
 export const committeeSessionSchema = z.object({
   id: z.string(),
   blockId: z.string(),

@@ -203,6 +203,8 @@ function Moment({
     a.candidate.orgName.localeCompare(b.candidate.orgName);
 
   const lines = [...byCandidate.values()].sort(byScore);
+  /** No panel means nobody applies the grid — that is a committee's to say. */
+  const noPanel = Boolean(evaluation) && (scoring?.groups.length ?? 0) === 0;
 
   /**
    * One table per sitting, each showing only the jury that sat on it. Pooling
@@ -368,7 +370,15 @@ function Moment({
         )}
       </div>
 
-      {!lines.length ? (
+      {noPanel ? (
+        <div className="empty">
+          <h3>Nobody scores {evaluation!.name}</h3>
+          <p>
+            Who reviews is a committee&apos;s to say — an event with a date, or work spread over days. Add one in this
+            phase and its panels appear here.
+          </p>
+        </div>
+      ) : !lines.length ? (
         <div className="empty">
           <h3>Nobody has reached this step</h3>
           <p>Candidates arrive once they pass the selection before it.</p>

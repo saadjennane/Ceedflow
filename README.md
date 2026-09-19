@@ -32,6 +32,29 @@ apps/api          Fastify + raw SQL, migrations in src/db/migrations
 apps/web          React + TypeScript + Vite
 ```
 
+## Who reviews, and with what
+
+Two blocks, and the split is not a convenience: **people and time vary independently of criteria and
+scores**. The same startups get read by three colleagues on one grid, then pitched to a jury on a
+different one — that is one programme, two panels, two grids.
+
+**The committee says who reviews, which startups they take, and — optionally — when.** It comes in
+two formats. An **event** is situated: a date, hours, a slot per startup, invitations to answer.
+**Spread over days** is asynchronous: people read, call and qualify from their desk, and there is no
+timetable, no slot and nobody to invite. Assignment is a separate switch: every panel reviews the
+whole intake, or you hand each one its own startups.
+
+Those two switches cover what actually happens. Three colleagues reading every file is *async, no
+assignment*. Splitting the calls to make is *async, assigned*. A jury day is *event, assigned*.
+
+**The evaluation says with what grid, and what statuses come out of it.** It holds no list of
+evaluators at all: who reviews is the committee's to say, always, so there are not two places to
+look. An evaluation with no committee says plainly that nobody scores it rather than showing an
+empty table.
+
+That is also why the jury of a committee-scoped evaluation cannot be one list — it differs from one
+panel to the next, and each panel's marks are its own.
+
 ## Applying
 
 **You apply signed in, as one of your organisations.** That is what dissolved the identity block the

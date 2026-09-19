@@ -436,14 +436,27 @@ async function main() {
 
   const screening = await repo.createPhase(trackId, 'Screening');
   await repo.updatePhase(screening.id, { startsOn: '2026-10-11', endsOn: '2026-10-31' });
+  // Who reviews is a committee's to say — even when the reviewing is three
+  // colleagues reading every file from their desk over two weeks.
+  const readingPanel = await repo.createBlock(screening.id, 'committee', 'Reading panel');
+  await repo.updateBlock(readingPanel.id, {
+    config: { format: 'async', assign: false, rsvpMode: 'none', rsvpDeadline: null },
+  });
+  await repo.createSession(readingPanel.id, {
+    name: 'The team',
+    heldOn: null,
+    jury: EVALUATORS.map((e) => e.id),
+    location: '',
+  });
+
   const evaluation = await repo.createBlock(screening.id, 'evaluation', 'First review');
   await repo.updateBlock(evaluation.id, {
     config: {
       opensAt: '2026-10-12',
       closesAt: '2026-10-25',
       criteria: CRITERIA,
-      evaluators: EVALUATORS.map((e) => e.id),
       requireComment: true,
+      scopeBlockId: readingPanel.id,
     },
   });
   const shortlisting = await repo.createBlock(screening.id, 'selection', 'Shortlist');
@@ -455,7 +468,7 @@ async function main() {
   await repo.updatePhase(committeePhase.id, { startsOn: '2026-11-05', endsOn: '2026-11-20' });
   const committee = await repo.createBlock(committeePhase.id, 'committee', 'Jury day');
   await repo.updateBlock(committee.id, {
-    config: { rsvpMode: 'slots', rsvpDeadline: '2026-11-05' },
+    config: { format: 'event', assign: true, rsvpMode: 'slots', rsvpDeadline: '2026-11-05' },
   });
 
   // The grid stays in its own block. Sitting in the committee's phase is what

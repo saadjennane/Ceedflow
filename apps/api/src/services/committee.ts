@@ -114,8 +114,10 @@ export async function committeeView(blockId: string): Promise<CommitteeView | nu
   // One lookup for every jury of every sitting rather than one per sitting.
   const jurors = await peopleByIds([...new Set(sessions.flatMap((s) => s.jury))]);
 
+  const config = block.config as CommitteeConfig;
   const sessionViews: SessionView[] = sessions.map((session) => {
-    const slots = sessionSlots(session);
+    // Asynchronous work has no timetable, so it has no slots to hand out.
+    const slots = config.format === 'event' ? sessionSlots(session) : [];
     return {
       session,
       jury: session.jury.map((id) => jurors.find((j) => j.id === id)).filter((j): j is PersonRef => Boolean(j)),
@@ -149,7 +151,7 @@ export async function committeeView(blockId: string): Promise<CommitteeView | nu
 
   return {
     block,
-    config: block.config as CommitteeConfig,
+    config,
     sessions: sessionViews,
     pool: intake.filter((c) => !assigned.has(c.id)).map((candidate) => ({ candidate })),
     intakeFrom: intakeLabel(track, blockId),

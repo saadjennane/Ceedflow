@@ -278,27 +278,25 @@ export async function funnelRoutes(app: FastifyInstance) {
             name: session.session.name,
             heldOn: session.session.heldOn,
             evaluators: await peopleByIds(session.session.jury),
-            rows: session.assignments.map((a) => row(a.candidate)),
+            // Without assignment, every panel reviews the whole intake — the
+            // plain case of colleagues reading everything.
+            rows: (view?.config.assign
+              ? session.assignments.map((a) => a.candidate)
+              : found.intake.filter((c) => c.status !== 'Withdrawn')
+            ).map(row),
           })),
         ),
       };
     }
 
+    // Who reviews is a committee's to say. Without one, nobody scores this grid.
     return {
       block,
       criteria: config.criteria,
       requireComment: config.requireComment,
       outcomes,
       scope: null,
-      groups: [
-        {
-          sessionId: null,
-          name: '',
-          heldOn: null,
-          evaluators: await peopleByIds(config.evaluators),
-          rows: found.intake.filter((c) => c.status !== 'Withdrawn').map(row),
-        },
-      ],
+      groups: [],
     };
   });
 
