@@ -100,6 +100,17 @@ export function BlockDrawer({
             {meta.label} · {track.name}
           </span>
         }
+        /* A block with several sides to configure gets tabs, the way the
+           prototype had them. The rest are one panel and need none. */
+        tabs={
+          block.type === 'application'
+            ? APPLICATION_TABS.map((t) => (
+                <button key={t} role="tab" className={t === appTab ? 'tab on' : 'tab'} onClick={() => setAppTab(t)}>
+                  {t}
+                </button>
+              ))
+            : undefined
+        }
         footer={
           <>
             <button className="btn danger sm" onClick={() => setConfirm(true)}>
@@ -116,23 +127,6 @@ export function BlockDrawer({
           </>
         }
       >
-        {/* A block with several sides to configure gets tabs, the way the
-            prototype had them. The rest are one panel and need none. */}
-        {block.type === 'application' && (
-          <nav className="drawer-tabs" role="tablist">
-            {APPLICATION_TABS.map((t) => (
-              <button
-                key={t}
-                role="tab"
-                className={t === appTab ? 'tab on' : 'tab'}
-                onClick={() => setAppTab(t)}
-              >
-                {t}
-              </button>
-            ))}
-          </nav>
-        )}
-
         {workTab && workTab.tab !== currentTab && appTab === 'Overview' && (
           <div className="callout">
             <Icon name="arrowRight" size={15} />

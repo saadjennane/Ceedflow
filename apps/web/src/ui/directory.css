@@ -111,13 +111,15 @@
 }
 .chip-x:hover { opacity: 1; }
 
-/* Tabs inside a drawer, for a block with several sides to configure. */
+/* Tabs between a drawer's header and its body, so they never scroll away. */
 .drawer-tabs {
   display: flex;
   gap: 2px;
-  margin: -4px 0 4px;
+  flex: none;
+  padding: 0 20px;
   border-bottom: 1px solid var(--line);
   overflow-x: auto;
+  scrollbar-width: none;
 }
 .drawer-tabs .tab {
   border: 0;
@@ -126,10 +128,11 @@
   font-size: 12.5px;
   font-weight: 600;
   color: var(--ink-2);
-  padding: 7px 11px;
+  padding: 10px 11px;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
   cursor: pointer;
   white-space: nowrap;
 }
+.drawer-tabs .tab:hover { color: var(--ink); }
 .drawer-tabs .tab.on { color: var(--blue); border-bottom-color: var(--blue); }

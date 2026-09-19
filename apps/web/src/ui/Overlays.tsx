@@ -99,6 +99,7 @@ export function Drawer({
   footer,
   wide,
   headerExtra,
+  tabs,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
@@ -107,6 +108,8 @@ export function Drawer({
   footer?: ReactNode;
   wide?: boolean;
   headerExtra?: ReactNode;
+  /** Sits between the header and the body, so it never scrolls away. */
+  tabs?: ReactNode;
 }) {
   useEscape(onClose);
   return (
@@ -123,6 +126,7 @@ export function Drawer({
             <Icon name="x" />
           </button>
         </div>
+        {tabs && <nav className="drawer-tabs">{tabs}</nav>}
         <div className="drawer-body">{children}</div>
         {footer && <div className="drawer-foot">{footer}</div>}
       </aside>
