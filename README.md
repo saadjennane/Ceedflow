@@ -42,6 +42,27 @@ Roles are **statuses** for now: labels a record carries (Startup, Corporate, Inv
 Partner for an organisation; Mentor, Investor, Jury, CEED team for a person). Field sets per role
 come later; the model leaves room and the screens do not ask for it.
 
+### Signing in
+
+An **account is a way into one directory record**: the profile a member fills in *is* that record,
+not a second copy of the same person. Passwords are hashed with scrypt and a per-password salt, and
+compared in constant time. A session is a random token whose **hash** is what the database keeps, so
+reading that table is not enough to impersonate anybody; it travels in an `httpOnly` cookie, so no
+script on the page can read it — the web app talks to the API through a dev proxy, which makes that
+same-origin and therefore simple.
+
+Signing in refuses an unknown email and a wrong password **with the same message**, because a
+different one would tell anybody who has an account here.
+
+`/signup` creates the account and the person. `/me` is the member space: the profile — first name,
+last name, phone, city, country — and the organisation pages you look after. A person's `name` is
+derived from the two halves on every write, so it stays the display form the rest of the model
+already points at. Creating an organisation the team already typed in **attaches you to it** rather
+than making a twin, and you may edit only the organisations you belong to.
+
+**The CEED workspace itself is still open.** Authentication covers the member space; programs, the
+builder and the directory admin have no sign-in yet.
+
 **It starts empty, and fills two ways.** The team adds records itself — one at a time, or a fileful
 at once — and people register themselves at `/join`. There is no claim: an invitation needs
 somewhere to travel and a session to come back on, and neither exists yet, so a page-ownership state

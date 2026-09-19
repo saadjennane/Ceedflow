@@ -1,6 +1,7 @@
 import {
   affiliationInput,
   createRecordInput,
+  fullName,
   importInput,
   matchKey,
   parseRoles,
@@ -33,11 +34,14 @@ export async function directoryRoutes(app: FastifyInstance) {
 
   app.post('/api/records', async (req, reply) => {
     const input = parse(createRecordInput, req.body);
-    const existing = await dir.findByName(input.kind, input.name);
+    // A person is named by two fields; an organisation by one.
+    const name = input.kind === 'person' ? fullName(input.firstName, input.lastName) || input.name : input.name;
+    if (!name.trim()) throw new HttpError(422, 'A name is required.', { name: 'A name is required.' });
+    const existing = await dir.findByName(input.kind, name);
     if (existing) {
       throw new HttpError(422, `${existing.name} is already in the directory.`, { name: 'Already in the directory.' });
     }
-    const record = await dir.createRecord(input);
+    const record = await dir.createRecord({ ...input, name });
     if (input.affiliateTo) {
       const org = await dir.getRecord(input.affiliateTo);
       if (org) {
@@ -55,7 +59,13 @@ export async function directoryRoutes(app: FastifyInstance) {
   app.patch('/api/records/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const patch = parse(updateRecordInput, req.body);
-    return (await dir.updateRecord(id, patch)) ?? notFound(reply, 'Record not found.');
+    const current = await dir.getRecord(id);
+    if (!current) return notFound(reply, 'Record not found.');
+    // Editing either half of a person's name moves the display form with it.
+    if (current.kind === 'person' && (patch.firstName !== undefined || patch.lastName !== undefined)) {
+      patch.name = fullName(patch.firstName ?? current.firstName, patch.lastName ?? current.lastName);
+    }
+    return dir.updateRecord(id, patch);
   });
 
   app.delete('/api/records/:id', async (req, reply) => {

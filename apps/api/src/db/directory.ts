@@ -10,8 +10,8 @@ import {
 } from '@ceed/shared';
 import { db } from './client.js';
 
-const COLS = `id, kind, name, roles, origin, email, phone, city, country, website, bio,
-  tags, created_at::text as "createdAt"`;
+const COLS = `id, kind, name, first_name as "firstName", last_name as "lastName", roles, origin,
+  email, phone, city, country, website, bio, tags, created_at::text as "createdAt"`;
 
 const AFF_COLS = `id, person_id as "personId", org_id as "orgId", role, since`;
 
@@ -62,6 +62,8 @@ export async function findByName(kind: RecordKind, name: string): Promise<Direct
 export async function createRecord(input: {
   kind: RecordKind;
   name: string;
+  firstName?: string;
+  lastName?: string;
   roles?: string[];
   origin?: string;
   email?: string;
@@ -74,13 +76,15 @@ export async function createRecord(input: {
 }): Promise<DirectoryRecord> {
   const id = idOf.record();
   await (await db()).query(
-    `insert into records (id, kind, name, roles, origin, email, phone, city, country,
-       website, bio, tags)
-     values ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)`,
+    `insert into records (id, kind, name, first_name, last_name, roles, origin, email, phone, city,
+       country, website, bio, tags)
+     values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14::jsonb)`,
     [
       id,
       input.kind,
       input.name.trim(),
+      input.firstName ?? '',
+      input.lastName ?? '',
       JSON.stringify(input.roles ?? []),
       input.origin ?? 'manual',
       input.email ?? '',
@@ -97,6 +101,8 @@ export async function createRecord(input: {
 
 const FIELDS: Record<string, string> = {
   name: 'name',
+  firstName: 'first_name',
+  lastName: 'last_name',
   email: 'email',
   phone: 'phone',
   city: 'city',

@@ -1,7 +1,9 @@
+import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import Fastify from 'fastify';
 import { migrate } from './db/client.js';
 import { actionRoutes } from './routes/actions.js';
+import { authRoutes } from './routes/auth.js';
 import { builderRoutes } from './routes/builder.js';
 import { directoryRoutes } from './routes/directory.js';
 import { funnelRoutes } from './routes/funnel.js';
@@ -10,7 +12,8 @@ import { HttpError } from './routes/util.js';
 
 const app = Fastify({ logger: { transport: undefined, level: 'warn' } });
 
-await app.register(cors, { origin: true });
+await app.register(cors, { origin: true, credentials: true });
+await app.register(cookie);
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof HttpError) {
@@ -27,6 +30,7 @@ await app.register(builderRoutes);
 await app.register(funnelRoutes);
 await app.register(actionRoutes);
 await app.register(directoryRoutes);
+await app.register(authRoutes);
 
 await migrate();
 

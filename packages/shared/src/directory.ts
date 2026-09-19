@@ -34,7 +34,10 @@ export const ORIGIN_LABEL: Record<RecordOrigin, string> = {
 export const recordSchema = z.object({
   id: z.string(),
   kind: z.enum(RECORD_KINDS),
+  /** The display form. For a person it follows from the two fields below. */
   name: z.string().min(1),
+  firstName: z.string().default(''),
+  lastName: z.string().default(''),
   roles: z.array(z.string()).default([]),
   origin: z.enum(RECORD_ORIGINS).default('manual'),
   email: z.string().default(''),
@@ -90,7 +93,9 @@ export interface RecordDetail {
 
 export const createRecordInput = z.object({
   kind: z.enum(RECORD_KINDS),
-  name: z.string().min(1, 'A name is required.'),
+  name: z.string().default(''),
+  firstName: z.string().default(''),
+  lastName: z.string().default(''),
   roles: z.array(z.string()).default([]),
   email: z.string().default(''),
   phone: z.string().default(''),
@@ -207,3 +212,59 @@ export const signupInput = z.object({
   city: z.string().default(''),
   bio: z.string().default(''),
 });
+
+
+/* ------------------------------------------------------------------ */
+/* Accounts                                                            */
+/* ------------------------------------------------------------------ */
+
+/** A person's display name follows from the two fields they fill in. */
+export const fullName = (firstName: string, lastName: string) =>
+  [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
+
+export const signupAccountInput = z.object({
+  firstName: z.string().min(1, 'Tell us your first name.'),
+  lastName: z.string().min(1, 'Tell us your last name.'),
+  email: z.string().email('Enter a valid email address.'),
+  password: z.string().min(8, 'At least 8 characters.'),
+});
+
+export const loginInput = z.object({
+  email: z.string().email('Enter a valid email address.'),
+  password: z.string().min(1, 'Enter your password.'),
+});
+
+/** What a member may change on their own record. */
+export const profileInput = z.object({
+  firstName: z.string().min(1, 'A first name is required.'),
+  lastName: z.string().min(1, 'A last name is required.'),
+  phone: z.string().default(''),
+  city: z.string().default(''),
+  country: z.string().default(''),
+  bio: z.string().default(''),
+});
+
+/** An organisation page created from the member space. */
+export const myOrgInput = z.object({
+  name: z.string().min(1, 'Tell us the name of the organisation.'),
+  roles: z.array(z.string()).default(['Startup']),
+  email: z.string().default(''),
+  phone: z.string().default(''),
+  city: z.string().default(''),
+  country: z.string().default('Morocco'),
+  website: z.string().default(''),
+  bio: z.string().default(''),
+  /** What the member does there. */
+  myRole: z.string().default('Founder'),
+});
+
+export interface Account {
+  id: string;
+  email: string;
+}
+
+export interface Me {
+  account: Account;
+  record: DirectoryRecord;
+  organisations: AffiliationView[];
+}

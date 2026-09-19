@@ -24,4 +24,5 @@ export const idOf = {
   candidate: () => newId('cnd'),
   record: () => newId('rec'),
   affiliation: () => newId('aff'),
+  account: () => newId('acc'),
 };
