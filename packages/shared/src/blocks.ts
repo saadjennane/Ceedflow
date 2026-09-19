@@ -167,15 +167,52 @@ export const blockOutcomeSchema = z.object({
   tone: z.enum(['ok', 'warn', 'stop', 'neutral']).default('neutral'),
   /** Proposed automatically once the score reaches this. Null = never proposed. */
   minScore: z.number().nullable().default(null),
+  /**
+   * What a panel that did not agree lands on. Designated rather than inferred:
+   * the fallback of a score grid is its worst band, and "we did not agree" must
+   * not mean "rejected".
+   */
+  whenSplit: z.boolean().default(false),
 });
 
 export type BlockOutcome = z.infer<typeof blockOutcomeSchema>;
 
 export const DEFAULT_OUTCOMES: BlockOutcome[] = [
-  { id: 'retained', label: 'Retained', tone: 'ok', minScore: 70 },
-  { id: 'hold', label: 'On hold', tone: 'warn', minScore: 55 },
-  { id: 'rejected', label: 'Not retained', tone: 'stop', minScore: null },
+  { id: 'retained', label: 'Retained', tone: 'ok', minScore: 70, whenSplit: false },
+  { id: 'hold', label: 'Waitlist', tone: 'warn', minScore: 55, whenSplit: true },
+  { id: 'rejected', label: 'Not retained', tone: 'stop', minScore: null, whenSplit: false },
 ];
+
+/**
+ * How a panel's votes become one status. A strict majority of the votes cast —
+ * more than half, not merely the most — or everybody agreeing. Anything else
+ * lands on the status marked `whenSplit`.
+ */
+export const VOTE_RULES = ['majority', 'unanimous'] as const;
+export type VoteRule = (typeof VOTE_RULES)[number];
+
+export interface VoteTally {
+  outcomeId: string | null;
+  votes: number;
+  cast: number;
+  /** True when the rule was not met and the fallback answered instead. */
+  split: boolean;
+}
+
+export function tallyVotes(votes: string[], outcomes: BlockOutcome[], rule: VoteRule): VoteTally {
+  const cast = votes.filter(Boolean).length;
+  const fallback = outcomes.find((o) => o.whenSplit)?.id ?? null;
+  if (!cast) return { outcomeId: null, votes: 0, cast: 0, split: false };
+
+  const counts = new Map<string, number>();
+  for (const vote of votes.filter(Boolean)) counts.set(vote, (counts.get(vote) ?? 0) + 1);
+  const [top, count] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+
+  const met = rule === 'unanimous' ? count === cast : count > cast / 2;
+  return met
+    ? { outcomeId: top, votes: count, cast, split: false }
+    : { outcomeId: fallback, votes: count, cast, split: true };
+}
 
 /** The status a score earns: the best band it reaches. No score, no status. */
 export function proposedOutcome(score: number | null, outcomes: BlockOutcome[]): string | null {
@@ -246,7 +283,8 @@ export const applicationConfigSchema = z.object({
   onePerOrganisation: z.boolean().default(true),
 });
 
-export const evaluationCriterionSchema = z.object({
+/** What is actually marked. A section's children are these. */
+export const criterionLeafSchema = z.object({
   id: z.string(),
   label: z.string().min(1),
   help: z.string().default(''),
@@ -254,9 +292,58 @@ export const evaluationCriterionSchema = z.object({
   max: z.number().min(1).default(10),
 });
 
+/**
+ * A criterion is marked directly, or it is a **section** whose children are.
+ * One level only: deeper than that is a spreadsheet, not a grid.
+ */
+export const evaluationCriterionSchema = criterionLeafSchema.extend({
+  children: z.array(criterionLeafSchema).default([]),
+});
+
+export type CriterionLeaf = z.infer<typeof criterionLeafSchema>;
 export type EvaluationCriterion = z.infer<typeof evaluationCriterionSchema>;
 
+/**
+ * The things a mark is given on, with the weight each really carries. A
+ * section shares its weight among its children in proportion to theirs, so
+ * Team (30) → Complementarity (2), Commitment (1) is worth 20 and 10.
+ */
+export function gridLeaves(criteria: EvaluationCriterion[]): CriterionLeaf[] {
+  return criteria.flatMap((criterion) => {
+    if (!criterion.children.length) return [{ ...criterion }];
+    const total = criterion.children.reduce((n, child) => n + child.weight, 0);
+    if (total === 0) return [];
+    return criterion.children.map((child) => ({
+      ...child,
+      weight: (criterion.weight * child.weight) / total,
+    }));
+  });
+}
+
+/** What share of the final score a leaf carries, as a percentage. */
+export function leafShare(criteria: EvaluationCriterion[], leafId: string): number {
+  const leaves = gridLeaves(criteria);
+  const total = leaves.reduce((n, l) => n + l.weight, 0);
+  const leaf = leaves.find((l) => l.id === leafId);
+  return total && leaf ? Math.round((leaf.weight / total) * 100) : 0;
+}
+
+/**
+ * What an evaluator gives. A **score** is marks on a grid, weighted into a
+ * number out of 100. A **verdict** is the status itself: the panel votes in the
+ * same words the block produces, and a majority — or unanimity — settles it.
+ */
+export const EVALUATION_METHODS = ['score', 'verdict'] as const;
+export type EvaluationMethod = (typeof EVALUATION_METHODS)[number];
+
+/** How a mark is given. Stars are a rendering of a mark out of five. */
+export const EVALUATION_SCALES = ['points', 'stars'] as const;
+export type EvaluationScale = (typeof EVALUATION_SCALES)[number];
+
 export const evaluationConfigSchema = z.object({
+  method: z.enum(EVALUATION_METHODS).default('score'),
+  scale: z.enum(EVALUATION_SCALES).default('points'),
+  voteRule: z.enum(VOTE_RULES).default('majority'),
   opensAt: z.string().nullable().default(null),
   closesAt: z.string().nullable().default(null),
   criteria: z.array(evaluationCriterionSchema).default([]),
@@ -390,7 +477,7 @@ export const committeeAssignmentSchema = z.object({
 
 export type CommitteeAssignment = z.infer<typeof committeeAssignmentSchema>;
 
-export const SELECTION_METHODS = ['threshold', 'top_n', 'manual'] as const;
+export const SELECTION_METHODS = ['threshold', 'top_n', 'by_status', 'manual'] as const;
 export type SelectionMethod = (typeof SELECTION_METHODS)[number];
 
 export const selectionConfigSchema = z.object({
@@ -399,6 +486,8 @@ export const selectionConfigSchema = z.object({
   method: z.enum(SELECTION_METHODS).default('threshold'),
   threshold: z.number().min(0).default(70),
   topN: z.number().int().min(1).default(10),
+  /** For `by_status`: the statuses that pass. How a verdict panel feeds a cut. */
+  passOutcomeIds: z.array(z.string()).default([]),
   /** Which scoring block feeds it — an evaluation or a committee. Null = the nearest one upstream. */
   sourceBlockId: z.string().nullable().default(null),
   /**

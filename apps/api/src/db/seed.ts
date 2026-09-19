@@ -49,19 +49,19 @@ const FIELDS: FormField[] = [
 ];
 
 const CRITERIA: EvaluationCriterion[] = [
-  { id: 'c_problem', label: 'Problem and market', help: 'Is the problem real, and is the market worth addressing?', weight: 2, max: 10 },
-  { id: 'c_solution', label: 'Solution and differentiation', help: '', weight: 2, max: 10 },
-  { id: 'c_team', label: 'Team', help: 'Complementarity, commitment, track record.', weight: 3, max: 10 },
-  { id: 'c_traction', label: 'Traction', help: '', weight: 2, max: 10 },
-  { id: 'c_impact', label: 'Impact and job creation', help: '', weight: 1, max: 10 },
+  { id: 'c_problem', label: 'Problem and market', help: 'Is the problem real, and is the market worth addressing?', weight: 2, max: 10, children: [] },
+  { id: 'c_solution', label: 'Solution and differentiation', help: '', weight: 2, max: 10, children: [] },
+  { id: 'c_team', label: 'Team', help: 'Complementarity, commitment, track record.', weight: 3, max: 10, children: [] },
+  { id: 'c_traction', label: 'Traction', help: '', weight: 2, max: 10, children: [] },
+  { id: 'c_impact', label: 'Impact and job creation', help: '', weight: 1, max: 10, children: [] },
 ];
 
 /** The jury's own grid: what a panel can judge from a pitch, not from a file. */
 const JURY_CRITERIA: EvaluationCriterion[] = [
-  { id: 'j_pitch', label: 'Clarity of the pitch', help: 'Is the proposition understood in two minutes?', weight: 2, max: 10 },
-  { id: 'j_team', label: 'Founders on stage', help: 'Conviction, command of the numbers, honesty about risk.', weight: 3, max: 10 },
-  { id: 'j_model', label: 'Business model', help: 'Does the money add up, and can it scale?', weight: 3, max: 10 },
-  { id: 'j_fit', label: 'Fit with the program', help: 'Will six months here change their trajectory?', weight: 2, max: 10 },
+  { id: 'j_pitch', label: 'Clarity of the pitch', help: 'Is the proposition understood in two minutes?', weight: 2, max: 10, children: [] },
+  { id: 'j_team', label: 'Founders on stage', help: 'Conviction, command of the numbers, honesty about risk.', weight: 3, max: 10, children: [] },
+  { id: 'j_model', label: 'Business model', help: 'Does the money add up, and can it scale?', weight: 3, max: 10, children: [] },
+  { id: 'j_fit', label: 'Fit with the program', help: 'Will six months here change their trajectory?', weight: 2, max: 10, children: [] },
 ];
 
 const PROSPECTS = [

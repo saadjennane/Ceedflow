@@ -160,6 +160,12 @@ export async function selectionView(blockId: string): Promise<SelectionView | nu
       .sort((a, b) => (scoreOf(b.id) ?? 0) - (scoreOf(a.id) ?? 0))
       .slice(0, config.topN)
       .forEach((c) => passes.add(c.id));
+  } else if (config.method === 'by_status') {
+    // How a panel that votes rather than marks feeds a cut.
+    for (const c of roster) {
+      const status = statuses?.get(c.id)?.outcomeId;
+      if (status && config.passOutcomeIds.includes(status)) passes.add(c.id);
+    }
   }
 
   const stored = new Map((await repo.listOutcomes(blockId)).map((o) => [o.candidateId, o]));

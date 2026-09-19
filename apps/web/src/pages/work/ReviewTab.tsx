@@ -4,8 +4,12 @@ import {
   type BlockOutcome,
   type Candidate,
   type EvaluationCriterion,
+  tallyVotes,
+  type EvaluationMethod,
+  type EvaluationScale,
   type EvaluationScore,
   type PersonRef,
+  type VoteRule,
   type SelectionConfig,
   type TrackWithPhases,
 } from '@ceed/shared';
@@ -41,6 +45,9 @@ interface ScoringGroup {
 
 interface ScoringPayload {
   criteria: EvaluationCriterion[];
+  method: EvaluationMethod;
+  scale: EvaluationScale;
+  voteRule: VoteRule;
   requireComment: boolean;
   outcomes: BlockOutcome[];
   scope: { blockId: string; name: string } | null;
@@ -171,6 +178,8 @@ function Moment({
   const { scoring, decision } = view.data;
   const criteria = scoring?.criteria ?? [];
   const outcomes = scoring?.outcomes ?? [];
+  /** A panel that votes shows what each member said, not a number. */
+  const voting = scoring?.method === 'verdict';
 
   // The two sides list the same people; the join is what makes one table.
   const byCandidate = new Map<string, Line>();
@@ -438,7 +447,7 @@ function Moment({
                         {person.name.split(' ')[0]}
                       </th>
                     ))}
-                    {scoring && <th style={{ textAlign: 'right' }}>Score</th>}
+                    {scoring && <th style={{ textAlign: 'right' }}>{voting ? 'Votes' : 'Score'}</th>}
                     {evaluation && (
                       <th style={{ borderLeft: selection ? '1px solid var(--line-strong)' : undefined }}>Status</th>
                     )}
@@ -489,16 +498,55 @@ function Moment({
 
                           {section.evaluators.map((person) => {
                             const score = line.scoring?.scores.find((s) => s.evaluatorId === person.id);
+                            const voted = score?.submittedAt ? outcomes.find((o) => o.id === score.verdict) : null;
                             return (
                               <td key={person.id} className="score muted" style={{ textAlign: 'right' }}>
-                                {score?.submittedAt ? score.normalised : '—'}
+                                {voting ? (
+                                  voted ? (
+                                    <span className={voted.tone === 'neutral' ? 'badge' : `badge ${voted.tone}`}>
+                                      {voted.label}
+                                    </span>
+                                  ) : (
+                                    '—'
+                                  )
+                                ) : score?.submittedAt ? (
+                                  score.normalised
+                                ) : (
+                                  '—'
+                                )}
                               </td>
                             );
                           })}
 
                           {scoring && (
                             <td className="score" style={{ textAlign: 'right' }}>
-                              {line.scoring?.consensus ?? '—'}
+                              {voting ? (
+                                (() => {
+                                  const tally = tallyVotes(
+                                    (line.scoring?.scores ?? [])
+                                      .filter((s) => s.submittedAt)
+                                      .map((s) => s.verdict),
+                                    outcomes,
+                                    scoring.voteRule,
+                                  );
+                                  if (!tally.cast) return <span className="faint">no vote</span>;
+                                  return (
+                                    <span
+                                      className="faint num"
+                                      title={
+                                        tally.split
+                                          ? `The panel did not agree — ${scoring.voteRule === 'unanimous' ? 'unanimity' : 'a majority'} was needed`
+                                          : undefined
+                                      }
+                                    >
+                                      {tally.votes}/{tally.cast}
+                                      {tally.split ? ' · split' : ''}
+                                    </span>
+                                  );
+                                })()
+                              ) : (
+                                (line.scoring?.consensus ?? '—')
+                              )}
                             </td>
                           )}
 
@@ -577,6 +625,9 @@ function Moment({
                                 candidate={line.candidate}
                                 criteria={criteria}
                                 evaluator={me!}
+                                method={scoring?.method}
+                                scale={scoring?.scale}
+                                outcomes={outcomes}
                                 evaluators={section.evaluators}
                                 onEvaluator={(id) => setAs((a) => ({ ...a, [section.key]: id }))}
                                 requireComment={scoring?.requireComment}

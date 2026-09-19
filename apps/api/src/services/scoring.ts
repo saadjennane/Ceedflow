@@ -1,10 +1,13 @@
 import {
   DEFAULT_OUTCOMES,
   consensusScore,
+  gridLeaves,
   normalisedScore,
   proposedOutcome,
+  tallyVotes,
   type Block,
   type BlockOutcome,
+  type CriterionLeaf,
   type EvaluationConfig,
   type EvaluationCriterion,
   type EvaluationScore,
@@ -21,6 +24,13 @@ export function criteriaOf(block: Block): EvaluationCriterion[] {
   return (block.config as EvaluationConfig).criteria ?? [];
 }
 
+/** What is actually marked, with each leaf's real share of the weight. */
+export function scoredLeaves(block: Block): CriterionLeaf[] {
+  return gridLeaves(criteriaOf(block));
+}
+
+const methodOf = (block: Block) => (block.config as EvaluationConfig).method ?? 'score';
+
 export function outcomesOf(block: Block): BlockOutcome[] {
   if (!isScoringBlock(block)) return [];
   const outcomes = (block.config as EvaluationConfig).outcomes;
@@ -35,7 +45,8 @@ export interface CandidateScores {
 
 /** Every score recorded against a block, grouped by candidate. */
 export async function scoresByCandidate(block: Block): Promise<Map<string, CandidateScores>> {
-  const criteria = criteriaOf(block);
+  // Marks are given on the leaves; a section only shares its weight out.
+  const criteria = scoredLeaves(block);
   const rows = await repo.listScores(block.id);
   const grouped = new Map<string, CandidateScores>();
   for (const row of rows) {
@@ -68,8 +79,19 @@ export async function outcomesByCandidate(block: Block): Promise<Map<string, Can
   const stored = new Map((await repo.listBlockOutcomes(block.id)).map((o) => [o.candidateId, o]));
 
   const result = new Map<string, CandidateOutcome>();
+  const verdictMode = methodOf(block) === 'verdict';
+  const rule = (block.config as EvaluationConfig).voteRule ?? 'majority';
+
   for (const [candidateId, entry] of grouped) {
-    result.set(candidateId, { outcomeId: proposedOutcome(entry.consensus, outcomes), overridden: false });
+    // A grid earns a band; a panel names the status itself and votes on it.
+    const outcomeId = verdictMode
+      ? tallyVotes(
+          entry.scores.filter((s) => s.submittedAt).map((s) => s.verdict),
+          outcomes,
+          rule,
+        ).outcomeId
+      : proposedOutcome(entry.consensus, outcomes);
+    result.set(candidateId, { outcomeId, overridden: false });
   }
   for (const [candidateId, row] of stored) {
     result.set(candidateId, { outcomeId: row.outcomeId, overridden: true });
@@ -79,8 +101,8 @@ export async function outcomesByCandidate(block: Block): Promise<Map<string, Can
 
 /** Sets a status by hand — or clears it, when the choice is what the score said anyway. */
 export async function setOutcomeByHand(block: Block, candidateId: string, outcomeId: string): Promise<void> {
-  const grouped = await scoresByCandidate(block);
-  const proposed = proposedOutcome(grouped.get(candidateId)?.consensus ?? null, outcomesOf(block));
+  const derived = await outcomesByCandidate(block);
+  const proposed = derived.get(candidateId)?.overridden ? null : (derived.get(candidateId)?.outcomeId ?? null);
   if (outcomeId === proposed) await repo.clearBlockOutcome(block.id, candidateId);
   else await repo.setBlockOutcome(block.id, candidateId, outcomeId, true);
 }

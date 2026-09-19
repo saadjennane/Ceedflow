@@ -33,6 +33,8 @@ const scoreInput = z.object({
   evaluatorName: z.string().optional(),
   sessionId: z.string().nullable().optional(),
   marks: z.record(z.number()).default({}),
+  /** The status named, when the block asks for a verdict rather than marks. */
+  verdict: z.string().optional(),
   comment: z.string().optional(),
   submit: z.boolean().optional(),
 });
@@ -269,6 +271,9 @@ export async function funnelRoutes(app: FastifyInstance) {
       return {
         block,
         criteria: config.criteria,
+        method: config.method,
+        scale: config.scale,
+        voteRule: config.voteRule,
         requireComment: config.requireComment,
         outcomes,
         scope: { blockId: committee.id, name: committee.name },
@@ -293,6 +298,9 @@ export async function funnelRoutes(app: FastifyInstance) {
     return {
       block,
       criteria: config.criteria,
+      method: config.method,
+      scale: config.scale,
+      voteRule: config.voteRule,
       requireComment: config.requireComment,
       outcomes,
       scope: null,

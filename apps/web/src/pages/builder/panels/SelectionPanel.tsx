@@ -1,4 +1,11 @@
-import { orderedBlocks, type Block, type SelectionConfig, type TrackWithPhases } from '@ceed/shared';
+import {
+  DEFAULT_OUTCOMES,
+  orderedBlocks,
+  type Block,
+  type EvaluationConfig,
+  type SelectionConfig,
+  type TrackWithPhases,
+} from '@ceed/shared';
 import { NumberField, SelectField, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
 
@@ -23,6 +30,13 @@ export function SelectionSetup({
   const upstreamScoring = ordered
     .slice(0, index === -1 ? undefined : index)
     .filter((b) => b.type === 'evaluation' || b.type === 'committee');
+  // The statuses to cut on come from whichever block hands them out.
+  const source = config.sourceBlockId
+    ? upstreamScoring.find((b) => b.id === config.sourceBlockId)
+    : upstreamScoring[upstreamScoring.length - 1];
+  const sourceOutcomes =
+    source?.type === 'evaluation' ? ((source.config as EvaluationConfig).outcomes ?? DEFAULT_OUTCOMES) : [];
+
   const otherCohort = ordered.find(
     (b) => b.type === 'selection' && b.id !== block.id && (b.config as SelectionConfig).outputKind === 'cohort',
   );
@@ -96,6 +110,7 @@ export function SelectionSetup({
         options={[
           { value: 'threshold', label: 'Everyone at or above a score' },
           { value: 'top_n', label: 'The best N by score' },
+          { value: 'by_status', label: 'Everyone carrying a status' },
           { value: 'manual', label: 'Decided by hand' },
         ]}
       />
@@ -113,6 +128,39 @@ export function SelectionSetup({
       {config.method === 'top_n' && (
         <NumberField label="How many pass" value={config.topN} onChange={(v) => patch({ topN: v })} min={1} />
       )}
+      {config.method === 'by_status' && (
+        <div className="field">
+          <label>Which statuses pass</label>
+          {sourceOutcomes.length ? (
+            <div className="work-pick">
+              {sourceOutcomes.map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  className={config.passOutcomeIds.includes(o.id) ? 'track on' : 'track'}
+                  onClick={() =>
+                    patch({
+                      passOutcomeIds: config.passOutcomeIds.includes(o.id)
+                        ? config.passOutcomeIds.filter((x) => x !== o.id)
+                        : [...config.passOutcomeIds, o.id],
+                    })
+                  }
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="empty" style={{ padding: 18 }}>
+              The block above hands out no status yet.
+            </div>
+          )}
+          <div className="hint">
+            How a panel that votes feeds a cut: no number is involved, so the words the jury used are what decides.
+          </div>
+        </div>
+      )}
+
       {config.method === 'manual' && (
         <div className="callout">
           <Icon name="alert" size={15} />

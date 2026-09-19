@@ -14,8 +14,8 @@ import { api } from '../../lib/api';
 import { Icon } from '../../ui/Icon';
 import { ConfirmDialog, Drawer, useToast } from '../../ui/Overlays';
 import { APPLICATION_TABS, ApplicationSetup, type ApplicationTab } from './panels/ApplicationPanel';
+import { EVALUATION_TABS, EvaluationSetup, type EvaluationTab } from './panels/EvaluationPanel';
 import { CommitteeSetup } from './panels/CommitteePanel';
-import { EvaluationSetup } from './panels/EvaluationPanel';
 import { SelectionSetup } from './panels/SelectionPanel';
 import { SourcingSetup } from './panels/SourcingPanel';
 
@@ -56,6 +56,7 @@ export function BlockDrawer({
 
   const [confirm, setConfirm] = useState(false);
   const [appTab, setAppTab] = useState<ApplicationTab>('Overview');
+  const [evalTab, setEvalTab] = useState<EvaluationTab>('Overview');
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
@@ -109,7 +110,13 @@ export function BlockDrawer({
                   {t}
                 </button>
               ))
-            : undefined
+            : block.type === 'evaluation'
+              ? EVALUATION_TABS.map((t) => (
+                  <button key={t} role="tab" className={t === evalTab ? 'tab on' : 'tab'} onClick={() => setEvalTab(t)}>
+                    {t}
+                  </button>
+                ))
+              : undefined
         }
         footer={
           <>
@@ -127,7 +134,7 @@ export function BlockDrawer({
           </>
         }
       >
-        {workTab && workTab.tab !== currentTab && appTab === 'Overview' && (
+        {workTab && workTab.tab !== currentTab && appTab === 'Overview' && evalTab === 'Overview' && (
           <div className="callout">
             <Icon name="arrowRight" size={15} />
             <div style={{ flex: 1 }}>
@@ -152,7 +159,13 @@ export function BlockDrawer({
           <ApplicationSetup block={block} config={draft as unknown as ApplicationConfig} patch={patch} tab={appTab} />
         )}
         {block.type === 'evaluation' && (
-          <EvaluationSetup block={block} config={draft as unknown as EvaluationConfig} patch={patch} track={track} />
+          <EvaluationSetup
+            block={block}
+            config={draft as unknown as EvaluationConfig}
+            patch={patch}
+            track={track}
+            tab={evalTab}
+          />
         )}
         {block.type === 'committee' && (
           <CommitteeSetup config={draft as unknown as CommitteeConfig} patch={patch} />

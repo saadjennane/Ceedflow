@@ -73,6 +73,8 @@ export const evaluationScoreSchema = z.object({
   evaluatorName: z.string().default(''),
   /** Raw marks keyed by criterion id. */
   marks: z.record(z.number()).default({}),
+  /** The status this evaluator named, when the block asks for a verdict. */
+  verdict: z.string().default(''),
   comment: z.string().default(''),
   submittedAt: z.string().nullable().default(null),
 });

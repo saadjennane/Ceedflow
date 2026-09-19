@@ -136,3 +136,28 @@
 }
 .drawer-tabs .tab:hover { color: var(--ink); }
 .drawer-tabs .tab.on { color: var(--blue); border-bottom-color: var(--blue); }
+
+/* A section's children, one level in. */
+.sub-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  margin-left: 14px;
+  border-left: 2px solid var(--line-strong);
+  border-radius: 0 var(--r) var(--r) 0;
+}
+
+/* One to five, as buttons rather than a widget nobody can tab through. */
+.stars { display: flex; align-items: center; gap: 2px; }
+.star {
+  border: 0;
+  background: none;
+  padding: 2px;
+  cursor: pointer;
+  color: var(--line-strong);
+  display: inline-flex;
+  border-radius: 5px;
+}
+.star:hover { color: var(--warn); }
+.star.on { color: var(--warn); }

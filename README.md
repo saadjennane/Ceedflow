@@ -281,6 +281,26 @@ hand-added startup can be taken back off.
 
 ### Statuses, and the difference with a Selection
 
+An evaluation comes in two methods, chosen in its Overview tab.
+
+**A score** is marks on a grid, weighted into a number out of 100. A criterion is marked directly,
+or it is a **section** whose children are — one level only, and the share each leaf really carries
+is shown as a percentage rather than left to be worked out. *Team (30) → Complementarity (2),
+Commitment (1)* is worth 20 and 10. Marks are entered out of a number, or as **stars** out of five;
+a single criterion marked that way is simply an overall rating, which is why stars are a scale and
+not a third method.
+
+**A verdict** is the status itself. The panel votes in the same words the block produces — Retained,
+Waitlist, Not retained — and a rule settles it: a **strict majority of the votes cast**, more than
+half rather than merely the most, or **unanimity**. Anything else lands on the status marked *when
+the panel does not agree*, which is what a waitlist is for. That fallback is **designated, never
+inferred**: a score grid's fallback is its worst band, and "we did not agree" must not mean
+"rejected". The grid stays as what to look at, shown beside the status picker so a verdict is not a
+shrug.
+
+A verdict produces no number, so a **Selection can cut on a status**: everyone carrying Retained
+passes. Without that the method would lead nowhere.
+
 An evaluation **qualifies** a startup with a configurable status (Retained / On hold / Not retained
 by default). The status **follows from the score** — each one carries a threshold, and that is the
 whole point of configuring them — so nothing is stored and there is no step to run: change a mark

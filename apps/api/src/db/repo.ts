@@ -54,7 +54,7 @@ const CANDIDATE_SELECT = `select c.id, c.edition_id as "editionId", c.track_id a
   c.submitted_at::text as "submittedAt"
   ${CANDIDATE_FROM}`;
 const SCORE_COLS = `id, block_id as "blockId", candidate_id as "candidateId",
-  evaluator_id as "evaluatorId", evaluator_name as "evaluatorName", marks, comment,
+  evaluator_id as "evaluatorId", evaluator_name as "evaluatorName", marks, verdict, comment,
   submitted_at::text as "submittedAt"`;
 
 function hydrateBlock(row: Block): Block {
@@ -604,19 +604,21 @@ export async function upsertScore(input: {
   evaluatorName?: string;
   sessionId?: string | null;
   marks: Record<string, number>;
+  verdict?: string;
   comment?: string;
   submit?: boolean;
 }): Promise<EvaluationScore> {
   const conn = await db();
   await conn.query(
-    `insert into evaluation_scores (id, block_id, candidate_id, evaluator_id, evaluator_name, marks, comment, submitted_at, session_id)
-     values ($1,$2,$3,$4,$5,$6,$7, case when $8 then now() else null end, $9)
+    `insert into evaluation_scores (id, block_id, candidate_id, evaluator_id, evaluator_name, marks, verdict, comment, submitted_at, session_id)
+     values ($1,$2,$3,$4,$5,$6,$7,$8, case when $9 then now() else null end, $10)
      on conflict (block_id, candidate_id, evaluator_id) do update
        set marks = excluded.marks,
+           verdict = excluded.verdict,
            comment = excluded.comment,
            evaluator_name = excluded.evaluator_name,
            session_id = coalesce(excluded.session_id, evaluation_scores.session_id),
-           submitted_at = case when $8 then now() else evaluation_scores.submitted_at end`,
+           submitted_at = case when $9 then now() else evaluation_scores.submitted_at end`,
     [
       newId('scr'),
       input.blockId,
@@ -624,6 +626,7 @@ export async function upsertScore(input: {
       input.evaluatorId,
       input.evaluatorName ?? '',
       JSON.stringify(input.marks),
+      input.verdict ?? '',
       input.comment ?? '',
       input.submit ?? false,
       input.sessionId ?? null,
