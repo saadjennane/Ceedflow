@@ -57,6 +57,20 @@ async function connect(): Promise<Db> {
     };
   }
 
+  /* PGlite is a database inside the process: no server to install, and the
+     data in a folder beside the code. That is right for a laptop and wrong
+     everywhere else — in a container the folder dies with the container, and
+     loading the engine into memory is what a small instance kills you for.
+     Falling back to it silently in production would look like a crash with no
+     cause, or worse, like a working app with an empty database. */
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'DATABASE_URL is not set. In production this app talks to a Postgres server; ' +
+        'it will not start its own. Point DATABASE_URL at the database — on Railway, ' +
+        'add a Postgres service and set DATABASE_URL to ${{Postgres.DATABASE_URL}}.',
+    );
+  }
+
   const { PGlite } = await import('@electric-sql/pglite');
   const pg = new PGlite(process.env.PGLITE_DIR ?? join(here, '../../../../.pgdata'));
   await pg.waitReady;
