@@ -14,6 +14,7 @@ export function newId(prefix: string): string {
 }
 
 export const idOf = {
+  loginAttempt: () => newId('att'),
   program: () => newId('prg'),
   edition: () => newId('edt'),
   track: () => newId('trk'),

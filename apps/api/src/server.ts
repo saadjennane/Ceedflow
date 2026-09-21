@@ -18,7 +18,15 @@ import { staffRoutes } from './routes/staff.js';
 import { bootstrapAdmin } from './services/bootstrap.js';
 import { HttpError } from './routes/util.js';
 
-const app = Fastify({ logger: { transport: undefined, level: 'warn' } });
+const app = Fastify({
+  logger: { transport: undefined, level: 'warn' },
+  /* Behind a platform's proxy every request arrives from the same place, so
+     `req.ip` would be the proxy for everybody — and a limit counted per
+     address would lock out the whole world at once, or nobody. Trusting the
+     forwarded header is only sound because the proxy sets it; run this
+     directly on the open internet and it becomes a claim anyone can make. */
+  trustProxy: process.env.NODE_ENV === 'production',
+});
 
 await app.register(cors, { origin: true, credentials: true });
 await app.register(cookie);

@@ -28,6 +28,9 @@ import {
   accountForToken,
   accountOfRecord,
   adminCount,
+  clearFailedLogins,
+  loginAllowed,
+  noteFailedLogin,
   closeAccount,
   createAccount,
   createSession,
@@ -164,12 +167,26 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.post('/api/auth/login', async (req, reply) => {
     const input = parse(loginInput, req.body);
+
+    /* Counted before the password is even looked at, so a machine guessing in
+       a loop is stopped rather than merely refused each time. */
+    const gate = await loginAllowed(input.email, req.ip);
+    if (!gate.allowed) {
+      reply.header('retry-after', String(gate.retryAfter));
+      throw new HttpError(429, 'Too many attempts. Try again in a few minutes.');
+    }
+
     const account = await findAccount(input.email);
     // The same refusal whether the email is unknown or the password is wrong:
     // otherwise this endpoint tells anyone who has an account here.
     const ok = account && (await verifyPassword(input.password, account.passwordHash));
-    if (!account || !ok) throw new HttpError(401, 'Email or password is wrong.');
+    if (!account || !ok) {
+      await noteFailedLogin(input.email, req.ip);
+      throw new HttpError(401, 'Email or password is wrong.');
+    }
 
+    // Getting in is proof of the right to; the record of the fumbling goes.
+    await clearFailedLogins(input.email);
     const { token, expiresAt } = await createSession(account.id);
     setSession(reply, token, expiresAt);
     return meFor(account);

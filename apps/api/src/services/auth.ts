@@ -8,7 +8,7 @@ import {
 } from '@ceed/shared';
 import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
-import { db } from '../db/client.js';
+import { db, one } from '../db/client.js';
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 
@@ -267,6 +267,74 @@ export async function closeAccount(accountId: string): Promise<void> {
   const client = await db();
   await client.query('delete from sessions where account_id = $1', [accountId]);
   await client.query('delete from accounts where id = $1', [accountId]);
+}
+
+/* ------------------------------------------------------------------ */
+/* Slowing down whoever is guessing                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How many failures are allowed before the door stops answering, and for how
+ * long. Two separate counts, on purpose:
+ *
+ * - the pair (address, source) is tight, because somebody working on one
+ *   account from one place is exactly what guessing looks like;
+ * - the source alone is looser, to catch the same machine walking through many
+ *   addresses.
+ *
+ * Counting the address alone would have been the obvious third, and would have
+ * let anybody lock a person out of their own account by failing on their
+ * behalf. Guessing is the thing to stop; denying service must not be the way.
+ */
+const WINDOW_MINUTES = 15;
+const MAX_PER_EMAIL_AND_IP = 5;
+const MAX_PER_IP = 20;
+
+export interface LoginGate {
+  allowed: boolean;
+  /** Seconds to wait, for the header and the sentence shown. */
+  retryAfter: number;
+}
+
+/** Whether this attempt may even be tried. Read before any password is checked. */
+export async function loginAllowed(email: string, ip: string): Promise<LoginGate> {
+  const since = `${WINDOW_MINUTES} minutes`;
+  const row = await one<{ pair: number; source: number }>(
+    `select
+       count(*) filter (where email = $1 and ip = $2)::int as pair,
+       count(*) filter (where ip = $2)::int                as source
+     from login_attempts
+     where at > now() - interval '${since}'`,
+    [email.trim().toLowerCase(), ip],
+  );
+  const pair = row?.pair ?? 0;
+  const source = row?.source ?? 0;
+  if (pair < MAX_PER_EMAIL_AND_IP && source < MAX_PER_IP) {
+    return { allowed: true, retryAfter: 0 };
+  }
+  return { allowed: false, retryAfter: WINDOW_MINUTES * 60 };
+}
+
+/** Remembers a failure. Called only when the password was actually wrong. */
+export async function noteFailedLogin(email: string, ip: string): Promise<void> {
+  await (await db()).query('insert into login_attempts (id, email, ip) values ($1,$2,$3)', [
+    idOf.loginAttempt(),
+    email.trim().toLowerCase(),
+    ip,
+  ]);
+}
+
+/**
+ * Forgets this person's failures, and sweeps away everything past the window.
+ * Signing in is proof that whoever was typing had the right to, so the record
+ * of their fumbling has no reason to outlive it.
+ */
+export async function clearFailedLogins(email: string): Promise<void> {
+  await (await db()).query(
+    `delete from login_attempts
+      where email = $1 or at < now() - interval '${WINDOW_MINUTES} minutes'`,
+    [email.trim().toLowerCase()],
+  );
 }
 
 /** Name of the cookie the browser carries. httpOnly, so no script reads it. */
