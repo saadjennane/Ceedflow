@@ -177,15 +177,19 @@
 }
 
 /* One to five, as buttons rather than a widget nobody can tab through. */
-.stars { display: flex; align-items: center; gap: 2px; }
+/* A juror gives five of these per criterion, for every startup of a day. Small
+   targets are what make that tiring, so they are sized to be hit without
+   aiming — and spaced enough that the wrong one is hard to reach. */
+.stars { display: flex; align-items: center; gap: 4px; }
 .star {
   border: 0;
   background: none;
-  padding: 2px;
+  padding: 6px;
   cursor: pointer;
   color: var(--line-strong);
   display: inline-flex;
-  border-radius: 5px;
+  border-radius: 8px;
 }
-.star:hover { color: var(--warn); }
+.star:hover { color: var(--warn); background: var(--wash); }
 .star.on { color: var(--warn); }
+.star:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }

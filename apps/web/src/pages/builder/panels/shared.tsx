@@ -869,7 +869,7 @@ export function GridPreview({
                           })
                         }
                       >
-                        <Icon name="star" size={22} />
+                        <Icon name="star" size={26} />
                       </button>
                     ))}
                   </div>

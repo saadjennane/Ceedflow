@@ -351,7 +351,7 @@ function ReviewOne({
                         })
                       }
                     >
-                      <Icon name="star" size={18} />
+                      <Icon name="star" size={26} />
                     </button>
                   ))}
                 </div>
