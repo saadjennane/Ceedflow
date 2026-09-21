@@ -14,7 +14,6 @@ import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
 import { Modal, useToast } from '../../ui/Overlays';
-import { SessionModal } from '../builder/panels/CommitteePanel';
 
 interface AssignmentView {
   assignment: CommitteeAssignment;
@@ -51,10 +50,19 @@ const RSVP_TONE: Record<string, string> = {
 /** What is being dragged: a seated startup, or someone still in the pool. */
 type Dragged = { kind: 'seat'; row: AssignmentView } | { kind: 'pool'; candidate: Candidate };
 
-export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpenBlock: (id: string) => void }) {
+export function CommitteeWorkspace({
+  block,
+  onOpenSetup,
+  onOpenScoring,
+}: {
+  block: Block;
+  /** Opens this block's own drawer, over the tab you are on. */
+  onOpenSetup: (id: string) => void;
+  /** Sends you to Review, where the evaluation's scores live. */
+  onOpenScoring: (id: string) => void;
+}) {
   const view = useAsync(() => api.get<CommitteeView>(`/api/blocks/${block.id}/committee`), block.id);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [editing, setEditing] = useState<CommitteeSession | 'new' | null>(null);
   const [placing, setPlacing] = useState<{ session: SessionView; slot: CommitteeSlot } | null>(null);
   const [busy, setBusy] = useState(false);
   const [over, setOver] = useState<string | null>(null);
@@ -66,6 +74,22 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
 
   const { sessions, pool, evaluation, intakeFrom, config } = view.data;
   const current = sessions.find((s) => s.session.id === openId) ?? sessions[0] ?? null;
+  /* On this sitting, still without a time — your work of the day, and the order
+     Fill slots follows. The server hands them back in the order they were put
+     on; sorting here says so out loud rather than relying on it. */
+  const waiting = (current?.assignments ?? [])
+    .filter((a) => a.assignment.slotIndex === null)
+    .sort((a, b) => a.assignment.position - b.assignment.position);
+  /* A startup may sit on several sittings now, so the ones held by another are
+     no longer out of reach from here — they were simply invisible, and the only
+     way to add one was to go back to Setup. They stay a group of their own:
+     putting one on a second sitting is a decision, not a slip. */
+  const onThis = new Set((current?.assignments ?? []).map((a) => a.candidate.id));
+  const held = sessions
+    .filter((sv) => sv.session.id !== current?.session.id)
+    .flatMap((sv) => sv.assignments.map((row) => ({ candidate: row.candidate, on: sv.session.name || 'another sitting' })))
+    .filter((x) => !onThis.has(x.candidate.id))
+    .filter((x, i, all) => all.findIndex((y) => y.candidate.id === x.candidate.id) === i);
 
   /** Drops a startup on a slot: seat it first if it came from the pool. */
   const dropOn = async (session: SessionView, slotIndex: number | null) => {
@@ -94,6 +118,11 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
     }
   };
 
+  /**
+   * Off the sitting altogether: back to the pool, on no sitting at all.
+   * This is the stronger of the two removals, and it lives on the rail chip —
+   * the place where the startup is no longer tied to an hour.
+   */
   const unseat = async (row: AssignmentView) => {
     setBusy(true);
     try {
@@ -104,11 +133,88 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
     }
   };
 
+  /**
+   * Off the hour, not off the sitting: it goes back to No time yet, still on
+   * this panel. Clearing a time used to throw the startup out of the sitting
+   * entirely, which made a simple change of mind about the timetable cost you
+   * the seat.
+   */
+  const clearTime = async (row: AssignmentView) => {
+    setBusy(true);
+    try {
+      view.set(await api.post<CommitteeView>(`/api/assignments/${row.assignment.id}/slot`, { slotIndex: null }));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Fills the free slots, in the order of the rail beside them: those already
+   * on the sitting and still without a time first, then the pool. It only ever
+   * fills what is empty — nothing already placed is moved or overwritten, so
+   * there is nothing to confirm and nothing to lose.
+   */
+  const fillSlots = async () => {
+    if (!current) return;
+    const free = current.slots
+      .filter((slot) => !current.assignments.some((a) => a.assignment.slotIndex === slot.index))
+      .map((slot) => slot.index);
+    const queue: Dragged[] = [
+      ...current.assignments
+        .filter((a) => a.assignment.slotIndex === null)
+        .map((row) => ({ kind: 'seat', row }) as Dragged),
+      // Those held by another sitting are deliberately left out: enrolling one
+      // here is a decision, not something a button should do on your behalf.
+      ...pool.map(({ candidate }) => ({ kind: 'pool', candidate }) as Dragged),
+    ];
+    if (!free.length || !queue.length) {
+      toast(free.length ? 'Nobody left to place.' : 'Every time is taken.', true);
+      return;
+    }
+
+    setBusy(true);
+    try {
+      let placed = 0;
+      for (const slotIndex of free) {
+        const next = queue.shift();
+        if (!next) break;
+        if (next.kind === 'seat') {
+          await api.post(`/api/assignments/${next.row.assignment.id}/slot`, { slotIndex });
+        } else {
+          const { view: fresh } = await api.post<{ added: number; view: CommitteeView }>(
+            `/api/sessions/${current.session.id}/assign`,
+            { candidateIds: [next.candidate.id] },
+          );
+          const seat = fresh.sessions
+            .find((sv) => sv.session.id === current.session.id)
+            ?.assignments.find((a) => a.candidate.id === next.candidate.id);
+          if (seat) await api.post(`/api/assignments/${seat.assignment.id}/slot`, { slotIndex });
+        }
+        placed += 1;
+      }
+      view.reload();
+      toast(
+        queue.length
+          ? `${placed} placed · ${queue.length} still without a time. Add a stretch or shorten the slots.`
+          : `${placed} placed.`,
+      );
+    } catch (err) {
+      toast((err as Error).message, true);
+      view.reload();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   /** Puts startups on a panel with no timetable behind it. */
   const putOnPanel = async (session: SessionView, candidateIds: string[]) => {
     setBusy(true);
     try {
-      view.set(await api.post<CommitteeView>(`/api/sessions/${session.session.id}/assign`, { candidateIds }));
+      const { view: fresh } = await api.post<{ added: number; view: CommitteeView }>(
+        `/api/sessions/${session.session.id}/assign`,
+        { candidateIds },
+      );
+      view.set(fresh);
     } finally {
       setBusy(false);
     }
@@ -137,18 +243,18 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
               </span>
             </button>
           ))}
-          <button className="track add" onClick={() => setEditing('new')}>
-            <Icon name="plus" size={13} /> Add {config.format === 'event' ? 'a sitting' : 'a panel'}
-          </button>
         </div>
       </div>
 
       {!current ? (
         <div className="empty">
-          <h3>No committee yet</h3>
-          <p>Create a sitting, give it its hours and a time per startup, and its slots appear on their own.</p>
-          <button className="btn primary" onClick={() => setEditing('new')}>
-            <Icon name="plus" /> Add committee
+          <h3>No {config.format === 'event' ? 'sitting' : 'panel'} yet</h3>
+          <p>
+            This is where you hand out the startups. Who reviews, and when, is set on the block — the{' '}
+            <strong>Panels</strong> tab of its setup.
+          </p>
+          <button className="btn primary" onClick={() => onOpenSetup(block.id)}>
+            <Icon name="settings" /> Open the setup
           </button>
         </div>
       ) : (
@@ -174,9 +280,6 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
                 <span className="badge warn">No jury on this sitting — nobody can score it</span>
               )}
             </div>
-            <button className="btn sm" onClick={() => setEditing(current.session)}>
-              <Icon name="edit" size={13} /> Edit {config.format === 'event' ? 'sitting' : 'panel'}
-            </button>
           </section>
 
           <div className="row wrap" style={{ fontSize: 12.5 }}>
@@ -191,6 +294,14 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
                 <span className={current.assignments.length > current.capacity ? 'badge stop num' : 'badge num'}>
                   {current.assignments.length}/{current.capacity}
                 </span>
+                <button
+                  className="btn sm"
+                  disabled={busy || (!waiting.length && !pool.length)}
+                  onClick={fillSlots}
+                  title="Fills the free times, in the order of the list beside them"
+                >
+                  <Icon name="check" size={13} /> Fill slots
+                </button>
               </>
             ) : (
               <span className="faint">
@@ -199,11 +310,19 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
               </span>
             )}
             {evaluation ? (
-              <button className="linklike" onClick={() => onOpenBlock(evaluation.blockId)}>
+              <button className="linklike" onClick={() => onOpenScoring(evaluation.blockId)}>
                 Scored by {evaluation.name}
               </button>
             ) : (
               <span className="badge warn">Nothing scores this committee</span>
+            )}
+            {config.format === 'event' && (
+              <span
+                className="faint"
+                title={`On a seat: the chip is the answer to the invitation, the number and the coloured label are the score out of 100 and the status ${evaluation?.name ?? 'an evaluation'} gave after the pitch — not the screening result.`}
+              >
+                <Icon name="alert" size={12} /> What a seat shows
+              </span>
             )}
           </div>
 
@@ -219,6 +338,8 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
             />
           ) : (
           <>
+          <div className="day-split">
+            <div className="day-stage">
           <div className="day">
             {current.session.windows.map((stretch, windowIndex) => {
               const slots = current.slots.filter((s) => s.windowIndex === windowIndex);
@@ -271,14 +392,18 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
                                 );
                                 toast('Invitation link copied.');
                               }}
-                              onRemove={() => unseat(row)}
+                              onRemove={() => clearTime(row)}
                             />
                           ) : (
                             <button
                               className="slot-free"
-                              disabled={busy || !pool.length}
+                              disabled={busy || (!pool.length && !waiting.length && !held.length)}
                               onClick={() => setPlacing({ session: current, slot })}
-                              title={pool.length ? 'Put a startup here' : 'Nobody left in the pool'}
+                              title={
+                                pool.length || waiting.length || held.length
+                                  ? 'Put a startup here'
+                                  : 'Nobody left to place'
+                              }
                             >
                               free
                             </button>
@@ -291,9 +416,12 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
               );
             })}
 
-            {/* ---- the pool rail ---- */}
+            </div>
+            </div>
+
+            {/* ---- the rail, beside them and scrolling on its own ---- */}
             <aside
-              className={`pool-rail${over === 'pool' ? ' over' : ''}`}
+              className={`pool-rail day-rail${over === 'pool' ? ' over' : ''}`}
               onDragOver={(e) => {
                 e.preventDefault();
                 setOver('pool');
@@ -304,10 +432,60 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
                 const payload = drag.current;
                 setOver(null);
                 drag.current = null;
-                if (payload?.kind === 'seat') unseat(payload.row);
+                // Landing in the rail means "no time", not "off the sitting" —
+                // the same thing the seat's cross says.
+                if (payload?.kind === 'seat') clearTime(payload.row);
               }}
             >
-              <div className="eyebrow">Pool</div>
+              {/* Your work of the day comes first: these are already on this
+                  sitting and only want a time. The pool underneath is a
+                  convenience — startups on no sitting at all, which is why
+                  people read them as strangers turning up. */}
+              <div className="rail-head">
+                <span className="eyebrow">No time yet</span>
+                <span className="num faint">{waiting.length}</span>
+              </div>
+              {waiting.length ? (
+                waiting.map((row) => (
+                  <div
+                    className="pool-chip seated-chip"
+                    key={row.assignment.id}
+                    draggable={!busy}
+                    onDragStart={() => {
+                      drag.current = { kind: 'seat', row };
+                    }}
+                  >
+                    <span className="grip">
+                      <Icon name="drag" size={12} />
+                    </span>
+                    <span className="chip-name">{row.candidate.orgName}</span>
+                    {config.rsvpMode !== 'none' && (
+                      <span className={RSVP_TONE[row.assignment.rsvpState]}>{row.assignment.rsvpState}</span>
+                    )}
+                    <button
+                      className="chip-x"
+                      disabled={busy}
+                      aria-label={`Take ${row.candidate.orgName} off this sitting`}
+                      title="Off this sitting"
+                      onClick={() => unseat(row)}
+                    >
+                      <Icon name="x" size={11} />
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <p className="faint" style={{ margin: 0, fontSize: 12 }}>
+                  {config.rsvpMode === 'slots'
+                    ? 'Seat a startup and it waits here until it picks a time.'
+                    : 'Everyone on this sitting has a time.'}
+                </p>
+              )}
+
+              <div className="public-sep" style={{ margin: '12px 0 6px' }} />
+              <div className="rail-head">
+                <span className="eyebrow">On no sitting</span>
+                <span className="num faint">{pool.length}</span>
+              </div>
               {intakeFrom && (
                 <p className="faint" style={{ margin: '0 0 4px', fontSize: 11.5 }}>
                   From {intakeFrom}
@@ -326,7 +504,7 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
                     <span className="grip">
                       <Icon name="drag" size={12} />
                     </span>
-                    {candidate.orgName}
+                    <span className="chip-name">{candidate.orgName}</span>
                   </div>
                 ))
               ) : (
@@ -335,65 +513,39 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
                 </p>
               )}
 
-              <div className="public-sep" style={{ margin: '10px 0 6px' }} />
-              <div className="eyebrow">No time yet</div>
-              {current.assignments.filter((a) => a.assignment.slotIndex === null).length ? (
-                current.assignments
-                  .filter((a) => a.assignment.slotIndex === null)
-                  .map((row) => (
+              {held.length > 0 && (
+                <>
+                  <div className="public-sep" style={{ margin: '12px 0 6px' }} />
+                  <div className="rail-head">
+                    <span className="eyebrow">On another sitting</span>
+                    <span className="num faint">{held.length}</span>
+                  </div>
+                  <p className="faint" style={{ margin: '0 0 4px', fontSize: 11.5 }}>
+                    Drag one over to have it seen twice. Fill slots leaves them where they are.
+                  </p>
+                  {held.map(({ candidate, on }) => (
                     <div
-                      className="pool-chip seated-chip"
-                      key={row.assignment.id}
+                      className="pool-chip"
+                      key={candidate.id}
                       draggable={!busy}
                       onDragStart={() => {
-                        drag.current = { kind: 'seat', row };
+                        drag.current = { kind: 'pool', candidate };
                       }}
                     >
                       <span className="grip">
                         <Icon name="drag" size={12} />
                       </span>
-                      {row.candidate.orgName}
-                      {config.rsvpMode !== 'none' && (
-                        <span className={RSVP_TONE[row.assignment.rsvpState]}>{row.assignment.rsvpState}</span>
-                      )}
+                      <span className="chip-name">{candidate.orgName}</span>
+                      <span className="badge">{on}</span>
                     </div>
-                  ))
-              ) : (
-                <p className="faint" style={{ margin: 0, fontSize: 12 }}>
-                  {config.rsvpMode === 'slots'
-                    ? 'Seat a startup and it waits here until it picks a time.'
-                    : 'Everyone seated has a time.'}
-                </p>
+                  ))}
+                </>
               )}
             </aside>
           </div>
-
-          <div className="callout">
-            <Icon name="alert" size={15} />
-            <div>
-              <strong>What a seat shows.</strong> The first chip is the answer to the invitation — whether the startup
-              accepted that time. The number and the coloured label are its score out of 100 and the status{' '}
-              {evaluation ? <strong>{evaluation.name}</strong> : 'an evaluation'} gave it after the pitch — not its
-              screening result.
-            </div>
-          </div>
-
-          <p className="faint" style={{ margin: 0, fontSize: 12 }}>
-            Drag a startup from the pool onto a time, from one time to another to swap them over, or back to the pool
-            to take it off. A free slot can also be filled with a click.
-          </p>
           </>
           )}
         </>
-      )}
-
-      {editing && (
-        <SessionModal
-          blockId={block.id}
-          session={editing === 'new' ? null : editing}
-          onClose={() => setEditing(null)}
-          onSaved={() => view.reload()}
-        />
       )}
 
       {placing && (
@@ -402,7 +554,32 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
           subtitle={`${placing.session.session.name} · ${formatDate(placing.session.session.heldOn)}`}
           onClose={() => setPlacing(null)}
         >
+          {/* The same two lists as the rail, in the same order — this is the
+              way that works when the window is too narrow to hold both zones
+              side by side, and the only one that works from the keyboard. */}
           <div className="rows">
+            {waiting.map((row) => (
+              <button
+                className="pick"
+                key={row.assignment.id}
+                onClick={async () => {
+                  drag.current = { kind: 'seat', row };
+                  await dropOn(placing.session, placing.slot.index);
+                  setPlacing(null);
+                }}
+              >
+                <Icon name="plus" size={14} />
+                <div>
+                  <strong>{row.candidate.orgName}</strong>
+                  <span>On this sitting · no time yet</span>
+                </div>
+              </button>
+            ))}
+            {waiting.length > 0 && pool.length > 0 && (
+              <div className="eyebrow" style={{ marginTop: 4 }}>
+                On no sitting
+              </div>
+            )}
             {pool.map(({ candidate }) => (
               <button
                 className="pick"
@@ -417,6 +594,28 @@ export function CommitteeWorkspace({ block, onOpenBlock }: { block: Block; onOpe
                 <div>
                   <strong>{candidate.orgName}</strong>
                   <span>{candidate.contactName}</span>
+                </div>
+              </button>
+            ))}
+            {held.length > 0 && (
+              <div className="eyebrow" style={{ marginTop: 4 }}>
+                On another sitting
+              </div>
+            )}
+            {held.map(({ candidate, on }) => (
+              <button
+                className="pick"
+                key={candidate.id}
+                onClick={async () => {
+                  drag.current = { kind: 'pool', candidate };
+                  await dropOn(placing.session, placing.slot.index);
+                  setPlacing(null);
+                }}
+              >
+                <Icon name="plus" size={14} />
+                <div>
+                  <strong>{candidate.orgName}</strong>
+                  <span>Already on {on} — it would be seen twice</span>
                 </div>
               </button>
             ))}
@@ -496,7 +695,15 @@ function Seat({
             <Icon name="link" size={13} />
           </button>
         )}
-        <button className="btn ghost icon sm" onClick={onRemove} title="Take off this committee" aria-label="Remove">
+        {/* Frees the hour. It stays on the sitting, in No time yet — leaving
+            the sitting is the cross on its chip over there. */}
+        <button
+          className="btn ghost icon sm"
+          disabled={busy}
+          onClick={onRemove}
+          title="Free this time — it goes back to No time yet"
+          aria-label="Free this time"
+        >
           <Icon name="x" size={13} />
         </button>
       </div>

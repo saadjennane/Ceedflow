@@ -147,7 +147,8 @@ export function ConfirmDialog({
   onClose,
 }: {
   title: string;
-  body: string;
+  /** Rich enough to name what a removal will actually take with it. */
+  body: ReactNode;
   confirmLabel: string;
   destructive?: boolean;
   onConfirm: () => void;

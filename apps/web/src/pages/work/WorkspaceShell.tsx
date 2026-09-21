@@ -1,4 +1,11 @@
-import { BLOCK_TYPE_META, orderedBlocks, type Block, type BlockType, type TrackWithPhases } from '@ceed/shared';
+import {
+  BLOCK_TYPE_META,
+  blockAtWork,
+  orderedBlocks,
+  type Block,
+  type BlockType,
+  type TrackWithPhases,
+} from '@ceed/shared';
 import { Icon } from '../../ui/Icon';
 
 /**
@@ -23,7 +30,8 @@ export function WorkspaceShell({
   children: (block: Block) => React.ReactNode;
 }) {
   const blocks = orderedBlocks(track).filter((b) => b.type === type);
-  const current = blocks.find((b) => b.id === currentId) ?? blocks[0] ?? null;
+  // Opens where the work is, not on whichever block happens to come first.
+  const current = blocks.find((b) => b.id === currentId) ?? blockAtWork(blocks) ?? null;
 
   if (!current) {
     return (

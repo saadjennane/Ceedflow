@@ -1,8 +1,10 @@
 import {
   funnelMoments,
+  rankAtWork,
   type Block,
   type BlockOutcome,
   type Candidate,
+  type EvaluationConfig,
   type EvaluationCriterion,
   tallyVotes,
   type EvaluationMethod,
@@ -47,6 +49,8 @@ interface ScoringPayload {
   criteria: EvaluationCriterion[];
   method: EvaluationMethod;
   scale: EvaluationScale;
+  /** One scale for the whole grid. */
+  markedOutOf: number;
   voteRule: VoteRule;
   requireComment: boolean;
   outcomes: BlockOutcome[];
@@ -58,7 +62,6 @@ interface DecisionRow {
   candidate: Candidate;
   score: number | null;
   outcomeId: string | null;
-  arrival: 'funnel' | 'manual' | 'status';
   computed: 'pass' | 'fail';
   outcome: 'pass' | 'fail';
   overridden: boolean;
@@ -70,12 +73,14 @@ interface DecisionPayload {
   config: SelectionConfig;
   published: boolean;
   rows: DecisionRow[];
-  pool: { candidate: Candidate; score: number | null; outcomeId: string | null }[];
   passCount: number;
   failCount: number;
 }
 
 /** One line of the merged table: what was measured, and what was decided. */
+/** The columns you can order the table by. */
+type SortKey = 'orgName' | 'score' | 'status' | 'decision';
+
 interface Line {
   candidate: Candidate;
   scoring: ScoringRow | null;
@@ -100,8 +105,18 @@ export function ReviewTab({
   onChanged: () => void;
 }) {
   const moments = funnelMoments(track);
+  /* A moment is judged by the brick that measures — the evaluation — because
+     that is what startups wait on. Reading order breaks the ties, so the funnel
+     still reads left to right. */
+  const openOn =
+    moments.length > 0
+      ? moments.reduce((best, m) => {
+          const rank = (x: typeof m) => rankAtWork(x.evaluation ?? x.selection!);
+          return rank(m) < rank(best) ? m : best;
+        })
+      : null;
   const moment =
-    moments.find((m) => m.id === currentId || m.evaluation?.id === currentId) ?? moments[0] ?? null;
+    moments.find((m) => m.id === currentId || m.evaluation?.id === currentId) ?? openOn ?? null;
 
   if (!moment) {
     return (
@@ -129,7 +144,12 @@ export function ReviewTab({
         <div className="spacer" />
         {moment.evaluation && (
           <button className="btn sm" onClick={() => onOpenSetup(moment.evaluation!.id)}>
-            <Icon name="settings" size={13} /> {moment.selection ? 'Grid' : 'Setup'}
+            <Icon name="settings" size={13} />{' '}
+            {moment.selection
+              ? (moment.evaluation.config as EvaluationConfig).method === 'verdict'
+                ? 'What to look at'
+                : 'Grid'
+              : 'Setup'}
           </button>
         )}
         {moment.selection && (
@@ -146,6 +166,31 @@ export function ReviewTab({
         onChanged={onChanged}
       />
     </>
+  );
+}
+
+/**
+ * Who is behind. The count beside the tab says how many startups are covered,
+ * which never tells you whose reviews are missing — this does, one figure per
+ * person on the panel.
+ */
+function Progress({ section }: { section: { evaluators: PersonRef[]; lines: Line[] } }) {
+  const total = section.lines.length;
+  return (
+    <span className="faint row wrap" style={{ fontSize: 12, gap: 8 }}>
+      {section.evaluators.map((person, i) => {
+        const done = section.lines.filter((line) =>
+          line.scoring?.scores.some((s) => s.evaluatorId === person.id && s.submittedAt),
+        ).length;
+        return (
+          <span key={person.id} style={{ color: done === total ? 'var(--ok)' : undefined }}>
+            {i > 0 && <span className="faint">· </span>}
+            {person.name} <span className="num">{done}</span>
+            <span className="num">/{total}</span>
+          </span>
+        );
+      })}
+    </span>
   );
 }
 
@@ -168,6 +213,9 @@ function Moment({
   );
   const [as, setAs] = useState<Record<string, string>>({});
   const [openId, setOpenId] = useState<string | null>(null);
+  /* Best first, because that is the question this screen answers. Clicking a
+     header picks another, and clicking it again turns it round. */
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'score', dir: -1 });
   const [confirmPublish, setConfirmPublish] = useState(false);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
@@ -207,11 +255,57 @@ function Moment({
       });
   }
 
-  const byScore = (a: Line, b: Line) =>
-    (b.scoring?.consensus ?? b.decision?.score ?? -1) - (a.scoring?.consensus ?? a.decision?.score ?? -1) ||
-    a.candidate.orgName.localeCompare(b.candidate.orgName);
+  /* The table has always been ordered by score, best first — it simply never
+     said so, and there was no way to ask for anything else. The score stays the
+     default, because that is what you open this screen to read. */
+  const scoreOf = (l: Line) => l.scoring?.consensus ?? l.decision?.score ?? null;
+  const statusOf = (l: Line) =>
+    outcomes.find((o) => o.id === (l.scoring?.outcomeId ?? l.decision?.outcomeId))?.label ?? '';
 
-  const lines = [...byCandidate.values()].sort(byScore);
+  /** Null where there is nothing yet — which is not the same as a low value. */
+  const cellOf = (l: Line, key: SortKey): string | number | null => {
+    if (key === 'orgName') return l.candidate.orgName;
+    if (key === 'status') return statusOf(l) || null;
+    if (key === 'decision') return l.decision ? (l.decision.outcome === 'pass' ? 1 : 0) : null;
+    return scoreOf(l);
+  };
+
+  const ordered = (rows: Line[]) =>
+    [...rows].sort((a, b) => {
+      const av = cellOf(a, sort.key);
+      const bv = cellOf(b, sort.key);
+      const byName = a.candidate.orgName.localeCompare(b.candidate.orgName);
+      /* A startup nobody has judged sinks to the bottom whichever way the
+         column points. Treating "no score" as the lowest score put them at the
+         top the moment you asked for the weakest first, which is the one place
+         they have nothing to say. */
+      if (av === null || bv === null) {
+        if (av === null && bv === null) return byName;
+        return av === null ? 1 : -1;
+      }
+      const cmp =
+        typeof av === 'number' && typeof bv === 'number'
+          ? av - bv
+          : String(av).localeCompare(String(bv), undefined, { numeric: true });
+      return (cmp * sort.dir) || byName;
+    });
+
+  const lines = ordered([...byCandidate.values()]);
+
+  /** A header that says which way the table is ordered, and changes it. */
+  const sortable = (key: SortKey, label: string, align?: 'right', style?: React.CSSProperties) => (
+    <th style={{ ...style, textAlign: align, cursor: 'pointer' }}>
+      <button
+        className="th-sort"
+        style={{ justifyContent: align === 'right' ? 'flex-end' : 'flex-start' }}
+        onClick={() => setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: -1 }))}
+        aria-label={`Order by ${label.toLowerCase()}`}
+      >
+        {label}
+        {sort.key === key && <Icon name={sort.dir === 1 ? 'chevronUp' : 'chevronDown'} size={11} />}
+      </button>
+    </th>
+  );
   /** No panel means nobody applies the grid — that is a committee's to say. */
   const noPanel = Boolean(evaluation) && (scoring?.groups.length ?? 0) === 0;
 
@@ -226,7 +320,7 @@ function Moment({
     name: group.name,
     heldOn: group.heldOn,
     evaluators: group.evaluators,
-    lines: group.rows.map((r) => byCandidate.get(r.candidate.id)!).filter(Boolean).sort(byScore),
+    lines: ordered(group.rows.map((r) => byCandidate.get(r.candidate.id)!).filter(Boolean)),
   }));
 
   // Anyone on the selection's list that no sitting scored still has to be decided.
@@ -281,6 +375,10 @@ function Moment({
   const outOfLine = (decision?.rows ?? []).filter((r) => r.stale || r.pending).length;
 
   const cfg = decision?.config;
+  // The rule in the words the jury used, rather than a number nobody set here.
+  const passing = (cfg?.passOutcomeIds ?? [])
+    .map((id) => outcomes.find((o) => o.id === id)?.label)
+    .filter((label): label is string => Boolean(label));
   const passLabel = cfg?.passLabel ?? 'Passed';
   const failLabel = cfg?.failLabel ?? 'Not selected';
 
@@ -291,12 +389,7 @@ function Moment({
           <>
             On the left, what <strong>{evaluation.name}</strong> measured. On the right, what{' '}
             <strong>{selection.name}</strong> made of it —{' '}
-            {cfg?.method === 'threshold'
-              ? `score ≥ ${cfg.threshold}`
-              : cfg?.method === 'top_n'
-                ? `top ${cfg.topN}`
-                : 'decided by hand'}
-            .
+            {passing.length ? passing.join(' and ') + ' move on' : 'nothing moves on yet'}.
           </>
         ) : evaluation ? (
           <>Nothing cuts on this evaluation yet — it measures and gives a status, and stops there.</>
@@ -332,15 +425,18 @@ function Moment({
           <div className="callout ok">
             <Icon name="check" size={15} />
             <div style={{ flex: 1 }}>
-              <strong>Published {cfg?.publishedAt ? `on ${formatDate(cfg.publishedAt)}` : ''}.</strong> Changing a
-              decision below updates that candidate straight away, and changes who the blocks downstream see — that is
-              how a withdrawal or a repêchage is handled.
+              <strong>Announced {cfg?.publishedAt ? `on ${formatDate(cfg.publishedAt)}` : ''}.</strong> The blocks
+              downstream follow the rule as it stands, not this snapshot — announcing again records where things have
+              got to, and writes each candidate's status afresh.
             </div>
           </div>
         ) : (
-          <div className="callout warn">
+          <div className="callout">
             <Icon name="alert" size={15} />
-            Not published. Nothing below has reached the candidates yet, and no block downstream sees this result.
+            <div>
+              <strong>Nothing announced yet.</strong> The blocks downstream already work from the rule below —
+              announcing is what records the decision and writes each candidate's status.
+            </div>
           </div>
         ))}
 
@@ -349,10 +445,10 @@ function Moment({
           <Icon name="alert" size={15} />
           <div>
             <strong>
-              {outOfLine} row{outOfLine === 1 ? '' : 's'} out of line with the rule.
+              {outOfLine} row{outOfLine === 1 ? '' : 's'} moved since you announced.
             </strong>{' '}
-            A late score, or a startup added since. What was announced still stands until you publish again — which
-            applies the rule afresh and keeps every call you made by hand.
+            A late score, or a startup added since. The blocks downstream already follow the new reading — announce
+            again to bring the record and the candidates' own statuses up to date.
           </div>
         </div>
       )}
@@ -374,7 +470,7 @@ function Moment({
             onClick={() => setConfirmPublish(true)}
           >
             <Icon name="check" size={14} />
-            {decision.published ? `Publish again (${outOfLine})` : 'Publish'}
+            {decision.published ? `Announce again (${outOfLine})` : 'Announce'}
           </button>
         )}
       </div>
@@ -405,9 +501,7 @@ function Moment({
                 )}
                 <span className="badge num">{section.lines.length}</span>
                 {section.evaluators.length > 0 ? (
-                  <span className="faint" style={{ fontSize: 12 }}>
-                    scored by {section.evaluators.map((e) => e.name).join(', ')}
-                  </span>
+                  <Progress section={section} />
                 ) : (
                   <span className="badge warn">No jury scored these</span>
                 )}
@@ -441,17 +535,20 @@ function Moment({
                     </tr>
                   )}
                   <tr>
-                    <th>Candidate</th>
+                    {sortable('orgName', 'Candidate')}
+                    {/* A juror's own column is not sortable: their marks are one
+                        panel's reading, not an order the table is kept in. */}
                     {section.evaluators.map((person) => (
                       <th key={person.id} style={{ textAlign: 'right' }}>
                         {person.name.split(' ')[0]}
                       </th>
                     ))}
-                    {scoring && <th style={{ textAlign: 'right' }}>{voting ? 'Votes' : 'Score'}</th>}
-                    {evaluation && (
-                      <th style={{ borderLeft: selection ? '1px solid var(--line-strong)' : undefined }}>Status</th>
-                    )}
-                    {selection && <th>Decision</th>}
+                    {scoring && sortable('score', voting ? 'Votes' : 'Score', 'right')}
+                    {evaluation &&
+                      sortable('status', 'Status', undefined, {
+                        borderLeft: selection ? '1px solid var(--line-strong)' : undefined,
+                      })}
+                    {selection && sortable('decision', 'Decision')}
                     <th />
                   </tr>
                 </thead>
@@ -460,26 +557,11 @@ function Moment({
                     const me =
                       section.evaluators.find((e) => e.id === as[section.key]) ?? section.evaluators[0] ?? null;
                     const open = openId === line.candidate.id;
-                    const arrival = line.decision?.arrival;
                     return (
                       <Fragment key={line.candidate.id}>
                         <tr>
                           <td className="name">
                             {line.candidate.orgName}
-                            {arrival === 'manual' && (
-                              <span className="badge info" style={{ marginLeft: 7 }} title="Put on this list by the team">
-                                Added by hand
-                              </span>
-                            )}
-                            {arrival === 'status' && (
-                              <span
-                                className="badge info"
-                                style={{ marginLeft: 7 }}
-                                title="On this list because of the status it carries"
-                              >
-                                By status
-                              </span>
-                            )}
                             {line.decision?.stale && (
                               <span className="badge warn" style={{ marginLeft: 7 }} title="The rule now says otherwise">
                                 Rule moved on
@@ -496,7 +578,7 @@ function Moment({
                             )}
                           </td>
 
-                          {section.evaluators.map((person) => {
+                          {section.evaluators.map((person, i) => {
                             const score = line.scoring?.scores.find((s) => s.evaluatorId === person.id);
                             const voted = score?.submittedAt ? outcomes.find((o) => o.id === score.verdict) : null;
                             return (
@@ -627,6 +709,7 @@ function Moment({
                                 evaluator={me!}
                                 method={scoring?.method}
                                 scale={scoring?.scale}
+                                markedOutOf={scoring?.markedOutOf}
                                 outcomes={outcomes}
                                 evaluators={section.evaluators}
                                 onEvaluator={(id) => setAs((a) => ({ ...a, [section.key]: id }))}

@@ -1,9 +1,10 @@
 import type { DirectoryRecord } from '@ceed/shared';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../lib/api';
 import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
 import { useToast } from '../../ui/Overlays';
+import { SearchBox } from '../../ui/SearchBox';
 import { initials } from './DirectoryPage';
 import { RecordModal } from './RecordModal';
 
@@ -52,20 +53,48 @@ export function PeoplePicker({
       .slice(0, 8);
   }, [all, value, query]);
 
+  /* The list used to have no way out: nothing closed it, so it sat over the
+     rest of the form long after the person had been picked. It closes on the
+     three things that mean "done" — a pick, a click away, Escape — and it is
+     capped in height, because a list that filled the panel left nowhere to
+     click away *to*. */
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: Event) => {
+      if (!box.current?.contains(e.target as Node)) setOpen(false);
+    };
+    // Capture, so nothing between here and the document can swallow it.
+    document.addEventListener('mousedown', away, true);
+    document.addEventListener('focusin', away, true);
+    return () => {
+      document.removeEventListener('mousedown', away, true);
+      document.removeEventListener('focusin', away, true);
+    };
+  }, [open]);
+
   const add = (id: string) => {
     onChange([...value, id]);
     setQuery('');
+    // Typing the next name reopens it, so adding a whole jury stays one flow.
+    setOpen(false);
   };
 
   return (
-    <div className="field">
+    <div
+      className="field"
+      ref={box}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && open) setOpen(false);
+      }}
+    >
       <label>{label}</label>
 
       {chosen.length > 0 && (
         <div className="row wrap" style={{ gap: 6, marginBottom: 7 }}>
           {chosen.map((p) => (
             <span className="juror" key={p.id}>
-              <span className="jmark">{initials(p.name)}</span>
+              <span className="juror-mark">{initials(p.name)}</span>
               {p.name}
               <button
                 className="chip-x"
@@ -79,21 +108,23 @@ export function PeoplePicker({
         </div>
       )}
 
-      <div className="search">
-        <Icon name="search" size={14} />
-        <input
-          value={query}
-          placeholder={people.data ? 'Search the directory…' : 'Loading…'}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-        />
-      </div>
+      <SearchBox
+        value={query}
+        placeholder={people.data ? 'Search the directory…' : 'Loading…'}
+        onChange={(v) => {
+          setQuery(v);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+      />
 
       {open && (
-        <div className="rows" style={{ marginTop: 6 }}>
+        <div className="rows picker-rows">
+          {/* A way out that is always in reach, whatever is below. */}
+          <button type="button" className="picker-done" onClick={() => setOpen(false)}>
+            {suggestions.length ? `${suggestions.length} to pick from` : 'Nobody matches'}
+            <span className="linkish">Done</span>
+          </button>
           {suggestions.map((p) => (
             <button className="rowcard link-row" key={p.id} onClick={() => add(p.id)}>
               <span className="rec-mark">{initials(p.name)}</span>

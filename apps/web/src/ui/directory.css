@@ -55,6 +55,34 @@
 }
 .link-row.on { border-color: var(--blue); }
 
+/* A teammate on an organisation page: who they are on the left, the right they
+   hold and the state of their door on the right. Not a link — nothing about the
+   row is clickable except its own controls, so it does not borrow .link-row. */
+.team-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 11px;
+}
+
+/* One width for every rung, so the badges beside them line up down the list
+   instead of stepping in and out with the length of each label. */
+.team-row select.input {
+  width: 132px;
+  flex-shrink: 0;
+  padding-block: 5px;
+  font-size: 12.5px;
+}
+
+/* Title and email on one line: an address long enough to wrap would make this
+   row taller than the ones around it, and the column reads as a set. */
+.team-row .team-who {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Import: the file drop and the column mapping */
 .dropzone {
   display: flex;

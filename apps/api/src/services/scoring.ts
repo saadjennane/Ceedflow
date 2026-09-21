@@ -24,9 +24,10 @@ export function criteriaOf(block: Block): EvaluationCriterion[] {
   return (block.config as EvaluationConfig).criteria ?? [];
 }
 
-/** What is actually marked, with each leaf's real share of the weight. */
+/** What is actually marked, with each leaf's real share and the grid's scale. */
 export function scoredLeaves(block: Block): CriterionLeaf[] {
-  return gridLeaves(criteriaOf(block));
+  if (!isScoringBlock(block)) return [];
+  return gridLeaves(criteriaOf(block), (block.config as EvaluationConfig).markedOutOf);
 }
 
 const methodOf = (block: Block) => (block.config as EvaluationConfig).method ?? 'score';

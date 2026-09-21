@@ -1,4 +1,4 @@
-import { EDITION_STATUSES, type BlockType, type Candidate, type EditionDetail } from '@ceed/shared';
+import { EDITION_STATUSES, type EditionStatus, type BlockType, type Candidate, type EditionDetail } from '@ceed/shared';
 import { useCallback, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -100,7 +100,9 @@ export function EditionPage() {
   if (edition.error) return <div className="page"><div className="empty">{edition.error}</div></div>;
   if (!detail || !track) return <div className="page"><div className="empty">Loading…</div></div>;
 
-  const setStatus = async (status: string) => {
+  // Typed to the enum rather than to `string`: the previous signature let a
+  // status the model had dropped go on being sent, and nothing caught it.
+  const setStatus = async (status: EditionStatus) => {
     await api.patch(`/api/editions/${detail.id}`, { status });
     edition.reload();
     toast(`Edition marked ${status.toLowerCase()}.`);
@@ -127,7 +129,7 @@ export function EditionPage() {
         <select
           className="status-select"
           value={detail.status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(e) => setStatus(e.target.value as EditionStatus)}
           aria-label="Edition status"
         >
           {EDITION_STATUSES.map((s) => (
@@ -181,7 +183,7 @@ export function EditionPage() {
           onOpenBlock={setSetupId}
           onSelectTrack={setTrackId}
           onChanged={refresh}
-          onPublish={() => setStatus('Published')}
+          onPublish={() => setStatus('Live')}
         />
       ) : (
         <div className="page">

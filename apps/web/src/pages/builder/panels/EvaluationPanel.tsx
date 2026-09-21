@@ -1,7 +1,13 @@
-import { orderedBlocks, type Block, type EvaluationConfig, type TrackWithPhases } from '@ceed/shared';
+import {
+  DEFAULT_MARKED_OUT_OF,
+  orderedBlocks,
+  type Block,
+  type EvaluationConfig,
+  type TrackWithPhases,
+} from '@ceed/shared';
 import { DateField, SelectField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
-import { CriteriaEditor, OutcomeEditor } from './shared';
+import { CriteriaEditor, GridPreview, OutcomeEditor } from './shared';
 
 /* ------------------------------------------------------------------ */
 /* Setup                                                               */
@@ -50,7 +56,17 @@ export function EvaluationSetup({
         <CriteriaEditor criteria={config.criteria} onChange={(criteria) => patch({ criteria })} unscored />
       </>
     ) : (
-      <CriteriaEditor criteria={config.criteria} onChange={(criteria) => patch({ criteria })} />
+      <>
+        <CriteriaEditor criteria={config.criteria} onChange={(criteria) => patch({ criteria })} />
+        {/* Right under the grid, because what a weight does is only visible
+            once something is marked with it. */}
+        <GridPreview
+          criteria={config.criteria}
+          markedOutOf={config.markedOutOf}
+          outcomes={config.outcomes}
+          scale={config.scale}
+        />
+      </>
     );
   }
 
@@ -144,25 +160,68 @@ export function EvaluationSetup({
             <button
               type="button"
               className={config.scale === 'points' ? 'pick on' : 'pick'}
-              onClick={() => patch({ scale: 'points' })}
+              /* Leaving the stars gives the scale back its own number rather
+                 than leaving the five behind, which would read as a choice
+                 nobody made. */
+              onClick={() =>
+                patch({
+                  scale: 'points',
+                  ...(config.markedOutOf === 5 ? { markedOutOf: DEFAULT_MARKED_OUT_OF } : {}),
+                })
+              }
             >
               <Icon name={config.scale === 'points' ? 'check' : 'square'} />
               <div>
                 <strong>Out of a number</strong>
-                <span>Each criterion carries its own maximum.</span>
+                <span>One scale for the whole grid — every criterion is marked the same way.</span>
               </div>
             </button>
             <button
               type="button"
               className={config.scale === 'stars' ? 'pick on' : 'pick'}
-              onClick={() => patch({ scale: 'stars' })}
+              /* Stars are five, and the draft has to say so at once: the schema
+                 only settles it on save, and the grid is tried before that. */
+              onClick={() => patch({ scale: 'stars', markedOutOf: 5 })}
             >
               <Icon name={config.scale === 'stars' ? 'check' : 'square'} />
               <div>
                 <strong>Stars</strong>
-                <span>One to five. A single criterion marked this way is simply an overall rating.</span>
+                <span>One to five, whatever the grid holds. A single criterion marked this way is simply an overall rating.</span>
               </div>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* The scale belongs to the grid, not to each line of it: asking again on
+          every criterion made the number look like importance, which it never
+          was — it is divided out before anything is weighed. */}
+      {!verdict && config.scale === 'points' && (
+        <div className="field">
+          <label htmlFor="marked-out-of">Marked out of</label>
+          <div className="suffixed">
+            <input
+              id="marked-out-of"
+              className="input num"
+              type="number"
+              min={2}
+              max={100}
+              value={config.markedOutOf}
+              onChange={(e) =>
+                patch({ markedOutOf: Math.max(2, Math.min(100, Number(e.target.value) || DEFAULT_MARKED_OUT_OF)) })
+              }
+            />
+          </div>
+          <div className="help">
+            Every criterion is marked on this scale, and the final mark is always out of 100. How much each
+            criterion counts is said in the grid, as a percentage.
+            {marked > 0 && (
+              <>
+                {' '}
+                <strong>Marks already given keep the number they were given</strong> — moving the scale changes what
+                they mean, so change it before the reviewing starts, not during.
+              </>
+            )}
           </div>
         </div>
       )}
@@ -182,6 +241,11 @@ export function EvaluationSetup({
         <DateField label="Opens on" value={config.opensAt} onChange={(v) => patch({ opensAt: v })} />
         <DateField label="Closes on" value={config.closesAt} onChange={(v) => patch({ closesAt: v })} />
       </div>
+      <p className="faint" style={{ margin: 0, fontSize: 12 }}>
+        {config.closesAt
+          ? 'After that date reviewers can still read, but file nothing. Your own screen stays open — move the date to reopen theirs.'
+          : 'No closing date: reviewers can file for as long as the block exists.'}
+      </p>
 
       <h3 className="section-title">What it scores</h3>
       <SelectField

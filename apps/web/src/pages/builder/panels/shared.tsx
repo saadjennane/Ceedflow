@@ -1,8 +1,13 @@
 import {
+  BRICK_STATUS_LABEL,
+  BRICK_STATUS_TONE,
   gridLeaves,
   idOf,
   leafShare,
+  sharesLeft,
+  sharesOver,
   normalisedScore,
+  proposedOutcome,
   type BlockOutcome,
   type CriterionLeaf,
   type EvaluationMethod,
@@ -10,13 +15,133 @@ import {
   type Candidate,
   type EvaluationCriterion,
   type EvaluationScore,
+  type BrickStatus,
+  type BrickWindow,
   type PersonRef,
 } from '@ceed/shared';
 import { useState } from 'react';
 import { api } from '../../../lib/api';
-import { NumberField, SelectField, TextField } from '../../../ui/Field';
+import { SelectField, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
-import { useToast } from '../../../ui/Overlays';
+import { Modal, useToast } from '../../../ui/Overlays';
+
+/* ------------------------------------------------------------------ */
+/* Open to the outside, or not                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The switch that decides whether a brick is reachable from outside CEED.
+ *
+ * A toggle, because the question is binary: is this door passable. Underneath
+ * it three positions, because leaving it alone has to mean something different
+ * from turning it off — `auto` reads the dates, and touching the toggle says
+ * you know better than they do. The way back is offered only once you have
+ * overridden, so the ordinary case carries no extra furniture.
+ *
+ * A brick with nothing in it cannot be turned on: publishing an empty form is
+ * never what anybody meant.
+ */
+export function DoorToggle({
+  config,
+  patch,
+  status,
+  label,
+  missing,
+}: {
+  config: BrickWindow;
+  patch: (partial: Partial<BrickWindow>) => void;
+  status: BrickStatus;
+  /** What this door is, for whoever reads the tooltip. */
+  label: string;
+  /** What it is still waiting for, when it is not ready. */
+  missing?: string | null;
+}) {
+  const live = status === 'live';
+  const empty = status === 'not_configured';
+  const overridden = config.visibility !== 'auto';
+
+  const today = new Date().toISOString().slice(0, 10);
+  const flip = () =>
+    patch({
+      visibility: live ? 'closed' : 'open',
+      visibilitySetAt: today,
+      // Stamped once and never cleared: it is what tells "over" from "not yet".
+      ...(live || config.openedAt ? {} : { openedAt: today }),
+    });
+
+  return (
+    <div className="door">
+      <div className="door-words">
+        <span className={`badge ${BRICK_STATUS_TONE[status]}`}>{BRICK_STATUS_LABEL[status]}</span>
+        {/* Offered only when there are dates to go back to. On a brick that has
+            none it meant nothing, and cost a click to land somewhere confusing. */}
+        {overridden && (config.opensAt || config.closesAt) && (
+          <button
+            type="button"
+            className="linkish"
+            title={`Held ${config.visibility} since ${config.visibilitySetAt}`}
+            onClick={() => patch({ visibility: 'auto', visibilitySetAt: null })}
+          >
+            Follow the dates
+          </button>
+        )}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={live}
+        aria-label={label}
+        className={live ? 'toggle on' : 'toggle'}
+        disabled={empty}
+        title={empty ? (missing ?? 'Not ready yet.') : live ? `Close it — ${label}` : `Open it — ${label}`}
+        onClick={flip}
+      >
+        <span className="toggle-knob" />
+      </button>
+    </div>
+  );
+}
+
+/** The same switch as a card, for a second door that has no room in the header. */
+export function VisibilityControl({
+  config,
+  patch,
+  status,
+  what,
+  missing,
+}: {
+  config: BrickWindow;
+  patch: (partial: Partial<BrickWindow>) => void;
+  status: BrickStatus;
+  what: { open: string; closed: string; notOpen: string; empty: string };
+  missing?: string | null;
+}) {
+  const live = status === 'live';
+  const empty = status === 'not_configured';
+  const overridden = config.visibility !== 'auto';
+
+  return (
+    <div className={overridden ? 'callout warn' : 'rowcard card-pad'}>
+      <div className="stack" style={{ gap: 7, flex: 1, minWidth: 0 }}>
+        <div className="row" style={{ gap: 10 }}>
+          <strong style={{ flex: 1, fontSize: 12.5 }}>
+            {empty ? (missing ?? what.empty) : live ? what.open : status === 'scheduled' ? what.notOpen : what.closed}
+          </strong>
+          <DoorToggle config={config} patch={patch} status={status} label={what.open} missing={missing} />
+        </div>
+        <div className="faint" style={{ fontSize: 12, lineHeight: 1.5 }}>
+          {empty
+            ? 'A door needs something behind it and a date before it can open.'
+            : overridden
+              ? `${config.visibility === 'open' ? 'Held open' : 'Held closed'} since ${config.visibilitySetAt}, whatever the dates say.`
+              : config.opensAt || config.closesAt
+                ? 'Following the dates above.'
+                : 'No dates, so nothing opens it on its own — use the toggle.'}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function OutcomeBadge({ outcomes, id }: { outcomes: BlockOutcome[]; id: string | null }) {
   const outcome = outcomes.find((o) => o.id === id);
@@ -55,10 +180,25 @@ export function CriteriaEditor({
       ),
     });
 
+  /* What is still on the table, said in one line under the field. Without it
+     a percentage is typed blind: you set 30 and have no idea whether that
+     leaves room or has already overrun. */
+  const left = sharesLeft(criteria);
+  const over = sharesOver(criteria);
+  const shareHint = over
+    ? `${over}% over — they will be scaled back to fit a hundred.`
+    : left
+      ? left.left === 0
+        ? `Nothing left. The ${left.among} criteri${left.among === 1 ? 'on' : 'a'} without a share would count for nothing.`
+        : `${Math.round(left.left)}% left, shared between ${left.among} criteri${left.among === 1 ? 'on' : 'a'} — ${Math.round(left.left / left.among)}% each.`
+      : 'Every criterion is weighted. Leave one empty and it takes what the others do not claim.';
+
   const blank = (): EvaluationCriterion => ({
     id: idOf.criterion(),
     label: '',
     help: '',
+    // No share: it takes an equal cut of what is left until you say otherwise.
+    share: null,
     weight: 1,
     max: 10,
     children: [],
@@ -98,19 +238,20 @@ export function CriteriaEditor({
             <div key={criterion.id} className="rowcard">
               <div className="rowcard-head">
                 <button className="rowcard-title" onClick={() => setOpenId(open ? null : criterion.id)}>
-                  {criterion.label || <span className="faint">Untitled</span>}
+                  {criterion.label || (
+                    <span className="faint">Untitled — open it and give it a name</span>
+                  )}
                 </button>
-                {section ? (
-                  <span className="badge">section · {criterion.children.length}</span>
-                ) : (
-                  !unscored && (
-                    <span className="mini">
-                      out of <span className="num">{criterion.max}</span>
-                    </span>
-                  )
-                )}
+                {section && <span className="badge">section · {criterion.children.length}</span>}
                 {!unscored && (
-                  <span className="badge num" title="Share of the final score">
+                  <span
+                    className={criterion.share === null ? 'badge num' : 'badge num ok'}
+                    title={
+                      criterion.share === null
+                        ? 'An equal cut of what the weighted ones leave'
+                        : 'The share you gave it'
+                    }
+                  >
                     {section
                       ? criterion.children.reduce((n, c) => n + leafShare(criteria, c.id), 0)
                       : leafShare(criteria, criterion.id)}
@@ -135,36 +276,60 @@ export function CriteriaEditor({
 
               {open && (
                 <div className="rowcard-body">
+                  {/* Named for what it is: in a panel that votes, these are
+                      headings to read, not criteria to mark. Calling the field
+                      Criterion under an "Add a heading" button is what made the
+                      name look like something you could not change. */}
                   <TextField
-                    label={section ? 'Section' : 'Criterion'}
+                    label={section ? 'Section' : unscored ? 'Heading' : 'Criterion'}
                     value={criterion.label}
                     onChange={(v) => set(criterion.id, { label: v })}
                     placeholder="Team"
+                    autoFocus={!criterion.label}
                   />
                   <TextField
-                    label="What to look for"
+                    label={unscored ? 'What to say about it' : 'What to look for'}
                     value={criterion.help}
                     onChange={(v) => set(criterion.id, { help: v })}
                     hint="optional"
                     placeholder="Complementarity, commitment, track record."
                   />
 
+                  {/* One field where there were two. What it is marked out of
+                      is now one decision for the whole grid, on Overview — it
+                      never changed importance, it only looked as if it did. */}
                   {!unscored && (
-                    <div className="grid-2">
-                      <NumberField
-                        label={section ? 'Weight of the section' : 'Weight'}
-                        value={criterion.weight}
-                        onChange={(v) => set(criterion.id, { weight: v })}
-                        min={0}
-                      />
-                      {!section && (
-                        <NumberField
-                          label="Marked out of"
-                          value={criterion.max}
-                          onChange={(v) => set(criterion.id, { max: v })}
-                          min={1}
-                        />
-                      )}
+                    <div className="field">
+                      <label htmlFor={`share-${criterion.id}`}>How much it counts</label>
+                      <div className="row" style={{ gap: 8 }}>
+                        <div className="suffixed">
+                          <input
+                            id={`share-${criterion.id}`}
+                            className="input num"
+                            type="number"
+                            min={0}
+                            max={100}
+                            placeholder="equal"
+                            value={criterion.share ?? ''}
+                            onChange={(e) =>
+                              set(criterion.id, {
+                                share: e.target.value === '' ? null : Math.max(0, Math.min(100, Number(e.target.value))),
+                              })
+                            }
+                          />
+                          <span>%</span>
+                        </div>
+                        {criterion.share !== null && (
+                          <button
+                            className="btn ghost sm"
+                            onClick={() => set(criterion.id, { share: null })}
+                            title="Back to an equal cut"
+                          >
+                            <Icon name="x" size={12} /> Equal
+                          </button>
+                        )}
+                      </div>
+                      <div className="help">{shareHint}</div>
                     </div>
                   )}
 
@@ -178,21 +343,14 @@ export function CriteriaEditor({
                             placeholder="Complementarity"
                             onChange={(e) => setChild(criterion.id, child.id, { label: e.target.value })}
                           />
+                          {/* No weight of its own: the sub-criteria of a
+                              criterion average into its mark, which is what
+                              makes them points to consider rather than a second
+                              grid hidden inside the first. */}
                           {!unscored && (
-                            <>
-                              <input
-                                className="input num"
-                                style={{ width: 66 }}
-                                type="number"
-                                min={0}
-                                value={child.weight}
-                                aria-label="Weight"
-                                onChange={(e) => setChild(criterion.id, child.id, { weight: Number(e.target.value) })}
-                              />
-                              <span className="badge num" title="Share of the final score">
-                                {leafShare(criteria, child.id)}%
-                              </span>
-                            </>
+                            <span className="badge num" title="Share of the final score">
+                              {leafShare(criteria, child.id)}%
+                            </span>
                           )}
                           <button
                             className="btn ghost icon sm"
@@ -214,17 +372,18 @@ export function CriteriaEditor({
                       set(criterion.id, {
                         children: [
                           ...criterion.children,
-                          { id: idOf.criterion(), label: '', help: '', weight: 1, max: criterion.max },
+                          { id: idOf.criterion(), label: '', help: '', share: null, weight: 1, max: 10 },
                         ],
                       })
                     }
                   >
-                    <Icon name="plus" size={13} /> Add a sub-criterion
+                    <Icon name="plus" size={13} /> Add {unscored ? 'a point under it' : 'a sub-criterion'}
                   </button>
                   {!section && (
                     <p className="faint" style={{ margin: 0, fontSize: 12 }}>
-                      Adding one turns this into a section: the marks move onto its children and this line shares its
-                      weight between them.
+                      {unscored
+                        ? 'Adding one turns this into a section: the points sit under this heading when the juror reads it.'
+                        : 'Adding one turns this into a section: the marks move onto its children, and their average is this criterion’s mark.'}
                     </p>
                   )}
                 </div>
@@ -379,6 +538,7 @@ export function ScoreEditor({
   onEvaluator,
   existing,
   requireComment,
+  markedOutOf,
   onSaved,
 }: {
   blockId: string;
@@ -396,6 +556,8 @@ export function ScoreEditor({
   onEvaluator?: (id: string) => void;
   existing?: EvaluationScore;
   requireComment?: boolean;
+  /** The grid's one scale. Every criterion is marked on it. */
+  markedOutOf?: number;
   onSaved: () => void;
 }) {
   const [marks, setMarks] = useState<Record<string, number>>(existing?.marks ?? {});
@@ -405,7 +567,7 @@ export function ScoreEditor({
   const toast = useToast();
 
   const voting = method === 'verdict';
-  const leaves = gridLeaves(criteria);
+  const leaves = gridLeaves(criteria, markedOutOf);
   const preview = normalisedScore(marks, leaves);
   const blocked = (Boolean(requireComment) && !comment.trim()) || (voting && !verdict);
 
@@ -433,18 +595,35 @@ export function ScoreEditor({
 
   return (
     <div className="stack" style={{ padding: '6px 0 10px' }}>
-      <div className="row" style={{ gap: 8 }}>
+      {/* Whose marks these are, said the same way whether the panel has one
+          juror or five. It used to be a dropdown when there was a choice and a
+          bold name when there was not, so entering somebody else's paper sheet
+          on a one-juror panel read like entering your own. */}
+      <div className="entered-as">
         <span className="eyebrow">Marks for {candidate.orgName}, entered as</span>
-        {evaluators && evaluators.length > 1 && onEvaluator ? (
-          <select className="status-select" value={evaluator.id} onChange={(e) => onEvaluator(e.target.value)}>
+        <span className="juror">
+          <span className="juror-mark">
+            {evaluator.name
+              .split(/\s+/)
+              .slice(0, 2)
+              .map((w) => w[0])
+              .join('')}
+          </span>
+          {evaluator.name}
+        </span>
+        {evaluators && evaluators.length > 1 && onEvaluator && (
+          <select
+            className="status-select"
+            value={evaluator.id}
+            aria-label="Whose marks these are"
+            onChange={(e) => onEvaluator(e.target.value)}
+          >
             {evaluators.map((person) => (
               <option key={person.id} value={person.id}>
                 {person.name}
               </option>
             ))}
           </select>
-        ) : (
-          <strong style={{ fontSize: 12.5 }}>{evaluator.name}</strong>
         )}
       </div>
       {voting ? (
@@ -584,5 +763,149 @@ function Stars({ value, onChange }: { value: number; onChange: (n: number) => vo
         {value || '—'}
       </span>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Trying a grid out                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The sheet a juror will fill in, here, with nothing behind it.
+ *
+ * A grid is a set of numbers until somebody marks something with it: what 30%
+ * on Team actually does to a score, and which status a result would earn, are
+ * only visible once marks are in. This puts marks in without writing anything
+ * down — no candidate, no evaluator, no row. Change a weight above and the
+ * number here moves, which is the whole point of having it on the same screen.
+ */
+export function GridPreview({
+  criteria,
+  markedOutOf,
+  outcomes,
+  scale,
+}: {
+  criteria: EvaluationCriterion[];
+  markedOutOf: number;
+  outcomes: BlockOutcome[];
+  scale: EvaluationScale;
+}) {
+  const [marks, setMarks] = useState<Record<string, number>>({});
+  const [open, setOpen] = useState(false);
+
+  const leaves = gridLeaves(criteria, markedOutOf);
+  const score = normalisedScore(marks, leaves);
+  const proposed = outcomes.find((o) => o.id === proposedOutcome(score, outcomes));
+  const missing = leaves.filter((l) => typeof marks[l.id] !== 'number').length;
+
+  if (!leaves.length) return null;
+
+  return (
+    <>
+      <button className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => setOpen(true)}>
+        <Icon name="star" size={13} /> Try this grid
+      </button>
+
+      {/* A screen of its own, and a window rather than a route: the grid you
+          are trying is the one you are editing, which has not been saved yet.
+          A page of its own would read the saved version and test the wrong
+          thing. Closing it puts you back in the setup where you were. */}
+      {open && (
+        <Modal
+          wide
+          title="Try this grid"
+          subtitle="Mark it as a juror would. Nothing here is saved — no candidate, no evaluator, no row."
+          onClose={() => setOpen(false)}
+          footer={
+            <>
+              <button
+                className="btn ghost"
+                disabled={!Object.keys(marks).length}
+                onClick={() => setMarks({})}
+              >
+                <Icon name="x" size={13} /> Clear the marks
+              </button>
+              <div className="spacer" />
+              <span style={{ fontSize: 13 }}>
+                Weighted score <strong className="num">{score ?? '—'}</strong> / 100
+              </span>
+              {proposed && (
+                <span className={proposed.tone === 'neutral' ? 'badge' : `badge ${proposed.tone}`}>
+                  Would be proposed {proposed.label}
+                </span>
+              )}
+              <button className="btn primary" onClick={() => setOpen(false)}>
+                Back to the setup
+              </button>
+            </>
+          }
+        >
+          <div className="stack" style={{ gap: 12 }}>
+            {leaves.map((leaf) => (
+              <div className="row" key={leaf.id} style={{ gap: 12 }}>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontWeight: 600, fontSize: 13.5 }}>
+                    {leaf.label || <span className="faint">Untitled</span>}
+                  </span>
+                  <span className="faint" style={{ display: 'block', fontSize: 12 }}>
+                    {Math.round(leafShare(criteria, leaf.id))}% of the final mark
+                    {leaf.help ? ` · ${leaf.help}` : ''}
+                  </span>
+                </span>
+                {scale === 'stars' ? (
+                  <div className="stars" role="group" aria-label={leaf.label || 'Mark'}>
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <button
+                        key={n}
+                        className={n <= (marks[leaf.id] ?? 0) ? 'star on' : 'star'}
+                        aria-label={`${n} out of 5`}
+                        onClick={() =>
+                          setMarks((m) => {
+                            const next = { ...m };
+                            // Clicking the star you are on takes the mark back off.
+                            if (n === m[leaf.id]) delete next[leaf.id];
+                            else next[leaf.id] = n;
+                            return next;
+                          })
+                        }
+                      >
+                        <Icon name="star" size={22} />
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <input
+                    className="input num"
+                    style={{ width: 96 }}
+                    type="number"
+                    min={0}
+                    max={leaf.max}
+                    placeholder={`0–${leaf.max}`}
+                    value={marks[leaf.id] ?? ''}
+                    aria-label={leaf.label || 'Mark'}
+                    onChange={(e) =>
+                      setMarks((m) => {
+                        const next = { ...m };
+                        if (e.target.value === '') delete next[leaf.id];
+                        else next[leaf.id] = Math.max(0, Math.min(leaf.max, Number(e.target.value)));
+                        return next;
+                      })
+                    }
+                  />
+                )}
+              </div>
+            ))}
+
+            {missing > 0 && (
+              <p className="faint" style={{ margin: 0, fontSize: 12 }}>
+                {/* Said out loud: a partial sheet scores on what was marked,
+                    which is how a juror's draft behaves too. */}
+                {missing} of {leaves.length} not marked — the score is on what is.
+              </p>
+            )}
+          </div>
+        </Modal>
+      )}
+    </>
   );
 }

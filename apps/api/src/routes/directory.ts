@@ -3,6 +3,7 @@ import {
   createRecordInput,
   fullName,
   importInput,
+  listedInDirectory,
   matchKey,
   parseRoles,
   signupInput,
@@ -13,10 +14,31 @@ import {
   type RecordKind,
 } from '@ceed/shared';
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import * as dir from '../db/directory.js';
+import {
+  accountOfRecord,
+  accountStatesByRecord,
+  closeAccount,
+  createAccount,
+  findAccount,
+  markInvited,
+  reissueProvisionalPassword,
+} from '../services/auth.js';
 import { HttpError, notFound, parse } from './util.js';
+import { workspaceGuard } from './guard.js';
+
+/** Opening an account on somebody's behalf, with a password they must replace. */
+const openAccountInput = z.object({
+  /** Defaults to the address already on the record. */
+  email: z.string().email('Enter a valid email address.').optional(),
+  password: z.string().min(8, 'At least 8 characters.'),
+});
 
 export async function directoryRoutes(app: FastifyInstance) {
+  // Everything below is the CEED workspace. Public routes name themselves.
+  app.addHook('preHandler', workspaceGuard((url) => url.startsWith('/api/public/')));
+
   /* ---- The two lists are one query ---- */
 
   app.get('/api/records', async (req) => {
@@ -24,7 +46,17 @@ export async function directoryRoutes(app: FastifyInstance) {
     const records = await dir.listRecords({ kind: kind as RecordKind, role, q });
     // An organisation with nobody attached cannot be invited, so the list says so.
     const counts = await dir.linkCounts();
-    return records.map((r) => ({ ...r, contacts: counts.get(r.id) ?? 0 }));
+    // Where each person stands on having their own way in. One query for all.
+    const accounts = await accountStatesByRecord();
+    const rows = records.map((r) => ({
+      ...r,
+      contacts: counts.get(r.id) ?? 0,
+      account: accounts.get(r.id) ?? null,
+    }));
+    // Somebody a founder typed onto their own team page is content until they
+    // come through the door themselves. A search still reaches them — hiding a
+    // row from a list is not the same as making a person unfindable.
+    return q?.trim() ? rows : rows.filter((r) => listedInDirectory(r, r.account));
   });
 
   app.get('/api/records/:id', async (req, reply) => {
@@ -38,7 +70,13 @@ export async function directoryRoutes(app: FastifyInstance) {
     const name = input.kind === 'person' ? fullName(input.firstName, input.lastName) || input.name : input.name;
     if (!name.trim()) throw new HttpError(422, 'A name is required.', { name: 'A name is required.' });
     const existing = await dir.findByName(input.kind, name);
-    if (existing) {
+    // Two organisations may not share a name. Two people may — this file holds
+    // five different founders called Ali. What separates them is the address, so
+    // a namesake is refused only when nothing tells them apart.
+    const sameEmail =
+      Boolean(existing?.email) && existing!.email.trim().toLowerCase() === (input.email ?? '').trim().toLowerCase();
+    const namesake = existing && input.kind === 'person' && input.email?.trim() && !sameEmail;
+    if (existing && !namesake) {
       throw new HttpError(422, `${existing.name} is already in the directory.`, { name: 'Already in the directory.' });
     }
     const record = await dir.createRecord({ ...input, name });
@@ -47,8 +85,8 @@ export async function directoryRoutes(app: FastifyInstance) {
       if (org) {
         await dir.linkRecords(
           record.kind === 'person'
-            ? { personId: record.id, orgId: org.id, role: input.affiliationRole }
-            : { personId: org.id, orgId: record.id, role: input.affiliationRole },
+            ? { personId: record.id, orgId: org.id, role: input.affiliationRole, access: input.affiliationAccess }
+            : { personId: org.id, orgId: record.id, role: input.affiliationRole, access: input.affiliationAccess },
         );
       }
     }
@@ -68,15 +106,97 @@ export async function directoryRoutes(app: FastifyInstance) {
     return dir.updateRecord(id, patch);
   });
 
+  /**
+   * What removing this record will take with it — read by the confirmation so
+   * it can name the consequences instead of warning in general.
+   */
+  app.get('/api/records/:id/removal', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    return (await dir.removalPlan(id)) ?? notFound(reply, 'Record not found.');
+  });
+
   app.delete('/api/records/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    // Letting a juror go would punch a hole in a ranking that was published, so
-    // the refusal names where they are still used rather than a flat no.
-    const uses = await dir.usesOf(id);
-    if (uses.length) {
-      throw new HttpError(422, `Still in use — ${uses.join(', ')}. Take them off those first.`);
+    const plan = await dir.removalPlan(id);
+    if (!plan) return notFound(reply, 'Record not found.');
+    // Almost nothing refuses any more: removing somebody means something
+    // different depending on what they were, and the plan says which.
+    if (plan.blocked.length) throw new HttpError(422, plan.blocked.join(' '));
+    await dir.removeRecord(id, plan);
+    reply.code(204);
+  });
+
+  /* ---- Opening an account for somebody ---- */
+
+  /**
+   * CEED can hand a directory record the keys to its own page. The password is
+   * provisional by construction: whoever typed it here knows it, so the account
+   * is not its owner's until they have chosen another one.
+   */
+  app.post('/api/records/:id/account', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const input = parse(openAccountInput, req.body);
+    const record = await dir.getRecord(id);
+    if (!record) return notFound(reply, 'Record not found.');
+    if (record.kind !== 'person') {
+      throw new HttpError(422, 'An account belongs to a person, not to an organisation.');
     }
-    await dir.deleteRecord(id);
+
+    const email = (input.email ?? record.email).trim();
+    if (!email) throw new HttpError(422, 'This person has no email address.', { email: 'No address on file.' });
+
+    const already = await findAccount(email);
+    if (already) {
+      // A provisional password may be issued again — it was never theirs, and a
+      // password nobody wrote down is worth less than a new one. A password its
+      // owner has chosen is never overwritten from here.
+      if (already.recordId !== record.id) {
+        throw new HttpError(422, 'An account already uses this email.', { email: 'Already taken.' });
+      }
+      if (!already.mustChangePassword) {
+        throw new HttpError(422, 'This account has its own password already.', {
+          email: 'Its owner has already chosen a password.',
+        });
+      }
+      await reissueProvisionalPassword(already.id, input.password);
+      reply.code(200);
+      return { ...(await accountOfRecord(record.id))!, reissued: true };
+    }
+
+    if (!record.email) await dir.updateRecord(record.id, { email });
+
+    await createAccount({ email, password: input.password, recordId: record.id, mustChangePassword: true });
+    reply.code(201);
+    return accountOfRecord(record.id);
+  });
+
+  /**
+   * Sending the invitation. No mail leaves yet — this records that the person
+   * has been told, which is the difference between an account nobody knows
+   * about and one whose owner has not come to claim it. Inviting an account
+   * that is already claimed would say something untrue, so it is refused.
+   */
+  app.post('/api/records/:id/account/invite', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const account = await accountOfRecord(id);
+    if (!account) return notFound(reply, 'This person has no account to invite them to.');
+    if (account.state === 'claimed') {
+      throw new HttpError(422, 'This account is already claimed — there is nothing to invite.');
+    }
+    await markInvited(account.id);
+    return accountOfRecord(id);
+  });
+
+  /**
+   * Closing an account. The person stays in the directory — they are still a
+   * juror, a founder, a contact; what goes is their way in. Sessions end with
+   * it, so whoever was signed in is signed out.
+   */
+  app.delete('/api/records/:id/account', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const account = await accountOfRecord(id);
+    if (!account) return notFound(reply, 'This person has no account.');
+    await closeAccount(account.id);
     reply.code(204);
   });
 

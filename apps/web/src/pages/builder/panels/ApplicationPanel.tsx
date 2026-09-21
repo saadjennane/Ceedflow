@@ -1,6 +1,7 @@
 import {
   FIELD_TYPES,
   FIELD_TYPE_LABEL,
+  blockStatus,
   formPages,
   idOf,
   type ApplicationConfig,
@@ -11,6 +12,7 @@ import {
   type FormPage,
 } from '@ceed/shared';
 import { useState } from 'react';
+import { api } from '../../../lib/api';
 import { formatDate } from '../../../lib/format';
 import { DateField, SelectField, TagField, TextArea, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
@@ -21,6 +23,14 @@ import { ConfirmDialog, useToast } from '../../../ui/Overlays';
 /* ------------------------------------------------------------------ */
 
 /** The sections of the Application drawer, in the order they are shown. */
+/** The word the top callout uses for a form that exists but is shut. */
+const STATE_WORD: Record<string, string> = {
+  not_configured: 'empty',
+  scheduled: 'not open yet',
+  closed: 'closed',
+  live: 'live',
+};
+
 export const APPLICATION_TABS = ['Overview', 'Form', 'Eligibility', 'Settings'] as const;
 export type ApplicationTab = (typeof APPLICATION_TABS)[number];
 
@@ -38,8 +48,27 @@ export function ApplicationSetup({
   const [openFieldId, setOpenFieldId] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [confirmPage, setConfirmPage] = useState<FormPage | null>(null);
+  const [minting, setMinting] = useState(false);
   const toast = useToast();
 
+  /** Issues a fresh public link and retires the old one on the spot. */
+  const mintLink = async () => {
+    setMinting(true);
+    try {
+      const updated = await api.post<Block>(`/api/blocks/${block.id}/application/token`);
+      patch({ publicToken: (updated.config as ApplicationConfig).publicToken });
+      toast('New link issued. The old one now leads nowhere.');
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setMinting(false);
+    }
+  };
+
+  // Read from the draft, not the saved block: the toggle in the header edits
+  // the draft, and a callout reading the old config contradicts it on screen.
+  const state = blockStatus({ type: 'application', config });
+  const live = state === 'live';
   const publicUrl = `${window.location.origin}/apply/${config.publicToken}`;
   const paged = config.layout === 'paged';
   const grouped = formPages(config);
@@ -132,13 +161,15 @@ export function ApplicationSetup({
     <>
       {tab === 'Overview' && (
       <>
-      <div className={config.published ? 'callout ok' : 'callout'}>
-        <Icon name={config.published ? 'check' : 'link'} size={15} />
+      <div className={live ? 'callout ok' : 'callout'}>
+        <Icon name={live ? 'check' : 'link'} size={15} />
         <div style={{ flex: 1 }}>
-          {config.published ? (
+          {state !== 'not_configured' ? (
             <>
-              <strong>The form is live.</strong> Anyone with the link can apply, and every submission creates a
-              candidate in this track.
+              <strong>{live ? 'The form is live.' : `The form is ${STATE_WORD[state]}.`}</strong>{' '}
+              {live
+                ? 'Anyone with the link can apply, and every submission creates a candidate in this track.'
+                : 'The link resolves, and shows what a latecomer is told rather than the questions.'}
               <div className="row" style={{ marginTop: 8, gap: 7 }}>
                 <code className="public-link">{publicUrl}</code>
                 <button
@@ -153,6 +184,12 @@ export function ApplicationSetup({
                 <a className="btn sm" href={publicUrl} target="_blank" rel="noreferrer">
                   <Icon name="eye" size={13} /> Open
                 </a>
+                {/* The late-applicant manoeuvre: a fresh link retires the old
+                    one, so reopening the call does not reopen it to everybody
+                    who kept the address from the first round. */}
+                <button className="btn sm" disabled={minting} onClick={mintLink}>
+                  <Icon name="edit" size={13} /> New link
+                </button>
               </div>
             </>
           ) : (
@@ -164,20 +201,17 @@ export function ApplicationSetup({
         </div>
       </div>
 
-      <label className="check">
-        <input type="checkbox" checked={config.published} onChange={(e) => patch({ published: e.target.checked })} />
-        <span>
-          <strong>Publish the form</strong>
-          <div className="faint" style={{ fontSize: 12 }}>
-            Outside the opening dates below, the page tells visitors the call is not open.
-          </div>
-        </span>
-      </label>
-
       <div className="grid-2">
         <DateField label="Opens on" value={config.opensAt} onChange={(v) => patch({ opensAt: v })} />
         <DateField label="Closes on" value={config.closesAt} onChange={(v) => patch({ closesAt: v })} />
       </div>
+
+      <TextArea
+        label="What a latecomer is told"
+        value={config.closedMessage}
+        onChange={(v) => patch({ closedMessage: v })}
+        help="Shown once the call is closed, in place of the form. Empty falls back to a plain sentence."
+      />
 
       <TextArea
         label="Introduction shown on the form"
@@ -667,9 +701,9 @@ export function ApplicationSubmissions({
       <div className="empty">
         <h3>No submission yet</h3>
         <p>
-          {config.published
+          {blockStatus(block) === 'live'
             ? 'The form is live. Submissions will appear here as they come in.'
-            : 'Publish the form and share its link to start receiving applications.'}
+            : 'Open the form and share its link to start receiving applications.'}
         </p>
       </div>
     );

@@ -54,7 +54,13 @@ export function WorkTab({
       type="committee"
       empty={{ title: 'No selection committee', body: 'Add one in the builder to run jury sittings.' }}
     >
-      {(block) => <CommitteeWorkspace block={block} onOpenBlock={(id) => onOpenWork('review', id)} />}
+      {(block) => (
+        <CommitteeWorkspace
+          block={block}
+          onOpenSetup={onOpenSetup}
+          onOpenScoring={(id) => onOpenWork('review', id)}
+        />
+      )}
     </WorkspaceShell>
   );
 }

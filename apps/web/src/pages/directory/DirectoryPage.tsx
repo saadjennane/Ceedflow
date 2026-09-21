@@ -1,17 +1,21 @@
-import { ORIGIN_LABEL, rolesFor, type DirectoryRecord, type RecordKind } from '@ceed/shared';
+import { ORIGIN_LABEL, rolesFor, type DirectoryRecord, type RecordAccount, type RecordKind } from '@ceed/shared';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
+import { SearchBox } from '../../ui/SearchBox';
 import '../../ui/builder.css';
 import '../../ui/directory.css';
+import { AccountBadge } from './AccountCard';
 import { ImportModal } from './ImportModal';
 import { RecordModal } from './RecordModal';
 
 /** A record as the list endpoint returns it: with how many affiliations it has. */
 export interface RecordRow extends DirectoryRecord {
   contacts: number;
+  /** Null for an organisation, and for anybody who has no way in yet. */
+  account: RecordAccount | null;
 }
 
 export const initials = (name: string) =>
@@ -91,14 +95,11 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
         </div>
 
         <div className="row wrap">
-          <div className="search">
-            <Icon name="search" size={14} />
-            <input
-              placeholder={isOrg ? 'Search an organisation, a city, a tag…' : 'Search a name, an email, a city…'}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
+          <SearchBox
+            placeholder={isOrg ? 'Search an organisation, a city, a tag…' : 'Search a name, an email, a city…'}
+            value={query}
+            onChange={setQuery}
+          />
           <span className="faint num" style={{ fontSize: 12.5 }}>
             {rows.length} of {all.length}
           </span>
@@ -134,6 +135,7 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
                   <th>Roles</th>
                   <th>City</th>
                   <th>{isOrg ? 'Contacts' : 'Organisations'}</th>
+                  {!isOrg && <th>Account</th>}
                   <th>Came from</th>
                 </tr>
               </thead>
@@ -174,6 +176,11 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
                         <span className="faint">—</span>
                       )}
                     </td>
+                    {!isOrg && (
+                      <td>
+                        <AccountBadge account={r.account} />
+                      </td>
+                    )}
                     <td className="faint" style={{ fontSize: 12 }} title={ORIGIN_LABEL[r.origin]}>
                       {r.origin === 'import' ? 'File' : r.origin === 'signup' ? 'Registered' : 'By hand'}
                     </td>

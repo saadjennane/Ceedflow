@@ -1,4 +1,5 @@
 import {
+  evaluationForCommittee,
   orderedBlocks,
   sessionSlots,
   type Block,
@@ -9,8 +10,8 @@ import {
   type CommitteeSession,
   type CommitteeSlot,
   type EvaluationConfig,
-  type TrackWithPhases,
   type PersonRef,
+  type TrackWithPhases,
 } from '@ceed/shared';
 import { peopleByIds } from '../db/directory.js';
 import * as repo from '../db/repo.js';
@@ -53,22 +54,9 @@ function trackOf(tracks: TrackWithPhases[], blockId: string): TrackWithPhases | 
   return tracks.find((t) => t.phases.some((p) => p.blocks.some((b) => b.id === blockId))) ?? null;
 }
 
-/**
- * The Evaluation that scores this committee: one sitting in the same phase, which
- * is how dropping the two together links them, unless a block names it explicitly.
- */
-export function evaluationForCommittee(track: TrackWithPhases, committeeId: string): Block | null {
-  const pinned = orderedBlocks(track).find(
-    (b) => b.type === 'evaluation' && (b.config as EvaluationConfig).scopeBlockId === committeeId,
-  );
-  if (pinned) return pinned;
-  const phase = track.phases.find((p) => p.blocks.some((b) => b.id === committeeId));
-  return (
-    phase?.blocks.find(
-      (b) => b.type === 'evaluation' && (b.config as EvaluationConfig).scopeBlockId === null,
-    ) ?? null
-  );
-}
+// The rule lives in the shared model: a selection resolves a committee the same
+// way, and the two must never drift apart.
+export { evaluationForCommittee };
 
 /** The committee a scoped Evaluation scores, resolved the same way. */
 export function committeeForEvaluation(track: TrackWithPhases, evaluationId: string): Block | null {
@@ -139,10 +127,15 @@ export async function committeeView(blockId: string): Promise<CommitteeView | nu
           };
         })
         .filter((row): row is AssignmentView => row !== null)
-        // Unplaced startups sit at the end, where they are obvious.
+        /* Placed ones read as the day runs; the rest keep the order they were
+           put on the sitting, which is the order Fill slots follows. Saying so
+           here rather than leaning on a stable sort: the tie between two
+           unplaced rows used to be settled by luck. */
         .sort(
           (a, b) =>
-            (a.assignment.slotIndex ?? Number.MAX_SAFE_INTEGER) - (b.assignment.slotIndex ?? Number.MAX_SAFE_INTEGER),
+            (a.assignment.slotIndex ?? Number.MAX_SAFE_INTEGER) -
+              (b.assignment.slotIndex ?? Number.MAX_SAFE_INTEGER) ||
+            a.assignment.position - b.assignment.position,
         ),
     };
   });
@@ -167,25 +160,15 @@ export async function committeeView(blockId: string): Promise<CommitteeView | nu
 }
 
 /**
- * Seats startups on a sitting. When the team owns the timetable they take the
- * first free slots; when the startups pick their own, they are left unplaced so
- * the choice is genuinely theirs.
+ * Puts startups on a sitting. They arrive without an hour, whoever owns the
+ * timetable.
+ *
+ * It used to hand out the first free slots by itself whenever the team owned
+ * the timetable, which was a reasonable shortcut when nothing else could place
+ * them. Fill slots now does that on demand, in an order you can see — so doing
+ * it silently only took the decision away, and left No time yet permanently
+ * empty. Assigning and timing are two acts; this is the first one.
  */
 export async function seatOnFreeSlots(sessionId: string, candidateIds: string[]): Promise<number> {
-  const added = await repo.assignToSession(sessionId, candidateIds);
-  const blockId = await repo.sessionBlockId(sessionId);
-  if (!blockId) return added;
-  const view = await committeeView(blockId);
-  if (view?.config.rsvpMode === 'slots') return added;
-  const sv = view?.sessions.find((s) => s.session.id === sessionId);
-  if (!sv) return added;
-
-  const taken = new Set(sv.assignments.map((a) => a.assignment.slotIndex).filter((i): i is number => i !== null));
-  const free = sv.slots.map((s) => s.index).filter((i) => !taken.has(i));
-  for (const row of sv.assignments.filter((a) => a.assignment.slotIndex === null)) {
-    const next = free.shift();
-    if (next === undefined) break;
-    await repo.moveAssignmentToSlot(row.assignment.id, next);
-  }
-  return added;
+  return repo.assignToSession(sessionId, candidateIds);
 }

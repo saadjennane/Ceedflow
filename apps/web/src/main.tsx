@@ -12,6 +12,7 @@ import { DirectoryPage } from './pages/directory/DirectoryPage';
 import { RecordPage } from './pages/directory/RecordPage';
 import { ProgramPage } from './pages/ProgramPage';
 import { ProgramsPage } from './pages/ProgramsPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { ToastProvider } from './ui/Overlays';
 import './ui/app.css';
 
@@ -33,6 +34,7 @@ const router = createBrowserRouter([
       { path: 'organisations', element: <DirectoryPage kind="org" /> },
       { path: 'individuals', element: <DirectoryPage kind="person" /> },
       { path: 'directory/:recordId', element: <RecordPage /> },
+      { path: 'settings', element: <SettingsPage /> },
     ],
   },
 ]);

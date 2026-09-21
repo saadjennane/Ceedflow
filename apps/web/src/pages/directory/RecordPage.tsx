@@ -1,13 +1,21 @@
-import { ORIGIN_LABEL, type DirectoryRecord, type RecordDetail, type RecordKind } from '@ceed/shared';
-import { useState } from 'react';
+import {
+  ORIGIN_LABEL,
+  type DirectoryRecord,
+  type RecordDetail,
+  type RecordKind,
+  type RemovalPlan,
+} from '@ceed/shared';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
+import { SearchBox } from '../../ui/SearchBox';
 import { ConfirmDialog, Modal, useToast } from '../../ui/Overlays';
 import '../../ui/builder.css';
 import '../../ui/directory.css';
+import { AccountCard } from './AccountCard';
 import { initials } from './DirectoryPage';
 import { RecordModal } from './RecordModal';
 
@@ -24,7 +32,7 @@ export function RecordPage() {
   if (detail.error) return <div className="page empty">{detail.error}</div>;
   if (!detail.data) return <div className="page empty">Loading…</div>;
 
-  const { record, links } = detail.data;
+  const { record, links, account } = detail.data;
   const isOrg = record.kind === 'org';
   const backTo = isOrg ? '/organisations' : '/individuals';
 
@@ -130,6 +138,10 @@ export function RecordPage() {
         </div>
 
         <aside className="stack" style={{ gap: 14 }}>
+          {/* A person can be given a way in; an organisation is reached through
+              the people attached to it. */}
+          {!isOrg && <AccountCard record={record} account={account} onChanged={detail.reload} />}
+
           <div className="card card-pad stack" style={{ gap: 10 }}>
             <div className="eyebrow">The record</div>
             <Fact label="Came from" value={ORIGIN_LABEL[record.origin]} />
@@ -194,20 +206,96 @@ export function RecordPage() {
       )}
 
       {removing && (
-        <ConfirmDialog
-          title={`Remove ${record.name}?`}
-          body="The record and its links are deleted. This cannot be undone."
-          confirmLabel="Remove"
-          destructive
+        <RemovalDialog
+          record={record}
           onClose={() => setRemoving(false)}
-          onConfirm={async () => {
-            await api.del(`/api/records/${record.id}`);
+          onRemoved={() => {
             toast(`${record.name} removed.`);
             navigate(backTo);
           }}
         />
       )}
     </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * Removing somebody means different things depending on what they were, so the
+ * confirmation asks the server what will happen and reads the answer back. A
+ * founder leaves with the application they filed; a juror is lifted off their
+ * sittings and the marks they already gave stay behind.
+ */
+function RemovalDialog({
+  record,
+  onClose,
+  onRemoved,
+}: {
+  record: DirectoryRecord;
+  onClose: () => void;
+  onRemoved: () => void;
+}) {
+  const [plan, setPlan] = useState<RemovalPlan | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
+
+  useEffect(() => {
+    api
+      .get<RemovalPlan>(`/api/records/${record.id}/removal`)
+      .then(setPlan)
+      .catch((err) => setError((err as Error).message));
+  }, [record.id]);
+
+  const lines: string[] = [];
+  if (plan) {
+    if (plan.account) lines.push(`Their account (${plan.account.email}) and any session open on it.`);
+    for (const c of plan.candidacies) lines.push(`The application filed for ${c.orgName || 'an organisation'}.`);
+    for (const o of plan.organisations) lines.push(`${o.name} — nobody else holds that page.`);
+    for (const p of plan.panels) lines.push(`Taken off ${p.name}. The sitting itself stays.`);
+    for (const e of plan.evaluations) lines.push(`Taken off the reviewers of ${e.name}.`);
+  }
+
+  return (
+    <ConfirmDialog
+      title={`Remove ${record.name}?`}
+      confirmLabel="Remove"
+      destructive
+      onClose={onClose}
+      body={
+        !plan ? (
+          <span className="faint">{error ?? 'Working out what goes with them…'}</span>
+        ) : plan.blocked.length ? (
+          <span>{plan.blocked.join(' ')}</span>
+        ) : (
+          <span>
+            {lines.length ? 'This also goes:' : 'Nothing else hangs off this record.'}
+            {lines.length > 0 && (
+              <ul style={{ margin: '7px 0 0', paddingLeft: 18, lineHeight: 1.6 }}>
+                {lines.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            )}
+            {plan.scoresKept > 0 && (
+              <span className="faint" style={{ display: 'block', marginTop: 8 }}>
+                {plan.scoresKept} mark{plan.scoresKept === 1 ? '' : 's'} they already filed stay where they are, under
+                the name they were filed with — a published ranking does not move because somebody left.
+              </span>
+            )}
+            <span style={{ display: 'block', marginTop: 8 }}>This cannot be undone.</span>
+          </span>
+        )
+      }
+      onConfirm={async () => {
+        try {
+          await api.del(`/api/records/${record.id}`);
+          onRemoved();
+        } catch (err) {
+          toast((err as Error).message, true);
+        }
+      }}
+    />
   );
 }
 
@@ -297,10 +385,7 @@ function LinkModal({
       <div className="grid-2">
         <div className="field">
           <label>Search</label>
-          <div className="search">
-            <Icon name="search" size={14} />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name…" />
-          </div>
+          <SearchBox value={query} onChange={setQuery} placeholder="Name…" />
         </div>
         <div className="field">
           <label>Role there</label>

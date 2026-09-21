@@ -49,28 +49,40 @@ const FIELDS: FormField[] = [
 ];
 
 const CRITERIA: EvaluationCriterion[] = [
-  { id: 'c_problem', label: 'Problem and market', help: 'Is the problem real, and is the market worth addressing?', weight: 2, max: 10, children: [] },
-  { id: 'c_solution', label: 'Solution and differentiation', help: '', weight: 2, max: 10, children: [] },
-  { id: 'c_team', label: 'Team', help: 'Complementarity, commitment, track record.', weight: 3, max: 10, children: [] },
-  { id: 'c_traction', label: 'Traction', help: '', weight: 2, max: 10, children: [] },
-  { id: 'c_impact', label: 'Impact and job creation', help: '', weight: 1, max: 10, children: [] },
+  { id: 'c_problem', label: 'Problem and market', help: 'Is the problem real, and is the market worth addressing?', share: 20, weight: 1, max: 10, children: [] },
+  { id: 'c_solution', label: 'Solution and differentiation', help: '', share: 20, weight: 1, max: 10, children: [] },
+  { id: 'c_team', label: 'Team', help: 'Complementarity, commitment, track record.', share: 30, weight: 1, max: 10, children: [] },
+  { id: 'c_traction', label: 'Traction', help: '', share: 20, weight: 1, max: 10, children: [] },
+  { id: 'c_impact', label: 'Impact and job creation', help: '', share: 10, weight: 1, max: 10, children: [] },
 ];
 
 /** The jury's own grid: what a panel can judge from a pitch, not from a file. */
 const JURY_CRITERIA: EvaluationCriterion[] = [
-  { id: 'j_pitch', label: 'Clarity of the pitch', help: 'Is the proposition understood in two minutes?', weight: 2, max: 10, children: [] },
-  { id: 'j_team', label: 'Founders on stage', help: 'Conviction, command of the numbers, honesty about risk.', weight: 3, max: 10, children: [] },
-  { id: 'j_model', label: 'Business model', help: 'Does the money add up, and can it scale?', weight: 3, max: 10, children: [] },
-  { id: 'j_fit', label: 'Fit with the program', help: 'Will six months here change their trajectory?', weight: 2, max: 10, children: [] },
+  { id: 'j_pitch', label: 'Clarity of the pitch', help: 'Is the proposition understood in two minutes?', share: null, weight: 2, max: 10, children: [] },
+  { id: 'j_team', label: 'Founders on stage', help: 'Conviction, command of the numbers, honesty about risk.', share: null, weight: 3, max: 10, children: [] },
+  { id: 'j_model', label: 'Business model', help: 'Does the money add up, and can it scale?', share: null, weight: 3, max: 10, children: [] },
+  { id: 'j_fit', label: 'Fit with the program', help: 'Will six months here change their trajectory?', share: null, weight: 2, max: 10, children: [] },
 ];
 
-const PROSPECTS = [
-  'contact@technopark.ma',
-  'startups@um6p.ma',
-  'hello@lafabrique.ma',
-  'incubateur@enactus.ma',
-  'reseau@cluster-digital.ma',
-  'contact@impacthub-casa.ma',
+/**
+ * The network the call goes out to. They are directory records rather than a
+ * list of addresses, because that is what an audience is asked of now.
+ */
+const PROSPECTS: [string, string][] = [
+  ['Technopark Casablanca', 'contact@technopark.ma'],
+  ['UM6P', 'startups@um6p.ma'],
+  ['La Fabrique', 'hello@lafabrique.ma'],
+  ['Enactus Morocco', 'incubateur@enactus.ma'],
+  ['Cluster Digital', 'reseau@cluster-digital.ma'],
+  ['Impact Hub Casablanca', 'contact@impacthub-casa.ma'],
+];
+
+const CHANNELS = [
+  { id: 'linkedin', label: 'LinkedIn' },
+  { id: 'instagram', label: 'Instagram' },
+  { id: 'partner-referral', label: 'Partner referral' },
+  { id: 'university', label: 'University' },
+  { id: 'ceed-alumni', label: 'CEED alumni' },
 ];
 
 interface SeedCandidate {
@@ -396,9 +408,10 @@ async function main() {
   const sourcing = await repo.createBlock(firstPhase.id, 'sourcing', 'Call for applications');
   await repo.updateBlock(sourcing.id, {
     config: {
-      opensAt: '2026-09-01',
-      closesAt: '2026-10-10',
-      channels: ['LinkedIn', 'Instagram', 'Partner referral', 'University', 'CEED alumni'],
+      channels: CHANNELS,
+      // Everyone in the directory carrying the Partner role, so the list grows
+      // on its own as the network does.
+      audience: { roles: ['Partner'], tags: [], recordIds: [] },
       outreach: {
         subject: 'Grow 2026 is open — six months of support for Moroccan startups',
         body: [
@@ -410,7 +423,7 @@ async function main() {
           '',
           'The CEED Morocco team',
         ].join('\n'),
-        recipients: { kind: 'list', emails: PROSPECTS },
+        channelId: 'partner-referral',
       },
     },
   });
@@ -457,11 +470,22 @@ async function main() {
       criteria: CRITERIA,
       requireComment: true,
       scopeBlockId: readingPanel.id,
+      // The cut lives here, in the band, and nowhere else.
+      outcomes: [
+        { id: 'retained', label: 'Retained', tone: 'ok', minScore: 64, whenSplit: false },
+        { id: 'hold', label: 'Waitlist', tone: 'warn', minScore: 50, whenSplit: true },
+        { id: 'rejected', label: 'Not retained', tone: 'stop', minScore: null, whenSplit: false },
+      ],
     },
   });
   const shortlisting = await repo.createBlock(screening.id, 'selection', 'Shortlist');
   await repo.updateBlock(shortlisting.id, {
-    config: { outputKind: 'shortlist', method: 'threshold', threshold: 64, passLabel: 'Shortlisted', failLabel: 'Not selected' },
+    config: {
+      outputKind: 'shortlist',
+      passOutcomeIds: ['retained'],
+      passLabel: 'Shortlisted',
+      failLabel: 'Not selected',
+    },
   });
 
   const committeePhase = await repo.createPhase(trackId, 'Selection committee');
@@ -481,20 +505,31 @@ async function main() {
   await repo.updateBlock(finalSelection.id, {
     config: {
       outputKind: 'cohort',
-      method: 'top_n',
-      topN: 11,
-      sourceBlockId: juryScoring.id,
+      fromBlockId: juryScoring.id,
+      passOutcomeIds: ['retained'],
       passLabel: 'Selected',
       failLabel: 'Not selected',
     },
   });
 
   /* ---- The call went out to the partner network ---- */
+  for (const [name, email] of PROSPECTS) {
+    await directory.createRecord({
+      kind: 'org',
+      name,
+      roles: ['Partner'],
+      email,
+      city: 'Casablanca',
+      country: 'Morocco',
+      origin: 'manual',
+    });
+  }
   await repo.recordSend(
     sourcing.id,
     'Grow 2026 is open — six months of support for Moroccan startups',
     'CEED Grow opens its 2026 edition. Applications close on 10 October.',
-    PROSPECTS,
+    PROSPECTS.map(([, email]) => email),
+    'partner-referral',
   );
 
   /* ---- Candidates, with their applications and their scores ---- */
@@ -665,12 +700,12 @@ async function main() {
     }
   }
   /* ---- The cohort is announced, with one startup fished back by hand ---- */
-  const { addToSelection } = await import('../services/selection.js');
-  const beforeCut = (await import('../services/selection.js')).selectionView;
-  const cut = (await beforeCut(finalSelection.id))!;
-  // The jury argued for one the ranking left just outside; the team put it back.
+  const { overrideOutcome, selectionView } = await import('../services/selection.js');
+  const cut = (await selectionView(finalSelection.id))!;
+  // The jury argued for one the statuses left just outside; the team overruled
+  // them. That call is kept through every republication.
   const wildcard = cut.rows.filter((r) => r.outcome === 'fail' && r.score !== null)[0];
-  if (wildcard) await addToSelection(finalSelection.id, { candidateIds: [wildcard.candidate.id], outcome: 'pass' });
+  if (wildcard) await overrideOutcome(finalSelection.id, wildcard.candidate.id, 'pass');
   await publishSelection(finalSelection.id);
 
   /* ---- The cohort is under way: mentors assigned, one already off track ---- */

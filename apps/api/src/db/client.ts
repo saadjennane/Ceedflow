@@ -1,8 +1,21 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * The connection a transaction is running on, for the queries inside it.
+ *
+ * Against a server, every query takes a connection from the pool — so a `begin`
+ * sent on its own landed on one connection while what it was meant to protect
+ * ran on others, and the `commit` on a third. The transaction guarded nothing
+ * and left a connection open. It only ever worked because PGlite is a single
+ * connection. This carries the transaction's own handle down to the queries
+ * without the callers having to pass it.
+ */
+const openTx = new AsyncLocalStorage<{ unsafe: (text: string, params?: unknown[]) => unknown }>();
 
 export interface Db {
   query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
@@ -22,24 +35,24 @@ async function connect(): Promise<Db> {
 
   if (url) {
     const { default: postgres } = await import('postgres');
-    const sql = postgres(url);
+    const sql = postgres(url, {
+      /* Supabase and every other transaction-mode pooler hands a different
+         backend to each statement, which prepared statements cannot survive.
+         The errors it produces are intermittent and only appear under load. */
+      prepare: false,
+    });
+    /** Inside a transaction, its own handle; outside, the pool. */
+    const on = () => (openTx.getStore() ?? sql) as typeof sql;
     return {
       query: async <T>(text: string, params: unknown[] = []) =>
-        (await sql.unsafe(text, params as never[])) as unknown as T[],
+        (await on().unsafe(text, params as never[])) as unknown as T[],
       exec: async (text: string) => {
-        await sql.unsafe(text);
+        await on().unsafe(text);
       },
-      tx: async <T>(fn: () => Promise<T>) => {
-        await sql.unsafe('begin');
-        try {
-          const out = await fn();
-          await sql.unsafe('commit');
-          return out;
-        } catch (err) {
-          await sql.unsafe('rollback');
-          throw err;
-        }
-      },
+      tx: <T>(fn: () => Promise<T>) =>
+        // One connection for the whole block, and every query inside it finds
+        // that connection rather than asking the pool for another.
+        sql.begin((tx) => openTx.run(tx as never, fn)) as Promise<T>,
       close: () => sql.end(),
     };
   }
@@ -74,22 +87,44 @@ export function db(): Promise<Db> {
   return instance;
 }
 
+/**
+ * A number nobody else will pick, standing for "the schema of this app".
+ * Postgres advisory locks share one namespace across the whole database.
+ */
+const SCHEMA_LOCK = 4_412_003;
+
+/**
+ * Brings the schema up to date, once, whoever asks.
+ *
+ * Two things make this safe to call from more than one place at a time — which
+ * is what a rolling deploy does, starting the new instance while the old one
+ * still runs. An advisory lock means the second caller waits instead of racing
+ * the first through the same `create table`. And the whole run sits in one
+ * transaction, so a migration that fails halfway leaves the schema exactly as
+ * it was rather than half-changed; every migration this app has is plain DDL,
+ * which Postgres rolls back like anything else.
+ */
 export async function migrate(): Promise<void> {
   const conn = await db();
-  await conn.query(`create table if not exists _migrations (
-    name text primary key, ran_at timestamptz not null default now())`);
-  const done = new Set(
-    (await conn.query<{ name: string }>('select name from _migrations')).map((r) => r.name),
-  );
   const dir = join(here, 'migrations');
   const files = (await readdir(dir)).filter((f: string) => f.endsWith('.sql')).sort();
-  for (const file of files) {
-    if (done.has(file)) continue;
-    const sql = await readFile(join(dir, file), 'utf8');
-    await conn.exec(sql);
-    await conn.query('insert into _migrations (name) values ($1)', [file]);
-    console.log(`migrated ${file}`);
-  }
+
+  await conn.tx(async () => {
+    // Released when the transaction ends, whichever way it ends.
+    await conn.query('select pg_advisory_xact_lock($1)', [SCHEMA_LOCK]);
+    await conn.query(`create table if not exists _migrations (
+      name text primary key, ran_at timestamptz not null default now())`);
+    const done = new Set(
+      (await conn.query<{ name: string }>('select name from _migrations')).map((r) => r.name),
+    );
+    for (const file of files) {
+      if (done.has(file)) continue;
+      const sql = await readFile(join(dir, file), 'utf8');
+      await conn.exec(sql);
+      await conn.query('insert into _migrations (name) values ($1)', [file]);
+      console.log(`migrated ${file}`);
+    }
+  });
 }
 
 /** `select ... from t where id = $1` helper that returns one row or null. */

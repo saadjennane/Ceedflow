@@ -17,8 +17,14 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  /** Where the person was heading before they were asked to sign in. */
-  const next = params.get('next') ?? '/me';
+  /**
+   * Where the person was heading before they were asked to sign in. Absent when
+   * they came here on their own — the destination then follows from who they
+   * turn out to be.
+   */
+  const next = params.get('next') || null;
+  /** Carried across the sign-in ↔ sign-up link so the destination survives it. */
+  const carry = next ? `?next=${encodeURIComponent(next)}` : '';
 
   const set = (partial: Partial<typeof form>) => setForm((f) => ({ ...f, ...partial }));
 
@@ -26,8 +32,11 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
     setBusy(true);
     setErrors({});
     try {
-      await api.post<Me>(signup ? '/api/auth/signup' : '/api/auth/login', form);
-      navigate(next, { replace: true });
+      const me = await api.post<Me>(signup ? '/api/auth/signup' : '/api/auth/login', form);
+      // Two doors, one form. A provisional password opens neither until it has
+      // been replaced, so it goes to the one screen that can do that.
+      const home = me.account.mustChangePassword ? '/me' : me.account.staffRole ? '/' : '/me';
+      navigate(next ?? home, { replace: true });
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrors(err.fields);
       else setErrors({ _: (err as Error).message });
@@ -47,7 +56,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
         <div className="public-body stack" style={{ gap: 14 }}>
           <h1>{signup ? 'Create your account' : 'Sign in'}</h1>
           <p className="public-intro">
-            {next.startsWith('/apply')
+            {next?.startsWith('/apply')
               ? 'One step before the form: an account is what lets you pick it up again and follow where your application stands.'
               : signup
                 ? 'One account for you, and the organisation pages you look after.'
@@ -94,12 +103,12 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
             {signup ? (
               <>
                 Already have an account?{' '}
-                <Link to={`/login?next=${encodeURIComponent(next)}`}>Sign in</Link>
+                <Link to={`/login${carry}`}>Sign in</Link>
               </>
             ) : (
               <>
                 No account yet?{' '}
-                <Link to={`/signup?next=${encodeURIComponent(next)}`}>Create one</Link>
+                <Link to={`/signup${carry}`}>Create one</Link>
               </>
             )}
           </p>

@@ -32,7 +32,7 @@ export function ProgramsPage() {
 
   const list = programs.data ?? [];
   const editionCount = list.reduce((n, p) => n + p.editions.length, 0);
-  const runningCount = list.reduce((n, p) => n + p.editions.filter((e) => e.status === 'Running').length, 0);
+  const liveCount = list.reduce((n, p) => n + p.editions.filter((e) => e.status === 'Live').length, 0);
 
   return (
     <>
@@ -104,9 +104,9 @@ export function ProgramsPage() {
           </div>
         )}
 
-        {list.length > 0 && runningCount > 0 && (
+        {list.length > 0 && liveCount > 0 && (
           <p className="muted" style={{ margin: 0 }}>
-            <span className="num">{runningCount}</span> edition{runningCount > 1 ? 's are' : ' is'} running right now.
+            <span className="num">{liveCount}</span> edition{liveCount > 1 ? 's are' : ' is'} live right now.
           </p>
         )}
 

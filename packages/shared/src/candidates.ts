@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ACCOUNT_STATES } from './directory.js';
 
 /** How a cohort member's time in the program is going. */
 export const COHORT_STATUSES = ['Active', 'At risk', 'Graduated'] as const;
@@ -41,6 +42,12 @@ export const candidateSchema = z.object({
   email: z.string().default(''),
   phone: z.string().default(''),
   source: z.string().default(''),
+  /**
+   * Where the contact stands on having their own way in. Read through the join
+   * like the three fields above it — never stored on this row, and never
+   * patched from here.
+   */
+  accountState: z.enum(ACCOUNT_STATES).nullable().default(null),
   status: z.enum(CANDIDATE_STATUSES).default('Applied'),
   /** Who mentors it once it is in the cohort. Empty until someone is named. */
   mentor: z.string().default(''),

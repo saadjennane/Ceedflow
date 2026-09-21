@@ -601,12 +601,58 @@
   color: var(--warn);
 }
 
+/* A notice you can put away. It borrows the callout's own colour rather than
+   the button's, so it reads as part of the message and not as an action on the
+   page behind it. */
+.callout-dismiss {
+  margin-top: -2px;
+  color: inherit;
+  opacity: 0.55;
+}
+
+.callout-dismiss:hover {
+  opacity: 1;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  border-color: transparent;
+}
+
 /* ---- repeating editors (form fields, criteria) ---- */
 
 .rows {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* The directory has hundreds of people in it. Left uncapped, the suggestion
+   list pushed the whole panel off screen and there was nowhere left to click
+   away to. */
+.picker-rows {
+  margin-top: 6px;
+  max-height: 268px;
+  overflow-y: auto;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--canvas);
+}
+
+.picker-done {
+  position: sticky;
+  top: -7px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: -7px -7px 0;
+  padding: 7px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--canvas);
+  color: var(--ink-3);
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .rowcard {
@@ -696,6 +742,20 @@
   padding: 9px 13px;
   background: var(--surface);
   min-width: 128px;
+  /* A step is a place you can stand, so it looks like one you can enter. */
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.funnel-step:hover {
+  border-color: var(--line-strong);
+}
+
+.funnel-step.on {
+  border-color: var(--blue);
+  background: var(--blue-soft);
 }
 
 .funnel-step .n {
@@ -827,6 +887,34 @@
   flex: 1;
   min-width: 0;
   color: var(--ink);
+}
+
+/* Sits inside the box, on the right, and only exists while there is a
+   search to clear. */
+.search .clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  margin-right: -3px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.search .clear:hover {
+  background: var(--wash);
+  color: var(--ink);
+}
+
+.search .clear:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
 }
 
 dl.answers {
@@ -1155,6 +1243,137 @@ dl.answers dd {
 
 /* ---- the day, in columns ---- */
 
+/* Two zones, each scrolling on its own: the sittings of the day on the left,
+   the rail on the right. It used to be one grid where the rail was a column
+   like any other — so a second sitting pushed it onto the next row, and any
+   timetable taller than the screen took it out of reach exactly when you were
+   dragging something. */
+.day-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 252px;
+  gap: 14px;
+  align-items: stretch;
+  height: clamp(340px, calc(100vh - 336px), 940px);
+}
+
+.day-stage,
+.day-rail {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.day-stage {
+  padding-right: 3px;
+}
+
+.day-rail {
+  align-self: stretch;
+}
+
+/* Whose marks are being entered. Set apart from the sheet below it, because
+   getting it wrong files a juror's reading under somebody else's name. */
+.entered-as {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--wash);
+}
+
+/* The opening half of a row that also carries its own actions. */
+/* A seat's rank on the sitting, which is the order Fill slots follows. */
+.juror .juror-mark {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A column header that also orders the table. */
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.th-sort:hover {
+  color: var(--blue);
+}
+
+/* A number that is a percentage says so inside its own box. */
+.suffixed {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.suffixed .input {
+  width: 108px;
+  padding-right: 26px;
+}
+
+.suffixed > span {
+  position: absolute;
+  right: 10px;
+  color: var(--ink-3);
+  font-size: 12.5px;
+  pointer-events: none;
+}
+
+.row-open {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pool-chip .chip-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A chip in the rail carries its own way out, at its end. */
+.day-rail .pool-chip .chip-x {
+  margin-left: auto;
+  flex: none;
+}
+
+.rail-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Too narrow for two columns: the rail goes back underneath, and placing a
+   startup by clicking a free time is the way that still works. */
+@media (max-width: 1040px) {
+  .day-split {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .day-stage,
+  .day-rail {
+    overflow: visible;
+  }
+}
+
 .day {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -1298,4 +1517,75 @@ dl.answers dd {
 /* A decision label must not wrap — it makes every row twice as tall. */
 .seg button {
   white-space: nowrap;
+}
+
+
+/* ------------------------------------------------------------------ */
+/* The switch on a brick's door                                        */
+/* ------------------------------------------------------------------ */
+
+/* Binary, because the question is: is this door passable. What decides it —
+   the dates or a hand — is said in words underneath rather than in a third
+   position nobody would read. */
+.toggle {
+  flex-shrink: 0;
+  width: 40px;
+  height: 23px;
+  padding: 2px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--wash);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.toggle.on {
+  background: var(--ok);
+  border-color: transparent;
+}
+
+.toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.toggle-knob {
+  display: block;
+  width: 17px;
+  height: 17px;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  transition: transform 0.15s;
+}
+
+.toggle.on .toggle-knob {
+  transform: translateX(17px);
+}
+
+/* The door, beside the block's name: what it says, and the switch. */
+.door {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-right: 10px;
+}
+
+.door-words {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  font-size: 11.5px;
+}
+
+/* A way back to the dates, offered inline and only once it is needed. */
+.linkish {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--blue);
+  cursor: pointer;
+  text-decoration: underline;
 }

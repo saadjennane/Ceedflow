@@ -1,7 +1,6 @@
 import {
   normalisedScore,
   type BlockOutcome,
-  type Candidate,
   type CriterionLeaf,
   type EvaluationCriterion,
   type EvaluationMethod,
@@ -17,8 +16,19 @@ import { useToast } from '../../ui/Overlays';
 import '../../ui/builder.css';
 import '../../ui/directory.css';
 
+/**
+ * What the server actually sends a juror — not the `Candidate` row. The status,
+ * the founder's contact details and the acquisition channel never leave the
+ * workspace, so they are absent from this type too rather than merely unused.
+ */
+export interface ReviewSubject {
+  id: string;
+  orgName: string;
+  contactName: string;
+}
+
 export interface ReviewItem {
-  candidate: Candidate;
+  candidate: ReviewSubject;
   answers: { label: string; value: unknown; type: string }[];
   mine: { marks: Record<string, number>; verdict: string; comment: string; submittedAt: string | null } | null;
   score: number | null;
@@ -45,6 +55,11 @@ export interface ReviewPanel {
   } | null;
   items: ReviewItem[];
   done: number;
+  state: 'open' | 'not_open' | 'closed';
+  opensAt: string | null;
+  closesAt: string | null;
+  /** Set when CEED shut it by hand rather than by a deadline. */
+  closedAt: string | null;
 }
 
 /**
@@ -95,6 +110,35 @@ export function ReviewPage() {
       </div>
 
       <div className="member-body stack" style={{ gap: 14 }}>
+        {data.state !== 'open' && (
+          <div className="callout warn">
+            <Icon name="clock" size={15} />
+            <div>
+              {data.state === 'closed' ? (
+                <>
+                  {/* Closed by hand carries its own date; a deadline carries the planned one. */}
+                  <strong>Reviewing closed on {formatDate(data.closedAt ?? data.closesAt)}.</strong> You can still
+                  read what you sent, but nothing more can be filed. Ask the team if you need to.
+                </>
+              ) : (
+                <>
+                  {data.opensAt ? (
+                    <>
+                      <strong>Reviewing opens on {formatDate(data.opensAt)}.</strong> You can read the files now and
+                      mark them from that day.
+                    </>
+                  ) : (
+                    <>
+                      <strong>Reviewing has not opened.</strong> You can read the files now and mark them once the
+                      team opens it.
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         {!data.evaluation ? (
           <div className="callout warn">
             <Icon name="alert" size={15} />
@@ -112,6 +156,7 @@ export function ReviewPage() {
           />
         ) : (
           <>
+            {data.state === 'open' && (
             <div className="callout">
               <Icon name="star" size={15} />
               <div>
@@ -121,6 +166,7 @@ export function ReviewPage() {
                 What you write is yours — the others on this panel do not see it, and you do not see theirs.
               </div>
             </div>
+            )}
 
             <div className="rows">
               {data.items.map((item) => (
@@ -179,9 +225,13 @@ function ReviewOne({
   const [verdict, setVerdict] = useState(item.mine?.verdict ?? '');
   const [comment, setComment] = useState(item.mine?.comment ?? '');
   const [saving, setSaving] = useState(false);
+  /* Opens on the application, because you read before you judge — unless you
+     have already filed something, in which case you came back to change it. */
+  const [side, setSide] = useState<'Overview' | 'Evaluation'>(item.mine ? 'Evaluation' : 'Overview');
   const toast = useToast();
 
   const voting = grid.method === 'verdict';
+  const shut = panel.state !== 'open';
   const preview = normalisedScore(marks, grid.leaves);
   const blocked =
     (grid.requireComment && !comment.trim()) || (voting ? !verdict : preview === null);
@@ -215,8 +265,31 @@ function ReviewOne({
         {item.mine?.submittedAt && <span className="badge ok">Sent {formatDate(item.mine.submittedAt)}</span>}
       </div>
 
+      <h2 style={{ fontSize: 17, margin: 0 }}>{item.candidate.orgName}</h2>
+
+      {/* Two sides of the same startup, side by side rather than stacked: what
+          it sent, and what you have to fill in. A long application used to push
+          the grid off the screen, so the two were never visible at once. */}
+      <nav className="tabbar" role="tablist" aria-label={item.candidate.orgName}>
+        <button role="tab" className={side === 'Overview' ? 'tab on' : 'tab'} onClick={() => setSide('Overview')}>
+          Overview
+        </button>
+        <button role="tab" className={side === 'Evaluation' ? 'tab on' : 'tab'} onClick={() => setSide('Evaluation')}>
+          {voting ? 'Your verdict' : 'Your marks'}
+          {item.mine?.submittedAt ? (
+            <span className="badge ok" style={{ marginLeft: 6 }}>
+              Sent
+            </span>
+          ) : item.mine ? (
+            <span className="badge warn" style={{ marginLeft: 6 }}>
+              Draft
+            </span>
+          ) : null}
+        </button>
+      </nav>
+
+      {side === 'Overview' && (
       <section className="card card-pad stack" style={{ gap: 10 }}>
-        <h2 style={{ fontSize: 17 }}>{item.candidate.orgName}</h2>
         {item.answers.map((answer) => (
           <div key={answer.label}>
             <div className="eyebrow">{answer.label}</div>
@@ -225,7 +298,9 @@ function ReviewOne({
         ))}
         {!item.answers.length && <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>No application on file.</p>}
       </section>
+      )}
 
+      {side === 'Evaluation' && (
       <section className="card card-pad stack" style={{ gap: 12 }}>
         <h3 style={{ fontSize: 15 }}>{voting ? 'Your verdict' : 'Your marks'}</h3>
 
@@ -334,14 +409,15 @@ function ReviewOne({
             )}
           </span>
           <div className="spacer" />
-          <button className="btn" disabled={saving} onClick={() => send(false)}>
+          <button className="btn" disabled={saving || shut} onClick={() => send(false)}>
             Save draft
           </button>
-          <button className="btn primary" disabled={saving || blocked} onClick={() => send(true)}>
+          <button className="btn primary" disabled={saving || blocked || shut} onClick={() => send(true)}>
             {item.mine?.submittedAt ? 'Update' : 'Send'}
           </button>
         </div>
       </section>
+      )}
     </>
   );
 }

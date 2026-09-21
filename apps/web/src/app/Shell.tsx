@@ -1,4 +1,7 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { STAFF_ROLE_LABEL } from '@ceed/shared';
+import { useEffect } from 'react';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useAccount } from '../lib/account';
 import { Icon } from '../ui/Icon';
 import { useTheme } from '../ui/Overlays';
 
@@ -19,11 +22,24 @@ const COMMUNITY_LATER = [
 const PROGRAMS_LATER = [
   { label: 'Calendar', icon: 'calendar' },
   { label: 'Reports', icon: 'grid' },
-  { label: 'Settings', icon: 'settings' },
 ];
 
 export function Shell() {
   const [theme, setTheme] = useTheme();
+  const { me, loading } = useAccount();
+  const navigate = useNavigate();
+  const staffRole = me?.account.staffRole ?? null;
+
+  useEffect(() => {
+    if (loading || staffRole) return;
+    // Somebody signed in who is simply not CEED goes to their own space rather
+    // than to a sign-in form they have already filled in — otherwise the two
+    // send each other back and forth.
+    navigate(me ? '/me' : '/login', { replace: true });
+  }, [loading, staffRole, me, navigate]);
+
+  // Nothing of the workspace is drawn before the server has said who is asking.
+  if (loading || !me || !staffRole) return <div className="empty" style={{ padding: 40 }} />;
 
   return (
     <div className="shell">
@@ -61,8 +77,23 @@ export function Shell() {
         {PROGRAMS_LATER.map((item) => (
           <Soon key={item.label} {...item} />
         ))}
+        <NavLink to="/settings" className={({ isActive }) => (isActive ? 'nav-item on' : 'nav-item')}>
+          <Icon name="settings" />
+          Settings
+        </NavLink>
 
         <div className="sidebar-foot">
+          {/* A cross beside somebody's name reads as "remove them", not as
+              "sign out". Who you are leads to Settings, where the account and
+              its exit are both filed. */}
+          <NavLink to="/settings" className="who" title="Your account">
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="who-name">{me.record.name}</div>
+              <div className="who-role">{STAFF_ROLE_LABEL[staffRole]}</div>
+            </div>
+            <Icon name="settings" size={13} />
+          </NavLink>
+
           <div className="seg" role="group" aria-label="Theme">
             <button className={theme === 'light' ? 'on' : ''} onClick={() => setTheme('light')} title="Light">
               <Icon name="sun" size={13} />

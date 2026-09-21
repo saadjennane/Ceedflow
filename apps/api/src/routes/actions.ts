@@ -1,10 +1,18 @@
-import { sessionSlots, type CommitteeConfig, type SourcingConfig } from '@ceed/shared';
+import {
+  blockStatus,
+  editionIsVisible,
+  editionTakesInput,
+  sessionSlots,
+  type CommitteeConfig,
+} from '@ceed/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { markAsJury } from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { committeeView, seatOnFreeSlots } from '../services/committee.js';
+import { outreachView } from '../services/sourcing.js';
 import { HttpError, notFound, parse } from './util.js';
+import { workspaceGuard } from './guard.js';
 
 const clock = z.string().regex(/^\d{2}:\d{2}$/, 'Use HH:MM.');
 
@@ -18,6 +26,9 @@ const sessionInput = z.object({
 });
 
 export async function actionRoutes(app: FastifyInstance) {
+  // Everything below is the CEED workspace. Public routes name themselves.
+  app.addHook('preHandler', workspaceGuard((url) => url.startsWith('/api/public/')));
+
   /* ---------------- selection committee ---------------- */
 
   app.get('/api/blocks/:id/committee', async (req, reply) => {
@@ -92,6 +103,9 @@ export async function actionRoutes(app: FastifyInstance) {
     }
     const context = await repo.blockContext(found.block.id);
     const detail = context ? await repo.getEditionDetail(context.editionId) : null;
+    // The third external door, and it answers to the edition like the other two:
+    // a draft has no outside, and a completed edition is read, not answered.
+    if (!detail || !editionIsVisible(detail.status)) return notFound(reply, 'This invitation does not exist.');
     const slots = sessionSlots(found.session);
     const taken = new Set(
       found.siblings
@@ -106,7 +120,7 @@ export async function actionRoutes(app: FastifyInstance) {
       orgName: found.candidate.orgName,
       blockName: found.block.name,
       mode: config.rsvpMode,
-      deadline: config.rsvpDeadline,
+      deadline: config.rsvp.closesAt,
       session: {
         name: found.session.name,
         heldOn: found.session.heldOn,
@@ -116,6 +130,9 @@ export async function actionRoutes(app: FastifyInstance) {
       slots: slots.map((slot) => ({ ...slot, taken: taken.has(slot.index) })),
       rsvpState: found.assignment.rsvpState,
       slotIndex: found.assignment.slotIndex,
+      closed:
+        !editionTakesInput(detail.status) ||
+        blockStatus(found.block, 'rsvp', (await repo.listSessions(found.block.id)).length) !== 'live',
     };
   });
 
@@ -132,8 +149,15 @@ export async function actionRoutes(app: FastifyInstance) {
       req.body,
     );
 
-    const today = new Date().toISOString().slice(0, 10);
-    if (config.rsvpDeadline && config.rsvpDeadline < today) {
+    const context = await repo.blockContext(found.block.id);
+    const edition = context ? await repo.getEditionDetail(context.editionId) : null;
+    if (!edition || !editionIsVisible(edition.status)) return notFound(reply, 'This invitation does not exist.');
+    if (!editionTakesInput(edition.status)) {
+      throw new HttpError(403, 'This edition is closed. Get in touch with the team.');
+    }
+    // The booking page has its own door: a panel a juror is already reading is
+    // not the same thing as a slot picker the startups may still answer on.
+    if (blockStatus(found.block, 'rsvp', (await repo.listSessions(found.block.id)).length) !== 'live') {
       throw new HttpError(403, 'The deadline to answer has passed. Get in touch with the team.');
     }
 
@@ -165,34 +189,36 @@ export async function actionRoutes(app: FastifyInstance) {
 
   app.get('/api/blocks/:id/outreach', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const block = await repo.getBlock(id);
-    if (!block || block.type !== 'sourcing') return notFound(reply, 'Sourcing block not found.');
-    return { block, sends: await repo.listSends(id) };
+    return (await outreachView(id)) ?? notFound(reply, 'Sourcing block not found.');
   });
 
   /**
-   * Records a prospecting send. Nothing leaves the system yet: there is no mail
-   * provider wired in, so this is the trace of what was sent and to whom.
+   * Records a prospecting send to the audience as it stands. Nothing leaves the
+   * system yet — no mail provider is wired in — so this is the trace of what was
+   * sent, to whom, and through which channel. The channel is the point: a
+   * candidacy born of this mail comes back carrying it.
    */
   app.post('/api/blocks/:id/outreach/send', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const block = await repo.getBlock(id);
-    if (!block || block.type !== 'sourcing') return notFound(reply, 'Sourcing block not found.');
-    const config = block.config as SourcingConfig;
+    const view = await outreachView(id);
+    if (!view) return notFound(reply, 'Sourcing block not found.');
+    const { outreach } = view.config;
 
-    if (!config.outreach.subject.trim()) {
+    if (!outreach.subject.trim()) {
       throw new HttpError(422, 'Give the message a subject first.', { subject: 'A subject is required.' });
     }
-    const recipients =
-      config.outreach.recipients.kind === 'list'
-        ? config.outreach.recipients.emails.filter((e) => e.includes('@'))
-        : [];
-    if (!recipients.length) {
-      throw new HttpError(422, 'Add at least one recipient.', { recipients: 'No valid address in the list.' });
+    if (!view.audience.length) {
+      throw new HttpError(422, 'Nobody in the audience has an email to write to.');
     }
 
-    const send = await repo.recordSend(id, config.outreach.subject, config.outreach.body, recipients);
+    await repo.recordSend(
+      id,
+      outreach.subject,
+      outreach.body,
+      view.audience.map((p) => p.email),
+      outreach.channelId,
+    );
     reply.code(201);
-    return { send, sends: await repo.listSends(id) };
+    return outreachView(id);
   });
 }

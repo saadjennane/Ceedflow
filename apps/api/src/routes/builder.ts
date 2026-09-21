@@ -9,8 +9,12 @@ import {
 import type { FastifyInstance } from 'fastify';
 import * as repo from '../db/repo.js';
 import { notFound, parse } from './util.js';
+import { workspaceGuard } from './guard.js';
 
 export async function builderRoutes(app: FastifyInstance) {
+  // Everything below is the CEED workspace. Public routes name themselves.
+  app.addHook('preHandler', workspaceGuard());
+
   app.post('/api/phases', async (req, reply) => {
     const input = parse(createPhaseInput, req.body);
     reply.code(201);

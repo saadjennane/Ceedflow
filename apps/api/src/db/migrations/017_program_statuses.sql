@@ -1,0 +1,11 @@
+-- The vocabulary a programme judges in, defined once instead of retyped into
+-- every evaluation of every edition.
+--
+-- A block inherits this list when it is created and then owns its copy, so
+-- changing the programme's words later never rewrites a round that has already
+-- been judged in the old ones. Diverging on one block is expected, not an
+-- escape hatch.
+--
+-- Empty means the built-in default, which is what every existing programme has
+-- been using without being asked.
+alter table programs add column if not exists statuses jsonb not null default '[]'::jsonb;

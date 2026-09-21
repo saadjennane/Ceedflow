@@ -54,6 +54,20 @@ export function BuilderCanvas({
   const drag = useRef<DragPayload | null>(null);
   const toast = useToast();
 
+  /**
+   * The cohort notice is advice, not an error, so it can be put away — and
+   * staying away is the point: an edition still being built would otherwise
+   * raise it on every visit. Remembered per edition, in this browser.
+   */
+  const cohortWarningKey = `ceed.cohortNotice.${edition.id}`;
+  const [cohortWarningHidden, setCohortWarningHidden] = useState(
+    () => localStorage.getItem(cohortWarningKey) === 'hidden',
+  );
+  const hideCohortWarning = () => {
+    localStorage.setItem(cohortWarningKey, 'hidden');
+    setCohortWarningHidden(true);
+  };
+
   const funnel = useAsync(
     () => api.get<FunnelStep[]>(`/api/editions/${edition.id}/funnel?trackId=${track.id}`),
     `${edition.id}:${track.id}:${JSON.stringify(track.phases.map((p) => p.blocks.map((b) => b.id)))}`,
@@ -119,10 +133,12 @@ export function BuilderCanvas({
           <p>Build this edition by organising phases and dragging blocks into each phase.</p>
         </div>
         <div className="row">
-          <span className="btn off" title="Not built yet">
+          {/* Declared so the shape of the product is legible, and inert until
+              they exist — see the disabled entries in the sidebar. */}
+          <span className="btn off" title="Not built yet — see the edition as a candidate would">
             Preview
           </span>
-          <span className="btn off" title="Not built yet">
+          <span className="btn off" title="Not built yet — the phases on a calendar">
             Timeline
           </span>
           <span className="saved">
@@ -131,10 +147,14 @@ export function BuilderCanvas({
           <button
             className="btn primary"
             disabled={edition.status !== 'Draft'}
-            title={edition.status === 'Draft' ? 'Open the edition to candidates' : `Already ${edition.status.toLowerCase()}`}
+            title={
+              edition.status === 'Draft'
+                ? 'Take the edition out of draft: its forms, booking page and evaluator space become reachable'
+                : `Already ${edition.status.toLowerCase()}`
+            }
             onClick={onPublish}
           >
-            Publish Edition
+            Go live
           </button>
         </div>
       </header>
@@ -192,19 +212,28 @@ export function BuilderCanvas({
         </aside>
 
         <div className="phase-list">
-          {hasSelection && !hasCohortSelection && (
+          {hasSelection && !hasCohortSelection && !cohortWarningHidden && (
             <div className="callout warn">
               <Icon name="alert" size={15} />
-              <div>
+              <div style={{ flex: 1 }}>
                 <strong>No Selection forms the cohort yet.</strong> Open the Selection that ends the funnel and set its
                 output to <b>the cohort</b> — otherwise nothing tells the program who the cohort is.
               </div>
+              <button
+                className="btn ghost icon sm callout-dismiss"
+                aria-label="Dismiss this notice"
+                title="Dismiss — it will not come back for this edition"
+                onClick={hideCohortWarning}
+              >
+                <Icon name="x" size={13} />
+              </button>
             </div>
           )}
 
           {phases.map((phase, index) => (
             <PhaseSection
               key={phase.id}
+              track={track}
               phase={phase}
               index={index}
               drop={drop?.phaseId === phase.id ? drop.index : null}
@@ -276,6 +305,7 @@ export function BuilderCanvas({
 
 function PhaseSection({
   phase,
+  track,
   index,
   drop,
   phaseDrop,
@@ -292,6 +322,7 @@ function PhaseSection({
   onLeave,
 }: {
   phase: PhaseWithBlocks;
+  track: TrackWithPhases;
   index: number;
   drop: number | null;
   phaseDrop: boolean;
@@ -379,6 +410,7 @@ function PhaseSection({
             {drop === i && <div className="drop-line" />}
             <BlockRow
               block={block}
+              track={track}
               funnel={
                 block.type === 'selection' && (block.config as SelectionConfig).publishedAt
                   ? funnelFor(block.id)
@@ -430,6 +462,7 @@ function PhaseSection({
 
 function BlockRow({
   block,
+  track,
   funnel,
   onOpen,
   onDragStart,
@@ -437,6 +470,8 @@ function BlockRow({
   onChanged,
 }: {
   block: Block;
+  /** Needed to resolve which committee an evaluation hangs off. */
+  track: TrackWithPhases;
   funnel: [number, number] | null;
   onOpen: () => void;
   onDragStart: () => void;
@@ -444,7 +479,7 @@ function BlockRow({
   onChanged: () => void;
 }) {
   const meta = BLOCK_TYPE_META[block.type];
-  const line = blockLine(block);
+  const line = blockLine(block, track);
   const [confirm, setConfirm] = useState(false);
   const toast = useToast();
 

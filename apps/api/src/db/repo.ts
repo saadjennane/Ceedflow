@@ -7,6 +7,7 @@ import {
   parseBlockConfig,
   type Block,
   type BlockType,
+  type BlockOutcome,
   type BlockOutcomeRow,
   type Candidate,
   type CommitteeAssignment,
@@ -19,6 +20,7 @@ import {
   type Program,
   type ProgramWithEditions,
   type SelectionOutcome,
+  type SourcingConfig,
   type Track,
   type TrackWithPhases,
 } from '@ceed/shared';
@@ -28,7 +30,8 @@ import { all, db, one } from './client.js';
 /* Row mapping                                                         */
 /* ------------------------------------------------------------------ */
 
-const PROGRAM_COLS = `id, name, code, type, summary, partner, colour, created_at::text as "createdAt"`;
+const PROGRAM_COLS = `id, name, code, type, summary, partner, colour, statuses,
+  created_at::text as "createdAt"`;
 const EDITION_COLS = `id, program_id as "programId", name, status, starts_on::text as "startsOn",
   ends_on::text as "endsOn", city, mentors, position, created_at::text as "createdAt"`;
 const TRACK_COLS = `id, edition_id as "editionId", name, is_default as "isDefault", position`;
@@ -43,7 +46,8 @@ const BLOCK_COLS = `id, phase_id as "phaseId", type, name, position, config`;
 const CANDIDATE_FROM = `
   from candidates c
   join records o on o.id = c.org_id
-  left join records p on p.id = c.person_id`;
+  left join records p on p.id = c.person_id
+  left join accounts a on a.record_id = p.id`;
 const CANDIDATE_SELECT = `select c.id, c.edition_id as "editionId", c.track_id as "trackId",
   c.origin_block_id as "originBlockId", c.org_id as "orgId", c.person_id as "personId",
   o.name as "orgName",
@@ -51,6 +55,14 @@ const CANDIDATE_SELECT = `select c.id, c.edition_id as "editionId", c.track_id a
   coalesce(nullif(p.email, ''), o.email, '') as "email",
   coalesce(nullif(p.phone, ''), o.phone, '') as "phone",
   c.source, c.status, c.mentor, c.cohort_status as "cohortStatus", c.answers,
+  -- Derived here rather than stored: an account nobody was told about, one whose
+  -- owner has not come, and one they made their own.
+  case
+    when a.id is null then null
+    when not a.must_change_password then 'claimed'
+    when a.invited_at is not null then 'invited'
+    else 'unclaimed'
+  end as "accountState",
   c.submitted_at::text as "submittedAt"
   ${CANDIDATE_FROM}`;
 const SCORE_COLS = `id, block_id as "blockId", candidate_id as "candidateId",
@@ -127,6 +139,12 @@ export async function updateProgram(id: string, patch: Record<string, unknown>):
     colour: 'colour',
   };
   await patchRow('programs', id, patch, columns);
+  if (patch.statuses !== undefined) {
+    await (await db()).query('update programs set statuses = $2::jsonb where id = $1', [
+      id,
+      patch.statuses,
+    ]);
+  }
   return getProgram(id);
 }
 
@@ -242,7 +260,9 @@ async function copyStructure(fromEditionId: string, toEditionId: string): Promis
         // A copied application must not inherit the original's public link.
         const config =
           block.type === 'application'
-            ? { ...(block.config as object), published: false, publicToken: '' }
+            // A copied form starts shut and with a fresh link: the old one
+            // belongs to the edition it was published for.
+            ? { ...(block.config as object), visibility: 'closed', visibilitySetAt: null, publicToken: '' }
             : block.config;
         await conn.query('insert into blocks (id, phase_id, type, name, position, config) values ($1,$2,$3,$4,$5,$6)', [
           idOf.block(),
@@ -250,7 +270,7 @@ async function copyStructure(fromEditionId: string, toEditionId: string): Promis
           block.type,
           block.name,
           block.position,
-          JSON.stringify(config),
+          config,
         ]);
       }
     }
@@ -267,7 +287,7 @@ export async function createEdition(programId: string, input: Parameters<typeof 
 
 export async function updateEdition(id: string, patch: Record<string, unknown>): Promise<Edition | null> {
   if (patch.mentors !== undefined) {
-    await (await db()).query('update editions set mentors = $2 where id = $1', [id, JSON.stringify(patch.mentors)]);
+    await (await db()).query('update editions set mentors = $2 where id = $1', [id, patch.mentors]);
   }
   await patchRow('editions', id, patch, {
     name: 'name',
@@ -299,8 +319,28 @@ export async function getEditionDetail(id: string): Promise<EditionDetail | null
     [phases.map((p) => p.id)],
   );
 
+  // One query for every committee on the edition rather than one each.
+  const counts = new Map<string, number>();
+  const firstOn = new Map<string, string | null>();
+  const committees = blocks.filter((b) => b.type === 'committee').map((b) => b.id);
+  if (committees.length) {
+    const rows = await all<{ blockId: string; n: number; firstOn: string | null }>(
+      `select block_id as "blockId", count(*)::int as n, min(held_on)::text as "firstOn"
+         from committee_sessions where block_id = any($1::text[]) group by block_id`,
+      [committees],
+    );
+    for (const r of rows) {
+      counts.set(r.blockId, Number(r.n));
+      firstOn.set(r.blockId, r.firstOn);
+    }
+  }
+
   const byPhase = new Map<string, Block[]>();
   for (const block of blocks) {
+    if (block.type === 'committee') {
+      block.sittings = counts.get(block.id) ?? 0;
+      block.nextSittingOn = firstOn.get(block.id) ?? null;
+    }
     const list = byPhase.get(block.phaseId) ?? [];
     list.push(hydrateBlock(block));
     byPhase.set(block.phaseId, list);
@@ -390,13 +430,27 @@ async function insertBlock(phaseId: string, type: BlockType, name: string, posit
   const id = idOf.block();
   const config = defaultBlockConfig(type) as Record<string, unknown>;
   if (type === 'application') config.publicToken = newId('form').replace('form_', '');
+  if (type === 'evaluation') {
+    // Inherited at birth and owned from then on: the programme's vocabulary
+    // seeds the block, and editing the programme later leaves rounds already
+    // judged in the old words alone.
+    const row = await one<{ statuses: BlockOutcome[] }>(
+      `select p.statuses from programs p
+         join editions e on e.program_id = p.id
+         join tracks t on t.edition_id = e.id
+         join phases ph on ph.track_id = t.id
+        where ph.id = $1`,
+      [phaseId],
+    );
+    if (row?.statuses?.length) config.outcomes = row.statuses;
+  }
   await conn.query('insert into blocks (id, phase_id, type, name, position, config) values ($1,$2,$3,$4,$5,$6)', [
     id,
     phaseId,
     type,
     name,
     position,
-    JSON.stringify(config),
+    config,
   ]);
   return id;
 }
@@ -427,7 +481,7 @@ export async function updateBlock(id: string, patch: { name?: string; config?: R
   if (patch.config !== undefined) {
     // Merge so a drawer can send only the keys it edits.
     const merged = parseBlockConfig(current.type, { ...(current.config as object), ...patch.config });
-    await conn.query('update blocks set config = $2 where id = $1', [id, JSON.stringify(merged)]);
+    await conn.query('update blocks set config = $2 where id = $1', [id, merged]);
   }
   const row = (await one<Block>(`select ${BLOCK_COLS} from blocks where id = $1`, [id]))!;
   return hydrateBlock(row);
@@ -537,7 +591,7 @@ export async function createCandidate(input: {
       input.orgId,
       input.personId ?? null,
       input.source ?? '',
-      JSON.stringify(input.answers ?? {}),
+      input.answers ?? {},
       input.submittedAt ?? null,
     ],
   );
@@ -551,7 +605,18 @@ export async function updateCandidate(id: string, patch: Record<string, unknown>
     trackId: 'track_id',
     mentor: 'mentor',
     cohortStatus: 'cohort_status',
+    // Who applied, and through which call — correctable, because an imported
+    // candidacy arrives without either and a wrong contact is worth fixing.
+    personId: 'person_id',
+    originBlockId: 'origin_block_id',
   });
+  // jsonb goes in its own statement: patchRow writes plain columns.
+  if (patch.answers !== undefined) {
+    await (await db()).query('update candidates set answers = $2::jsonb where id = $1', [
+      id,
+      patch.answers,
+    ]);
+  }
   return one<Candidate>(`${CANDIDATE_SELECT} where c.id = $1`, [id]);
 }
 
@@ -584,7 +649,7 @@ export async function findPublicForm(token: string) {
     .slice(0, at === -1 ? ordered.length : at)
     .filter((b) => b.type === 'sourcing')
     .pop();
-  const channels = sourcing ? ((sourcing.config as { channels?: string[] }).channels ?? []) : [];
+  const channels = sourcing ? ((sourcing.config as SourcingConfig).channels ?? []) : [];
 
   return { block, trackId: row.trackId, editionId: row.editionId, edition, program, channels };
 }
@@ -627,7 +692,7 @@ export async function upsertScore(input: {
       input.candidateId,
       input.evaluatorId,
       input.evaluatorName ?? '',
-      JSON.stringify(input.marks),
+      input.marks,
       input.verdict ?? '',
       input.comment ?? '',
       input.submit ?? false,
@@ -717,7 +782,9 @@ async function patchRow(
 const SESSION_COLS = `id, block_id as "blockId", name, held_on::text as "heldOn", windows,
   minutes_per_startup as "minutesPerStartup", location, jury, position`;
 const ASSIGNMENT_COLS = `id, session_id as "sessionId", candidate_id as "candidateId", token,
-  rsvp_state as "rsvpState", slot_index as "slotIndex", responded_at::text as "respondedAt"`;
+  rsvp_state as "rsvpState", slot_index as "slotIndex", position, responded_at::text as "respondedAt"`;
+/** The order they were put on the sitting — never the order the heap holds them. */
+const ASSIGNMENT_ORDER = 'order by position, id';
 
 export async function listSessions(blockId: string): Promise<CommitteeSession[]> {
   return all<CommitteeSession>(`select ${SESSION_COLS} from committee_sessions where block_id = $1 order by position`, [
@@ -741,10 +808,10 @@ export async function createSession(blockId: string, patch: Record<string, unkno
       blockId,
       (patch.name as string)?.trim() || `Committee ${position + 1}`,
       (patch.heldOn as string) ?? null,
-      JSON.stringify(patch.windows ?? [{ startsAt: '09:00', endsAt: '12:00' }]),
+      patch.windows ?? [{ startsAt: '09:00', endsAt: '12:00' }],
       (patch.minutesPerStartup as number) ?? 25,
       (patch.location as string) ?? '',
-      JSON.stringify(patch.jury ?? []),
+      patch.jury ?? [],
       position,
     ],
   );
@@ -754,10 +821,10 @@ export async function createSession(blockId: string, patch: Record<string, unkno
 export async function updateSession(id: string, patch: Record<string, unknown>): Promise<CommitteeSession | null> {
   const conn = await db();
   if (patch.jury !== undefined) {
-    await conn.query('update committee_sessions set jury = $2 where id = $1', [id, JSON.stringify(patch.jury)]);
+    await conn.query('update committee_sessions set jury = $2 where id = $1', [id, patch.jury]);
   }
   if (patch.windows !== undefined) {
-    await conn.query('update committee_sessions set windows = $2 where id = $1', [id, JSON.stringify(patch.windows)]);
+    await conn.query('update committee_sessions set windows = $2 where id = $1', [id, patch.windows]);
   }
   await patchRow('committee_sessions', id, patch, {
     name: 'name',
@@ -765,6 +832,11 @@ export async function updateSession(id: string, patch: Record<string, unknown>):
     minutesPerStartup: 'minutes_per_startup',
     location: 'location',
   });
+  return one<CommitteeSession>(`select ${SESSION_COLS} from committee_sessions where id = $1`, [id]);
+}
+
+/** One sitting by id, jury included — for the rules that only need to know who sits. */
+export async function findSessionById(id: string): Promise<CommitteeSession | null> {
   return one<CommitteeSession>(`select ${SESSION_COLS} from committee_sessions where id = $1`, [id]);
 }
 
@@ -784,24 +856,46 @@ export async function sessionBlockId(sessionId: string): Promise<string | null> 
 export async function listAssignments(blockId: string): Promise<CommitteeAssignment[]> {
   return all<CommitteeAssignment>(
     `select ${ASSIGNMENT_COLS} from committee_assignments
-      where session_id in (select id from committee_sessions where block_id = $1)`,
+      where session_id in (select id from committee_sessions where block_id = $1)
+      ${ASSIGNMENT_ORDER}`,
     [blockId],
   );
 }
 
-/** Adds candidates to a sitting, skipping any already assigned anywhere in the block. */
+/** What one sitting holds, in the order it was put there. */
+export async function listSessionAssignments(sessionId: string): Promise<CommitteeAssignment[]> {
+  return all<CommitteeAssignment>(
+    `select ${ASSIGNMENT_COLS} from committee_assignments where session_id = $1 ${ASSIGNMENT_ORDER}`,
+    [sessionId],
+  );
+}
+
+/**
+ * Adds candidates to a sitting, skipping any already on *that* sitting.
+ *
+ * It used to skip anyone already on any sitting of the block, which made a
+ * startup's seat exclusive across the whole committee. A second jury on the
+ * same startups — a second round, a control panel — had nowhere to exist, and
+ * copying a sitting produced an empty one without saying why.
+ */
 export async function assignToSession(sessionId: string, candidateIds: string[]): Promise<number> {
   if (!candidateIds.length) return 0;
   const conn = await db();
   const blockId = await sessionBlockId(sessionId);
   if (!blockId) return 0;
-  const taken = new Set((await listAssignments(blockId)).map((a) => a.candidateId));
+  const taken = new Set((await listSessionAssignments(sessionId)).map((a) => a.candidateId));
   const fresh = candidateIds.filter((id) => !taken.has(id));
+  // They go on in the order they were given, after whoever is already there.
+  const last = await one<{ n: number }>(
+    'select coalesce(max(position), -1)::int as n from committee_assignments where session_id = $1',
+    [sessionId],
+  );
+  let position = (last?.n ?? -1) + 1;
   await conn.tx(async () => {
     for (const candidateId of fresh) {
       await conn.query(
-        'insert into committee_assignments (id, session_id, candidate_id, token) values ($1,$2,$3,$4)',
-        [newId('asg'), sessionId, candidateId, newId('bk').replace('bk_', '')],
+        'insert into committee_assignments (id, session_id, candidate_id, token, position) values ($1,$2,$3,$4,$5)',
+        [newId('asg'), sessionId, candidateId, newId('bk').replace('bk_', ''), position++],
       );
     }
   });
@@ -856,7 +950,7 @@ export async function findAssignmentByToken(token: string) {
   if (!session || !candidate) return null;
   const block = await getBlock(session.blockId);
   const siblings = await all<CommitteeAssignment>(
-    `select ${ASSIGNMENT_COLS} from committee_assignments where session_id = $1`,
+    `select ${ASSIGNMENT_COLS} from committee_assignments where session_id = $1 ${ASSIGNMENT_ORDER}`,
     [session.id],
   );
   return { assignment, session, candidate, block, siblings };
@@ -930,11 +1024,14 @@ export interface OutreachSend {
   body: string;
   recipients: string[];
   sentAt: string;
+  /** Which channel this went out through, so its result can be told apart. */
+  channelId: string | null;
 }
 
 export async function listSends(blockId: string): Promise<OutreachSend[]> {
   return all<OutreachSend>(
-    `select id, block_id as "blockId", subject, body, recipients, sent_at::text as "sentAt"
+    `select id, block_id as "blockId", subject, body, recipients,
+            nullif(channel_id, '') as "channelId", sent_at::text as "sentAt"
        from outreach_sends where block_id = $1 order by sent_at desc`,
     [blockId],
   );
@@ -945,14 +1042,17 @@ export async function recordSend(
   subject: string,
   body: string,
   recipients: string[],
+  channelId: string | null = null,
 ): Promise<OutreachSend> {
   const id = newId('snd');
   await (await db()).query(
-    'insert into outreach_sends (id, block_id, subject, body, recipients) values ($1,$2,$3,$4,$5)',
-    [id, blockId, subject, body, JSON.stringify(recipients)],
+    `insert into outreach_sends (id, block_id, subject, body, recipients, channel_id)
+     values ($1,$2,$3,$4,$5,$6)`,
+    [id, blockId, subject, body, recipients, channelId ?? ''],
   );
   return (await one<OutreachSend>(
-    `select id, block_id as "blockId", subject, body, recipients, sent_at::text as "sentAt"
+    `select id, block_id as "blockId", subject, body, recipients,
+            nullif(channel_id, '') as "channelId", sent_at::text as "sentAt"
        from outreach_sends where id = $1`,
     [id],
   ))!;
@@ -989,8 +1089,12 @@ export async function claimUploads(candidateId: string, answers: Record<string, 
 }
 
 export async function getUpload(id: string) {
-  return one<{ filename: string; mime: string; bytes: Buffer }>(
-    'select filename, mime, bytes from uploads where id = $1',
+  // The candidacy travels with the file: an attachment is somebody's business
+  // plan, and who may open it follows from whose application it belongs to.
+  return one<{ filename: string; mime: string; bytes: Buffer; candidateId: string | null; orgId: string | null }>(
+    `select u.filename, u.mime, u.bytes, u.candidate_id as "candidateId", c.org_id as "orgId"
+       from uploads u left join candidates c on c.id = u.candidate_id
+      where u.id = $1`,
     [id],
   );
 }

@@ -1,10 +1,11 @@
-import { MAX_UPLOAD_BYTES, type Eligibility, type FormField } from '@ceed/shared';
+import { type Eligibility, type FormField } from '@ceed/shared';
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError, api } from '../lib/api';
 import { useAccount } from '../lib/account';
 import { formatDate } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
+import { FormFieldInput } from '../ui/FormField';
 import { Icon } from '../ui/Icon';
 import '../ui/builder.css';
 import '../ui/directory.css';
@@ -23,11 +24,13 @@ interface PublicForm {
   blockName: string;
   intro: string;
   eligibility: Eligibility;
-  channels: string[];
+  channels: { id: string; label: string }[];
   layout: 'single' | 'paged';
   pages: PublicPage[];
   opensAt: string | null;
   closesAt: string | null;
+  /** What a latecomer is told, when the team wrote something. */
+  closedMessage: string;
   state: 'open' | 'closed' | 'not_open';
 }
 
@@ -36,6 +39,9 @@ const isEmpty = (value: unknown) =>
 
 export function ApplyPage() {
   const { token = '' } = useParams();
+  const [params] = useSearchParams();
+  /** The channel the link came through. Empty means we have to ask. */
+  const via = params.get('via') ?? '';
   const form = useAsync(() => api.get<PublicForm>(`/api/public/forms/${token}`), token);
   const { me, loading: checkingAccount } = useAccount();
 
@@ -46,6 +52,7 @@ export function ApplyPage() {
   const [step, setStep] = useState(0);
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState<string | null>(null);
+  const [heardFrom, setHeardFrom] = useState('');
 
   if (form.loading || checkingAccount) {
     return (
@@ -68,7 +75,40 @@ export function ApplyPage() {
 
   const data = form.data;
 
-  /* Applying is done signed in, so the form knows who is filling it. */
+  /* A call that is shut says so here rather than at the end of a form somebody
+     has already filled in. The state was being sent and never read: the page
+     rendered the questions, and the refusal only arrived on submit. */
+  if (data.state !== 'open') {
+    return (
+      <Shell colour={data.colour}>
+        <h1>{data.programName}</h1>
+        <p className="public-intro">
+          {data.state === 'not_open'
+            ? data.opensAt
+              ? `Applications open on ${formatDate(data.opensAt)}.`
+              : 'Applications are not open yet.'
+            : data.closedMessage ||
+              (data.closesAt
+                ? `Applications closed on ${formatDate(data.closesAt)}.`
+                : 'Applications are closed.')}
+        </p>
+        <div className="callout">
+          <Icon name="clock" size={15} />
+          <div>
+            {data.state === 'not_open'
+              ? data.opensAt
+                ? 'Come back on that date — the form will be here.'
+                : 'The team has not opened this call yet. It will be here when they do.'
+              : 'If you were meant to apply and arrived late, get in touch with the team.'}
+          </div>
+        </div>
+      </Shell>
+    );
+  }
+
+  /* Applying is done signed in, so the form knows who is filling it — and the
+     channel has to survive that detour, or the link stops counting. */
+  const here = via ? `/apply/${token}?via=${encodeURIComponent(via)}` : `/apply/${token}`;
   if (!me) {
     return (
       <Shell colour={data.colour}>
@@ -82,10 +122,10 @@ export function ApplyPage() {
           </div>
         </div>
         <div className="row" style={{ gap: 8 }}>
-          <Link className="btn primary" to={`/signup?next=${encodeURIComponent(`/apply/${token}`)}`}>
+          <Link className="btn primary" to={`/signup?next=${encodeURIComponent(here)}`}>
             Create an account
           </Link>
-          <Link className="btn" to={`/login?next=${encodeURIComponent(`/apply/${token}`)}`}>
+          <Link className="btn" to={`/login?next=${encodeURIComponent(here)}`}>
             I already have one
           </Link>
         </div>
@@ -103,6 +143,25 @@ export function ApplyPage() {
         <p className="public-intro">{done}</p>
         <Link className="btn" to="/me">
           Back to my space
+        </Link>
+      </Shell>
+    );
+  }
+
+  /* A provisional password has to be replaced before anything is sent. */
+  if (me.account.mustChangePassword) {
+    return (
+      <Shell colour={data.colour}>
+        <h1>{data.programName}</h1>
+        <div className="callout warn">
+          <Icon name="alert" size={15} />
+          <div>
+            <strong>Choose your own password first.</strong> The one you signed in with was set by CEED.
+            Replace it and you will come straight back here.
+          </div>
+        </div>
+        <Link className="btn primary" to="/me">
+          Choose my password
         </Link>
       </Shell>
     );
@@ -173,6 +232,7 @@ export function ApplyPage() {
     try {
       const result = await api.post<{ confirmation: string }>(`/api/public/forms/${token}`, {
         orgId: applyingAs,
+        source: via || heardFrom,
         acknowledged: ticked,
         answers: values,
       });
@@ -229,6 +289,28 @@ export function ApplyPage() {
         </div>
       )}
 
+      {/* A tagged link already answered this. Only the bare one has to ask. */}
+      {!via && data.channels.length > 0 && (
+        <div className="field">
+          <label>How did you hear about {data.programName}?</label>
+          <div className="pick-list">
+            {data.channels.map((channel) => (
+              <button
+                type="button"
+                key={channel.id}
+                className={heardFrom === channel.id ? 'pick on' : 'pick'}
+                onClick={() => setHeardFrom(heardFrom === channel.id ? '' : channel.id)}
+              >
+                <Icon name={heardFrom === channel.id ? 'check' : 'square'} />
+                <div>
+                  <strong>{channel.label}</strong>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {hasEligibility && (
         <>
           <h3 className="section-title">Before you start</h3>
@@ -262,7 +344,7 @@ export function ApplyPage() {
 
   const fieldsOf = (page: PublicPage) =>
     page.fields.map((field) => (
-      <PublicField
+      <FormFieldInput
         key={field.id}
         field={field}
         value={values[field.id]}
@@ -372,147 +454,3 @@ function Shell({ children, colour }: { children: React.ReactNode; colour?: strin
   );
 }
 
-/* ------------------------------------------------------------------ */
-
-function PublicField({
-  field,
-  value,
-  onChange,
-  error,
-}: {
-  field: FormField;
-  value: unknown;
-  onChange: (v: unknown) => void;
-  error?: string;
-}) {
-  const label = (
-    <label>
-      {field.label}
-      {field.required && <span style={{ color: 'var(--stop)' }}> *</span>}
-    </label>
-  );
-
-  return (
-    <div className="field">
-      {label}
-      {field.help && <div className="hint" style={{ marginTop: -2, marginBottom: 5 }}>{field.help}</div>}
-
-      {field.type === 'long_text' ? (
-        <textarea className="textarea" rows={4} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />
-      ) : field.type === 'select' ? (
-        <select className="input" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
-          <option value="">Choose one</option>
-          {field.options.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </select>
-      ) : field.type === 'multiselect' ? (
-        <div className="rows">
-          {field.options.map((o) => {
-            const chosen = Array.isArray(value) ? (value as string[]) : [];
-            return (
-              <label className="check rowcard" style={{ padding: '8px 11px' }} key={o}>
-                <input
-                  type="checkbox"
-                  checked={chosen.includes(o)}
-                  onChange={(e) => onChange(e.target.checked ? [...chosen, o] : chosen.filter((x) => x !== o))}
-                />
-                <span style={{ fontSize: 13 }}>{o}</span>
-              </label>
-            );
-          })}
-        </div>
-      ) : field.type === 'file' ? (
-        <FileField field={field} value={value} onChange={onChange} />
-      ) : (
-        <input
-          className={error ? 'input bad' : 'input'}
-          type={
-            field.type === 'email'
-              ? 'email'
-              : field.type === 'number'
-                ? 'number'
-                : field.type === 'date'
-                  ? 'date'
-                  : field.type === 'url'
-                    ? 'url'
-                    : field.type === 'phone'
-                      ? 'tel'
-                      : 'text'
-          }
-          value={String(value ?? '')}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      )}
-
-      {error && <div style={{ color: 'var(--stop)', fontSize: 12 }}>{error}</div>}
-    </div>
-  );
-}
-
-/** An attachment is sent as soon as it is chosen; submitting claims it. */
-function FileField({
-  field,
-  value,
-  onChange,
-}: {
-  field: FormField;
-  value: unknown;
-  onChange: (v: unknown) => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState('');
-  const current = value as { uploadId: string; filename: string; size: number } | undefined;
-
-  const upload = async (file: File) => {
-    setProblem('');
-    if (file.size > MAX_UPLOAD_BYTES) {
-      setProblem(`That file is ${(file.size / 1024 / 1024).toFixed(1)} MB — the limit is 10 MB.`);
-      return;
-    }
-    setBusy(true);
-    try {
-      const body = new FormData();
-      body.append('fieldId', field.id);
-      body.append('file', file);
-      const res = await fetch('/api/public/uploads', { method: 'POST', body });
-      if (!res.ok) throw new Error((await res.json())?.error ?? 'Upload failed.');
-      const saved = (await res.json()) as { id: string; filename: string; size: number };
-      onChange({ uploadId: saved.id, filename: saved.filename, size: saved.size });
-    } catch (err) {
-      setProblem((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (current) {
-    return (
-      <div className="rowcard link-row">
-        <Icon name="file" size={15} />
-        <span style={{ flex: 1, minWidth: 0 }}>
-          <strong style={{ fontSize: 13 }}>{current.filename}</strong>
-          <span className="faint num" style={{ display: 'block', fontSize: 12 }}>
-            {(current.size / 1024).toFixed(0)} KB
-          </span>
-        </span>
-        <button className="btn ghost sm" onClick={() => onChange(undefined)}>
-          Replace
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <label className="dropzone">
-        <input type="file" disabled={busy} onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
-        <Icon name="file" size={16} />
-        <span>{busy ? 'Sending…' : 'Choose a file — 10 MB at most'}</span>
-      </label>
-      {problem && <div style={{ color: 'var(--stop)', fontSize: 12 }}>{problem}</div>}
-    </>
-  );
-}

@@ -1,20 +1,24 @@
 import {
-  CANDIDATE_STATUSES,
-  STATUS_TONE,
   orderedBlocks,
   type ApplicationConfig,
+  type Block,
+  type BlockOutcome,
+  type EvaluationConfig,
   type Candidate,
-  type CandidateStatus,
   type EditionDetail,
   type FormField,
   type TrackWithPhases,
 } from '@ceed/shared';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { AccountBadge } from '../directory/AccountCard';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
-import { SelectField, TextField } from '../../ui/Field';
+import { TextField } from '../../ui/Field';
+import { FormFieldInput } from '../../ui/FormField';
 import { Icon } from '../../ui/Icon';
+import { SearchBox } from '../../ui/SearchBox';
 import { ConfirmDialog, Drawer, Modal, useToast } from '../../ui/Overlays';
 import { CohortTable } from './CohortTable';
 
@@ -25,10 +29,13 @@ interface FunnelStep {
   count: number;
 }
 
-const tone = (status: CandidateStatus) => {
-  const t = STATUS_TONE[status];
-  return t === 'neutral' ? 'badge' : `badge ${t}`;
-};
+/** One candidate at one step, wearing the word that step gives them. */
+interface RosterRow {
+  candidate: Candidate;
+  status: { label: string; tone: 'ok' | 'warn' | 'stop' | 'neutral'; from: string; blockId: string } | null;
+  /** The block whose vocabulary applies here, whether or not a word was given. */
+  decidesAt: { id: string; name: string } | null;
+}
 
 export function CandidatesTab({
   edition,
@@ -41,9 +48,39 @@ export function CandidatesTab({
   candidates: Candidate[];
   onChanged: () => void;
 }) {
+  /* Keyed on a tick rather than on how many candidates there are: a verdict
+     changing moves the funnel and the words in it without adding or removing a
+     single row, and keying on the count left both of them stale. */
+  const [tick, setTick] = useState(0);
+  const refresh = useCallback(() => {
+    setTick((n) => n + 1);
+    onChanged();
+  }, [onChanged]);
+
   const funnel = useAsync(
     () => api.get<FunnelStep[]>(`/api/editions/${edition.id}/funnel?trackId=${track.id}`),
-    `${edition.id}:${track.id}:${candidates.length}`,
+    `${edition.id}:${track.id}:${candidates.length}:${tick}`,
+  );
+  /* A step is a place you can stand, not a number you read. Opening one shows
+     who is there and the verdict of the work done on them — which is a
+     different word at each step, on purpose. */
+  const [picked, setStepId] = useState<string | null>(null);
+  // There is no view of the funnel from nowhere: the deepest step is where the
+  // work is, so that is what opens until somebody picks another.
+  const steps = funnel.data ?? [];
+  const stepId = picked ?? steps[steps.length - 1]?.blockId ?? null;
+  const step = steps.find((f) => f.blockId === stepId) ?? null;
+  const roster = useAsync(
+    () => (stepId ? api.get<RosterRow[]>(`/api/blocks/${stepId}/roster`) : Promise.resolve(null)),
+    `${stepId ?? 'none'}:${candidates.length}:${tick}`,
+  );
+  /* One vocabulary, and it is yours: the word a candidate wears at this step,
+     given by the block that judged them. */
+  const rowFor = (id: string) => roster.data?.find((r) => r.candidate.id === id) ?? null;
+  const wordFor = (id: string) => rowFor(id)?.status ?? null;
+  const wordsInPlay = useMemo(
+    () => [...new Set((roster.data ?? []).map((r) => r.status?.label).filter(Boolean) as string[])].sort(),
+    [roster.data],
   );
 
   const fields = useMemo(() => {
@@ -59,7 +96,8 @@ export function CandidatesTab({
   // only until someone picks, and never decided before the data has arrived.
   const [chosen, setSegment] = useState<'all' | 'cohort' | null>(null);
   const segment = chosen ?? (cohort.length ? 'cohort' : 'all');
-  const scope = segment === 'cohort' ? cohort : inTrack;
+  const atStep = roster.data ? roster.data.map((r) => r.candidate) : inTrack;
+  const scope = segment === 'cohort' ? cohort : atStep;
 
   const [shown, setShown] = useState<string[] | null>(null);
   const columns = shown ?? fields.filter((f) => f.showInTable).map((f) => f.id);
@@ -73,7 +111,9 @@ export function CandidatesTab({
   const value = (candidate: Candidate, key: string): string | number => {
     if (key === 'orgName') return candidate.orgName;
     if (key === 'contactName') return candidate.contactName;
-    if (key === 'status') return candidate.status;
+    // Sorted so the ones still to chase come first.
+    if (key === 'accountState') return candidate.accountState ?? '';
+    if (key === 'status') return wordFor(candidate.id)?.label ?? '';
     if (key === 'source') return candidate.source;
     if (key === 'submittedAt') return candidate.submittedAt;
     const raw = candidate.answers[key];
@@ -84,7 +124,7 @@ export function CandidatesTab({
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const filtered = scope.filter((c) => {
-      if (status && c.status !== status) return false;
+      if (status && wordFor(c.id)?.label !== status) return false;
       if (!needle) return true;
       return [c.orgName, c.contactName, c.email, c.source, ...Object.values(c.answers).map(String)]
         .join(' ')
@@ -97,7 +137,7 @@ export function CandidatesTab({
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * sort.dir;
       return String(av).localeCompare(String(bv), undefined, { numeric: true }) * sort.dir;
     });
-  }, [scope, query, status, sort]);
+  }, [scope, query, status, sort, roster.data]);
 
   const open = candidates.find((c) => c.id === openId) ?? null;
 
@@ -146,10 +186,14 @@ export function CandidatesTab({
                   <Icon name="arrowRight" size={16} />
                 </div>
               )}
-              <div className="funnel-step">
+              <button
+                type="button"
+                className={step.blockId === stepId ? 'funnel-step on' : 'funnel-step'}
+                onClick={() => setStepId(step.blockId === stepId ? null : step.blockId)}
+              >
                 <div className="eyebrow">{step.name}</div>
                 <div className="n">{step.count}</div>
-              </div>
+              </button>
             </div>
           ))}
         </div>
@@ -157,25 +201,19 @@ export function CandidatesTab({
 
       {segment === 'all' && (
       <div className="row wrap">
-        <div className="search">
-          <Icon name="search" size={14} />
-          <input
-            placeholder="Search candidates"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search candidates"
-          />
-        </div>
+        <SearchBox placeholder="Search candidates" value={query} onChange={setQuery} />
+        {/* The statuses actually in play at this step, not a fixed list. */}
         <select className="status-select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
           <option value="">Every status</option>
-          {CANDIDATE_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
+          {wordsInPlay.map((w) => (
+            <option key={w} value={w}>
+              {w}
             </option>
           ))}
         </select>
-        <span className="faint num" style={{ fontSize: 12.5 }}>
-          {rows.length} of {scope.length}
+        <span className="faint" style={{ fontSize: 12.5 }}>
+          <span className="num">{rows.length}</span> of <span className="num">{scope.length}</span>
+          {step ? ` at ${step.name}` : ''}
         </span>
         <div className="spacer" />
         <button className="btn" onClick={() => setPicking(true)} disabled={!fields.length}>
@@ -199,6 +237,7 @@ export function CandidatesTab({
               <tr>
                 {header('orgName', 'Organisation')}
                 {header('contactName', 'Contact')}
+                {header('accountState', 'Account')}
                 {columns.map((id) => {
                   const field = fields.find((f) => f.id === id);
                   return field ? header(field.id, field.label) : null;
@@ -213,6 +252,15 @@ export function CandidatesTab({
                 <tr key={candidate.id} style={{ cursor: 'pointer' }} onClick={() => setOpenId(candidate.id)}>
                   <td className="name">{candidate.orgName}</td>
                   <td className="muted">{candidate.contactName || '—'}</td>
+                  <td>
+                    <AccountBadge
+                      account={
+                        candidate.accountState
+                          ? { id: '', email: candidate.email, state: candidate.accountState, invitedAt: null, createdAt: '' }
+                          : null
+                      }
+                    />
+                  </td>
                   {columns.map((id) => (
                     <td key={id} className="muted">
                       {String(value(candidate, id) || '—')}
@@ -220,7 +268,19 @@ export function CandidatesTab({
                   ))}
                   <td className="muted">{candidate.source || '—'}</td>
                   <td>
-                    <span className={tone(candidate.status)}>{candidate.status}</span>
+                    {(() => {
+                      const word = wordFor(candidate.id);
+                      return word ? (
+                        <span
+                          className={word.tone === 'neutral' ? 'badge' : `badge ${word.tone}`}
+                          title={`Given by ${word.from}`}
+                        >
+                          {word.label}
+                        </span>
+                      ) : (
+                        <span className="badge">No verdict yet</span>
+                      );
+                    })()}
                   </td>
                   <td className="muted">{formatDate(candidate.submittedAt)}</td>
                 </tr>
@@ -277,12 +337,13 @@ export function CandidatesTab({
       {open && (
         <CandidateDrawer
           candidate={open}
+          word={wordFor(open.id)}
+          decidesAt={rowFor(open.id)?.decidesAt ?? null}
           fields={fields}
           onClose={() => setOpenId(null)}
-          onChanged={() => {
-            onChanged();
-            setOpenId(null);
-          }}
+          // Changing a verdict is not a reason to shut the drawer — you often
+          // want to see the new word land beside the startup you are reading.
+          onChanged={refresh}
         />
       )}
     </div>
@@ -293,17 +354,88 @@ export function CandidatesTab({
 
 function CandidateDrawer({
   candidate,
+  word,
+  decidesAt,
   fields,
   onClose,
   onChanged,
 }: {
   candidate: Candidate;
+  /** The word it wears at the open step — your vocabulary, not the plumbing's. */
+  word: RosterRow['status'];
+  /** Where the words come from at this step, whether or not one was given. */
+  decidesAt: RosterRow['decidesAt'];
   fields: FormField[];
   onClose: () => void;
   onChanged: () => void;
 }) {
   const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [edits, setEdits] = useState<Record<string, unknown>>(candidate.answers);
+  /* The contact lives on a person in the directory, not on this row — so
+     editing it writes there, and creates the person when the candidacy never
+     had one. Imported and hand-typed candidacies both arrive that way. */
+  const [who, setWho] = useState({
+    contactName: candidate.contactName,
+    email: candidate.email,
+    phone: candidate.phone,
+    source: candidate.source,
+  });
+
+  const saveAll = async () => {
+    setBusy(true);
+    try {
+      let personId = candidate.personId;
+      if (who.contactName.trim()) {
+        if (personId) {
+          await api.patch(`/api/records/${personId}`, {
+            name: who.contactName.trim(),
+            email: who.email.trim(),
+            phone: who.phone.trim(),
+          });
+        } else {
+          const person = await api.post<{ id: string }>('/api/records', {
+            kind: 'person',
+            name: who.contactName.trim(),
+            email: who.email.trim(),
+            phone: who.phone.trim(),
+            origin: 'manual',
+            affiliateTo: candidate.orgId,
+            affiliationRole: 'Founder',
+            // The contact of a candidacy runs that organisation's page.
+            affiliationAccess: 'admin',
+          });
+          personId = person.id;
+        }
+      }
+      await api.patch(`/api/candidates/${candidate.id}`, {
+        answers: edits,
+        source: who.source,
+        ...(personId && personId !== candidate.personId ? { personId } : {}),
+      });
+      toast(`${candidate.orgName} updated.`);
+      setEditing(false);
+      onChanged();
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
   const toast = useToast();
+
+  /* The statuses the deciding block hands out — read from that block, so the
+     drawer offers exactly what the review screen would. */
+  /* Where the verdict is written: the block that gave the current word, else
+     the one that hands them out at this step. Without the fallback the whole
+     list of statuses disappeared the moment a startup had none. */
+  const verdictBlockId = word?.blockId ?? decidesAt?.id ?? null;
+  const deciding = useAsync(
+    () => (verdictBlockId ? api.get<Block>(`/api/blocks/${verdictBlockId}`) : Promise.resolve(null)),
+    verdictBlockId ?? 'none',
+  );
+  const choices = ((deciding.data?.config as EvaluationConfig | undefined)?.outcomes ?? []) as BlockOutcome[];
 
   const answered = fields.filter((f) => {
     const value = candidate.answers[f.id];
@@ -329,47 +461,169 @@ function CandidateDrawer({
         }
       >
         <div className="row wrap">
-          <span className={tone(candidate.status)}>{candidate.status}</span>
+          {word ? (
+            <span
+              className={word.tone === 'neutral' ? 'badge' : `badge ${word.tone}`}
+              title={`Given by ${word.from}`}
+            >
+              {word.label}
+            </span>
+          ) : (
+            <span className="badge">No verdict yet</span>
+          )}
           {candidate.source && <span className="badge">{candidate.source}</span>}
         </div>
 
-        <div className="field">
-          <label>Status</label>
-          <div className="help">
-            Statuses are normally written by a selection when it is published. Change it here only to record something
-            that happened outside the funnel — a withdrawal, for instance.
+        {/* Your words, not the plumbing's: this sets the verdict of the block
+            that judged them, which is the same override the review screen
+            offers. It used to list a closed vocabulary nobody here chose. */}
+        {verdictBlockId && choices.length > 0 && (
+          <div className="field">
+            <label>Its status at {word?.from ?? decidesAt?.name ?? 'this step'}</label>
+            <div className="help">
+              Set by hand here, exactly as it would be from the review screen. A later score does not undo it.
+            </div>
+            <select
+              className="select"
+              value={choices.find((o) => o.label === word?.label)?.id ?? ''}
+              disabled={busy}
+              onChange={async (e) => {
+                if (!e.target.value) return;
+                setBusy(true);
+                try {
+                  await api.post(`/api/blocks/${verdictBlockId}/outcomes`, {
+                    candidateId: candidate.id,
+                    outcomeId: e.target.value,
+                  });
+                  toast(`${candidate.orgName} · ${choices.find((o) => o.id === e.target.value)?.label ?? 'updated'}.`);
+                  onChanged();
+                } catch (err) {
+                  toast((err as Error).message, true);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {/* Only until somebody decides — never a word you can pick. */}
+              {!choices.some((o) => o.label === word?.label) && <option value="">No status yet</option>}
+              {choices.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
           </div>
-          <select
-            className="select"
-            value={candidate.status}
-            onChange={async (e) => {
-              await api.patch(`/api/candidates/${candidate.id}`, { status: e.target.value });
-              toast(`${candidate.orgName} marked ${e.target.value.toLowerCase()}.`);
+        )}
+
+        {/* Withdrawal is not a step of the funnel, it is a startup leaving it. */}
+        {candidate.status !== 'Withdrawn' ? (
+          <button
+            className="btn ghost"
+            style={{ color: 'var(--stop)', alignSelf: 'flex-start' }}
+            onClick={async () => {
+              await api.patch(`/api/candidates/${candidate.id}`, { status: 'Withdrawn' });
+              toast(`${candidate.orgName} withdrew.`);
               onChanged();
             }}
           >
-            {CANDIDATE_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </div>
+            <Icon name="x" size={13} /> Mark as withdrawn
+          </button>
+        ) : (
+          <div className="callout warn">
+            <Icon name="alert" size={15} />
+            <div>
+              <strong>Withdrawn.</strong> It is out of every list, every panel and every selection.{' '}
+              <button
+                className="linkish"
+                onClick={async () => {
+                  await api.patch(`/api/candidates/${candidate.id}`, { status: 'Applied' });
+                  toast(`${candidate.orgName} is back in.`);
+                  onChanged();
+                }}
+              >
+                Bring it back
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="public-sep" />
 
-        <h3 className="section-title">Contact</h3>
-        <dl className="answers">
-          <dt>Contact</dt>
-          <dd>{candidate.contactName || '—'}</dd>
-          <dt>Email</dt>
-          <dd>{candidate.email || '—'}</dd>
-          <dt>Phone</dt>
-          <dd>{candidate.phone || '—'}</dd>
-        </dl>
+        <div className="row">
+          <h3 className="section-title" style={{ flex: 1 }}>Contact</h3>
+          {/* A record typed in by hand is rarely right the first time, and
+              correcting it used to mean deleting it and starting over. One
+              toggle, because contact and answers are one record to you. */}
+          <button className="btn sm" onClick={() => setEditing((e) => !e)}>
+            <Icon name={editing ? 'x' : 'edit'} size={13} /> {editing ? 'Stop editing' : 'Edit this record'}
+          </button>
+        </div>
+        {editing ? (
+          <>
+            <TextField label="Contact" value={who.contactName} onChange={(v) => setWho((w) => ({ ...w, contactName: v }))} />
+            <div className="grid-2">
+              <TextField label="Email" type="email" value={who.email} onChange={(v) => setWho((w) => ({ ...w, email: v }))} />
+              <TextField label="Phone" value={who.phone} onChange={(v) => setWho((w) => ({ ...w, phone: v }))} />
+            </div>
+            <TextField label="Source" value={who.source} onChange={(v) => setWho((w) => ({ ...w, source: v }))} />
+            <p className="faint" style={{ margin: 0, fontSize: 12 }}>
+              This writes to the person in the directory, which is where the contact actually lives.
+              {candidate.personId && (
+                <>
+                  {' '}
+                  <Link to={`/directory/${candidate.personId}`}>Open their record</Link> for the rest — roles, city,
+                  their other organisations.
+                </>
+              )}
+            </p>
+          </>
+        ) : (
+          <dl className="answers">
+            <dt>Contact</dt>
+            <dd>{candidate.contactName || '—'}</dd>
+            <dt>Email</dt>
+            <dd>{candidate.email || '—'}</dd>
+            <dt>Phone</dt>
+            <dd>{candidate.phone || '—'}</dd>
+            <dt>Source</dt>
+            <dd>{candidate.source || '—'}</dd>
+          </dl>
+        )}
 
         <h3 className="section-title">Application</h3>
-        {answered.length ? (
+
+        {editing ? (
+          <>
+            {fields.map((field) => (
+              <FormFieldInput
+                key={field.id}
+                field={{ ...field, required: false }}
+                value={edits[field.id]}
+                onChange={(v) => setEdits((a) => ({ ...a, [field.id]: v }))}
+              />
+            ))}
+            <div className="row" style={{ gap: 7 }}>
+              <button className="btn primary sm" disabled={busy} onClick={saveAll}>
+                {busy ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                className="btn ghost sm"
+                onClick={() => {
+                  setEdits(candidate.answers);
+                  setWho({
+                    contactName: candidate.contactName,
+                    email: candidate.email,
+                    phone: candidate.phone,
+                    source: candidate.source,
+                  });
+                  setEditing(false);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : answered.length ? (
           <dl className="answers">
             {answered.map((field) => (
               <div key={field.id} style={{ display: 'contents' }}>
@@ -380,7 +634,7 @@ function CandidateDrawer({
           </dl>
         ) : (
           <p className="faint" style={{ margin: 0 }}>
-            No answer recorded — this candidate was added by hand.
+            Nothing answered yet — this candidacy was typed in rather than filed through the form.
           </p>
         )}
       </Drawer>
@@ -396,6 +650,7 @@ function CandidateDrawer({
             await api.del(`/api/candidates/${candidate.id}`);
             toast('Candidate deleted.');
             onChanged();
+            onClose();
           }}
         />
       )}
@@ -416,13 +671,20 @@ function AddCandidateModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const [draft, setDraft] = useState({ orgName: '', contactName: '', email: '', phone: '', source: '' });
+  const [draft, setDraft] = useState({
+    orgName: '', contactName: '', email: '', phone: '', role: 'Founder', source: '',
+  });
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
+  /** Co-founders land as people affiliated to the organisation, like a team. */
+  const [team, setTeam] = useState<{ name: string; role: string; email: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
   const set = (patch: Partial<typeof draft>) => setDraft((d) => ({ ...d, ...patch }));
 
-  const choiceFields = fields.filter((f) => f.type === 'select');
+  /* The whole form, not a fragment of it. This used to offer only the
+     multiple-choice questions, so a candidacy typed in by hand lost its
+     description, its figures and its stage — and then looked, in the table,
+     like an application that had answered nothing. */
 
   return (
     <Modal
@@ -440,7 +702,19 @@ function AddCandidateModal({
             onClick={async () => {
               setSaving(true);
               try {
-                await api.post(`/api/editions/${editionId}/candidates`, { ...draft, trackId, answers });
+                await api.post(`/api/editions/${editionId}/candidates`, {
+                  orgName: draft.orgName,
+                  source: draft.source,
+                  contact: {
+                    name: draft.contactName,
+                    email: draft.email,
+                    phone: draft.phone,
+                    role: draft.role,
+                  },
+                  team: team.filter((m) => m.name.trim()),
+                  trackId,
+                  answers,
+                });
                 toast(`${draft.orgName} added.`);
                 onCreated();
                 onClose();
@@ -463,18 +737,64 @@ function AddCandidateModal({
       </div>
       <div className="grid-2">
         <TextField label="Phone" value={draft.phone} onChange={(v) => set({ phone: v })} />
-        <TextField label="Source" value={draft.source} onChange={(v) => set({ source: v })} placeholder="Partner referral" />
+        <TextField label="Their role" value={draft.role} onChange={(v) => set({ role: v })} placeholder="CEO" />
       </div>
-      {choiceFields.map((field) => (
-        <SelectField
-          key={field.id}
-          label={field.label}
-          value={(answers[field.id] as string) ?? ''}
-          onChange={(v) => setAnswers((a) => ({ ...a, [field.id]: v }))}
-          placeholder="Not answered"
-          options={field.options.map((o) => ({ value: o, label: o }))}
-        />
-      ))}
+      <TextField label="Source" value={draft.source} onChange={(v) => set({ source: v })} placeholder="Partner referral" />
+
+      {/* Co-founders are people on the organisation, not answers on a form —
+          the same place the founder's own team page writes to. */}
+      <div className="field">
+        <label>Co-founders</label>
+        <div className="hint">They join the startup's page, and the jury reads them there.</div>
+        <div className="stack" style={{ gap: 7, marginTop: 6 }}>
+          {team.map((mate, i) => (
+            <div className="row" style={{ gap: 7 }} key={i}>
+              <input
+                className="input"
+                placeholder="Full name"
+                value={mate.name}
+                onChange={(e) => setTeam((t) => t.map((m, j) => (j === i ? { ...m, name: e.target.value } : m)))}
+              />
+              <input
+                className="input"
+                style={{ maxWidth: 130 }}
+                placeholder="Role"
+                value={mate.role}
+                onChange={(e) => setTeam((t) => t.map((m, j) => (j === i ? { ...m, role: e.target.value } : m)))}
+              />
+              <input
+                className="input"
+                type="email"
+                placeholder="Email"
+                value={mate.email}
+                onChange={(e) => setTeam((t) => t.map((m, j) => (j === i ? { ...m, email: e.target.value } : m)))}
+              />
+              <button className="btn ghost icon sm" aria-label="Remove" onClick={() => setTeam((t) => t.filter((_, j) => j !== i))}>
+                <Icon name="trash" size={13} />
+              </button>
+            </div>
+          ))}
+          <button className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => setTeam((t) => [...t, { name: '', role: '', email: '' }])}>
+            <Icon name="plus" size={13} /> Add a co-founder
+          </button>
+        </div>
+      </div>
+      {fields.length > 0 && (
+        <>
+          <div className="public-sep" />
+          <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+            The same questions the form asks. Leave blank what you do not have.
+          </p>
+          {fields.map((field) => (
+            <FormFieldInput
+              key={field.id}
+              field={{ ...field, required: false }}
+              value={answers[field.id]}
+              onChange={(v) => setAnswers((a) => ({ ...a, [field.id]: v }))}
+            />
+          ))}
+        </>
+      )}
     </Modal>
   );
 }

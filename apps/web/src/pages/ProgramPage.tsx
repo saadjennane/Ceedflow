@@ -1,4 +1,4 @@
-import { PROGRAM_TYPES, type ProgramWithEditions } from '@ceed/shared';
+import { DEFAULT_OUTCOMES, PROGRAM_TYPES, type BlockOutcome, type ProgramWithEditions } from '@ceed/shared';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -8,6 +8,7 @@ import { SelectField, TextArea, TextField } from '../ui/Field';
 import { Icon } from '../ui/Icon';
 import { ConfirmDialog, Modal, useToast } from '../ui/Overlays';
 import { CreateEditionModal } from './CreateModals';
+import { OutcomeEditor } from './builder/panels/shared';
 import '../ui/programs.css';
 
 const COLOURS = ['#2F5BFF', '#00A36A', '#C77400', '#D8305A', '#7B3FE4', '#0E9FB5'];
@@ -17,6 +18,48 @@ const STATUS_TONE: Record<string, string> = {
   Running: 'badge ok',
   Completed: 'badge',
 };
+
+/**
+ * The words this programme judges in, set once instead of retyped into every
+ * evaluation. A block takes its own copy when it is created, so editing here
+ * never rewrites a round already judged in the old words.
+ */
+function ProgramStatuses({ program }: { program: ProgramWithEditions }) {
+  const [statuses, setStatuses] = useState<BlockOutcome[]>(
+    program.statuses.length ? program.statuses : DEFAULT_OUTCOMES,
+  );
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
+
+  const save = async (next: BlockOutcome[]) => {
+    setStatuses(next);
+    setSaving(true);
+    try {
+      await api.patch(`/api/programs/${program.id}`, { statuses: next });
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="card card-pad stack" style={{ gap: 12 }}>
+      <div className="row">
+        <div style={{ flex: 1 }}>
+          <h2 style={{ fontSize: 15, margin: 0 }}>The statuses this program judges in</h2>
+          <p className="faint" style={{ margin: '3px 0 0', fontSize: 12.5, lineHeight: 1.55, maxWidth: '68ch' }}>
+            Every evaluation created from here on starts with these and can then go its own way. Changing them leaves
+            rounds already judged in the old words exactly as they were.
+          </p>
+        </div>
+        {saving && <span className="faint" style={{ fontSize: 12 }}>Saving…</span>}
+      </div>
+
+      <OutcomeEditor outcomes={statuses} mode="verdict" onChange={save} />
+    </div>
+  );
+}
 
 export function ProgramPage() {
   const { programId = '' } = useParams();
@@ -61,6 +104,8 @@ export function ProgramPage() {
             {p.summary || 'No description yet.'}
           </p>
         </div>
+
+        <ProgramStatuses program={p} />
 
         <div className="row">
           <h2 style={{ fontSize: 15 }}>Editions</h2>

@@ -36,6 +36,7 @@ export function TextField({
   error,
   type = 'text',
   hint,
+  autoFocus,
 }: {
   label: string;
   value: string;
@@ -45,6 +46,8 @@ export function TextField({
   error?: string;
   type?: string;
   hint?: ReactNode;
+  /** Takes the caret when the field appears — for something just created. */
+  autoFocus?: boolean;
 }) {
   return (
     <Field label={label} help={help} error={error} hint={hint}>
@@ -56,6 +59,7 @@ export function TextField({
           value={value}
           placeholder={placeholder}
           aria-invalid={invalid}
+          autoFocus={autoFocus}
           onChange={(e) => onChange(e.target.value)}
         />
       )}

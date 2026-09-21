@@ -1,5 +1,12 @@
 import { z } from 'zod';
-import { blockTypeSchema, type AnyBlockConfig, type BlockType } from './blocks.js';
+import {
+  blockOutcomeSchema,
+  blockTypeSchema,
+  type AnyBlockConfig,
+  type BlockType,
+  type EvaluationConfig,
+  type SelectionConfig,
+} from './blocks.js';
 
 /* ------------------------------------------------------------------ */
 /* Program                                                           */
@@ -24,6 +31,12 @@ export const programSchema = z.object({
   summary: z.string().default(''),
   partner: z.string().default(''),
   colour: z.string().default('#2F5BFF'),
+  /**
+   * The words this programme judges in. An evaluation inherits them when it is
+   * created and then owns its copy — changing them here never rewrites a round
+   * already judged in the old ones. Empty falls back to the built-in set.
+   */
+  statuses: z.array(blockOutcomeSchema).default([]),
   createdAt: z.string(),
 });
 
@@ -33,8 +46,29 @@ export type Program = z.infer<typeof programSchema>;
 /* Edition                                                             */
 /* ------------------------------------------------------------------ */
 
-export const EDITION_STATUSES = ['Draft', 'Published', 'Running', 'Completed'] as const;
+/**
+ * Where an edition stands, and it decides something — which is what separates
+ * this from the four it replaces, where `Published` and `Running` differed by a
+ * word on a badge and neither was ever read.
+ *
+ * Draft hides every external door. Live opens them, each still subject to its
+ * own window. Completed leaves the edition readable while nothing more can be
+ * filed: a juror still reads the marks they gave, a startup still sees the form
+ * it answered.
+ */
+export const EDITION_STATUSES = ['Draft', 'Live', 'Completed'] as const;
 export type EditionStatus = (typeof EDITION_STATUSES)[number];
+
+export const EDITION_STATUS_HINT: Record<EditionStatus, string> = {
+  Draft: 'Nothing outside CEED can see this edition.',
+  Live: 'The forms, the booking page and the evaluator space are reachable.',
+  Completed: 'Still readable from outside. Nothing more can be filed.',
+};
+
+/** Whether an external door may be reached at all. */
+export const editionIsVisible = (status: EditionStatus) => status !== 'Draft';
+/** Whether anything may still be filed through one. */
+export const editionTakesInput = (status: EditionStatus) => status === 'Live';
 
 export const editionSchema = z.object({
   id: z.string(),
@@ -95,6 +129,18 @@ export type BlockRow = z.infer<typeof blockSchema>;
 
 export interface Block extends Omit<BlockRow, 'config'> {
   config: AnyBlockConfig;
+  /**
+   * How many sittings hang off a committee. Read alongside the block because a
+   * committee with none has nothing behind its door, and a badge that cannot
+   * see that would call an empty committee ready.
+   */
+  sittings?: number;
+  /**
+   * The first sitting of a committee, which doubles as the date its panel
+   * opens when no date was set on the door itself. A jury day planned for the
+   * 28th is *scheduled*, not closed.
+   */
+  nextSittingOn?: string | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -142,7 +188,10 @@ export const createProgramInput = z.object({
 
 export type CreateProgramInput = z.input<typeof createProgramInput>;
 
-export const updateProgramInput = createProgramInput.omit({ edition: true }).partial();
+export const updateProgramInput = createProgramInput
+  .omit({ edition: true })
+  .extend({ statuses: z.array(blockOutcomeSchema).optional() })
+  .partial();
 
 /** What a brand-new edition starts with. */
 export const EDITION_TEMPLATES = ['blank', 'selection_funnel'] as const;
@@ -213,6 +262,37 @@ export function blocksOfType<T extends BlockType>(track: TrackWithPhases, type: 
 }
 
 /**
+ * The Evaluation that scores a committee: one sitting in the same phase, which is
+ * how dropping the two together links them, unless a block names it explicitly.
+ */
+export function evaluationForCommittee(track: TrackWithPhases, committeeId: string): Block | null {
+  const pinned = orderedBlocks(track).find(
+    (b) => b.type === 'evaluation' && (b.config as EvaluationConfig).scopeBlockId === committeeId,
+  );
+  if (pinned) return pinned;
+  const phase = track.phases.find((p) => p.blocks.some((b) => b.id === committeeId));
+  return (
+    phase?.blocks.find((b) => b.type === 'evaluation' && (b.config as EvaluationConfig).scopeBlockId === null) ?? null
+  );
+}
+
+/**
+ * Whose statuses a selection reads: the block it names, else the nearest
+ * evaluation before it. Naming a committee lands on the evaluation that scores
+ * it — a committee says who reviews, never what a startup is worth.
+ */
+export function selectionSource(track: TrackWithPhases, block: Block): Block | null {
+  const named = (block.config as SelectionConfig).fromBlockId;
+  const ordered = orderedBlocks(track);
+  if (named) {
+    const found = ordered.find((b) => b.id === named) ?? null;
+    return found?.type === 'committee' ? evaluationForCommittee(track, found.id) : found;
+  }
+  const index = ordered.findIndex((b) => b.id === block.id);
+  return ordered.slice(0, index === -1 ? undefined : index).filter((b) => b.type === 'evaluation').pop() ?? null;
+}
+
+/**
  * A moment of the funnel: what measured, and what cut. An evaluation followed by
  * a selection is one act split across two blocks, and the screen shows it as one.
  */
@@ -230,10 +310,7 @@ export function funnelMoments(track: TrackWithPhases): FunnelMoment[] {
 
   ordered.forEach((block, index) => {
     if (block.type !== 'selection') return;
-    const pinned = (block.config as { sourceBlockId?: string | null }).sourceBlockId;
-    const source = pinned
-      ? (ordered.find((b) => b.id === pinned && b.type === 'evaluation') ?? null)
-      : (ordered.slice(0, index).filter((b) => b.type === 'evaluation').pop() ?? null);
+    const source = selectionSource(track, block);
     if (source) claimed.add(source.id);
     moments.push({
       at: source ? ordered.indexOf(source) : index,

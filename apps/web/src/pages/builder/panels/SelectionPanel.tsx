@@ -1,12 +1,13 @@
 import {
-  DEFAULT_OUTCOMES,
   orderedBlocks,
+  selectionSource,
+  DEFAULT_OUTCOMES,
   type Block,
   type EvaluationConfig,
   type SelectionConfig,
   type TrackWithPhases,
 } from '@ceed/shared';
-import { NumberField, SelectField, TextField } from '../../../ui/Field';
+import { SelectField, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
 
 /* ------------------------------------------------------------------ */
@@ -26,27 +27,33 @@ export function SelectionSetup({
 }) {
   const ordered = orderedBlocks(track);
   const index = ordered.findIndex((b) => b.id === block.id);
-  // A committee scores too, so the jury's marks can drive the cut.
-  const upstreamScoring = ordered
-    .slice(0, index === -1 ? undefined : index)
-    .filter((b) => b.type === 'evaluation' || b.type === 'committee');
-  // The statuses to cut on come from whichever block hands them out.
-  const source = config.sourceBlockId
-    ? upstreamScoring.find((b) => b.id === config.sourceBlockId)
-    : upstreamScoring[upstreamScoring.length - 1];
-  const sourceOutcomes =
-    source?.type === 'evaluation' ? ((source.config as EvaluationConfig).outcomes ?? DEFAULT_OUTCOMES) : [];
+  /** Only a block that hands out statuses can feed a funnel. */
+  const upstream = ordered.slice(0, index === -1 ? undefined : index).filter((b) => b.type === 'evaluation');
+
+  // The same rule the server applies, so the panel never promises another one.
+  const source = selectionSource(track, { ...block, config } as Block);
+  const outcomes = source ? ((source.config as EvaluationConfig).outcomes ?? DEFAULT_OUTCOMES) : [];
 
   const otherCohort = ordered.find(
     (b) => b.type === 'selection' && b.id !== block.id && (b.config as SelectionConfig).outputKind === 'cohort',
   );
 
+  const toggle = (id: string) =>
+    patch({
+      passOutcomeIds: config.passOutcomeIds.includes(id)
+        ? config.passOutcomeIds.filter((x) => x !== id)
+        : [...config.passOutcomeIds, id],
+    });
+
   return (
     <>
       <div className="callout">
         <Icon name="filter" size={15} />
-        A selection cuts the funnel. Everyone who passes moves on to the blocks after it; everyone who does not stops
-        here. Publishing writes the result onto each candidate.
+        <div>
+          A selection is the funnel between two phases. It takes the statuses given upstream and decides which of them
+          carry on. It invents no rule of its own — to change what a score is worth, change the band in{' '}
+          <strong>{source?.name ?? 'the evaluation'}</strong>.
+        </div>
       </div>
 
       <div className="field">
@@ -60,7 +67,7 @@ export function SelectionSetup({
             <Icon name={config.outputKind === 'shortlist' ? 'check' : 'square'} />
             <div>
               <strong>A shortlist</strong>
-              <span>The funnel stays open. Those who pass carry on to the next block.</span>
+              <span>The funnel stays open. Those who pass carry on to the next phase.</span>
             </div>
           </button>
           <button
@@ -80,108 +87,77 @@ export function SelectionSetup({
       {config.outputKind === 'cohort' && otherCohort && (
         <div className="callout warn">
           <Icon name="alert" size={15} />
-          <strong>{otherCohort.name}</strong> already forms the cohort in this track. Two cohort-forming selections will
-          fight over the same candidates — make one of them a shortlist.
+          <div>
+            <strong>{otherCohort.name}</strong> already forms the cohort in this track. Two cohort-forming selections
+            will fight over the same candidates — make one of them a shortlist.
+          </div>
         </div>
       )}
 
       <div className="public-sep" />
 
       <SelectField
-        label="Score comes from"
-        value={config.sourceBlockId ?? ''}
-        onChange={(v) => patch({ sourceBlockId: v || null })}
+        label="Statuses come from"
+        value={config.fromBlockId ?? ''}
+        onChange={(v) => patch({ fromBlockId: v || null, passOutcomeIds: [] })}
         placeholder={
-          upstreamScoring.length
-            ? `Nearest scoring block before this one (${upstreamScoring[upstreamScoring.length - 1].name})`
-            : 'Nothing upstream scores yet'
+          upstream.length
+            ? `Nearest evaluation before this one (${upstream[upstream.length - 1].name})`
+            : 'Nothing upstream hands out a status yet'
         }
-        options={upstreamScoring.map((b) => ({
-          value: b.id,
-          label: `${b.name} · ${b.type === 'committee' ? 'committee' : 'evaluation'}`,
-        }))}
-        help="An evaluation or a selection committee placed before this block — both produce a score out of 100."
+        options={upstream.map((b) => ({ value: b.id, label: b.name }))}
+        help="An evaluation placed before this block. A committee is reached through the evaluation that scores it."
       />
 
-      <SelectField
-        label="How the cut is made"
-        value={config.method}
-        onChange={(v) => patch({ method: v as SelectionConfig['method'] })}
-        options={[
-          { value: 'threshold', label: 'Everyone at or above a score' },
-          { value: 'top_n', label: 'The best N by score' },
-          { value: 'by_status', label: 'Everyone carrying a status' },
-          { value: 'manual', label: 'Decided by hand' },
-        ]}
-      />
-
-      {config.method === 'threshold' && (
-        <NumberField
-          label="Passing score"
-          value={config.threshold}
-          onChange={(v) => patch({ threshold: v })}
-          min={0}
-          max={100}
-          help="Out of 100, on the weighted score of the evaluation above."
-        />
-      )}
-      {config.method === 'top_n' && (
-        <NumberField label="How many pass" value={config.topN} onChange={(v) => patch({ topN: v })} min={1} />
-      )}
-      {config.method === 'by_status' && (
-        <div className="field">
-          <label>Which statuses pass</label>
-          {sourceOutcomes.length ? (
-            <div className="work-pick">
-              {sourceOutcomes.map((o) => (
-                <button
-                  key={o.id}
-                  type="button"
-                  className={config.passOutcomeIds.includes(o.id) ? 'track on' : 'track'}
-                  onClick={() =>
-                    patch({
-                      passOutcomeIds: config.passOutcomeIds.includes(o.id)
-                        ? config.passOutcomeIds.filter((x) => x !== o.id)
-                        : [...config.passOutcomeIds, o.id],
-                    })
-                  }
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="empty" style={{ padding: 18 }}>
-              The block above hands out no status yet.
-            </div>
-          )}
-          <div className="hint">
-            How a panel that votes feeds a cut: no number is involved, so the words the jury used are what decides.
+      <div className="field">
+        <label>Which statuses move on</label>
+        {outcomes.length ? (
+          <div className="pick-list">
+            {outcomes.map((o) => (
+              <button
+                type="button"
+                key={o.id}
+                className={config.passOutcomeIds.includes(o.id) ? 'pick on' : 'pick'}
+                onClick={() => toggle(o.id)}
+              >
+                <Icon name={config.passOutcomeIds.includes(o.id) ? 'check' : 'square'} />
+                <div>
+                  <strong>{o.label}</strong>
+                  <span>
+                    {o.minScore === null
+                      ? 'The fallback — everyone no other band caught.'
+                      : `Earned from ${o.minScore} out of 100.`}
+                  </span>
+                </div>
+              </button>
+            ))}
           </div>
+        ) : (
+          <div className="empty" style={{ padding: 18 }}>
+            {source ? 'That block hands out no status yet.' : 'Nothing before this block hands out a status.'}
+          </div>
+        )}
+        <div className="hint">
+          Take the waitlist too when you need to fill more places. Nothing caps the number that passes — a startup you
+          want in or out whatever its status is settled row by row in Review.
         </div>
-      )}
+      </div>
 
-      {config.method === 'manual' && (
-        <div className="callout">
+      {!config.passOutcomeIds.length && outcomes.length > 0 && (
+        <div className="callout warn">
           <Icon name="alert" size={15} />
-          Nobody passes until you mark them in the Decision tab. Useful after a committee, where the jury's call is not
-          a formula.
+          <div>No status moves on, so this selection passes nobody until you pick one — or say so row by row.</div>
         </div>
       )}
 
       <div className="grid-2">
         <TextField label="Label for those who pass" value={config.passLabel} onChange={(v) => patch({ passLabel: v })} />
-        <TextField label="Label for those who do not" value={config.failLabel} onChange={(v) => patch({ failLabel: v })} />
+        <TextField
+          label="Label for those who do not"
+          value={config.failLabel}
+          onChange={(v) => patch({ failLabel: v })}
+        />
       </div>
-
-      {!upstreamScoring.length && config.method !== 'manual' && (
-        <div className="callout warn">
-          <Icon name="alert" size={15} />
-          Nothing before this block produces a score, so this rule can never pass anyone. Either put an evaluation or a
-          committee upstream, or set the cut to <strong>decided by hand</strong> — which is what you want if this
-          selection is made from the list itself.
-        </div>
-      )}
     </>
   );
 }
