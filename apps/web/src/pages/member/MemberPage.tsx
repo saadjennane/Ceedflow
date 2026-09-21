@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { useAccount } from '../../lib/account';
 import { formatDate } from '../../lib/format';
-import { useAsync } from '../../lib/useAsync';
+import { useAsync, type AsyncState } from '../../lib/useAsync';
 import type { ReviewPanel } from './ReviewPage';
 import { Icon } from '../../ui/Icon';
 import { Modal, useToast } from '../../ui/Overlays';
@@ -29,6 +29,7 @@ export function MemberPage() {
   /* Kept in the URL so coming back, refreshing or following a link lands where
      you were rather than at the top of the pile. */
   const panels = useAsync(() => api.get<ReviewPanel[]>('/api/me/reviews'), 'reviews');
+  const programs = useAsync(() => api.get<MyProgram[]>('/api/me/programs'), 'programs');
   const isJuror = (panels.data?.length ?? 0) > 0;
   const tabs = MEMBER_TABS.filter((t) => t !== 'Jury' || isJuror);
   const asked = params.get('tab') as MemberTab | null;
@@ -100,9 +101,10 @@ export function MemberPage() {
           <>
             <Profile me={me} onSaved={reload} />
             <Organisations me={me} onChanged={reload} />
+            <Involvement panels={panels.data ?? []} programs={programs.data ?? []} onGo={setTab} />
           </>
         )}
-        {tab === 'Programs' && <Programs />}
+        {tab === 'Programs' && <Programs programs={programs} />}
         {tab === 'Jury' && <Jury panels={panels.data ?? []} />}
         {tab === 'Settings' && <Settings me={me} />}
       </div>
@@ -361,8 +363,7 @@ function applicationLine(p: MyProgram): { label: string; tone: string } {
   return { label: 'No form', tone: 'badge' };
 }
 
-function Programs() {
-  const programs = useAsync(() => api.get<MyProgram[]>('/api/me/programs'), 'programs');
+function Programs({ programs }: { programs: AsyncState<MyProgram[]> }) {
   const list = programs.data ?? [];
 
   if (programs.error) return <div className="empty">{programs.error}</div>;
@@ -496,9 +497,64 @@ function splitName(record: { firstName: string; lastName: string; name: string }
   return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
 }
 
+/**
+ * Who somebody is, before what they have to fill in.
+ *
+ * This used to be six boxes asking a person to describe themselves before
+ * showing them anything — a form pretending to be a page. What CEED already
+ * knows is now what you read, and editing is a door you open when you want
+ * to, not the state the screen is in.
+ */
 function Profile({ me, onSaved }: { me: Me; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const place = [me.record.city, me.record.country].filter(Boolean).join(', ');
+
+  return (
+    <>
+      <section className="card card-pad profile-head">
+        {/* The mark stands where a photograph will, at the same size, so
+            adding one later moves nothing else on the page. */}
+        <span className="profile-mark">{initials(me.record.name)}</span>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="row" style={{ alignItems: 'flex-start' }}>
+            <h1 className="profile-name">{me.record.name || 'Your name'}</h1>
+            <div className="spacer" />
+            <button className="btn sm" onClick={() => setEditing(true)}>
+              <Icon name="edit" size={13} /> Edit
+            </button>
+          </div>
+
+          <p className="profile-line">
+            {me.record.roles.length > 0 && <strong>{me.record.roles.join(' · ')}</strong>}
+            {me.record.roles.length > 0 && place && ' — '}
+            {place}
+          </p>
+          <p className="profile-line faint">{me.account.email}</p>
+
+          {/* Highest thing on the page after the name, because it is the one
+              a jury actually reads. */}
+          {me.record.bio ? (
+            <p className="profile-bio">{me.record.bio}</p>
+          ) : (
+            <button className="profile-bio-empty" onClick={() => setEditing(true)}>
+              Add a line about yourself — it is what a jury reads first.
+            </button>
+          )}
+        </div>
+      </section>
+
+      {editing && (
+        <ProfileModal me={me} onClose={() => setEditing(false)} onSaved={onSaved} />
+      )}
+    </>
+  );
+}
+
+function ProfileModal({ me, onClose, onSaved }: { me: Me; onClose: () => void; onSaved: () => void }) {
+  const known = splitName(me.record);
   const [draft, setDraft] = useState({
-    ...splitName(me.record),
+    ...known,
     phone: me.record.phone,
     city: me.record.city,
     country: me.record.country || 'Morocco',
@@ -507,16 +563,7 @@ function Profile({ me, onSaved }: { me: Me; onSaved: () => void }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const toast = useToast();
-
   const set = (partial: Partial<typeof draft>) => setDraft((d) => ({ ...d, ...partial }));
-  const known = splitName(me.record);
-  const dirty =
-    draft.firstName !== known.firstName ||
-    draft.lastName !== known.lastName ||
-    draft.phone !== me.record.phone ||
-    draft.city !== me.record.city ||
-    draft.country !== (me.record.country || 'Morocco') ||
-    draft.bio !== me.record.bio;
 
   const save = async () => {
     setSaving(true);
@@ -525,6 +572,7 @@ function Profile({ me, onSaved }: { me: Me; onSaved: () => void }) {
       await api.patch('/api/me', draft);
       onSaved();
       toast('Profile saved.');
+      onClose();
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrors(err.fields);
       else toast((err as Error).message, true);
@@ -534,31 +582,108 @@ function Profile({ me, onSaved }: { me: Me; onSaved: () => void }) {
   };
 
   return (
-    <section className="card card-pad stack" style={{ gap: 12 }}>
-      <div className="row">
-        <h2 style={{ fontSize: 16 }}>Your profile</h2>
-        <div className="spacer" />
-        <button className="btn primary sm" disabled={saving || !dirty} onClick={save}>
-          {saving ? 'Saving…' : 'Save'}
-        </button>
+    <Modal
+      title="Your profile"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <div className="spacer" />
+          <button className="btn primary" disabled={saving} onClick={save}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </>
+      }
+    >
+      <div className="stack" style={{ gap: 12 }}>
+        {/* The line a jury reads comes first here too, so the two screens
+            agree about what matters. */}
+        <div className="field">
+          <label>About you</label>
+          <textarea
+            className="textarea"
+            rows={3}
+            value={draft.bio}
+            placeholder="What a jury would gain from knowing about you."
+            onChange={(e) => set({ bio: e.target.value })}
+          />
+        </div>
+        <div className="grid-2">
+          <Text label="First name" value={draft.firstName} error={errors.firstName} onChange={(v) => set({ firstName: v })} />
+          <Text label="Last name" value={draft.lastName} error={errors.lastName} onChange={(v) => set({ lastName: v })} />
+        </div>
+        <div className="grid-2">
+          <Text label="Phone" value={draft.phone} onChange={(v) => set({ phone: v })} placeholder="+212 6 …" />
+          <Text label="City" value={draft.city} onChange={(v) => set({ city: v })} placeholder="Casablanca" />
+        </div>
+        <Text label="Country" value={draft.country} onChange={(v) => set({ country: v })} />
+        <p className="faint" style={{ margin: 0, fontSize: 12 }}>
+          Your email is what you sign in with, so it is changed from the account rather than here.
+        </p>
       </div>
+    </Modal>
+  );
+}
 
-      <div className="grid-2">
-        <Text label="First name" value={draft.firstName} error={errors.firstName} onChange={(v) => set({ firstName: v })} />
-        <Text label="Last name" value={draft.lastName} error={errors.lastName} onChange={(v) => set({ lastName: v })} />
+/**
+ * What attaches this person to CEED, in one glance and one click.
+ *
+ * It repeats nothing: each line is a sentence about them, and the detail lives
+ * in the tab it points at. A profile that listed everything twice would be a
+ * menu, not a profile.
+ */
+function Involvement({
+  panels,
+  programs,
+  onGo,
+}: {
+  panels: ReviewPanel[];
+  programs: MyProgram[];
+  onGo: (tab: MemberTab) => void;
+}) {
+  const applied = programs.filter((p) => p.mine.length > 0);
+  const juries = [...new Map(panels.map((p) => [`${p.programName}|${p.editionName}`, p])).values()];
+  if (!applied.length && !juries.length) return null;
+
+  return (
+    <section className="card">
+      <div className="rowcard-head" style={{ padding: '13px 16px' }}>
+        <h2 style={{ fontSize: 16, flex: 1 }}>Where you are involved</h2>
       </div>
-      <div className="grid-2">
-        <Text label="Phone" value={draft.phone} onChange={(v) => set({ phone: v })} placeholder="+212 6 …" />
-        <Text label="City" value={draft.city} onChange={(v) => set({ city: v })} placeholder="Casablanca" />
+      <div className="rows" style={{ padding: 12 }}>
+        {juries.map((head) => {
+          const mine = panels.filter((p) => p.programName === head.programName);
+          const waiting = mine.filter((p) => p.state === 'open').reduce((n, p) => n + (p.items.length - p.done), 0);
+          return (
+            <button className="rowcard link-row" key={`j-${head.programName}`} onClick={() => onGo('Jury')}>
+              <Icon name="gavel" size={14} />
+              <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{head.programName}</span>
+                <span className="faint" style={{ display: 'block', fontSize: 12 }}>
+                  On the jury · {mine.length} panel{mine.length === 1 ? '' : 's'}
+                  {waiting > 0 && ` · ${waiting} still waiting on you`}
+                </span>
+              </span>
+              <Icon name="chevronRight" size={14} />
+            </button>
+          );
+        })}
+
+        {applied.map((program) => (
+          <button className="rowcard link-row" key={`a-${program.editionId}`} onClick={() => onGo('Programs')}>
+            <Icon name="form" size={14} />
+            <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+              <span style={{ fontWeight: 600, fontSize: 13 }}>{program.programName}</span>
+              <span className="faint" style={{ display: 'block', fontSize: 12 }}>
+                {program.mine.map((c) => c.orgName).join(', ')} applied
+              </span>
+            </span>
+            <Icon name="chevronRight" size={14} />
+          </button>
+        ))}
       </div>
-      <Text label="Country" value={draft.country} onChange={(v) => set({ country: v })} />
-      <div className="field">
-        <label>About you</label>
-        <textarea className="textarea" rows={3} value={draft.bio} onChange={(e) => set({ bio: e.target.value })} />
-      </div>
-      <p className="faint" style={{ margin: 0, fontSize: 12 }}>
-        Your email is what you sign in with, so it is changed from the account rather than here.
-      </p>
     </section>
   );
 }

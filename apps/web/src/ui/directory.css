@@ -193,3 +193,77 @@
 .star:hover { color: var(--warn); background: var(--wash); }
 .star.on { color: var(--warn); }
 .star:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+
+
+/* ------------------------------------------------------------------ */
+/* A member's own page                                                  */
+/* ------------------------------------------------------------------ */
+
+/* Read before written: the identity, then the one line a jury reads, and the
+   fields behind a door. The mark is sized for the photograph that will
+   replace it, so adding one moves nothing else. */
+.profile-head {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.profile-mark {
+  width: 76px;
+  height: 76px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--blue), color-mix(in srgb, var(--blue) 65%, var(--cyan)));
+  color: #fff;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 26px;
+  letter-spacing: 0.5px;
+}
+
+.profile-name {
+  margin: 0;
+  font-size: 23px;
+  line-height: 1.2;
+}
+
+.profile-line {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.profile-bio {
+  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 62ch;
+  white-space: pre-wrap;
+}
+
+/* An invitation, not a reproach: it says what the line is for, and it is the
+   control that writes it. */
+.profile-bio-empty {
+  margin-top: 12px;
+  padding: 10px 13px;
+  width: 100%;
+  text-align: left;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r);
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.profile-bio-empty:hover {
+  border-color: var(--blue);
+  color: var(--ink-2);
+}
+
+@media (max-width: 620px) {
+  .profile-head { flex-direction: column; gap: 12px; }
+}
