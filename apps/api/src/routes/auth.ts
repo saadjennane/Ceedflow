@@ -229,9 +229,14 @@ export async function authRoutes(app: FastifyInstance) {
   app.patch('/api/me', async (req) => {
     const account = await require(req);
     const input = parse(profileInput, req.body);
+    /* The display name follows the two halves — but only when they say
+       something. A record entered as one name has neither half, so recomputing
+       from them would rewrite the person's name as empty: saving a phone
+       number would cost you your name. */
+    const both = fullName(input.firstName, input.lastName);
     await dir.updateRecord(account.recordId, {
       ...input,
-      name: fullName(input.firstName, input.lastName),
+      ...(both ? { name: both } : {}),
     });
     return meFor(account);
   });

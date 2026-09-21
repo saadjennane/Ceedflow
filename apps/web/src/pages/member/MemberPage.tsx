@@ -482,10 +482,23 @@ function Jury({ panels }: { panels: ReviewPanel[] }) {
   );
 }
 
+/**
+ * A record entered as one name — which is most of them, since that is what the
+ * import and the quick add both write — has nothing in either half. Showing
+ * two empty boxes to somebody whose name is on the screen above them reads as
+ * though CEED holds nothing about them. The name is split on first sight so
+ * they can correct it rather than retype it.
+ */
+function splitName(record: { firstName: string; lastName: string; name: string }) {
+  if (record.firstName || record.lastName) return { firstName: record.firstName, lastName: record.lastName };
+  const parts = record.name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return { firstName: record.name.trim(), lastName: '' };
+  return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+}
+
 function Profile({ me, onSaved }: { me: Me; onSaved: () => void }) {
   const [draft, setDraft] = useState({
-    firstName: me.record.firstName,
-    lastName: me.record.lastName,
+    ...splitName(me.record),
     phone: me.record.phone,
     city: me.record.city,
     country: me.record.country || 'Morocco',
@@ -496,9 +509,10 @@ function Profile({ me, onSaved }: { me: Me; onSaved: () => void }) {
   const toast = useToast();
 
   const set = (partial: Partial<typeof draft>) => setDraft((d) => ({ ...d, ...partial }));
+  const known = splitName(me.record);
   const dirty =
-    draft.firstName !== me.record.firstName ||
-    draft.lastName !== me.record.lastName ||
+    draft.firstName !== known.firstName ||
+    draft.lastName !== known.lastName ||
     draft.phone !== me.record.phone ||
     draft.city !== me.record.city ||
     draft.country !== (me.record.country || 'Morocco') ||
