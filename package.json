@@ -15,6 +15,7 @@
     "migrate": "npm run migrate -w apps/api",
     "start": "npm run start -w apps/api",
     "export": "npm run export -w apps/api",
-    "import": "npm run import -w apps/api --"
+    "import": "npm run import -w apps/api --",
+    "test": "npm run test -w apps/api"
   }
 }

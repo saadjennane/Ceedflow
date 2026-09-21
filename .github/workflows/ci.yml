@@ -1,0 +1,55 @@
+# What runs before anything reaches main.
+#
+# The database tests need a real Postgres, not the one embedded in the process:
+# the two bugs they exist for — a transaction that guarded nothing, jsonb
+# stored as a string — are invisible against PGlite. That is why a server is
+# started here rather than left to whoever remembers.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ceed
+          POSTGRES_PASSWORD: ceed
+          POSTGRES_DB: ceed
+        ports: ['5432:5432']
+        # Nothing starts until it answers, so a slow container is a wait and
+        # not a failure.
+        options: >-
+          --health-cmd "pg_isready -U ceed"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Types
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+        env:
+          DATABASE_URL: postgres://ceed:ceed@localhost:5432/ceed
+
+      # The front has to build, or the API has nothing to serve and the
+      # deployment fails where it is most expensive to notice.
+      - name: Build
+        run: npm run build
