@@ -13,6 +13,8 @@
     "build": "npm run build -w @ceed/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "migrate": "npm run migrate -w apps/api",
-    "start": "npm run start -w apps/api"
+    "start": "npm run start -w apps/api",
+    "export": "npm run export -w apps/api",
+    "import": "npm run import -w apps/api --"
   }
 }

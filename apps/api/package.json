@@ -7,7 +7,9 @@
     "seed": "tsx src/db/seed.ts",
     "typecheck": "tsc --noEmit",
     "migrate": "tsx src/db/migrate.ts",
-    "start": "tsx src/server.ts"
+    "start": "tsx src/server.ts",
+    "export": "tsx src/db/export.ts",
+    "import": "tsx src/db/import.ts"
   },
   "dependencies": {
     "@ceed/shared": "*",
