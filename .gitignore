@@ -4,3 +4,7 @@ dist
 .pgdata*
 *.log
 .DS_Store
+
+# Cache de compilation TypeScript : régénéré à chaque build, il salissait
+# chaque commit d'une ligne qui ne dit rien.
+*.tsbuildinfo

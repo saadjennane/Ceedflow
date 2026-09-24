@@ -5,6 +5,7 @@ import { ApiError, api } from '../../lib/api';
 import { useAccount } from '../../lib/account';
 import { formatDate } from '../../lib/format';
 import { useAsync, type AsyncState } from '../../lib/useAsync';
+import { stillWaiting } from '../../lib/panels';
 import type { ReviewPanel } from './ReviewPage';
 import { Icon } from '../../ui/Icon';
 import { Modal, useToast } from '../../ui/Overlays';
@@ -425,10 +426,7 @@ function Programs({ programs }: { programs: AsyncState<MyProgram[]> }) {
  * held a link to another page would be a click for nothing.
  */
 function Jury({ panels }: { panels: ReviewPanel[] }) {
-  // A shut panel asks nothing of you, so it does not count as waiting.
-  const waiting = panels
-    .filter((p) => p.state === 'open')
-    .reduce((n, p) => n + (p.items.length - p.done), 0);
+  const waiting = stillWaiting(panels);
 
   const programmes = [...new Map(panels.map((p) => [`${p.programName}|${p.editionName}`, p])).values()];
 

@@ -1,7 +1,11 @@
 import { STAFF_ROLE_LABEL } from '@ceed/shared';
 import { useEffect } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAccount } from '../lib/account';
+import { api } from '../lib/api';
+import { stillWaiting } from '../lib/panels';
+import { useAsync } from '../lib/useAsync';
+import type { ReviewPanel } from '../pages/member/ReviewPage';
 import { Icon } from '../ui/Icon';
 import { useTheme } from '../ui/Overlays';
 
@@ -29,6 +33,15 @@ export function Shell() {
   const { me, loading } = useAccount();
   const navigate = useNavigate();
   const staffRole = me?.account.staffRole ?? null;
+  /* Somebody at CEED is often also on a panel — the ecosystem is small enough
+     that the person running the programme judges in it too. The route already
+     worked; what was missing was a way in that did not go through Settings. */
+  const panels = useAsync<ReviewPanel[]>(
+    () => (staffRole ? api.get<ReviewPanel[]>('/api/me/reviews') : Promise.resolve([])),
+    `panels:${staffRole ?? 'none'}`,
+  );
+  const onAPanel = (panels.data?.length ?? 0) > 0;
+  const waiting = stillWaiting(panels.data ?? []);
 
   useEffect(() => {
     if (loading || staffRole) return;
@@ -83,6 +96,18 @@ export function Shell() {
         </NavLink>
 
         <div className="sidebar-foot">
+          {/* Not workspace navigation — this one is yours, which is why it sits
+              with your name rather than under Programs. It appears only for
+              somebody actually on a panel, so the sidebar stays the same for
+              everybody else. */}
+          {onAPanel && (
+            <Link className="nav-item" to="/me?tab=Jury" style={{ marginBottom: 4 }}>
+              <Icon name="gavel" />
+              <span style={{ flex: 1 }}>Jury</span>
+              {waiting > 0 && <span className="nav-count">{waiting}</span>}
+            </Link>
+          )}
+
           {/* A cross beside somebody's name reads as "remove them", not as
               "sign out". Who you are leads to Settings, where the account and
               its exit are both filed. */}
