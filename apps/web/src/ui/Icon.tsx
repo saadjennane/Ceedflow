@@ -21,6 +21,9 @@ const PATHS: Record<string, string> = {
   minus: 'M5 12h14',
   check: 'm5 13 4 4 10-10',
   x: 'M6 6l12 12 M18 6 6 18',
+  /* "Follow the system": a disc split down the middle, the conventional
+     contrast glyph. Stands in for the word Auto where there is no room for it. */
+  contrast: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z M12 3v18 M12 6.5 15.5 3 M12 11 20.5 2.5 M12 15.5 20.8 6.7 M12 20 19.5 12.5',
   chevronRight: 'm9 5 7 7-7 7',
   chevronDown: 'm5 9 7 7 7-7',
   chevronLeft: 'm15 5-7 7 7 7',

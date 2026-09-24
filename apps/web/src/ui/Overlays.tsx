@@ -198,3 +198,19 @@ export function useTheme(): [Theme, (t: Theme) => void] {
   }, [theme]);
   return useMemo(() => [theme, setTheme], [theme]);
 }
+
+/**
+ * Whether the sidebar is folded down to its icons.
+ *
+ * Kept per browser rather than per account: it answers "how much room does
+ * this screen have", which is a property of where you are sitting and not of
+ * who you are. Somebody on a laptop beside a projector folds it and does not
+ * want that decision following them home.
+ */
+export function useSidebar(): [boolean, (v: boolean) => void] {
+  const [folded, setFolded] = useState<boolean>(() => localStorage.getItem('ceed.sidebar') === 'folded');
+  useEffect(() => {
+    localStorage.setItem('ceed.sidebar', folded ? 'folded' : 'open');
+  }, [folded]);
+  return useMemo(() => [folded, setFolded], [folded]);
+}

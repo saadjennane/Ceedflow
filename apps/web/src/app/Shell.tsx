@@ -7,7 +7,7 @@ import { stillWaiting } from '../lib/panels';
 import { useAsync } from '../lib/useAsync';
 import type { ReviewPanel } from '../pages/member/ReviewPage';
 import { Icon } from '../ui/Icon';
-import { useTheme } from '../ui/Overlays';
+import { useSidebar, useTheme } from '../ui/Overlays';
 
 /**
  * The navigation the prototype settled on. Sections that exist in the model but
@@ -30,6 +30,7 @@ const PROGRAMS_LATER = [
 
 export function Shell() {
   const [theme, setTheme] = useTheme();
+  const [folded, setFolded] = useSidebar();
   const { me, loading } = useAccount();
   const navigate = useNavigate();
   const staffRole = me?.account.staffRole ?? null;
@@ -54,45 +55,60 @@ export function Shell() {
   // Nothing of the workspace is drawn before the server has said who is asking.
   if (loading || !me || !staffRole) return <div className="empty" style={{ padding: 40 }} />;
 
+  const link = ({ isActive }: { isActive: boolean }) => (isActive ? 'nav-item on' : 'nav-item');
+
   return (
-    <div className="shell">
+    <div className={folded ? 'shell folded' : 'shell'}>
       <nav className="sidebar">
         <div className="brand">
           <div className="brand-mark">C</div>
-          <div>
+          <div className="brand-text">
             <div className="brand-name">CEED</div>
             <div className="brand-sub">Program Management</div>
           </div>
         </div>
+
+        {/* On the edge rather than in the list: it is a control over the
+            sidebar, not a place to go, and from there it needs no room of its
+            own in either state. */}
+        <button
+          className="fold"
+          onClick={() => setFolded(!folded)}
+          aria-expanded={!folded}
+          aria-label={folded ? 'Open the sidebar' : 'Fold the sidebar'}
+          title={folded ? 'Open the sidebar' : 'Fold the sidebar'}
+        >
+          <Icon name={folded ? 'chevronRight' : 'chevronLeft'} size={13} />
+        </button>
 
         {TOP.map((item) => (
           <Soon key={item.label} {...item} />
         ))}
 
         <div className="eyebrow nav-group">Community</div>
-        <NavLink to="/organisations" className={({ isActive }) => (isActive ? 'nav-item on' : 'nav-item')}>
+        <NavLink to="/organisations" className={link} title="Organisations">
           <Icon name="layers" />
-          Organisations
+          <span className="nav-label">Organisations</span>
         </NavLink>
-        <NavLink to="/individuals" className={({ isActive }) => (isActive ? 'nav-item on' : 'nav-item')}>
+        <NavLink to="/individuals" className={link} title="Individuals">
           <Icon name="users" />
-          Individuals
+          <span className="nav-label">Individuals</span>
         </NavLink>
         {COMMUNITY_LATER.map((item) => (
           <Soon key={item.label} {...item} />
         ))}
 
         <div className="eyebrow nav-group">Programs</div>
-        <NavLink to="/" className={({ isActive }) => (isActive ? 'nav-item on' : 'nav-item')} end>
+        <NavLink to="/" className={link} end title="Programs">
           <Icon name="layers" />
-          Programs
+          <span className="nav-label">Programs</span>
         </NavLink>
         {PROGRAMS_LATER.map((item) => (
           <Soon key={item.label} {...item} />
         ))}
-        <NavLink to="/settings" className={({ isActive }) => (isActive ? 'nav-item on' : 'nav-item')}>
+        <NavLink to="/settings" className={link} title="Settings">
           <Icon name="settings" />
-          Settings
+          <span className="nav-label">Settings</span>
         </NavLink>
 
         <div className="sidebar-foot">
@@ -101,9 +117,15 @@ export function Shell() {
               somebody actually on a panel, so the sidebar stays the same for
               everybody else. */}
           {onAPanel && (
-            <Link className="nav-item" to="/me?tab=Jury" style={{ marginBottom: 4 }}>
+            <Link
+              className="nav-item jury-link"
+              to="/me?tab=Jury"
+              title={waiting > 0 ? `Jury — ${waiting} waiting on you` : 'Jury'}
+            >
               <Icon name="gavel" />
-              <span style={{ flex: 1 }}>Jury</span>
+              <span className="nav-label">Jury</span>
+              {/* Folded, the count sits on the icon: the one thing in here with
+                  a deadline should not be what folding hides. */}
               {waiting > 0 && <span className="nav-count">{waiting}</span>}
             </Link>
           )}
@@ -111,8 +133,8 @@ export function Shell() {
           {/* A cross beside somebody's name reads as "remove them", not as
               "sign out". Who you are leads to Settings, where the account and
               its exit are both filed. */}
-          <NavLink to="/settings" className="who" title="Your account">
-            <div style={{ flex: 1, minWidth: 0 }}>
+          <NavLink to="/settings" className="who" title={`${me.record.name} — your account`}>
+            <div className="who-text">
               <div className="who-name">{me.record.name}</div>
               <div className="who-role">{STAFF_ROLE_LABEL[staffRole]}</div>
             </div>
@@ -123,8 +145,10 @@ export function Shell() {
             <button className={theme === 'light' ? 'on' : ''} onClick={() => setTheme('light')} title="Light">
               <Icon name="sun" size={13} />
             </button>
+            {/* The word does not fit a folded rail; the split disc says the
+                same thing in the space of the two icons beside it. */}
             <button className={theme === 'system' ? 'on' : ''} onClick={() => setTheme('system')} title="System">
-              Auto
+              {folded ? <Icon name="contrast" size={13} /> : 'Auto'}
             </button>
             <button className={theme === 'dark' ? 'on' : ''} onClick={() => setTheme('dark')} title="Dark">
               <Icon name="moon" size={13} />
@@ -142,9 +166,9 @@ export function Shell() {
 
 function Soon({ label, icon }: { label: string; icon: string }) {
   return (
-    <span className="nav-item" aria-disabled="true" title="Not built yet">
+    <span className="nav-item" aria-disabled="true" title={`${label} — not built yet`}>
       <Icon name={icon} />
-      {label}
+      <span className="nav-label">{label}</span>
     </span>
   );
 }

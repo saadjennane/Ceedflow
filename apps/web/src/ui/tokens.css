@@ -39,6 +39,8 @@
   --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
   --sidebar-w: 232px;
+  /* Folded: wide enough for a 44px target with the padding the rail keeps. */
+  --sidebar-rail: 60px;
   --header-h: 60px;
 
   color-scheme: light;

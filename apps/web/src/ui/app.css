@@ -82,6 +82,24 @@ textarea {
   min-height: 100vh;
 }
 
+/* Folded, the sidebar keeps its icons rather than disappearing: the width goes
+   back to the work, and nothing becomes unreachable. */
+.shell.folded {
+  grid-template-columns: var(--sidebar-rail) 1fr;
+}
+
+.shell,
+.sidebar {
+  transition: grid-template-columns 160ms ease, padding 160ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell,
+  .sidebar {
+    transition: none;
+  }
+}
+
 .sidebar {
   background: var(--surface);
   border-right: 1px solid var(--line);
@@ -94,11 +112,71 @@ textarea {
   height: 100vh;
 }
 
+.folded .sidebar {
+  padding: 18px 8px;
+}
+
+/* On the border itself, so it costs no room in either state and always sits
+   where the edge is. */
+.fold {
+  position: absolute;
+  top: 26px;
+  right: -11px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: pointer;
+  z-index: 3;
+}
+
+.fold:hover {
+  color: var(--ink);
+  border-color: var(--ink-3);
+}
+
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 4px 8px 18px;
+}
+
+.folded .brand {
+  padding: 4px 0 18px;
+  justify-content: center;
+}
+
+/* Everything that is only words goes; everything that is a target stays.
+   Scoped to the sidebar throughout: .seg and .eyebrow are used across the
+   product, and folding the navigation must not reach a control in a page
+   header two components away. */
+.folded .sidebar .brand-text,
+.folded .sidebar .nav-label,
+.folded .sidebar .nav-group,
+.folded .sidebar .who-text {
+  display: none;
+}
+
+.folded .sidebar .nav-item,
+.folded .sidebar .who {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* Folded, the theme switch cannot sit in a row 44px wide, so it stacks. */
+.folded .sidebar .seg {
+  flex-direction: column;
+}
+
+.folded .sidebar .seg button {
+  padding: 6px 0;
 }
 
 .brand-mark {
@@ -172,6 +250,27 @@ textarea {
   margin-top: auto;
   padding: 10px 8px 0;
   border-top: 1px solid var(--line);
+}
+
+/* Folded, the count moves onto the icon rather than disappearing with the
+   label: what has a deadline should survive the fold. It sits on the icon's
+   top-right corner and no further in, so the gavel stays recognisable — a
+   badge that covers what it is counting says nothing. */
+.folded .sidebar .jury-link {
+  position: relative;
+  padding-top: 9px;
+}
+
+.folded .sidebar .jury-link .nav-count {
+  position: absolute;
+  top: 0;
+  right: 3px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  font-size: 9.5px;
+  line-height: 14px;
+  border: 1.5px solid var(--surface);
 }
 
 /* How many startups are waiting on you as a juror. Loud on purpose: it is the
