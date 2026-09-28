@@ -13,6 +13,7 @@ import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
 import { GridMarks } from '../../ui/GridMarks';
 import { Icon } from '../../ui/Icon';
+import { Linked } from '../../ui/Linked';
 import { useToast } from '../../ui/Overlays';
 import '../../ui/builder.css';
 import '../../ui/directory.css';
@@ -394,7 +395,9 @@ function Answer({ value, type }: { value: unknown; type: string }) {
   }
   return (
     <p style={{ margin: '2px 0 0', fontSize: 13, whiteSpace: 'pre-wrap' }}>
-      {Array.isArray(value) ? value.join(', ') : String(value)}
+      {/* A juror reading an application should be able to open the site it
+          names, not select and copy it. */}
+      <Linked text={Array.isArray(value) ? value.join(', ') : String(value)} />
     </p>
   );
 }

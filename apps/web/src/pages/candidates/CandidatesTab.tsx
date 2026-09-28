@@ -18,6 +18,7 @@ import { useAsync } from '../../lib/useAsync';
 import { TextField } from '../../ui/Field';
 import { FormFieldInput } from '../../ui/FormField';
 import { Icon } from '../../ui/Icon';
+import { Linked } from '../../ui/Linked';
 import { SearchBox } from '../../ui/SearchBox';
 import { ConfirmDialog, Drawer, Modal, useToast } from '../../ui/Overlays';
 import { CohortTable } from './CohortTable';
@@ -633,7 +634,9 @@ function CandidateDrawer({
             {answered.map((field) => (
               <div key={field.id} style={{ display: 'contents' }}>
                 <dt>{field.label}</dt>
-                <dd>{String(candidate.answers[field.id])}</dd>
+                <dd>
+                  <Linked text={String(candidate.answers[field.id])} />
+                </dd>
               </div>
             ))}
           </dl>
