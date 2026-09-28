@@ -18,10 +18,10 @@ import {
 } from '@ceed/shared';
 import { Fragment, useState } from 'react';
 import { api } from '../../lib/api';
-import { formatDate } from '../../lib/format';
+import { formatDate, shortNames } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
-import { ConfirmDialog, useToast } from '../../ui/Overlays';
+import { ConfirmDialog, Modal, useToast } from '../../ui/Overlays';
 import { ScoreEditor } from '../builder/panels/shared';
 
 /* ------------------------------------------------------------------ */
@@ -175,6 +175,24 @@ export function ReviewTab({
  * which never tells you whose reviews are missing — this does, one figure per
  * person on the panel.
  */
+/**
+ * One column head per juror. The names are shortened together rather than one
+ * by one, because whether "Nawal" is enough depends on who else is on the
+ * panel — and the full name is always a hover away.
+ */
+function JurorHeads({ evaluators }: { evaluators: PersonRef[] }) {
+  const shown = shortNames(evaluators.map((e) => e.name));
+  return (
+    <>
+      {evaluators.map((person, i) => (
+        <th key={person.id} style={{ textAlign: 'right' }} title={person.name}>
+          {shown[i]}
+        </th>
+      ))}
+    </>
+  );
+}
+
 function Progress({ section }: { section: { evaluators: PersonRef[]; lines: Line[] } }) {
   const total = section.lines.length;
   return (
@@ -515,14 +533,14 @@ function Moment({
                   {evaluation && selection && (
                     <tr>
                       <th style={{ borderBottom: 0 }} />
-                      <th
-                        colSpan={section.evaluators.length + 1}
-                        style={{ borderBottom: 0, textAlign: 'center', color: 'var(--blue)' }}
-                      >
-                        {evaluation.name}
+                      <th style={{ borderBottom: 0, textAlign: 'center', color: 'var(--blue)' }}>
+                        {selection.name}
                       </th>
+                      {/* Everything the evaluation owns now sits together: its
+                          score, the status it earned, the way in to the marks,
+                          and the marks themselves. */}
                       <th
-                        colSpan={2}
+                        colSpan={section.evaluators.length + 3}
                         style={{
                           borderBottom: 0,
                           textAlign: 'center',
@@ -530,34 +548,34 @@ function Moment({
                           borderLeft: '1px solid var(--line-strong)',
                         }}
                       >
-                        {selection.name}
+                        {evaluation.name}
                       </th>
-                      <th style={{ borderBottom: 0 }} />
                     </tr>
                   )}
                   <tr>
                     {sortable('orgName', 'Candidate')}
-                    {/* A juror's own column is not sortable: their marks are one
-                        panel's reading, not an order the table is kept in. */}
-                    {section.evaluators.map((person) => (
-                      <th key={person.id} style={{ textAlign: 'right' }}>
-                        {person.name.split(' ')[0]}
-                      </th>
-                    ))}
-                    {scoring && sortable('score', voting ? 'Votes' : 'Score', 'right')}
-                    {evaluation &&
-                      sortable('status', 'Status', undefined, {
+                    {/* The decision first, then what it was made on. Reading a
+                        row means starting at the verdict and going right for
+                        the reasons — which is the order the work happens in,
+                        and it spares a scroll past twenty jurors to reach the
+                        one control you came for. */}
+                    {selection && sortable('decision', 'Decision')}
+                    {scoring &&
+                      sortable('score', voting ? 'Votes' : 'Score', 'right', {
                         borderLeft: selection ? '1px solid var(--line-strong)' : undefined,
                       })}
-                    {selection && sortable('decision', 'Decision')}
+                    {evaluation && sortable('status', 'Status')}
                     <th />
+                    {/* A juror's own column is not sortable: their marks are one
+                        panel's reading, not an order the table is kept in. */}
+                    <JurorHeads evaluators={section.evaluators} />
                   </tr>
                 </thead>
                 <tbody>
                   {section.lines.map((line) => {
                     const me =
                       section.evaluators.find((e) => e.id === as[section.key]) ?? section.evaluators[0] ?? null;
-                    const open = openId === line.candidate.id;
+                    const open = openId === `${section.key}:${line.candidate.id}`;
                     return (
                       <Fragment key={line.candidate.id}>
                         <tr>
@@ -579,30 +597,39 @@ function Moment({
                             )}
                           </td>
 
-                          {section.evaluators.map((person, i) => {
-                            const score = line.scoring?.scores.find((s) => s.evaluatorId === person.id);
-                            const voted = score && markCounts(score) ? outcomes.find((o) => o.id === score.verdict) : null;
-                            return (
-                              <td key={person.id} className="score muted" style={{ textAlign: 'right' }}>
-                                {voting ? (
-                                  voted ? (
-                                    <span className={voted.tone === 'neutral' ? 'badge' : `badge ${voted.tone}`}>
-                                      {voted.label}
-                                    </span>
-                                  ) : (
-                                    '—'
-                                  )
-                                ) : score && markCounts(score) ? (
-                                  score.normalised
-                                ) : (
-                                  '—'
-                                )}
-                              </td>
-                            );
-                          })}
+                          {selection && (
+                            <td style={{ width: 200 }}>
+                              {line.decision ? (
+                                <div className="seg" role="group">
+                                  <button
+                                    className={line.decision.outcome === 'pass' ? 'on' : ''}
+                                    disabled={busy}
+                                    onClick={() => setDecision(line.candidate.id, 'pass')}
+                                  >
+                                    {passLabel}
+                                  </button>
+                                  <button
+                                    className={line.decision.outcome === 'fail' ? 'on' : ''}
+                                    disabled={busy}
+                                    onClick={() => setDecision(line.candidate.id, 'fail')}
+                                  >
+                                    {failLabel}
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="faint">not on this list</span>
+                              )}
+                            </td>
+                          )}
 
                           {scoring && (
-                            <td className="score" style={{ textAlign: 'right' }}>
+                            <td
+                              className="score"
+                              style={{
+                                textAlign: 'right',
+                                borderLeft: selection ? '1px solid var(--line-strong)' : undefined,
+                              }}
+                            >
                               {voting ? (
                                 (() => {
                                   const tally = tallyVotes(
@@ -634,7 +661,7 @@ function Moment({
                           )}
 
                           {evaluation && (
-                            <td style={{ borderLeft: selection ? '1px solid var(--line-strong)' : undefined }}>
+                            <td>
                               <select
                                 className="status-select"
                                 value={line.scoring?.outcomeId ?? ''}
@@ -653,31 +680,6 @@ function Moment({
                             </td>
                           )}
 
-                          {selection && (
-                            <td style={{ width: 200 }}>
-                              {line.decision ? (
-                                <div className="seg" role="group">
-                                  <button
-                                    className={line.decision.outcome === 'pass' ? 'on' : ''}
-                                    disabled={busy}
-                                    onClick={() => setDecision(line.candidate.id, 'pass')}
-                                  >
-                                    {passLabel}
-                                  </button>
-                                  <button
-                                    className={line.decision.outcome === 'fail' ? 'on' : ''}
-                                    disabled={busy}
-                                    onClick={() => setDecision(line.candidate.id, 'fail')}
-                                  >
-                                    {failLabel}
-                                  </button>
-                                </div>
-                              ) : (
-                                <span className="faint">not on this list</span>
-                              )}
-                            </td>
-                          )}
-
                           <td style={{ width: 84 }}>
                             {line.scoring && criteria.length > 0 && (
                               <div className="row" style={{ gap: 7 }}>
@@ -689,47 +691,84 @@ function Moment({
                                   disabled={!me}
                                   title={me ? 'Enter marks' : 'No jury on this sitting'}
                                   aria-label="Score"
-                                  onClick={() => setOpenId(open ? null : line.candidate.id)}
+                                  onClick={() => setOpenId(open ? null : `${section.key}:${line.candidate.id}`)}
                                 >
                                   <Icon name={open ? 'chevronDown' : 'edit'} size={13} />
                                 </button>
                               </div>
                             )}
                           </td>
+
+                          {section.evaluators.map((person, i) => {
+                            const score = line.scoring?.scores.find((s) => s.evaluatorId === person.id);
+                            const voted = score && markCounts(score) ? outcomes.find((o) => o.id === score.verdict) : null;
+                            return (
+                              <td key={person.id} className="score muted" style={{ textAlign: 'right' }}>
+                                {voting ? (
+                                  voted ? (
+                                    <span className={voted.tone === 'neutral' ? 'badge' : `badge ${voted.tone}`}>
+                                      {voted.label}
+                                    </span>
+                                  ) : (
+                                    '—'
+                                  )
+                                ) : score && markCounts(score) ? (
+                                  score.normalised
+                                ) : (
+                                  '—'
+                                )}
+                              </td>
+                            );
+                          })}
                         </tr>
 
-                        {open && evaluation && me && (
-                          <tr>
-                            <td colSpan={section.evaluators.length + 5} style={{ background: 'var(--wash)' }}>
-                              <ScoreEditor
-                                key={me?.id}
-                                blockId={evaluation.id}
-                                sessionId={line.sessionId ?? undefined}
-                                candidate={line.candidate}
-                                criteria={criteria}
-                                evaluator={me!}
-                                method={scoring?.method}
-                                scale={scoring?.scale}
-                                markedOutOf={scoring?.markedOutOf}
-                                outcomes={outcomes}
-                                evaluators={section.evaluators}
-                                onEvaluator={(id) => setAs((a) => ({ ...a, [section.key]: id }))}
-                                requireComment={scoring?.requireComment}
-                                existing={line.scoring?.scores.find((s) => s.evaluatorId === me!.id)}
-                                onSaved={() => {
-                                  setOpenId(null);
-                                  view.reload();
-                                }}
-                              />
-                            </td>
-                          </tr>
-                        )}
                       </Fragment>
                     );
                   })}
                 </tbody>
               </table>
             </div>
+
+            {/* Outside the table on purpose. A div inside a tbody is invalid,
+                and in a cell it inherited the horizontal scroll twenty jurors
+                force — you scrolled right to read a column and the sheet you
+                were filling went with it. Entering marks is a task of its own:
+                six criteria, a comment, and a name that must not be the wrong
+                one. */}
+            {(() => {
+              const line = section.lines.find((l) => openId === `${section.key}:${l.candidate.id}`);
+              const me = section.evaluators.find((e) => e.id === as[section.key]) ?? section.evaluators[0] ?? null;
+              if (!line || !evaluation || !me) return null;
+              return (
+                <Modal
+                  wide
+                  title={line.candidate.orgName}
+                  subtitle={`${evaluation.name}${section.name ? ` · ${section.name}` : ''}`}
+                  onClose={() => setOpenId(null)}
+                >
+                  <ScoreEditor
+                    key={me?.id}
+                    blockId={evaluation.id}
+                    sessionId={line.sessionId ?? undefined}
+                    candidate={line.candidate}
+                    criteria={criteria}
+                    evaluator={me!}
+                    method={scoring?.method}
+                    scale={scoring?.scale}
+                    markedOutOf={scoring?.markedOutOf}
+                    outcomes={outcomes}
+                    evaluators={section.evaluators}
+                    onEvaluator={(id) => setAs((a) => ({ ...a, [section.key]: id }))}
+                    requireComment={scoring?.requireComment}
+                    existing={line.scoring?.scores.find((s) => s.evaluatorId === me!.id)}
+                    onSaved={() => {
+                      setOpenId(null);
+                      view.reload();
+                    }}
+                  />
+                </Modal>
+              );
+            })()}
           </section>
         ))
       )}

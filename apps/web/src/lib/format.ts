@@ -42,3 +42,29 @@ export function formatNumber(value: number): string {
 export function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
+
+/**
+ * The shortest name that still tells two people apart.
+ *
+ * A column of jurors is too narrow for full names, so it shows first names —
+ * until two jurors on the same panel are both called Nawal and the table
+ * silently stops meaning anything. Hovering answers the question, but only for
+ * somebody who already suspects there is one. So the header disambiguates
+ * itself: Nawal Cherkaoui and Nawal Berrada become "Nawal C." and "Nawal B.",
+ * and two people with the same first name and the same initial get their full
+ * names, narrow column or not.
+ */
+export function shortNames(names: string[]): string[] {
+  const first = names.map((n) => n.trim().split(/\s+/)[0] ?? n);
+  const clashes = new Set(first.filter((f, i) => first.indexOf(f) !== i));
+  if (!clashes.size) return first;
+
+  const withInitial = names.map((n, i) => {
+    if (!clashes.has(first[i])) return first[i];
+    const rest = n.trim().split(/\s+/).slice(1).join(' ');
+    return rest ? `${first[i]} ${rest[0]}.` : first[i];
+  });
+  // Two Nawal C. are no better than two Nawal: fall back to saying it in full.
+  const stillClashing = new Set(withInitial.filter((s, i) => withInitial.indexOf(s) !== i));
+  return withInitial.map((s, i) => (stillClashing.has(s) ? names[i].trim() : s));
+}
