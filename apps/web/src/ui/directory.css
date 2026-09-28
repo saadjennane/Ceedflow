@@ -194,6 +194,47 @@
 .star.on { color: var(--warn); }
 .star:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 
+/* A grid, drawn as the rule reads it: six things being judged, each carrying a
+   share, each with the points to consider listed under it. The indent and the
+   rule down the left are what say "these belong to that" without a word. */
+.grid-marks { display: flex; flex-direction: column; gap: 14px; }
+
+.criterion {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+
+.criterion-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 13px;
+}
+
+.criterion-name { font-weight: 650; font-size: 14px; }
+.criterion-help { font-size: 12px; margin-top: 1px; }
+
+.criterion-mark {
+  flex-shrink: 0;
+  min-width: 64px;
+  text-align: right;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.criterion-children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 13px 11px 26px;
+  padding-left: 13px;
+  border-left: 2px solid var(--line);
+}
+
+.criterion-children .row { padding: 5px 0; }
+.child-name { font-size: 13px; }
+
 
 /* ------------------------------------------------------------------ */
 /* A member's own page                                                  */

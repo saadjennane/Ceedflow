@@ -11,6 +11,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
+import { GridMarks } from '../../ui/GridMarks';
 import { Icon } from '../../ui/Icon';
 import { useToast } from '../../ui/Overlays';
 import '../../ui/builder.css';
@@ -48,6 +49,7 @@ export interface ReviewPanel {
     name: string;
     method: EvaluationMethod;
     scale: EvaluationScale;
+    markedOutOf: number;
     criteria: EvaluationCriterion[];
     leaves: CriterionLeaf[];
     outcomes: BlockOutcome[];
@@ -329,54 +331,13 @@ function ReviewOne({
             </div>
           </>
         ) : (
-          grid.leaves.map((leaf) => (
-            <div className="row" key={leaf.id} style={{ gap: 12 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 600, fontSize: 13 }}>{leaf.label}</div>
-                {leaf.help && <div className="faint" style={{ fontSize: 12 }}>{leaf.help}</div>}
-              </div>
-              {grid.scale === 'stars' ? (
-                <div className="stars" role="group" aria-label={leaf.label}>
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <button
-                      key={n}
-                      className={n <= (marks[leaf.id] ?? 0) ? 'star on' : 'star'}
-                      aria-label={`${n} out of 5`}
-                      onClick={() =>
-                        setMarks((m) => {
-                          const next = { ...m };
-                          if (n === m[leaf.id]) delete next[leaf.id];
-                          else next[leaf.id] = n;
-                          return next;
-                        })
-                      }
-                    >
-                      <Icon name="star" size={26} />
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <input
-                  className="input num"
-                  style={{ width: 92 }}
-                  type="number"
-                  min={0}
-                  max={leaf.max}
-                  value={marks[leaf.id] ?? ''}
-                  placeholder={`0–${leaf.max}`}
-                  aria-label={leaf.label}
-                  onChange={(e) =>
-                    setMarks((m) => {
-                      const next = { ...m };
-                      if (e.target.value === '') delete next[leaf.id];
-                      else next[leaf.id] = Math.max(0, Math.min(leaf.max, Number(e.target.value)));
-                      return next;
-                    })
-                  }
-                />
-              )}
-            </div>
-          ))
+          <GridMarks
+            criteria={grid.criteria}
+            markedOutOf={grid.markedOutOf}
+            scale={grid.scale}
+            marks={marks}
+            onChange={setMarks}
+          />
         )}
 
         <div className="field">

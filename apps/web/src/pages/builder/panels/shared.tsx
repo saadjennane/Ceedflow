@@ -1,6 +1,7 @@
 import {
   BRICK_STATUS_LABEL,
   BRICK_STATUS_TONE,
+  DEFAULT_MARKED_OUT_OF,
   gridLeaves,
   idOf,
   leafShare,
@@ -22,6 +23,7 @@ import {
 import { useState } from 'react';
 import { api } from '../../../lib/api';
 import { SelectField, TextField } from '../../../ui/Field';
+import { GridMarks } from '../../../ui/GridMarks';
 import { Icon } from '../../../ui/Icon';
 import { Modal, useToast } from '../../../ui/Overlays';
 
@@ -661,46 +663,13 @@ export function ScoreEditor({
           </div>
         </>
       ) : (
-        leaves.map((leaf) => (
-          <div key={leaf.id} className="row" style={{ gap: 12 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: 13 }}>{leaf.label}</div>
-              {leaf.help && <div className="faint" style={{ fontSize: 12 }}>{leaf.help}</div>}
-            </div>
-            {scale === 'stars' ? (
-              <Stars
-                value={marks[leaf.id] ?? 0}
-                onChange={(n) =>
-                  setMarks((m) => {
-                    const next = { ...m };
-                    if (n === 0) delete next[leaf.id];
-                    else next[leaf.id] = n;
-                    return next;
-                  })
-                }
-              />
-            ) : (
-              <input
-                className="input num"
-                style={{ width: 88 }}
-                type="number"
-                min={0}
-                max={leaf.max}
-                value={marks[leaf.id] ?? ''}
-                placeholder={`0–${leaf.max}`}
-                aria-label={leaf.label}
-                onChange={(e) =>
-                  setMarks((m) => {
-                    const next = { ...m };
-                    if (e.target.value === '') delete next[leaf.id];
-                    else next[leaf.id] = Math.max(0, Math.min(leaf.max, Number(e.target.value)));
-                    return next;
-                  })
-                }
-              />
-            )}
-          </div>
-        ))
+        <GridMarks
+          criteria={criteria}
+          markedOutOf={markedOutOf ?? DEFAULT_MARKED_OUT_OF}
+          scale={scale ?? 'points'}
+          marks={marks}
+          onChange={setMarks}
+        />
       )}
       <textarea
         className="textarea"
@@ -744,27 +713,6 @@ export function ScoreEditor({
 
 
 /** One to five, kept a plain radio group so a keyboard reaches it. */
-function Stars({ value, onChange }: { value: number; onChange: (n: number) => void }) {
-  return (
-    <div className="stars" role="group" aria-label="Rating">
-      {[1, 2, 3, 4, 5].map((n) => (
-        <button
-          key={n}
-          type="button"
-          className={n <= value ? 'star on' : 'star'}
-          aria-label={`${n} out of 5`}
-          aria-pressed={n === value}
-          onClick={() => onChange(n === value ? 0 : n)}
-        >
-          <Icon name="star" size={17} />
-        </button>
-      ))}
-      <span className="faint num" style={{ fontSize: 12, marginLeft: 4, width: 26 }}>
-        {value || '—'}
-      </span>
-    </div>
-  );
-}
 
 /* ------------------------------------------------------------------ */
 /* Trying a grid out                                                   */
@@ -841,60 +789,13 @@ export function GridPreview({
           }
         >
           <div className="stack" style={{ gap: 12 }}>
-            {leaves.map((leaf) => (
-              <div className="row" key={leaf.id} style={{ gap: 12 }}>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ fontWeight: 600, fontSize: 13.5 }}>
-                    {leaf.label || <span className="faint">Untitled</span>}
-                  </span>
-                  <span className="faint" style={{ display: 'block', fontSize: 12 }}>
-                    {Math.round(leafShare(criteria, leaf.id))}% of the final mark
-                    {leaf.help ? ` · ${leaf.help}` : ''}
-                  </span>
-                </span>
-                {scale === 'stars' ? (
-                  <div className="stars" role="group" aria-label={leaf.label || 'Mark'}>
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <button
-                        key={n}
-                        className={n <= (marks[leaf.id] ?? 0) ? 'star on' : 'star'}
-                        aria-label={`${n} out of 5`}
-                        onClick={() =>
-                          setMarks((m) => {
-                            const next = { ...m };
-                            // Clicking the star you are on takes the mark back off.
-                            if (n === m[leaf.id]) delete next[leaf.id];
-                            else next[leaf.id] = n;
-                            return next;
-                          })
-                        }
-                      >
-                        <Icon name="star" size={26} />
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <input
-                    className="input num"
-                    style={{ width: 96 }}
-                    type="number"
-                    min={0}
-                    max={leaf.max}
-                    placeholder={`0–${leaf.max}`}
-                    value={marks[leaf.id] ?? ''}
-                    aria-label={leaf.label || 'Mark'}
-                    onChange={(e) =>
-                      setMarks((m) => {
-                        const next = { ...m };
-                        if (e.target.value === '') delete next[leaf.id];
-                        else next[leaf.id] = Math.max(0, Math.min(leaf.max, Number(e.target.value)));
-                        return next;
-                      })
-                    }
-                  />
-                )}
-              </div>
-            ))}
+            <GridMarks
+              criteria={criteria}
+              markedOutOf={markedOutOf}
+              scale={scale}
+              marks={marks}
+              onChange={setMarks}
+            />
 
             {missing > 0 && (
               <p className="faint" style={{ margin: 0, fontSize: 12 }}>

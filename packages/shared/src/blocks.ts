@@ -528,6 +528,25 @@ export function gridLeaves(
   });
 }
 
+/**
+ * The mark a criterion has earned, on the scale it is marked on.
+ *
+ * Its sub-criteria are points to consider under one heading, so the criterion's
+ * mark is their plain average — and a criterion with no sub-criteria is simply
+ * marked itself. Null while nothing under it has been marked: an unmarked
+ * heading is a question not yet answered, not a zero.
+ */
+export function criterionMark(
+  criterion: EvaluationCriterion,
+  marks: Record<string, number>,
+): number | null {
+  const given = (criterion.children.length ? criterion.children : [criterion])
+    .map((c) => marks[c.id])
+    .filter((m): m is number => typeof m === 'number');
+  if (!given.length) return null;
+  return given.reduce((a, b) => a + b, 0) / given.length;
+}
+
 /** What share of the final score a leaf carries, as a percentage. */
 export function leafShare(criteria: EvaluationCriterion[], leafId: string): number {
   const leaves = gridLeaves(criteria);

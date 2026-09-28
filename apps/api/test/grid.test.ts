@@ -9,6 +9,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  criterionMark,
   criterionShares,
   gridLeaves,
   normalisedScore,
@@ -127,5 +128,43 @@ describe('a grid written before the scale moved onto the block', () => {
     }) as { markedOutOf: number };
     // Five stars used to be worth fifty out of a hundred.
     assert.equal(stars.markedOutOf, 5);
+  });
+});
+
+describe("a criterion's own mark", () => {
+  /* The shape the screens draw: a heading that carries a share, and the points
+     to consider under it. What the juror marks is the points; what counts is
+     the heading. */
+  const withChildren = (marks: Record<string, number>) =>
+    criterionMark(
+      {
+        id: 'mkt', label: 'Marché', help: '', share: 19, weight: 1, max: 5,
+        children: [
+          { id: 'a', label: 'Défini ?', help: '', share: null, weight: 1, max: 5, children: [] },
+          { id: 'b', label: 'Assez grand ?', help: '', share: null, weight: 1, max: 5, children: [] },
+          { id: 'c', label: 'Des clients ?', help: '', share: null, weight: 1, max: 5, children: [] },
+        ],
+      },
+      marks,
+    );
+
+  it('is the plain average of what was marked under it', () => {
+    assert.equal(withChildren({ a: 4, b: 3, c: 5 }), 4);
+  });
+
+  it('averages what is there rather than counting a blank as a zero', () => {
+    // Two fives and an unanswered question is five, not three and a third.
+    assert.equal(withChildren({ a: 5, b: 5 }), 5);
+  });
+
+  it('is nothing at all while nothing under it has been marked', () => {
+    // A dash on screen, not a zero: the question has not been answered yet.
+    assert.equal(withChildren({}), null);
+  });
+
+  it('is the criterion itself when it has no sub-criteria', () => {
+    const plain = { id: 'esg', label: 'Impact', help: '', share: 5, weight: 1, max: 5, children: [] };
+    assert.equal(criterionMark(plain, { esg: 3 }), 3);
+    assert.equal(criterionMark(plain, {}), null);
   });
 });

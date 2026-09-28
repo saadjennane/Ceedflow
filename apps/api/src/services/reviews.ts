@@ -81,6 +81,8 @@ export interface ReviewPanel {
     name: string;
     method: EvaluationMethod;
     scale: EvaluationScale;
+    /** What a number is marked out of. Stars are always out of five. */
+    markedOutOf: number;
     criteria: EvaluationCriterion[];
     leaves: CriterionLeaf[];
     outcomes: BlockOutcome[];
@@ -181,6 +183,7 @@ export async function reviewsFor(recordId: string): Promise<ReviewPanel[]> {
                       name: evaluationBlock.name,
                       method: config.method,
                       scale: config.scale,
+                      markedOutOf: config.markedOutOf,
                       criteria: config.criteria,
                       leaves,
                       outcomes: outcomesOf(evaluationBlock),
