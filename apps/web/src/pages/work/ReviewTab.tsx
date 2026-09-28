@@ -680,12 +680,14 @@ function Moment({
                             </td>
                           )}
 
-                          <td style={{ width: 84 }}>
+                          {/* No bar beside it. The table is sorted by score,
+                              so the ranking already draws the comparison a bar
+                              was there to draw — and since Decision moved to
+                              the front, the bar sat two columns away from the
+                              number it stood for. */}
+                          <td style={{ width: 44 }}>
                             {line.scoring && criteria.length > 0 && (
                               <div className="row" style={{ gap: 7 }}>
-                                <div className="bar" style={{ flex: 1 }}>
-                                  <i style={{ width: `${line.scoring.consensus ?? 0}%` }} />
-                                </div>
                                 <button
                                   className="btn ghost icon sm"
                                   disabled={!me}
