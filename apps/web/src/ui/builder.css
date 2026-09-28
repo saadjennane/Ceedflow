@@ -931,9 +931,20 @@ dl.answers dt {
   font-size: 12px;
 }
 
+dl.answers dt {
+  /* A label made of long words still has spaces to break at. */
+  overflow-wrap: break-word;
+}
+
 dl.answers dd {
   margin: 0;
   line-height: 1.55;
+  /* A grid track refuses to go below its content's min-content width, and for
+     a URL with no spaces in it that is the whole URL — which pushed the drawer
+     sideways. `anywhere` is the one value that also shrinks min-content, so
+     the track can narrow; `break-word` alone would not have. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* ---- slot picker on the startup's invitation ---- */

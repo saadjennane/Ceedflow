@@ -445,6 +445,9 @@ function CandidateDrawer({
   return (
     <>
       <Drawer
+        // An application is prose — a description, a target market, a business
+        // model — read at 560px through a column a third of which is labels.
+        wide
         title={candidate.orgName}
         subtitle={`${candidate.contactName || 'No contact'} · received ${formatDate(candidate.submittedAt)}`}
         onClose={onClose}
