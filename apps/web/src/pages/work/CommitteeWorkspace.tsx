@@ -261,7 +261,11 @@ export function CommitteeWorkspace({
         <>
           {/* ---- the jury, above ---- */}
           <section className="card jury-strip">
-            <div className="eyebrow">Jury</div>
+            {/* The count beside the word, because twelve chips wrap over two
+                lines and "are they all in?" should not mean counting them. */}
+            <div className="eyebrow">
+              Jury{current.jury.length > 0 && ` · ${current.jury.length}`}
+            </div>
             <div className="row wrap" style={{ flex: 1 }}>
               {current.jury.length ? (
                 current.jury.map((person) => (

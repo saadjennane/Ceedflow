@@ -201,22 +201,38 @@ function JurorHeads({ evaluators }: { evaluators: PersonRef[] }) {
   );
 }
 
+/**
+ * Where a panel has got to.
+ *
+ * Twelve jurors and their tallies ran over two lines and answered the wrong
+ * question: what you want first is how many have finished, not which. So the
+ * summary leads, and the names follow it — shortened the way the table heads
+ * are, which roughly halves the line and tells two Nawals apart in passing.
+ */
 function Progress({ section }: { section: { evaluators: PersonRef[]; lines: Line[] } }) {
   const total = section.lines.length;
+  const shown = shortNames(section.evaluators.map((e) => e.name));
+  const each = section.evaluators.map((person) => ({
+    person,
+    done: section.lines.filter((line) =>
+      line.scoring?.scores.some((s) => s.evaluatorId === person.id && markCounts(s)),
+    ).length,
+  }));
+  const finished = each.filter((e) => e.done === total).length;
+  const all = finished === each.length;
+
   return (
     <span className="faint row wrap" style={{ fontSize: 12, gap: 8 }}>
-      {section.evaluators.map((person, i) => {
-        const done = section.lines.filter((line) =>
-          line.scoring?.scores.some((s) => s.evaluatorId === person.id && markCounts(s)),
-        ).length;
-        return (
-          <span key={person.id} style={{ color: done === total ? 'var(--ok)' : undefined }}>
-            {i > 0 && <span className="faint">· </span>}
-            {person.name} <span className="num">{done}</span>
-            <span className="num">/{total}</span>
-          </span>
-        );
-      })}
+      <strong style={{ color: all ? 'var(--ok)' : 'var(--ink-2)' }}>
+        {all ? 'Every juror has finished' : `${finished} of ${each.length} jurors finished`}
+      </strong>
+      {each.map(({ person, done }, i) => (
+        <span key={person.id} style={{ color: done === total ? 'var(--ok)' : undefined }} title={person.name}>
+          <span className="faint">· </span>
+          {shown[i]} <span className="num">{done}</span>
+          <span className="num">/{total}</span>
+        </span>
+      ))}
     </span>
   );
 }
@@ -543,7 +559,9 @@ function Moment({
                     {formatDate(section.heldOn)}
                   </span>
                 )}
-                <span className="badge num">{section.lines.length}</span>
+                <span className="badge num">
+                  {section.lines.length} startup{section.lines.length === 1 ? '' : 's'}
+                </span>
                 {section.evaluators.length > 0 ? (
                   <Progress section={section} />
                 ) : (
