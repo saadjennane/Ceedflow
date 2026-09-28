@@ -106,11 +106,15 @@ export function blockLine(block: Block, track?: TrackWithPhases): BlockLine {
       if (c.method === 'score' && c.criteria.length) bits.push(`${c.criteria.length} criteria`);
       const status = blockStatus(block);
       chips.push(statusChip(status));
+      // An evaluation has no jury of its own: it borrows the one sitting on the
+      // committee it scores. Said here because "6 criteria" tells you what is
+      // being judged and nothing about how many people will judge it.
+      const panel = committeeBehind(block, track);
+      if (panel?.jurors) bits.push(plural(panel.jurors, 'juror'));
       // An evaluation is only reachable through its committee's panel. Open
       // while that panel is shut, it reaches nobody — and nothing else on this
       // card would say so.
-      const behind = committeeBehind(block, track);
-      if (status === 'live' && behind && blockStatus(behind, 'main', behind.sittings ?? 0) !== 'live') {
+      if (status === 'live' && panel && blockStatus(panel, 'main', panel.sittings ?? 0) !== 'live') {
         chips.push({ label: 'No juror reaches it', tone: 'warn' as const });
       }
       return { description: bits.join(' · '), date: c.opensAt, progress: null, chips };
@@ -121,6 +125,9 @@ export function blockLine(block: Block, track?: TrackWithPhases): BlockLine {
       // The sittings are the thing: a card that does not name them leaves you
       // wondering why a jury day planned for the 28th says nothing about it.
       const bits = [sittings ? plural(sittings, 'sitting') : 'No sitting yet'];
+      // Who will judge is the other half of the question. A committee with
+      // sittings and nobody on them looks ready and reaches no one.
+      if (sittings) bits.push(block.jurors ? plural(block.jurors, 'juror') : 'nobody on them yet');
       if (c.rsvpMode === 'slots') bits.push('startups pick their time');
       else if (c.rsvpMode === 'confirm') bits.push('startups confirm');
       chips.push(statusChip(blockStatus(block, 'main', sittings)));

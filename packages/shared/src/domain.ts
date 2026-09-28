@@ -136,6 +136,13 @@ export interface Block extends Omit<BlockRow, 'config'> {
    */
   sittings?: number;
   /**
+   * How many people sit on a committee, counted once each however many
+   * sittings they are on. Somebody judging both the morning and the afternoon
+   * is one juror, not two — the card is saying how many people were found,
+   * not how many seats were filled.
+   */
+  jurors?: number;
+  /**
    * The first sitting of a committee, which doubles as the date its panel
    * opens when no date was set on the door itself. A jury day planned for the
    * 28th is *scheduled*, not closed.

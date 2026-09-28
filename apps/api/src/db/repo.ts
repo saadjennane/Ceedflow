@@ -322,16 +322,26 @@ export async function getEditionDetail(id: string): Promise<EditionDetail | null
   // One query for every committee on the edition rather than one each.
   const counts = new Map<string, number>();
   const firstOn = new Map<string, string | null>();
+  const jurors = new Map<string, number>();
   const committees = blocks.filter((b) => b.type === 'committee').map((b) => b.id);
   if (committees.length) {
-    const rows = await all<{ blockId: string; n: number; firstOn: string | null }>(
-      `select block_id as "blockId", count(*)::int as n, min(held_on)::text as "firstOn"
-         from committee_sessions where block_id = any($1::text[]) group by block_id`,
+    const rows = await all<{ blockId: string; n: number; firstOn: string | null; jurors: number }>(
+      // The jury is jsonb, so it is unnested to be counted — and counted
+      // distinct, because one person on two sittings is one juror.
+      `select cs.block_id as "blockId",
+              count(distinct cs.id)::int as n,
+              min(cs.held_on)::text as "firstOn",
+              count(distinct j.value)::int as jurors
+         from committee_sessions cs
+         left join lateral jsonb_array_elements_text(cs.jury) as j(value) on true
+        where cs.block_id = any($1::text[])
+        group by cs.block_id`,
       [committees],
     );
     for (const r of rows) {
       counts.set(r.blockId, Number(r.n));
       firstOn.set(r.blockId, r.firstOn);
+      jurors.set(r.blockId, Number(r.jurors));
     }
   }
 
@@ -339,6 +349,7 @@ export async function getEditionDetail(id: string): Promise<EditionDetail | null
   for (const block of blocks) {
     if (block.type === 'committee') {
       block.sittings = counts.get(block.id) ?? 0;
+      block.jurors = jurors.get(block.id) ?? 0;
       block.nextSittingOn = firstOn.get(block.id) ?? null;
     }
     const list = byPhase.get(block.phaseId) ?? [];
