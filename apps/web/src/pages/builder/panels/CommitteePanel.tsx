@@ -27,6 +27,15 @@ import { VisibilityControl } from './shared';
 export const COMMITTEE_TABS = ['Overview', 'Panels', 'Invitations'] as const;
 export type CommitteeTab = (typeof COMMITTEE_TABS)[number];
 
+/** What one juror has sent on a sitting, as the marks endpoint gives it. */
+interface JurorMarks {
+  evaluatorId: string;
+  evaluatorName: string;
+  submitted: number;
+}
+
+const totalMarks = (jurors: JurorMarks[]) => jurors.reduce((n, j) => n + j.submitted, 0);
+
 /** Work spread over days invites nobody, so it has no invitations to set. */
 export function committeeTabs(config: CommitteeConfig): CommitteeTab[] {
   return config.format === 'event' ? [...COMMITTEE_TABS] : ['Overview', 'Panels'];
@@ -505,6 +514,14 @@ function PanelEditor({
   const [search, setSearch] = useState('');
   const [confirm, setConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
+  /* What each juror has already sent. Read when the editor opens rather than
+     when Save is pressed: the question it answers is asked mid-save, and a
+     round trip at that moment would either stall the save or arrive late. */
+  const marks = useAsync<JurorMarks[]>(
+    () => (session ? api.get<JurorMarks[]>(`/api/sessions/${session.id}/marks`) : Promise.resolve([])),
+    `marks:${session?.id ?? 'new'}`,
+  );
+  const [leaving, setLeaving] = useState<JurorMarks[] | null>(null);
   const toast = useToast();
   const word = noun(config);
   const set = (patch: Partial<typeof draft>) => setDraft((d) => ({ ...d, ...patch }));
@@ -547,12 +564,27 @@ function PanelEditor({
     });
   };
 
-  const save = async () => {
+  /**
+   * `withdrawMarksOf` undefined means the question has not been put yet.
+   * An empty array means it was, and the answer was to keep the marks — which
+   * is why the two cases cannot be the same value.
+   */
+  const save = async (withdrawMarksOf?: string[]) => {
+    if (session && withdrawMarksOf === undefined) {
+      const gone = session.jury.filter((id) => !draft.jury.includes(id));
+      const costly = (marks.data ?? []).filter((m) => gone.includes(m.evaluatorId) && m.submitted > 0);
+      // Nobody is losing anything: save without a question nobody needs.
+      if (costly.length) {
+        setLeaving(costly);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       let sessionId = session?.id ?? '';
       if (session) {
-        await api.patch(`/api/sessions/${session.id}`, draft);
+        await api.patch(`/api/sessions/${session.id}`, { ...draft, withdrawMarksOf });
       } else {
         // Creating answers with the whole committee; a new panel goes to the end.
         const created = await api.post<CommitteeView>(`/api/blocks/${blockId}/sessions`, draft);
@@ -753,11 +785,81 @@ function PanelEditor({
           <button className="btn ghost sm" onClick={onCancel}>
             Cancel
           </button>
-          <button className="btn primary sm" disabled={saving} onClick={save}>
+          {/* Saving before the count has arrived would skip the question and
+              keep the marks by default — the one outcome nobody chose. */}
+          <button
+            className="btn primary sm"
+            disabled={saving || (Boolean(session) && marks.loading)}
+            onClick={() => save()}
+          >
             {saving ? 'Saving…' : session ? 'Save' : `Add ${word}`}
           </button>
         </div>
       </section>
+
+      {/* Taking somebody off a panel and taking their marks out of the average
+          are two different decisions. The software cannot tell which one this
+          is — a roster being tidied, or a conflict found too late — so it
+          asks, once, at the only moment the answer is known. */}
+      {leaving && (
+        <Modal
+          title={leaving.length === 1 ? `${leaving[0].evaluatorName} has already scored` : 'They have already scored'}
+          subtitle={
+            totalMarks(leaving) === 1
+              ? `One mark already counts towards the average on this ${word}.`
+              : `${totalMarks(leaving)} marks already count towards the average on this ${word}.`
+          }
+          onClose={() => setLeaving(null)}
+        >
+          {leaving.length > 1 && (
+            <div className="rows" style={{ marginBottom: 10 }}>
+              {leaving.map((j) => (
+                <div className="row" key={j.evaluatorId} style={{ fontSize: 13 }}>
+                  <span style={{ flex: 1 }}>{j.evaluatorName || 'Unnamed juror'}</span>
+                  <span className="badge num">{j.submitted}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="pick-list">
+            <button
+              type="button"
+              className="pick"
+              onClick={() => {
+                setLeaving(null);
+                void save([]);
+              }}
+            >
+              <Icon name="check" />
+              <div>
+                <strong>Keep their marks</strong>
+                <span>
+                  They leave the panel and stop seeing the startups, but what they scored still counts. Use this when
+                  you are tidying a roster after the fact.
+                </span>
+              </div>
+            </button>
+            <button
+              type="button"
+              className="pick"
+              onClick={() => {
+                setLeaving(null);
+                void save(leaving.map((j) => j.evaluatorId));
+              }}
+            >
+              <Icon name="minus" />
+              <div>
+                <strong>Withdraw their marks too</strong>
+                <span>
+                  The average is recomputed on the remaining jury. Nothing is erased — the marks stay on record, marked
+                  withdrawn. Use this when they should never have judged these startups.
+                </span>
+              </div>
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {confirm && session && (
         <ConfirmDialog

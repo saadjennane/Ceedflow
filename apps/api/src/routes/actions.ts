@@ -23,6 +23,13 @@ const sessionInput = z.object({
   minutesPerStartup: z.number().int().min(5).optional(),
   location: z.string().optional(),
   jury: z.array(z.string()).optional(),
+  /**
+   * Whose marks leave with them. Named rather than inferred from the jury
+   * list: taking somebody off a panel and taking their marks out of the
+   * average are two different decisions, and only the person doing it knows
+   * which one they mean.
+   */
+  withdrawMarksOf: z.array(z.string()).optional(),
 });
 
 export async function actionRoutes(app: FastifyInstance) {
@@ -51,9 +58,22 @@ export async function actionRoutes(app: FastifyInstance) {
     const blockId = await repo.sessionBlockId(id);
     if (!blockId) return notFound(reply, 'Committee not found.');
     const input = parse(sessionInput, req.body);
+    // Only somebody actually leaving can have their marks withdrawn — a name
+    // still on the panel keeps its say, whatever the request asked for.
+    const leaving = input.jury
+      ? (input.withdrawMarksOf ?? []).filter((r) => !input.jury!.includes(r))
+      : [];
     await repo.updateSession(id, input);
+    await repo.withdrawScores(id, leaving);
     await markAsJury(input.jury ?? []);
     return committeeView(blockId);
+  });
+
+  /** What a removal would cost, asked before it is made. */
+  app.get('/api/sessions/:id/marks', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!(await repo.sessionBlockId(id))) return notFound(reply, 'Committee not found.');
+    return repo.marksPerJuror(id);
   });
 
   app.delete('/api/sessions/:id', async (req, reply) => {

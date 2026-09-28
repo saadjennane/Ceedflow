@@ -1,5 +1,6 @@
 import {
   funnelMoments,
+  markCounts,
   rankAtWork,
   type Block,
   type BlockOutcome,
@@ -180,7 +181,7 @@ function Progress({ section }: { section: { evaluators: PersonRef[]; lines: Line
     <span className="faint row wrap" style={{ fontSize: 12, gap: 8 }}>
       {section.evaluators.map((person, i) => {
         const done = section.lines.filter((line) =>
-          line.scoring?.scores.some((s) => s.evaluatorId === person.id && s.submittedAt),
+          line.scoring?.scores.some((s) => s.evaluatorId === person.id && markCounts(s)),
         ).length;
         return (
           <span key={person.id} style={{ color: done === total ? 'var(--ok)' : undefined }}>
@@ -580,7 +581,7 @@ function Moment({
 
                           {section.evaluators.map((person, i) => {
                             const score = line.scoring?.scores.find((s) => s.evaluatorId === person.id);
-                            const voted = score?.submittedAt ? outcomes.find((o) => o.id === score.verdict) : null;
+                            const voted = score && markCounts(score) ? outcomes.find((o) => o.id === score.verdict) : null;
                             return (
                               <td key={person.id} className="score muted" style={{ textAlign: 'right' }}>
                                 {voting ? (
@@ -591,7 +592,7 @@ function Moment({
                                   ) : (
                                     '—'
                                   )
-                                ) : score?.submittedAt ? (
+                                ) : score && markCounts(score) ? (
                                   score.normalised
                                 ) : (
                                   '—'
@@ -606,7 +607,7 @@ function Moment({
                                 (() => {
                                   const tally = tallyVotes(
                                     (line.scoring?.scores ?? [])
-                                      .filter((s) => s.submittedAt)
+                                      .filter(markCounts)
                                       .map((s) => s.verdict),
                                     outcomes,
                                     scoring.voteRule,

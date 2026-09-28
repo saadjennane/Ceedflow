@@ -84,6 +84,12 @@ export const evaluationScoreSchema = z.object({
   verdict: z.string().default(''),
   comment: z.string().default(''),
   submittedAt: z.string().nullable().default(null),
+  /**
+   * Set when this mark was taken out of the count — its author left the panel
+   * and CEED said their marks should go with them. The row stays: a jury's
+   * decisions can be contested, and who said what is what you need then.
+   */
+  withdrawnAt: z.string().nullable().default(null),
 });
 
 export type EvaluationScore = z.infer<typeof evaluationScoreSchema>;
@@ -110,9 +116,18 @@ export function normalisedScore(marks: Record<string, number>, criteria: ScoredC
 }
 
 /** Average of every submitted evaluator score for one candidate. */
+/**
+ * Whether a mark has a say.
+ *
+ * Sent and not withdrawn — both halves, everywhere. Written once because the
+ * average, the tally and the "3 of 5 scored" count must agree: a rule of this
+ * kind restated in three places is a rule that will disagree with itself.
+ */
+export const markCounts = (s: EvaluationScore) => Boolean(s.submittedAt) && !s.withdrawnAt;
+
 export function consensusScore(scores: EvaluationScore[], criteria: ScoredCriterion[]): number | null {
   const values = scores
-    .filter((s) => s.submittedAt)
+    .filter(markCounts)
     .map((s) => normalisedScore(s.marks, criteria))
     .filter((v): v is number => v !== null);
   if (!values.length) return null;

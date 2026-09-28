@@ -2,6 +2,7 @@ import {
   DEFAULT_OUTCOMES,
   consensusScore,
   gridLeaves,
+  markCounts,
   normalisedScore,
   proposedOutcome,
   tallyVotes,
@@ -57,7 +58,7 @@ export async function scoresByCandidate(block: Block): Promise<Map<string, Candi
   }
   for (const entry of grouped.values()) {
     entry.consensus = consensusScore(entry.scores, criteria);
-    entry.submitted = entry.scores.filter((s) => s.submittedAt).length;
+    entry.submitted = entry.scores.filter(markCounts).length;
   }
   return grouped;
 }
@@ -87,7 +88,7 @@ export async function outcomesByCandidate(block: Block): Promise<Map<string, Can
     // A grid earns a band; a panel names the status itself and votes on it.
     const outcomeId = verdictMode
       ? tallyVotes(
-          entry.scores.filter((s) => s.submittedAt).map((s) => s.verdict),
+          entry.scores.filter(markCounts).map((s) => s.verdict),
           outcomes,
           rule,
         ).outcomeId

@@ -67,7 +67,7 @@ const CANDIDATE_SELECT = `select c.id, c.edition_id as "editionId", c.track_id a
   ${CANDIDATE_FROM}`;
 const SCORE_COLS = `id, block_id as "blockId", candidate_id as "candidateId",
   evaluator_id as "evaluatorId", evaluator_name as "evaluatorName", marks, verdict, comment,
-  submitted_at::text as "submittedAt"`;
+  submitted_at::text as "submittedAt", withdrawn_at::text as "withdrawnAt"`;
 
 function hydrateBlock(row: Block): Block {
   return { ...row, config: parseBlockConfig(row.type, row.config) };
@@ -662,6 +662,40 @@ export async function listScores(blockId: string): Promise<EvaluationScore[]> {
   return all<EvaluationScore>(`select ${SCORE_COLS} from evaluation_scores where block_id = $1`, [blockId]);
 }
 
+/** What each juror of a sitting has actually sent, so a removal can say what it costs. */
+export async function marksPerJuror(
+  sessionId: string,
+): Promise<{ evaluatorId: string; evaluatorName: string; submitted: number }[]> {
+  return all<{ evaluatorId: string; evaluatorName: string; submitted: number }>(
+    // The name stored on the mark, not the directory's: it is who they were
+    // when they scored, which is what the screen needs to name.
+    `select evaluator_id as "evaluatorId", max(evaluator_name) as "evaluatorName",
+            count(*)::int as submitted
+       from evaluation_scores
+      where session_id = $1 and submitted_at is not null and withdrawn_at is null
+      group by evaluator_id`,
+    [sessionId],
+  );
+}
+
+/**
+ * Takes marks out of the count without taking them out of the record.
+ *
+ * Scoped to the sitting: somebody can sit on two panels of the same committee,
+ * and leaving one is not leaving the other.
+ */
+export async function withdrawScores(sessionId: string, evaluatorIds: string[]): Promise<number> {
+  if (!evaluatorIds.length) return 0;
+  const conn = await db();
+  const rows = await conn.query<{ id: string }>(
+    `update evaluation_scores set withdrawn_at = now()
+      where session_id = $1 and evaluator_id = any($2) and withdrawn_at is null
+      returning id`,
+    [sessionId, evaluatorIds],
+  );
+  return rows.length;
+}
+
 export async function upsertScore(input: {
   blockId: string;
   candidateId: string;
@@ -685,6 +719,9 @@ export async function upsertScore(input: {
            comment = excluded.comment,
            evaluator_name = excluded.evaluator_name,
            session_id = coalesce(excluded.session_id, evaluation_scores.session_id),
+           -- Somebody put back on a panel and marking again is marking for
+           -- real: a withdrawal from a previous removal must not outlive it.
+           withdrawn_at = null,
            submitted_at = case when $9 then now() when $11 then null else evaluation_scores.submitted_at end`,
     [
       newId('scr'),
