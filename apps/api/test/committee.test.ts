@@ -9,13 +9,17 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { migrate } from '../src/db/client.js';
+import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
+import { committeeView } from '../src/services/committee.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
-describe('counting a committee', { skip: skipWithoutServer }, () => {
-  before(migrate);
-  after(closeDb);
+// One connection for the file: an `after` inside a describe closes it as
+// soon as that describe ends, and the ones after it find nothing open.
+before(migrate);
+after(closeDb);
 
+describe('counting a committee', { skip: skipWithoutServer }, () => {
   it('counts each juror once, however many sittings they sit on', async () => {
     // The jury is jsonb, so the count unnests it — the kind of query PGlite
     // forgives and a server does not, which is why this runs against one.
@@ -55,5 +59,131 @@ describe('counting a committee', { skip: skipWithoutServer }, () => {
     const card = again!.tracks[0].phases[0].blocks.find((b) => b.id === committee.id)!;
     assert.equal(card.sittings, 1, 'the sitting still counts');
     assert.equal(card.jurors, 0, 'and nobody is on it');
+  });
+});
+
+describe('a startup that withdraws', { skip: skipWithoutServer }, () => {
+  /** One sitting, two startups seated on it, times handed out. */
+  const setUp = async () => {
+    const program = await repo.createProgram({ name: 'The Builders' });
+    const edition = await repo.createEdition(program.id, { name: 'Cohorte 1' });
+    const detail = await repo.getEditionDetail(edition.id);
+    const track = detail!.tracks[0];
+    const phase = track.phases[0];
+    const committee = await repo.createBlock(phase.id, 'committee', 'Jury Day');
+    await repo.updateBlock(committee.id, { config: { visibility: 'open', assign: true } });
+    const sitting = await repo.createSession(committee.id, {
+      name: 'Morning', heldOn: '2026-10-28',
+      windows: [{ startsAt: '09:00', endsAt: '12:30' }], minutesPerStartup: 25, jury: ['rec_juror'],
+    });
+    const candidacy = async (orgName: string) => {
+      const org = await dir.createRecord({ kind: 'org', name: orgName, origin: 'manual' });
+      return repo.createCandidate({ editionId: edition.id, trackId: track.id, orgId: org.id });
+    };
+    const leaving = await candidacy('Rafid Tech');
+    const staying = await candidacy('Nakhla Bio');
+    await repo.assignToSession(sitting.id, [leaving.id, staying.id]);
+    // Give the one that will withdraw a time, so we can watch it come back.
+    const rows = await repo.listSessionAssignments(sitting.id);
+    const seat = rows.find((r) => r.candidateId === leaving.id)!;
+    await repo.moveAssignmentToSlot(seat.id, 0);
+    return { committee, sitting, leaving, staying };
+  };
+
+  const onSitting = async (committeeId: string) => {
+    const view = await committeeView(committeeId);
+    return (view!.sessions[0].assignments ?? []).map((r) => r.candidate.orgName);
+  };
+
+  it('leaves the sitting it had been put on', async () => {
+    const { committee, leaving } = await setUp();
+    assert.deepEqual(await onSitting(committee.id), ['Rafid Tech', 'Nakhla Bio']);
+
+    await repo.updateCandidate(leaving.id, { status: 'Withdrawn' });
+    await repo.releaseSlots(leaving.id);
+
+    // The panel is what the juror's own list and the Review table both read.
+    assert.deepEqual(await onSitting(committee.id), ['Nakhla Bio'], 'still on the panel');
+  });
+
+  it('gives its time back rather than keeping a quarter of an hour empty', async () => {
+    const { sitting, leaving } = await setUp();
+    const before = (await repo.listSessionAssignments(sitting.id)).find((r) => r.candidateId === leaving.id)!;
+    assert.equal(before.slotIndex, 0, 'it had 09:00');
+
+    await repo.updateCandidate(leaving.id, { status: 'Withdrawn' });
+    await repo.releaseSlots(leaving.id);
+
+    const after = (await repo.listSessionAssignments(sitting.id)).find((r) => r.candidateId === leaving.id)!;
+    assert.equal(after.slotIndex, null, 'the time is free for somebody else');
+  });
+
+  it('keeps its seat in the table, which is what makes it reversible', async () => {
+    const { sitting, leaving } = await setUp();
+    await repo.updateCandidate(leaving.id, { status: 'Withdrawn' });
+    await repo.releaseSlots(leaving.id);
+
+    const rows = await repo.listSessionAssignments(sitting.id);
+    assert.ok(rows.some((r) => r.candidateId === leaving.id), 'the row survives the withdrawal');
+  });
+
+  it('comes back to its panel when it is brought back', async () => {
+    const { committee, leaving } = await setUp();
+    await repo.updateCandidate(leaving.id, { status: 'Withdrawn' });
+    await repo.releaseSlots(leaving.id);
+    assert.deepEqual(await onSitting(committee.id), ['Nakhla Bio']);
+
+    await repo.updateCandidate(leaving.id, { status: 'Applied' });
+    assert.deepEqual(await onSitting(committee.id), ['Rafid Tech', 'Nakhla Bio'], 'back where it was');
+  });
+});
+
+describe('when the time it held has been given away', { skip: skipWithoutServer }, () => {
+  it('comes back to the panel with no time rather than on top of somebody', async () => {
+    /* This is the case that made releasing the slot at withdrawal the right
+       move rather than a nicety. Keep the slot and bringing the startup back
+       puts two of them at 09:00, with nothing to say which one pitches. */
+    const program = await repo.createProgram({ name: 'The Builders' });
+    const edition = await repo.createEdition(program.id, { name: 'Cohorte 1' });
+    const detail = await repo.getEditionDetail(edition.id);
+    const track = detail!.tracks[0];
+    const committee = await repo.createBlock(track.phases[0].id, 'committee', 'Jury Day');
+    await repo.updateBlock(committee.id, { config: { visibility: 'open', assign: true } });
+    const sitting = await repo.createSession(committee.id, {
+      name: 'Morning', heldOn: '2026-10-28',
+      windows: [{ startsAt: '09:00', endsAt: '12:30' }], minutesPerStartup: 25, jury: ['rec_juror'],
+    });
+    const candidacy = async (orgName: string) => {
+      const org = await dir.createRecord({ kind: 'org', name: orgName, origin: 'manual' });
+      return repo.createCandidate({ editionId: edition.id, trackId: track.id, orgId: org.id });
+    };
+    const leaving = await candidacy('Rafid Tech');
+    const taker = await candidacy('Atlas Mobility');
+    await repo.assignToSession(sitting.id, [leaving.id, taker.id]);
+
+    const seatOf = async (candidateId: string) =>
+      (await repo.listSessionAssignments(sitting.id)).find((r) => r.candidateId === candidateId)!;
+    await repo.moveAssignmentToSlot((await seatOf(leaving.id)).id, 0);
+
+    // It withdraws, and 09:00 goes to somebody else.
+    await repo.updateCandidate(leaving.id, { status: 'Withdrawn' });
+    await repo.releaseSlots(leaving.id);
+    await repo.moveAssignmentToSlot((await seatOf(taker.id)).id, 0);
+
+    // And then it is brought back.
+    await repo.updateCandidate(leaving.id, { status: 'Applied' });
+
+    assert.equal((await seatOf(taker.id)).slotIndex, 0, 'the one that took 09:00 keeps it');
+    assert.equal((await seatOf(leaving.id)).slotIndex, null, 'the one coming back has no time yet');
+
+    const view = await committeeView(committee.id);
+    const rows = view!.sessions[0].assignments ?? [];
+    assert.deepEqual(
+      rows.map((r) => r.candidate.orgName).sort(),
+      ['Atlas Mobility', 'Rafid Tech'],
+      'both are on the panel',
+    );
+    const atNine = rows.filter((r) => r.assignment.slotIndex === 0);
+    assert.equal(atNine.length, 1, 'and only one of them pitches at 09:00');
   });
 });

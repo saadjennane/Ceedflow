@@ -190,7 +190,12 @@ export async function funnelRoutes(app: FastifyInstance) {
         .partial(),
       req.body,
     );
-    return (await repo.updateCandidate(id, patch)) ?? notFound(reply, 'Candidate not found.');
+    const updated = await repo.updateCandidate(id, patch);
+    // Withdrawing gives back the time, not the seat: the assignment stays so
+    // the withdrawal can be undone and so the record still says which sitting
+    // they had been put on.
+    if (updated && patch.status === 'Withdrawn') await repo.releaseSlots(id);
+    return updated ?? notFound(reply, 'Candidate not found.');
   });
 
   app.delete('/api/candidates/:id', async (req, reply) => {

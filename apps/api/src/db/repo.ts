@@ -609,6 +609,21 @@ export async function createCandidate(input: {
   return (await one<Candidate>(`${CANDIDATE_SELECT} where c.id = $1`, [id]))!;
 }
 
+/**
+ * Lets go of the times a withdrawn candidacy was holding.
+ *
+ * The seat on the panel stays — that is what makes the withdrawal reversible,
+ * and what tells you afterwards which sitting they had been put on. Only the
+ * slot goes, because a startup that is not coming must not keep a quarter of
+ * an hour somebody else could use.
+ */
+export async function releaseSlots(candidateId: string): Promise<void> {
+  await (await db()).query(
+    'update committee_assignments set slot_index = null where candidate_id = $1 and slot_index is not null',
+    [candidateId],
+  );
+}
+
 export async function updateCandidate(id: string, patch: Record<string, unknown>): Promise<Candidate | null> {
   await patchRow('candidates', id, patch, {
     source: 'source',

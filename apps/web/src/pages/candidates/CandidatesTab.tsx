@@ -535,7 +535,9 @@ function CandidateDrawer({
           <div className="callout warn">
             <Icon name="alert" size={15} />
             <div>
-              <strong>Withdrawn.</strong> It is out of every list, every panel and every selection.{' '}
+              <strong>Withdrawn.</strong> It is out of every list, every panel and every selection, and the
+              time it held on a jury day is free again. Bring it back and it returns to the panel it was on —
+              without a time, since that may have gone to somebody else.{' '}
               <button
                 className="linkish"
                 onClick={async () => {

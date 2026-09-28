@@ -116,6 +116,13 @@ export async function committeeView(blockId: string): Promise<CommitteeView | nu
         .map((assignment) => {
           const candidate = byId.get(assignment.candidateId);
           if (!candidate) return null;
+          /* A withdrawal takes a startup out of everything downstream, and a
+             sitting is downstream. The row stays in the table so the
+             withdrawal can be undone and so the record still says which panel
+             they had been put on — it simply stops being shown, here and in
+             everything that reads this view: the juror's own list, and the
+             Review table. */
+          if (candidate.status === 'Withdrawn') return null;
           const scores = grouped?.get(candidate.id);
           return {
             assignment,
