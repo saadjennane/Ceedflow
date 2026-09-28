@@ -55,7 +55,7 @@ interface ScoringPayload {
   voteRule: VoteRule;
   requireComment: boolean;
   outcomes: BlockOutcome[];
-  scope: { blockId: string; name: string } | null;
+  scope: { blockId: string; name: string; assign: boolean } | null;
   groups: ScoringGroup[];
 }
 
@@ -80,9 +80,17 @@ interface DecisionPayload {
 
 /** One line of the merged table: what was measured, and what was decided. */
 /** The columns you can order the table by. */
-type SortKey = 'orgName' | 'score' | 'status' | 'decision';
+type SortKey = 'rank' | 'orgName' | 'score' | 'status' | 'decision';
 
 interface Line {
+  /**
+   * Where this startup came in the day, counting from one.
+   *
+   * Not stored anywhere: the sittings hand their startups back in position
+   * order, so it is simply the place in that list — taken before the table
+   * sorts itself by score and loses it.
+   */
+  rank: number;
   candidate: Candidate;
   scoring: ScoringRow | null;
   decision: DecisionRow | null;
@@ -253,6 +261,7 @@ function Moment({
   for (const group of scoring?.groups ?? []) {
     for (const row of group.rows) {
       byCandidate.set(row.candidate.id, {
+        rank: 0,
         candidate: row.candidate,
         scoring: row,
         decision: null,
@@ -266,6 +275,7 @@ function Moment({
     if (line) line.decision = row;
     else
       byCandidate.set(row.candidate.id, {
+        rank: 0,
         candidate: row.candidate,
         scoring: null,
         decision: row,
@@ -283,6 +293,7 @@ function Moment({
 
   /** Null where there is nothing yet — which is not the same as a low value. */
   const cellOf = (l: Line, key: SortKey): string | number | null => {
+    if (key === 'rank') return l.rank;
     if (key === 'orgName') return l.candidate.orgName;
     if (key === 'status') return statusOf(l) || null;
     if (key === 'decision') return l.decision ? (l.decision.outcome === 'pass' ? 1 : 0) : null;
@@ -325,6 +336,11 @@ function Moment({
       </button>
     </th>
   );
+  /* There is a running order only when the sittings were given their startups
+     by hand. Without that, the rows are the whole intake in no order anybody
+     chose, and a number in front of them would claim something untrue. */
+  const running = Boolean(scoring?.scope?.assign);
+
   /** No panel means nobody applies the grid — that is a committee's to say. */
   const noPanel = Boolean(evaluation) && (scoring?.groups.length ?? 0) === 0;
 
@@ -339,7 +355,16 @@ function Moment({
     name: group.name,
     heldOn: group.heldOn,
     evaluators: group.evaluators,
-    lines: ordered(group.rows.map((r) => byCandidate.get(r.candidate.id)!).filter(Boolean)),
+    // The rank is read here, off the order the server sent, because `ordered`
+    // is about to replace that order with the one the table is sorted by.
+    lines: ordered(
+      group.rows
+        .map((r, i) => {
+          const line = byCandidate.get(r.candidate.id);
+          return line ? { ...line, rank: i + 1 } : null;
+        })
+        .filter((l): l is Line => Boolean(l)),
+    ),
   }));
 
   // Anyone on the selection's list that no sitting scored still has to be decided.
@@ -532,7 +557,7 @@ function Moment({
                 <thead>
                   {evaluation && selection && (
                     <tr>
-                      <th style={{ borderBottom: 0 }} />
+                      <th style={{ borderBottom: 0 }} colSpan={running ? 2 : 1} />
                       <th style={{ borderBottom: 0, textAlign: 'center', color: 'var(--blue)' }}>
                         {selection.name}
                       </th>
@@ -553,6 +578,27 @@ function Moment({
                     </tr>
                   )}
                   <tr>
+                    {/* The running order of the day, as a line number rather
+                        than a column of its own weight. It is here for one
+                        job: a pile of paper sheets comes back in the order the
+                        startups pitched, and finding each one in a table
+                        sorted by score is what makes copying them out slow. */}
+                    {running && (
+                      <th style={{ width: 34, textAlign: 'right', cursor: 'pointer' }}>
+                        <button
+                          className="th-sort"
+                          style={{ justifyContent: 'flex-end' }}
+                          onClick={() =>
+                            setSort((x) => (x.key === 'rank' ? { key: 'rank', dir: x.dir === 1 ? -1 : 1 } : { key: 'rank', dir: 1 }))
+                          }
+                          title="The order they pitched in"
+                          aria-label="Order by the order they pitched in"
+                        >
+                          #
+                          {sort.key === 'rank' && <Icon name={sort.dir === 1 ? 'chevronUp' : 'chevronDown'} size={11} />}
+                        </button>
+                      </th>
+                    )}
                     {sortable('orgName', 'Candidate')}
                     {/* The decision first, then what it was made on. Reading a
                         row means starting at the verdict and going right for
@@ -579,6 +625,11 @@ function Moment({
                     return (
                       <Fragment key={line.candidate.id}>
                         <tr>
+                          {running && (
+                            <td className="score muted" style={{ textAlign: 'right' }}>
+                              {line.rank || '—'}
+                            </td>
+                          )}
                           <td className="name">
                             {line.candidate.orgName}
                             {line.decision?.stale && (

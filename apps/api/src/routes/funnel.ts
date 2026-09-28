@@ -437,7 +437,11 @@ export async function funnelRoutes(app: FastifyInstance) {
         voteRule: config.voteRule,
         requireComment: config.requireComment,
         outcomes,
-        scope: { blockId: committee.id, name: committee.name },
+        // Whether the sittings were given startups by hand. When they were,
+        // the order they come back in is the running order of the day, which
+        // is a column the screen can offer; without it, the rows are simply
+        // the whole intake and there is no running order to speak of.
+        scope: { blockId: committee.id, name: committee.name, assign: Boolean(view?.config.assign) },
         groups: await Promise.all(
           (view?.sessions ?? []).map(async (session) => ({
             sessionId: session.session.id,
