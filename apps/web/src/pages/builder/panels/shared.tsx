@@ -4,7 +4,7 @@ import {
   DEFAULT_MARKED_OUT_OF,
   gridLeaves,
   idOf,
-  leafShare,
+  criterionShares,
   sharesLeft,
   sharesOver,
   normalisedScore,
@@ -185,6 +185,8 @@ export function CriteriaEditor({
   /* What is still on the table, said in one line under the field. Without it
      a percentage is typed blind: you set 30 and have no idea whether that
      leaves room or has already overrun. */
+  // The share each criterion really carries — rounded once, for display.
+  const shares = criterionShares(criteria);
   const left = sharesLeft(criteria);
   const over = sharesOver(criteria);
   const shareHint = over
@@ -254,10 +256,7 @@ export function CriteriaEditor({
                         : 'The share you gave it'
                     }
                   >
-                    {section
-                      ? criterion.children.reduce((n, c) => n + leafShare(criteria, c.id), 0)
-                      : leafShare(criteria, criterion.id)}
-                    %
+                    {Math.round(shares.get(criterion.id) ?? 0)}%
                   </span>
                 )}
                 <button
@@ -349,11 +348,6 @@ export function CriteriaEditor({
                               criterion average into its mark, which is what
                               makes them points to consider rather than a second
                               grid hidden inside the first. */}
-                          {!unscored && (
-                            <span className="badge num" title="Share of the final score">
-                              {leafShare(criteria, child.id)}%
-                            </span>
-                          )}
                           <button
                             className="btn ghost icon sm"
                             aria-label="Remove"

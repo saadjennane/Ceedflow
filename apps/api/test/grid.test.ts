@@ -168,3 +168,46 @@ describe("a criterion's own mark", () => {
     assert.equal(criterionMark(plain, {}), null);
   });
 });
+
+describe('what the setup shows against a criterion', () => {
+  /* Five at nineteen and one at five is a hundred exactly. The screen used to
+     print the sum of its sub-criteria's rounded shares instead, which turned
+     that hundred into a hundred and one: nineteen over three rounds to six
+     three times (eighteen), over four to five four times (twenty), over two to
+     ten twice (twenty). Rounding once, at the end, is the whole fix. */
+  const six = [
+    { id: 'a', label: 'Marché', help: '', share: 19, weight: 1, max: 5, children: kids('a', 3) },
+    { id: 'b', label: 'Innovation', help: '', share: 19, weight: 1, max: 5, children: kids('b', 4) },
+    { id: 'c', label: 'Scalabilité', help: '', share: 19, weight: 1, max: 5, children: kids('c', 3) },
+    { id: 'd', label: 'Équipe', help: '', share: 19, weight: 1, max: 5, children: kids('d', 2) },
+    { id: 'e', label: 'Maturité', help: '', share: 19, weight: 1, max: 5, children: kids('e', 4) },
+    { id: 'f', label: 'Impact', help: '', share: 5, weight: 1, max: 5, children: kids('f', 1) },
+  ];
+
+  it('gives each criterion the share that was typed', () => {
+    const shares = criterionShares(six);
+    assert.deepEqual(
+      six.map((c) => Math.round(shares.get(c.id) ?? 0)),
+      [19, 19, 19, 19, 19, 5],
+    );
+  });
+
+  it('adds up to a hundred, whatever the sub-criteria count', () => {
+    const shares = criterionShares(six);
+    const total = six.reduce((n, c) => n + Math.round(shares.get(c.id) ?? 0), 0);
+    assert.equal(total, 100, 'six criteria must not add up to a hundred and one');
+  });
+
+  it('still spreads the whole mark across the leaves', () => {
+    // The arithmetic underneath is untouched: it was only ever the display.
+    const total = gridLeaves(six).reduce((n, l) => n + l.weight, 0);
+    assert.ok(Math.abs(total - 100) < 1e-9, `leaves carry ${total}`);
+  });
+});
+
+/** n sub-criteria under one criterion, which is all these tests need of them. */
+function kids(prefix: string, n: number) {
+  return Array.from({ length: n }, (_, i) => ({
+    id: `${prefix}${i}`, label: `Point ${i + 1}`, help: '', share: null, weight: 1, max: 5, children: [],
+  }));
+}

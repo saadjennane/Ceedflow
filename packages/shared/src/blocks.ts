@@ -547,13 +547,6 @@ export function criterionMark(
   return given.reduce((a, b) => a + b, 0) / given.length;
 }
 
-/** What share of the final score a leaf carries, as a percentage. */
-export function leafShare(criteria: EvaluationCriterion[], leafId: string): number {
-  const leaves = gridLeaves(criteria);
-  const total = leaves.reduce((n, l) => n + l.weight, 0);
-  const leaf = leaves.find((l) => l.id === leafId);
-  return total && leaf ? Math.round((leaf.weight / total) * 100) : 0;
-}
 
 /**
  * What an evaluator gives. A **score** is marks on a grid, weighted into a
