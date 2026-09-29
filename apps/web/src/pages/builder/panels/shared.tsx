@@ -25,7 +25,7 @@ import { api } from '../../../lib/api';
 import { SelectField, TextField } from '../../../ui/Field';
 import { GridMarks } from '../../../ui/GridMarks';
 import { Icon } from '../../../ui/Icon';
-import { Modal, useToast } from '../../../ui/Overlays';
+import { ConfirmDialog, Modal, useToast } from '../../../ui/Overlays';
 
 /* ------------------------------------------------------------------ */
 /* Open to the outside, or not                                         */
@@ -560,6 +560,7 @@ export function ScoreEditor({
   const [verdict, setVerdict] = useState(existing?.verdict ?? '');
   const [comment, setComment] = useState(existing?.comment ?? '');
   const [saving, setSaving] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   const toast = useToast();
 
   const voting = method === 'verdict';
@@ -688,6 +689,18 @@ export function ScoreEditor({
             </>
           )}
         </span>
+        {/* Only offered once there is something on the record to clear: on an
+            empty sheet it would promise an act with nothing to act on. */}
+        {existing && (
+          <button
+            className="btn ghost sm"
+            style={{ color: 'var(--stop)' }}
+            disabled={saving}
+            onClick={() => setConfirmReset(true)}
+          >
+            <Icon name="trash" size={13} /> Reset
+          </button>
+        )}
         <div className="spacer" />
         <button className="btn sm" disabled={saving} onClick={() => submit(false)}>
           Save draft
@@ -701,6 +714,37 @@ export function ScoreEditor({
           Submit score
         </button>
       </div>
+
+      {/* The warning names what goes and what it costs. A reset is not the
+          same act as taking a juror off a panel: that one keeps the marks on
+          record and stops counting them, because a jury gave them. This one is
+          for a sheet that should never have existed — marks typed against the
+          wrong name — so it leaves nothing behind. */}
+      {confirmReset && existing && (
+        <ConfirmDialog
+          title={`Clear ${evaluator.name}'s sheet on ${candidate.orgName}?`}
+          body={`Their marks${existing.comment ? ' and their comment' : ''} are deleted, not set aside — nothing of this sheet is kept, and the average is recomputed without it straight away. The sheet can be filled in again from nothing. Use this for marks entered against the wrong name; to take a juror off the panel while keeping what they said, do that on the panel instead.`}
+          confirmLabel="Clear the sheet"
+          destructive
+          onClose={() => setConfirmReset(false)}
+          onConfirm={async () => {
+            setConfirmReset(false);
+            setSaving(true);
+            try {
+              await api.del(`/api/blocks/${blockId}/scores/${candidate.id}/${evaluator.id}`);
+              setMarks({});
+              setVerdict('');
+              setComment('');
+              toast('Sheet cleared.');
+              onSaved();
+            } catch (err) {
+              toast((err as Error).message, true);
+            } finally {
+              setSaving(false);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

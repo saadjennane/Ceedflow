@@ -688,6 +688,28 @@ export async function listScores(blockId: string): Promise<EvaluationScore[]> {
   return all<EvaluationScore>(`select ${SCORE_COLS} from evaluation_scores where block_id = $1`, [blockId]);
 }
 
+/**
+ * Takes a sheet off the record entirely.
+ *
+ * Not the same act as withdrawing a mark. A withdrawal says somebody's reading
+ * no longer counts and keeps it, because the jury gave it and a contested
+ * decision needs to show what was said. A reset says the sheet should never
+ * have existed — marks typed against the wrong juror, a sheet started on the
+ * wrong startup — and a record of a thing that did not happen is worse than
+ * no record at all.
+ */
+export async function deleteScore(blockId: string, candidateId: string, evaluatorId: string): Promise<number> {
+  const rows = await (
+    await db()
+  ).query<{ id: string }>(
+    `delete from evaluation_scores
+      where block_id = $1 and candidate_id = $2 and evaluator_id = $3
+      returning id`,
+    [blockId, candidateId, evaluatorId],
+  );
+  return rows.length;
+}
+
 /** What each juror of a sitting has actually sent, so a removal can say what it costs. */
 export async function marksPerJuror(
   sessionId: string,

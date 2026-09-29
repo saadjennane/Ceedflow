@@ -506,6 +506,21 @@ export async function funnelRoutes(app: FastifyInstance) {
     return repo.upsertScore({ ...input, blockId: id, evaluatorName: person.name });
   });
 
+  /**
+   * Clearing one evaluator's sheet on one startup, so it can be filled in
+   * again from nothing. Guarded like every other write here: an observer
+   * cannot, an editor can — the mistake this undoes is an editor's to make.
+   */
+  app.delete('/api/blocks/:id/scores/:candidateId/:evaluatorId', async (req, reply) => {
+    const { id, candidateId, evaluatorId } = req.params as {
+      id: string; candidateId: string; evaluatorId: string;
+    };
+    if (!(await repo.getBlock(id))) return notFound(reply, 'Block not found.');
+    const gone = await repo.deleteScore(id, candidateId, evaluatorId);
+    if (!gone) return notFound(reply, 'There is no sheet to clear.');
+    reply.code(204);
+  });
+
   /* ---------------- selection ---------------- */
 
   app.get('/api/blocks/:id/selection', async (req, reply) => {
