@@ -677,6 +677,44 @@ textarea {
   background: var(--surface);
 }
 
+/* A table you read a name off while scrolling past twenty-five rows.
+   `overflow-x: auto` already makes this box a scroll container, so a sticky
+   head inside it sticks to the box and not to the window — which does nothing
+   at all until the box is the thing that scrolls. Hence the height. */
+.table-wrap.tall {
+  max-height: calc(100vh - 300px);
+  min-height: 240px;
+  overflow: auto;
+}
+
+.table-wrap.tall thead th {
+  position: sticky;
+  z-index: 2;
+  /* border-collapse drops a sticky cell's own border as it detaches, so the
+     line under the head is drawn with a shadow, which travels with it. */
+  border-bottom: 0;
+  box-shadow: inset 0 -1px var(--line);
+}
+
+/* One row of heads sticks to the top; two stack, the group names above the
+   column names. The first row is given a height so the second knows where to
+   stop, rather than guessing at a number that changes with the font. */
+.table-wrap.tall thead tr:only-child th {
+  top: 0;
+}
+
+.table-wrap.tall thead tr:first-child:not(:only-child) th {
+  top: 0;
+  height: 30px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  box-shadow: none;
+}
+
+.table-wrap.tall thead tr:first-child:not(:only-child) + tr th {
+  top: 30px;
+}
+
 table.data {
   width: 100%;
   border-collapse: collapse;

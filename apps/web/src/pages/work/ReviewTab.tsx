@@ -256,6 +256,10 @@ function Moment({
   );
   const [as, setAs] = useState<Record<string, string>>({});
   const [openId, setOpenId] = useState<string | null>(null);
+  /* Which sitting is on screen. Stacked, two panels of twenty-five startups
+     made a page you scroll past to reach the second — and the jury's names sit
+     at the top of each one, so reaching them meant scrolling back. */
+  const [panel, setPanel] = useState<string | null>(null);
   /* Best first, because that is the question this screen answers. Clicking a
      header picks another, and clicking it again turns it round. */
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'score', dir: -1 });
@@ -395,6 +399,12 @@ function Moment({
       lines: unscored,
     });
   }
+
+  /* The asked-for panel, or the first — a sitting can disappear while the tab
+     is open (a committee edited in another window), and falling back beats
+     showing nothing with no way to say why. */
+  const current = sections.some((x) => x.key === panel) ? panel : (sections[0]?.key ?? null);
+  const shown = sections.length > 1 ? sections.filter((x) => x.key === current) : sections;
 
   const reload = () => {
     view.reload();
@@ -549,7 +559,30 @@ function Moment({
           <p>Candidates arrive once they pass the selection before it.</p>
         </div>
       ) : (
-        sections.map((section) => (
+        <>
+        {/* One tab per sitting. Each panel has its own jury and its own
+            startups, so they were never one table — only one page, which is
+            what made the second one a scroll away. */}
+        {sections.length > 1 && (
+          <div className="drawer-tabs" style={{ padding: 0 }} role="tablist">
+            {sections.map((section) => (
+              <button
+                key={section.key}
+                role="tab"
+                aria-selected={section.key === current}
+                className={section.key === current ? 'tab on' : 'tab'}
+                onClick={() => setPanel(section.key)}
+              >
+                {section.name || 'All'}
+                <span className="badge num" style={{ marginLeft: 6 }}>
+                  {section.lines.length}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {shown.map((section) => (
           <section key={section.key} className="stack" style={{ gap: 8 }}>
             {section.name && (
               <div className="row wrap">
@@ -570,7 +603,7 @@ function Moment({
               </div>
             )}
 
-            <div className="table-wrap">
+            <div className="table-wrap tall">
               <table className="data score-table">
                 <thead>
                   {evaluation && selection && (
@@ -841,7 +874,8 @@ function Moment({
               );
             })()}
           </section>
-        ))
+        ))}
+        </>
       )}
 
       <p className="faint" style={{ margin: 0, fontSize: 12 }}>
