@@ -36,6 +36,15 @@ app.setErrorHandler((error, _req, reply) => {
   if (error instanceof HttpError) {
     return reply.code(error.status).send({ error: error.message, fields: error.details ?? null });
   }
+  /* Fastify's own refusals — a body that is not the JSON it claims to be, a
+     missing content type, a payload too large — already carry the right
+     status. Passing them through as 500 said "our side" for something that
+     was never ours, and sent anybody debugging it to the server logs. */
+  const given = (error as { statusCode?: number }).statusCode;
+  if (typeof given === 'number' && given >= 400 && given < 500) {
+    return reply.code(given).send({ error: (error as Error).message, fields: null });
+  }
+
   app.log.error(error);
   // In development the cause travels with the refusal. A generic 500 sends
   // whoever is working on it hunting through a log they may not be able to see.
