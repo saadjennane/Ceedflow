@@ -463,6 +463,7 @@ export interface StaffMember {
   role: StaffRole;
   state: AccountState;
   invitedAt: string | null;
+  disabledAt: string | null;
   createdAt: string;
 }
 
@@ -486,6 +487,11 @@ export interface Account {
   mustChangePassword: boolean;
   /** When the invitation went out. Null while nobody has been told. */
   invitedAt?: string | null;
+  /**
+   * When CEED closed the way in. The account and its owner's record both stay;
+   * only signing in stops. Null for every account that still works.
+   */
+  disabledAt?: string | null;
 }
 
 /**
@@ -496,23 +502,33 @@ export interface Account {
  * - `unclaimed` the account exists and nobody has been told about it.
  * - `invited`   the invitation went out; its owner has not come yet.
  * - `claimed`   its owner chose their own password. It is theirs.
+ * - `disabled`  CEED closed the way in. The only one of the four that is
+ *               stored, and the only one that overrides the rest: a claimed
+ *               account that has been disabled is disabled, first.
  */
-export const ACCOUNT_STATES = ['unclaimed', 'invited', 'claimed'] as const;
+export const ACCOUNT_STATES = ['unclaimed', 'invited', 'claimed', 'disabled'] as const;
 export type AccountState = (typeof ACCOUNT_STATES)[number];
 
 export const ACCOUNT_STATE_LABEL: Record<AccountState, string> = {
   unclaimed: 'Not invited',
   invited: 'Invited',
   claimed: 'Claimed',
+  disabled: 'Disabled',
 };
 
-export const ACCOUNT_STATE_TONE: Record<AccountState, 'neutral' | 'info' | 'ok'> = {
+export const ACCOUNT_STATE_TONE: Record<AccountState, 'neutral' | 'info' | 'ok' | 'stop'> = {
   unclaimed: 'neutral',
   invited: 'info',
   claimed: 'ok',
+  disabled: 'stop',
 };
 
-export function accountStateOf(account: Pick<Account, 'mustChangePassword' | 'invitedAt'>): AccountState {
+export function accountStateOf(
+  account: Pick<Account, 'mustChangePassword' | 'invitedAt' | 'disabledAt'>,
+): AccountState {
+  // Asked first: whether they may sign in at all is a larger fact than whose
+  // password it is.
+  if (account.disabledAt) return 'disabled';
   if (!account.mustChangePassword) return 'claimed';
   return account.invitedAt ? 'invited' : 'unclaimed';
 }
@@ -523,6 +539,8 @@ export interface RecordAccount {
   email: string;
   state: AccountState;
   invitedAt: string | null;
+  /** When the way in was closed. Null while the account still works. */
+  disabledAt: string | null;
   createdAt: string;
 }
 

@@ -185,6 +185,13 @@ export async function authRoutes(app: FastifyInstance) {
       throw new HttpError(401, 'Email or password is wrong.');
     }
 
+    // A disabled account is told so plainly. Hiding it behind "email or
+    // password is wrong" would send somebody to reset a password that works,
+    // and the fact is not a secret: they are being told by CEED, not guessing.
+    if (account.disabledAt) {
+      throw new HttpError(403, 'This account has been closed. Ask CEED to open it again.');
+    }
+
     // Getting in is proof of the right to; the record of the fumbling goes.
     await clearFailedLogins(input.email);
     const { token, expiresAt } = await createSession(account.id);

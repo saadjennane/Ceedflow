@@ -7,6 +7,7 @@ import {
   matchKey,
   parseRoles,
   signupInput,
+  suggestPassword,
   updateRecordInput,
   type DirectoryRecord,
   type ImportOutcome,
@@ -24,9 +25,10 @@ import {
   findAccount,
   markInvited,
   reissueProvisionalPassword,
+  setAccountDisabled,
 } from '../services/auth.js';
 import { HttpError, notFound, parse } from './util.js';
-import { workspaceGuard } from './guard.js';
+import { requireWorkspaceAdmin, workspaceGuard } from './guard.js';
 
 /** Opening an account on somebody's behalf, with a password they must replace. */
 const openAccountInput = z.object({
@@ -184,6 +186,49 @@ export async function directoryRoutes(app: FastifyInstance) {
       throw new HttpError(422, 'This account is already claimed — there is nothing to invite.');
     }
     await markInvited(account.id);
+    return accountOfRecord(id);
+  });
+
+  /**
+   * Handing out a new password, whoever chose the last one.
+   *
+   * Opening an account refuses to overwrite a password its owner has chosen —
+   * on purpose, so a routine act cannot quietly lock somebody out. This is the
+   * deliberate one: an administrator, asked by somebody who cannot get in.
+   * It generates the password rather than taking one, so nothing weak arrives
+   * from a caller, and returns it exactly once — it is never stored in the
+   * clear and cannot be read back.
+   */
+  app.post('/api/records/:id/account/password', async (req, reply) => {
+    requireWorkspaceAdmin(req);
+    const { id } = req.params as { id: string };
+    const account = await accountOfRecord(id);
+    if (!account) return notFound(reply, 'This person has no account.');
+    const password = suggestPassword();
+    await reissueProvisionalPassword(account.id, password);
+    // Provisional again: whoever reads this screen knows it, so it is not
+    // theirs until they have replaced it. Their sessions end with the old one.
+    return { account: await accountOfRecord(id), password };
+  });
+
+  /**
+   * Closing the way in, or opening it again. Not a deletion: the account keeps
+   * its email and its history, the person keeps their record, and every mark
+   * they gave stays theirs. Only signing in stops — including for whoever was
+   * already signed in, whose sessions end with it.
+   */
+  app.patch('/api/records/:id/account', async (req, reply) => {
+    requireWorkspaceAdmin(req);
+    const { id } = req.params as { id: string };
+    const input = parse(z.object({ disabled: z.boolean() }), req.body);
+    const account = await accountOfRecord(id);
+    if (!account) return notFound(reply, 'This person has no account.');
+    // Disabling your own account would sign you out of the workspace with no
+    // way back in, and CEED would have one administrator fewer by accident.
+    if (input.disabled && account.id === req.staff?.id) {
+      throw new HttpError(422, 'You cannot close your own account from here.');
+    }
+    await setAccountDisabled(account.id, input.disabled);
     return accountOfRecord(id);
   });
 

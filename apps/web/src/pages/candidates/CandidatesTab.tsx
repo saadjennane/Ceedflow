@@ -257,7 +257,10 @@ export function CandidatesTab({
                     <AccountBadge
                       account={
                         candidate.accountState
-                          ? { id: '', email: candidate.email, state: candidate.accountState, invitedAt: null, createdAt: '' }
+                          ? {
+                              id: '', email: candidate.email, state: candidate.accountState,
+                              invitedAt: null, disabledAt: null, createdAt: '',
+                            }
                           : null
                       }
                     />

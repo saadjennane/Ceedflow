@@ -1,5 +1,6 @@
 import {
   ACCOUNT_STATE_LABEL,
+  ACCOUNT_STATE_TONE,
   suggestPassword,
   type DirectoryRecord,
   type RecordAccount,
@@ -8,7 +9,7 @@ import { useState } from 'react';
 import { ApiError, api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { Icon } from '../../ui/Icon';
-import { Modal, useToast } from '../../ui/Overlays';
+import { ConfirmDialog, Modal, useToast } from '../../ui/Overlays';
 
 /* ------------------------------------------------------------------ */
 /* The state, said in one line                                         */
@@ -16,8 +17,12 @@ import { Modal, useToast } from '../../ui/Overlays';
 
 export function AccountBadge({ account }: { account: RecordAccount | null }) {
   if (!account) return <span className="badge">No account</span>;
-  const tone = account.state === 'claimed' ? 'ok' : account.state === 'invited' ? 'info' : '';
-  return <span className={tone ? `badge ${tone}` : 'badge'}>{ACCOUNT_STATE_LABEL[account.state]}</span>;
+  // Read from the shared table rather than restated here: a fourth state was
+  // added and this line would have shown it grey with the unclaimed ones.
+  const tone = ACCOUNT_STATE_TONE[account.state];
+  return (
+    <span className={tone === 'neutral' ? 'badge' : `badge ${tone}`}>{ACCOUNT_STATE_LABEL[account.state]}</span>
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -35,7 +40,36 @@ export function AccountCard({
 }) {
   const [opening, setOpening] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmDisable, setConfirmDisable] = useState(false);
+  /* Shown once and never again: the password is stored as a hash, so this is
+     the only moment it exists in a form anybody can read. */
+  const [issued, setIssued] = useState<string | null>(null);
   const toast = useToast();
+
+  const act = async (what: () => Promise<void>) => {
+    setBusy(true);
+    try {
+      await what();
+      onChanged();
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resetPassword = () =>
+    act(async () => {
+      const out = await api.post<{ password: string }>(`/api/records/${record.id}/account/password`);
+      setIssued(out.password);
+    });
+
+  const setDisabled = (disabled: boolean) =>
+    act(async () => {
+      await api.patch(`/api/records/${record.id}/account`, { disabled });
+      toast(disabled ? `${record.name} can no longer sign in.` : `${record.name} can sign in again.`);
+    });
 
   const invite = async () => {
     setBusy(true);
@@ -77,26 +111,125 @@ export function AccountCard({
             {account.invitedAt && <Line label="Invited" value={formatDate(account.invitedAt)} />}
 
             <p className="faint" style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5 }}>
-              {account.state === 'claimed'
+              {account.state === 'disabled'
+                ? `Closed on ${formatDate(account.disabledAt)}. They cannot sign in, and any session they had ended. Their record, their marks and their organisations are untouched.`
+                : account.state === 'claimed'
                 ? 'They chose their own password. Nobody at CEED can read it, and nobody here can change it.'
                 : account.state === 'invited'
                   ? 'The invitation went out and they have not come yet. Inviting again is a reminder.'
-                  : 'The account is open but nobody has been told. Invite them, or hand the password over yourself.'}
+                    : 'The account is open but nobody has been told. Invite them, or hand the password over yourself.'}
             </p>
 
-            {account.state !== 'claimed' && (
-              <div className="row" style={{ gap: 7 }}>
-                <button className="btn primary sm" disabled={busy} onClick={invite}>
-                  <Icon name="send" size={13} /> {account.state === 'invited' ? 'Invite again' : 'Invite them'}
+            <div className="row wrap" style={{ gap: 7 }}>
+              {account.state !== 'claimed' && account.state !== 'disabled' && (
+                <>
+                  <button className="btn primary sm" disabled={busy} onClick={invite}>
+                    <Icon name="send" size={13} /> {account.state === 'invited' ? 'Invite again' : 'Invite them'}
+                  </button>
+                  <button className="btn sm" onClick={() => setOpening(true)}>
+                    <Icon name="edit" size={13} /> New password
+                  </button>
+                </>
+              )}
+
+              {/* Offered whoever chose the current password, which is the whole
+                  point: the other route refuses to overwrite one its owner
+                  chose, and somebody locked out needs exactly that. */}
+              {account.state === 'claimed' && (
+                <button className="btn sm" disabled={busy} onClick={() => setConfirmReset(true)}>
+                  <Icon name="edit" size={13} /> Reset their password
                 </button>
-                <button className="btn sm" onClick={() => setOpening(true)}>
-                  <Icon name="edit" size={13} /> New password
+              )}
+
+              {account.state === 'disabled' ? (
+                <button className="btn sm" disabled={busy} onClick={() => setDisabled(false)}>
+                  <Icon name="check" size={13} /> Open the account again
                 </button>
-              </div>
-            )}
+              ) : (
+                <button
+                  className="btn ghost sm"
+                  style={{ color: 'var(--stop)' }}
+                  disabled={busy}
+                  onClick={() => setConfirmDisable(true)}
+                >
+                  <Icon name="x" size={13} /> Close the account
+                </button>
+              )}
+            </div>
           </>
         )}
       </div>
+
+      {confirmReset && account && (
+        <ConfirmDialog
+          title={`Reset the password for ${record.name}?`}
+          body="A new one is generated and shown to you once. Theirs stops working immediately, along with any session they had open, and they will be asked to choose another the first time they sign in."
+          confirmLabel="Reset it"
+          onClose={() => setConfirmReset(false)}
+          onConfirm={async () => {
+            setConfirmReset(false);
+            await resetPassword();
+          }}
+        />
+      )}
+
+      {confirmDisable && account && (
+        <ConfirmDialog
+          title={`Close the account for ${record.name}?`}
+          body="They can no longer sign in, and any session they have open ends now. Nothing else goes: their record, the marks they gave and the organisations they belong to are untouched, and you can open it again from here."
+          confirmLabel="Close it"
+          destructive
+          onClose={() => setConfirmDisable(false)}
+          onConfirm={async () => {
+            setConfirmDisable(false);
+            await setDisabled(true);
+          }}
+        />
+      )}
+
+      {/* The one moment this password is readable. It is stored as a hash, so
+          closing this window is the last time anybody sees it — which the
+          window says, rather than leaving it to be discovered. */}
+      {issued && (
+        <Modal
+          title="Their new password"
+          subtitle={`Hand it to ${record.name}. It is not stored anywhere you can read it again.`}
+          onClose={() => setIssued(null)}
+          footer={
+            <>
+              <div className="spacer" />
+              <button className="btn primary" onClick={() => setIssued(null)}>
+                I have it
+              </button>
+            </>
+          }
+        >
+          <div className="stack" style={{ gap: 10 }}>
+            <div className="row" style={{ gap: 8 }}>
+              <code className="input num" style={{ flex: 1, fontSize: 16, letterSpacing: '0.02em' }}>
+                {issued}
+              </code>
+              <button
+                className="btn sm"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(issued);
+                    toast('Copied.');
+                  } catch {
+                    toast('Select it and copy it by hand.', true);
+                  }
+                }}
+              >
+                <Icon name="copy" size={13} /> Copy
+              </button>
+            </div>
+            <p className="faint" style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5 }}>
+              They will be asked to replace it the first time they sign in. Until they do, this password is one you
+              know as well — which is why the account counts as unclaimed again.
+            </p>
+          </div>
+        </Modal>
+      )}
 
       {opening && (
         <OpenAccountModal

@@ -63,13 +63,16 @@ export async function accountForToken(token: string | undefined): Promise<(Accou
     recordId: string;
     mustChangePassword: boolean;
     invitedAt: string | null;
+    disabledAt: string | null;
     staffRole: StaffRole | null;
   }>(
+    // A disabled account's sessions are deleted when it is disabled; this join
+    // carries the date so nothing downstream has to ask a second time.
     `select a.id, a.email, a.record_id as "recordId",
             a.must_change_password as "mustChangePassword", a.invited_at::text as "invitedAt",
-            a.staff_role as "staffRole"
+            a.disabled_at::text as "disabledAt", a.staff_role as "staffRole"
        from sessions s join accounts a on a.id = s.account_id
-      where s.token_hash = $1 and s.expires_at > now()`,
+      where s.token_hash = $1 and s.expires_at > now() and a.disabled_at is null`,
     [fingerprint(token)],
   );
   return rows[0] ?? null;
@@ -96,11 +99,12 @@ export async function findAccount(email: string) {
     passwordHash: string;
     mustChangePassword: boolean;
     invitedAt: string | null;
+    disabledAt: string | null;
     staffRole: StaffRole | null;
   }>(
     `select id, email, record_id as "recordId", password_hash as "passwordHash",
             must_change_password as "mustChangePassword", a.invited_at::text as "invitedAt",
-            a.staff_role as "staffRole"
+            a.disabled_at::text as "disabledAt", a.staff_role as "staffRole"
        from accounts a where email = $1`,
     [normalise(email)],
   );
@@ -146,9 +150,13 @@ export async function setPassword(accountId: string, password: string, keepToken
 export async function accountOfRecord(recordId: string): Promise<RecordAccount | null> {
   const rows = await (
     await db()
-  ).query<{ id: string; email: string; mustChangePassword: boolean; invitedAt: string | null; createdAt: string }>(
+  ).query<{
+    id: string; email: string; mustChangePassword: boolean;
+    invitedAt: string | null; disabledAt: string | null; createdAt: string;
+  }>(
     `select id, email, must_change_password as "mustChangePassword",
-            invited_at::text as "invitedAt", created_at::text as "createdAt"
+            invited_at::text as "invitedAt", disabled_at::text as "disabledAt",
+            created_at::text as "createdAt"
        from accounts where record_id = $1`,
     [recordId],
   );
@@ -159,6 +167,7 @@ export async function accountOfRecord(recordId: string): Promise<RecordAccount |
     email: row.email,
     state: accountStateOf(row),
     invitedAt: row.invitedAt,
+    disabledAt: row.disabledAt,
     createdAt: row.createdAt,
   };
 }
@@ -173,16 +182,21 @@ export async function accountStatesByRecord(): Promise<Map<string, RecordAccount
     email: string;
     mustChangePassword: boolean;
     invitedAt: string | null;
+    disabledAt: string | null;
     createdAt: string;
   }>(
     `select id, record_id as "recordId", email, must_change_password as "mustChangePassword",
-            invited_at::text as "invitedAt", created_at::text as "createdAt"
+            invited_at::text as "invitedAt", disabled_at::text as "disabledAt",
+            created_at::text as "createdAt"
        from accounts`,
   );
   return new Map(
     rows.map((r) => [
       r.recordId,
-      { id: r.id, email: r.email, state: accountStateOf(r), invitedAt: r.invitedAt, createdAt: r.createdAt },
+      {
+        id: r.id, email: r.email, state: accountStateOf(r),
+        invitedAt: r.invitedAt, disabledAt: r.disabledAt, createdAt: r.createdAt,
+      },
     ]),
   );
 }
@@ -227,26 +241,43 @@ export async function setStaffRole(accountId: string, role: StaffRole | null): P
 /** The CEED team, administrators first — the order a settings page reads in. */
 export async function listStaff(): Promise<
   { accountId: string; recordId: string; email: string; role: StaffRole; state: AccountState;
-    invitedAt: string | null; createdAt: string }[]
+    invitedAt: string | null; disabledAt: string | null; createdAt: string }[]
 > {
   const rows = await (
     await db()
   ).query<{
     accountId: string; recordId: string; email: string; role: StaffRole;
-    mustChangePassword: boolean; invitedAt: string | null; createdAt: string;
+    mustChangePassword: boolean; invitedAt: string | null; disabledAt: string | null; createdAt: string;
   }>(
     `select id as "accountId", record_id as "recordId", email, staff_role as "role",
             must_change_password as "mustChangePassword", invited_at::text as "invitedAt",
-            created_at::text as "createdAt"
+            disabled_at::text as "disabledAt", created_at::text as "createdAt"
        from accounts where staff_role is not null`,
   );
   const rank: Record<StaffRole, number> = { admin: 0, editor: 1, observer: 2 };
   return rows
     .map(({ mustChangePassword, ...r }) => ({
       ...r,
-      state: accountStateOf({ mustChangePassword, invitedAt: r.invitedAt }),
+      state: accountStateOf({ mustChangePassword, invitedAt: r.invitedAt, disabledAt: r.disabledAt }),
     }))
     .sort((a, b) => rank[a.role] - rank[b.role] || a.email.localeCompare(b.email));
+}
+
+/**
+ * Closing the way in, or opening it again.
+ *
+ * Not a deletion: the account keeps its email, its history and its record, and
+ * every mark its owner ever gave stays attached to them. Only signing in
+ * stops. Disabling ends the sessions that were already open — otherwise
+ * somebody already signed in keeps working for another fortnight, which is
+ * exactly the case you disable an account for.
+ */
+export async function setAccountDisabled(accountId: string, disabled: boolean): Promise<void> {
+  const client = await db();
+  await client.query('update accounts set disabled_at = ' + (disabled ? 'now()' : 'null') + ' where id = $1', [
+    accountId,
+  ]);
+  if (disabled) await client.query('delete from sessions where account_id = $1', [accountId]);
 }
 
 /** How many administrators CEED has. The workspace is never left without one. */
