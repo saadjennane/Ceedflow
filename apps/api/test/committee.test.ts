@@ -12,6 +12,7 @@ import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
 import { committeeView } from '../src/services/committee.js';
+import { rosterAt } from '../src/services/selection.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
 // One connection for the file: an `after` inside a describe closes it as
@@ -185,5 +186,69 @@ describe('when the time it held has been given away', { skip: skipWithoutServer 
     );
     const atNine = rows.filter((r) => r.assignment.slotIndex === 0);
     assert.equal(atNine.length, 1, 'and only one of them pitches at 09:00');
+  });
+});
+
+describe('where a withdrawn candidacy is still found', { skip: skipWithoutServer }, () => {
+  /* The funnel said 440 and the list under it 436: the intake was filtering
+     out the four that had withdrawn, so searching for one found nothing and
+     the two numbers on one screen disagreed. */
+  const setUp = async () => {
+    const program = await repo.createProgram({ name: 'The Builders' });
+    const edition = await repo.createEdition(program.id, { name: 'Cohorte 1' });
+    const detail = await repo.getEditionDetail(edition.id);
+    const track = detail!.tracks[0];
+    const phase = track.phases[0];
+    const form = await repo.createBlock(phase.id, 'application', 'Formulaire');
+    const committee = await repo.createBlock(phase.id, 'committee', 'Jury Day');
+    await repo.updateBlock(committee.id, { config: { visibility: 'open', assign: true } });
+    const candidacy = async (orgName: string) => {
+      const org = await dir.createRecord({ kind: 'org', name: orgName, origin: 'manual' });
+      return repo.createCandidate({
+        editionId: edition.id, trackId: track.id, orgId: org.id, originBlockId: form.id,
+      });
+    };
+    const gone = await candidacy('Rafid Tech');
+    const staying = await candidacy('Nakhla Bio');
+    return { edition, track, form, committee, gone, staying };
+  };
+
+  it('keeps them in the intake, with the word Withdrawn on them', async () => {
+    const { edition, track, form, gone } = await setUp();
+    await repo.updateCandidate(gone.id, { status: 'Withdrawn' });
+
+    const rows = await rosterAt(edition.id, track.id, form.id);
+    assert.equal(rows.length, 2, 'both applied, and both are still findable');
+    const row = rows.find((r) => r.candidate.id === gone.id)!;
+    assert.equal(row.status?.label, 'Withdrawn', 'said on the row rather than left blank');
+  });
+
+  it('says Withdrawn over whatever a block had said before they left', async () => {
+    // Somebody shortlisted who then pulls out reads as Withdrawn, not as
+    // Shortlisted: the last word on a candidacy that is out is that it is out.
+    const { edition, track, form, gone } = await setUp();
+    await repo.updateCandidate(gone.id, { status: 'Shortlisted' });
+    await repo.updateCandidate(gone.id, { status: 'Withdrawn' });
+
+    const rows = await rosterAt(edition.id, track.id, form.id);
+    assert.equal(rows.find((r) => r.candidate.id === gone.id)!.status?.label, 'Withdrawn');
+  });
+
+  it('leaves them out of the steps after the intake', async () => {
+    const { edition, track, committee, gone } = await setUp();
+    await repo.updateCandidate(gone.id, { status: 'Withdrawn' });
+
+    const rows = await rosterAt(edition.id, track.id, committee.id);
+    assert.equal(rows.length, 1, 'the jury day counts the ones still running');
+    assert.equal(rows[0]!.candidate.id !== gone.id, true);
+  });
+
+  it('gives them their real word back when they are brought back', async () => {
+    const { edition, track, form, gone } = await setUp();
+    await repo.updateCandidate(gone.id, { status: 'Withdrawn' });
+    await repo.updateCandidate(gone.id, { status: 'Applied' });
+
+    const rows = await rosterAt(edition.id, track.id, form.id);
+    assert.equal(rows.find((r) => r.candidate.id === gone.id)!.status?.label, undefined);
   });
 });

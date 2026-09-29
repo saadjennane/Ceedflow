@@ -291,8 +291,14 @@ export async function rosterAt(editionId: string, trackId: string, blockId: stri
   if (index === -1) return [];
   const step = ordered[index];
 
-  const everyone = (await repo.listCandidates(editionId, trackId)).filter((c) => c.status !== 'Withdrawn');
-  let population = everyone;
+  const all = await repo.listCandidates(editionId, trackId);
+  const everyone = all.filter((c) => c.status !== 'Withdrawn');
+  /* A withdrawal is a word a candidacy wears, not an un-application: they did
+     apply, and the intake has to be able to find them again — which is what
+     makes a withdrawal reversible. So the first step counts everybody, and
+     every step after it counts the ones still running. Filtering them out of
+     the intake as well left the funnel saying 440 and the list under it 436. */
+  let population = step.type === 'application' ? all : everyone;
   let carried: RosterRow['status'] | null = null;
 
   if (step.type === 'selection') {
@@ -326,7 +332,12 @@ export async function rosterAt(editionId: string, trackId: string, blockId: stri
 
   return population.map((candidate) => ({
     candidate,
-    status: verdicts.get(candidate.id) ?? carried,
+    // Withdrawn beats whatever a block said before they left: the last word on
+    // a candidacy that is out is that it is out.
+    status:
+      candidate.status === 'Withdrawn'
+        ? { label: 'Withdrawn', tone: 'neutral' as const, from: '', blockId: '' }
+        : (verdicts.get(candidate.id) ?? carried),
     decidesAt,
   }));
 }
