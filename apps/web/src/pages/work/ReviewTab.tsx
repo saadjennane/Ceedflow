@@ -20,7 +20,7 @@ import {
 import { Fragment, useState } from 'react';
 import { api } from '../../lib/api';
 import { formatDate, shortNames } from '../../lib/format';
-import { download, toXlsx, type Cell } from '../../lib/xlsx';
+import { download, toWorkbook, type Cell } from '../../lib/xlsx';
 import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
 import { ConfirmDialog, Modal, useToast } from '../../ui/Overlays';
@@ -410,18 +410,59 @@ function Moment({
 
 
   /**
-   * Every sheet the panels hold, as one table.
+   * The table on the screen, as a spreadsheet: one row per startup, one column
+   * per juror carrying the mark they gave out of a hundred, and the average
+   * beside them.
    *
-   * One row per juror per startup, including the ones nobody has filled in —
-   * an export that only carries what exists answers "what did they say" and
-   * not "who is missing", and on a jury day the second question is the one
-   * being asked. Everything here is already on the screen, so this asks the
-   * server for nothing.
+   * The juror columns are every juror of every sitting, in alphabetical order.
+   * A startup only has marks from the panel it sat on, so the rest of its row
+   * is empty — and finding a name among eighteen columns is what alphabetical
+   * order is for, where the order they were added to a panel says nothing.
    */
-  const exportSheets = () => {
-    if (!scoring) return;
+  const summarySheet = (): Cell[][] => {
+    const byId = new Map<string, PersonRef>();
+    for (const section of sections) for (const person of section.evaluators) byId.set(person.id, person);
+    const jurors = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+
+    const head: Cell[] = ['Séance'];
+    if (running) head.push('Ordre');
+    head.push('Startup', 'Contact');
+    for (const juror of jurors) head.push(juror.name);
+    head.push(voting ? 'Votes' : 'Moyenne (/100)', 'Statut');
+    if (selection) head.push('Décision');
+
+    const rows: Cell[][] = [head];
+    for (const section of sections) {
+      for (const line of section.lines) {
+        const row: Cell[] = [section.name || '—'];
+        if (running) row.push(line.rank || null);
+        row.push(line.candidate.orgName, line.candidate.contactName || '');
+        for (const juror of jurors) {
+          const sheet = line.scoring?.scores.find((x) => x.evaluatorId === juror.id);
+          // Only a mark that counts: a draft is not a reading, and a withdrawn
+          // one is one the average no longer hears either.
+          row.push(sheet && markCounts(sheet) ? (voting ? (outcomes.find((o) => o.id === sheet.verdict)?.label ?? '') : sheet.normalised) : null);
+        }
+        row.push(
+          voting ? '' : (line.scoring?.consensus ?? null),
+          outcomes.find((o) => o.id === line.scoring?.outcomeId)?.label ?? '',
+        );
+        if (selection) row.push(line.decision ? (line.decision.outcome === 'pass' ? passLabel : failLabel) : '');
+        rows.push(row);
+      }
+    }
+    return rows;
+  };
+
+  /**
+   * Every sheet the panels hold, one row per juror per startup — including the
+   * ones nobody has filled in. A table that only carries what exists answers
+   * "what did they say" and not "who is missing", and on a jury day the second
+   * question is the one being asked.
+   */
+  const detailSheet = (): Cell[][] => {
     const marked = criteria;
-    const outOf = scoring.scale === 'stars' ? 5 : scoring.markedOutOf;
+    const outOf = scoring!.scale === 'stars' ? 5 : scoring!.markedOutOf;
 
     const head: Cell[] = ['Séance', 'Date'];
     if (running) head.push('Ordre');
@@ -458,8 +499,21 @@ function Moment({
       }
     }
 
+    return rows;
+  };
+
+  /* Everything in both sheets is already on the screen, so the button asks the
+     server for nothing. */
+  const exportSheets = () => {
+    if (!scoring) return;
     const name = `${evaluation?.name ?? 'Evaluation'} — ${new Date().toISOString().slice(0, 10)}.xlsx`;
-    download(toXlsx(evaluation?.name ?? 'Évaluation', rows), name.replace(/[/\\:*?"<>|]/g, '-'));
+    download(
+      toWorkbook([
+        { name: 'Synthèse', rows: summarySheet() },
+        { name: 'Fiches', rows: detailSheet() },
+      ]),
+      name.replace(/[/\\:*?"<>|]/g, '-'),
+    );
   };
 
   const reload = () => {

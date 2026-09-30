@@ -134,27 +134,63 @@ function ref(column: number, row: number): string {
  * costs a few bytes on repeated words and removes a second file that has to
  * agree with this one.
  */
-export function toXlsx(sheetName: string, rows: Cell[][]): Blob {
-  const body = rows
-    .map((cells, r) => {
-      const written = cells
-        .map((cell, c) => {
-          if (cell === null || cell === '') return '';
-          if (typeof cell === 'number' && Number.isFinite(cell)) {
-            return `<c r="${ref(c, r)}"><v>${cell}</v></c>`;
-          }
-          return `<c r="${ref(c, r)}" t="inlineStr"><is><t xml:space="preserve">${escape(String(cell))}</t></is></c>`;
-        })
-        .join('');
-      return `<row r="${r + 1}">${written}</row>`;
-    })
-    .join('');
+export interface Sheet {
+  name: string;
+  rows: Cell[][];
+}
 
-  const widest = rows.reduce((n, row) => Math.max(n, row.length), 0);
-  const columns = Array.from({ length: widest }, (_, i) => `<col min="${i + 1}" max="${i + 1}" width="18" customWidth="1"/>`).join('');
+/* A sheet name may not carry : \ / ? * [ ] and stops at 31 characters. */
+const sheetName = (name: string, fallback: string) =>
+  name.replace(/[:\\/?*[\]]/g, ' ').slice(0, 31) || fallback;
 
-  // A sheet name may not carry : \ / ? * [ ] and stops at 31 characters.
-  const safeName = sheetName.replace(/[:\\/?*[\]]/g, ' ').slice(0, 31) || 'Sheet1';
+/**
+ * A workbook of one or more sheets, each a grid of cells whose first row is
+ * the headers.
+ *
+ * Strings are written inline rather than through a shared-strings table: it
+ * costs a few bytes on repeated words and removes a second file that has to
+ * agree with this one.
+ */
+export function toWorkbook(sheets: Sheet[]): Blob {
+  const pages = sheets.length ? sheets : [{ name: 'Sheet1', rows: [] }];
+
+  const page = (rows: Cell[][]) => {
+    const body = rows
+      .map((cells, r) => {
+        const written = cells
+          .map((cell, c) => {
+            if (cell === null || cell === '') return '';
+            if (typeof cell === 'number' && Number.isFinite(cell)) {
+              return `<c r="${ref(c, r)}"><v>${cell}</v></c>`;
+            }
+            return `<c r="${ref(c, r)}" t="inlineStr"><is><t xml:space="preserve">${escape(String(cell))}</t></is></c>`;
+          })
+          .join('');
+        return `<row r="${r + 1}">${written}</row>`;
+      })
+      .join('');
+
+    const widest = rows.reduce((n, row) => Math.max(n, row.length), 0);
+    const columns = Array.from(
+      { length: widest },
+      (_, i) => `<col min="${i + 1}" max="${i + 1}" width="18" customWidth="1"/>`,
+    ).join('');
+
+    return (
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
+      /* The schema fixes the order of these: sheetViews, then cols, then the
+         data. Excel refuses the file outright if they come any other way. */
+      `<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` +
+      // Frozen headers, because the first thing anybody does with this file is
+      // scroll past the first screenful of rows.
+      `<cols>${columns}</cols>` +
+      `<sheetData>${body}</sheetData>` +
+      `</worksheet>`
+    );
+  };
+
+  const nth = (i: number) => `xl/worksheets/sheet${i + 1}.xml`;
 
   return zip([
     {
@@ -165,7 +201,12 @@ export function toXlsx(sheetName: string, rows: Cell[][]): Blob {
         `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
         `<Default Extension="xml" ContentType="application/xml"/>` +
         `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
-        `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` +
+        pages
+          .map(
+            (_, i) =>
+              `<Override PartName="/${nth(i)}" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
+          )
+          .join('') +
         `</Types>`,
     },
     {
@@ -182,32 +223,35 @@ export function toXlsx(sheetName: string, rows: Cell[][]): Blob {
         `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
         `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ` +
         `xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
-        `<sheets><sheet name="${escape(safeName)}" sheetId="1" r:id="rId1"/></sheets>` +
-        `</workbook>`,
+        `<sheets>` +
+        pages
+          .map(
+            (s, i) =>
+              `<sheet name="${escape(sheetName(s.name, `Feuille ${i + 1}`))}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`,
+          )
+          .join('') +
+        `</sheets></workbook>`,
     },
     {
       name: 'xl/_rels/workbook.xml.rels',
       text:
         `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
         `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
-        `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>` +
+        pages
+          .map(
+            (_, i) =>
+              `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`,
+          )
+          .join('') +
         `</Relationships>`,
     },
-    {
-      name: 'xl/worksheets/sheet1.xml',
-      text:
-        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
-        `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
-        /* The schema fixes the order of these: sheetViews, then cols, then the
-           data. Excel refuses the file outright if they come any other way. */
-        `<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` +
-        // Frozen headers, because the first thing anybody does with this file
-        // is scroll past the first screenful of rows.
-        `<cols>${columns}</cols>` +
-        `<sheetData>${body}</sheetData>` +
-        `</worksheet>`,
-    },
+    ...pages.map((s, i) => ({ name: nth(i), text: page(s.rows) })),
   ]);
+}
+
+/** One sheet, for the common case. */
+export function toXlsx(name: string, rows: Cell[][]): Blob {
+  return toWorkbook([{ name, rows }]);
 }
 
 /** Hands the file to the browser under a name somebody can find again. */
