@@ -1,4 +1,5 @@
 import {
+  criterionMark,
   funnelMoments,
   markCounts,
   rankAtWork,
@@ -19,6 +20,7 @@ import {
 import { Fragment, useState } from 'react';
 import { api } from '../../lib/api';
 import { formatDate, shortNames } from '../../lib/format';
+import { download, toXlsx, type Cell } from '../../lib/xlsx';
 import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
 import { ConfirmDialog, Modal, useToast } from '../../ui/Overlays';
@@ -406,6 +408,60 @@ function Moment({
   const current = sections.some((x) => x.key === panel) ? panel : (sections[0]?.key ?? null);
   const shown = sections.length > 1 ? sections.filter((x) => x.key === current) : sections;
 
+
+  /**
+   * Every sheet the panels hold, as one table.
+   *
+   * One row per juror per startup, including the ones nobody has filled in —
+   * an export that only carries what exists answers "what did they say" and
+   * not "who is missing", and on a jury day the second question is the one
+   * being asked. Everything here is already on the screen, so this asks the
+   * server for nothing.
+   */
+  const exportSheets = () => {
+    if (!scoring) return;
+    const marked = criteria;
+    const outOf = scoring.scale === 'stars' ? 5 : scoring.markedOutOf;
+
+    const head: Cell[] = ['Séance', 'Date'];
+    if (running) head.push('Ordre');
+    head.push('Startup', 'Contact', 'Juré', 'Statut de la fiche');
+    for (const criterion of marked) {
+      head.push(`${criterion.label} (/${outOf})`);
+      for (const child of criterion.children) head.push(`${criterion.label} · ${child.label}`);
+    }
+    head.push(voting ? 'Verdict' : `Note (/100)`, 'Commentaire', 'Envoyée le');
+
+    const rows: Cell[][] = [head];
+    for (const section of sections) {
+      for (const line of section.lines) {
+        // Every juror of the sitting, not only those who answered.
+        for (const juror of section.evaluators.length ? section.evaluators : [null]) {
+          const sheet = juror ? line.scoring?.scores.find((x) => x.evaluatorId === juror.id) : undefined;
+          const state = !sheet ? 'Pas encore' : sheet.withdrawnAt ? 'Retirée' : sheet.submittedAt ? 'Envoyée' : 'Brouillon';
+          const row: Cell[] = [section.name || '—', section.heldOn ? formatDate(section.heldOn) : ''];
+          if (running) row.push(line.rank || null);
+          row.push(line.candidate.orgName, line.candidate.contactName || '', juror?.name ?? '—', state);
+          for (const criterion of marked) {
+            row.push(sheet ? criterionMark(criterion, sheet.marks) : null);
+            for (const child of criterion.children) row.push(sheet?.marks[child.id] ?? null);
+          }
+          row.push(
+            voting
+              ? (outcomes.find((o) => o.id === sheet?.verdict)?.label ?? '')
+              : (sheet?.normalised ?? null),
+            sheet?.comment ?? '',
+            sheet?.submittedAt ? formatDate(sheet.submittedAt.slice(0, 10)) : '',
+          );
+          rows.push(row);
+        }
+      }
+    }
+
+    const name = `${evaluation?.name ?? 'Evaluation'} — ${new Date().toISOString().slice(0, 10)}.xlsx`;
+    download(toXlsx(evaluation?.name ?? 'Évaluation', rows), name.replace(/[/\\:*?"<>|]/g, '-'));
+  };
+
   const reload = () => {
     view.reload();
     onChanged();
@@ -531,6 +587,11 @@ function Moment({
           </span>
         )}
         <div className="spacer" />
+        {scoring && sections.length > 0 && (
+          <button className="btn sm" onClick={exportSheets} title="Every juror's sheet, as a spreadsheet">
+            <Icon name="file" size={13} /> Export
+          </button>
+        )}
         {/* Nothing to press in the steady state: publishing is for the first
             announcement, and for catching up when the rule has moved since. */}
         {decision && (!decision.published || outOfLine > 0) && (
