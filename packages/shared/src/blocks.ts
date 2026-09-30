@@ -307,6 +307,21 @@ export function brickStatus(
   return config.openedAt ? 'closed' : 'scheduled';
 }
 
+/**
+ * The closing date a door is being held open past, or null.
+ *
+ * Holding a door open ignores the dates, which is the point of the toggle and
+ * what the drawer says in as many words. But a badge reading only "Live" left
+ * a jury day whose closing date had gone by looking like one that was simply
+ * still running, and the only way to find out otherwise was to open the block
+ * and read. This is what a card needs to say so instead.
+ */
+export const heldOpenPast = (
+  config: BrickWindow,
+  today = new Date().toISOString().slice(0, 10),
+): string | null =>
+  config.visibility === 'open' && config.closesAt && config.closesAt < today ? config.closesAt : null;
+
 /** The date to show beside a closed brick: the act if there was one, else the plan. */
 export const brickClosedOn = (config: BrickWindow): string | null =>
   config.visibility === 'closed' ? config.visibilitySetAt : config.closesAt;

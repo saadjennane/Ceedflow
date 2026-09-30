@@ -7,7 +7,16 @@
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { blockAtWork, blockStatus, parseBlockConfig, type Block, type BlockType } from '@ceed/shared';
+import {
+  blockAtWork,
+  blockStatus,
+  brickStatus,
+  heldOpenPast,
+  parseBlockConfig,
+  type Block,
+  type BlockType,
+  type BrickWindow,
+} from '@ceed/shared';
 
 const TODAY = '2026-09-21';
 
@@ -88,5 +97,45 @@ describe('which brick a work screen opens on', () => {
 
   it('has nothing to open when there is nothing', () => {
     assert.equal(blockAtWork([], TODAY), null);
+  });
+});
+
+describe('a door held open past its own closing date', () => {
+  /* Holding a door open ignores the dates — that is what the toggle is for,
+     and the drawer says so. What it must not do is look, from the canvas,
+     exactly like a block that is still inside its window. */
+  const window = (over: Partial<BrickWindow>): BrickWindow =>
+    ({ opensAt: null, closesAt: null, visibility: 'auto', visibilitySetAt: null, openedAt: null, ...over }) as BrickWindow;
+
+  it('names the date when the closing day has gone by', () => {
+    assert.equal(
+      heldOpenPast(window({ visibility: 'open', closesAt: '2026-09-01' }), '2026-09-30'),
+      '2026-09-01',
+    );
+  });
+
+  it('says nothing while the date is still ahead', () => {
+    assert.equal(heldOpenPast(window({ visibility: 'open', closesAt: '2026-12-31' }), '2026-09-30'), null);
+  });
+
+  it('says nothing on the closing day itself', () => {
+    // A brick closes after its last day, not on it.
+    assert.equal(heldOpenPast(window({ visibility: 'open', closesAt: '2026-09-30' }), '2026-09-30'), null);
+  });
+
+  it('says nothing when there is no date to be past', () => {
+    assert.equal(heldOpenPast(window({ visibility: 'open' }), '2026-09-30'), null);
+  });
+
+  it('says nothing about a door the dates are running', () => {
+    // Following its dates, it simply closed. There is nothing to explain.
+    assert.equal(heldOpenPast(window({ visibility: 'auto', closesAt: '2026-09-01' }), '2026-09-30'), null);
+    assert.equal(brickStatus(window({ visibility: 'auto', opensAt: '2026-08-01', closesAt: '2026-09-01' }), true, '2026-09-30'), 'closed');
+  });
+
+  it('leaves the status itself alone: held open still reads live', () => {
+    // The badge is not a lie — the door is open. The chip beside it is what
+    // says the dates are no longer the reason.
+    assert.equal(brickStatus(window({ visibility: 'open', closesAt: '2026-09-01' }), true, '2026-09-30'), 'live');
   });
 });

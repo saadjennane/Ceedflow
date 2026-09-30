@@ -2,8 +2,10 @@ import {
   BRICK_STATUS_LABEL,
   BRICK_STATUS_TONE,
   blockStatus,
+  heldOpenPast,
   orderedBlocks,
   type BrickStatus,
+  type BrickWindow,
   type TrackWithPhases,
 } from '@ceed/shared';
 import type {
@@ -14,7 +16,7 @@ import type {
   SelectionConfig,
   SourcingConfig,
 } from '@ceed/shared';
-import { todayIso } from '../../lib/format';
+import { formatDate, todayIso } from '../../lib/format';
 
 /**
  * The word a brick wears on the canvas. Read at a glance down a phase: what is
@@ -72,6 +74,10 @@ function committeeBehind(block: Block, track?: TrackWithPhases): Block | null {
 
 export function blockLine(block: Block, track?: TrackWithPhases): BlockLine {
   const chips: BlockLine['chips'] = [];
+  /* A door held open past the date meant to shut it says so here, because
+     "Live" alone reads as "still running" and the difference matters. */
+  const past = heldOpenPast(block.config as BrickWindow);
+  if (past) chips.push({ label: `Held open past ${formatDate(past)}`, tone: 'warn' as const });
 
   switch (block.type) {
     case 'sourcing': {
