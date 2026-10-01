@@ -82,7 +82,7 @@ export function DoorToggle({
           <button
             type="button"
             className="linkish"
-            title={`Held ${config.visibility} since ${config.visibilitySetAt}`}
+            title={`Held ${config.visibility}${config.visibilitySetAt ? ` since ${formatDate(config.visibilitySetAt)}` : ''}`}
             onClick={() => patch({ visibility: 'auto', visibilitySetAt: null })}
           >
             Follow the dates
