@@ -45,7 +45,7 @@ export interface SelectionView {
   failCount: number;
 }
 
-function trackOf(tracks: TrackWithPhases[], blockId: string): TrackWithPhases | null {
+export function trackOf(tracks: TrackWithPhases[], blockId: string): TrackWithPhases | null {
   return tracks.find((t) => t.phases.some((p) => p.blocks.some((b) => b.id === blockId))) ?? null;
 }
 

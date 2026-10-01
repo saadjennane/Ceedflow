@@ -22,6 +22,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
+import { deliverablesFor } from '../services/deliverables.js';
 import { panelFor, reviewsFor, whyNoPanel } from '../services/reviews.js';
 import {
   SESSION_COOKIE,
@@ -344,6 +345,56 @@ export async function authRoutes(app: FastifyInstance) {
       }
     }
     return out;
+  });
+
+  /* ---- What a startup still owes ---- */
+
+  /**
+   * The items a candidacy has been asked for, and what it has sent.
+   *
+   * Scoped to the organisations this person belongs to: being able to read a
+   * document request is being able to read who else was asked, and only one
+   * startup's own file is theirs.
+   */
+  app.get('/api/me/deliverables/:candidateId', async (req, reply) => {
+    const account = await require(req);
+    const { candidateId } = req.params as { candidateId: string };
+    const candidate = await repo.getCandidate(candidateId);
+    if (!candidate) return notFound(reply, 'Candidacy not found.');
+    if (!(await dir.orgIdsOf(account.recordId)).has(candidate.orgId)) {
+      return notFound(reply, 'Candidacy not found.');
+    }
+    return deliverablesFor(candidate.editionId, candidate);
+  });
+
+  /** Handing one item in. The brick has to be open, the same as a form does. */
+  app.post('/api/me/deliverables/:candidateId', async (req, reply) => {
+    const account = await require(req);
+    const { candidateId } = req.params as { candidateId: string };
+    const input = parse(z.object({ blockId: z.string(), itemId: z.string(), value: z.unknown() }), req.body);
+
+    const candidate = await repo.getCandidate(candidateId);
+    if (!candidate) return notFound(reply, 'Candidacy not found.');
+    if (!(await dir.orgIdsOf(account.recordId)).has(candidate.orgId)) {
+      return notFound(reply, 'Candidacy not found.');
+    }
+
+    const owed = await deliverablesFor(candidate.editionId, candidate);
+    const asked = owed.find((o) => o.block.id === input.blockId);
+    // Not on this list is the same answer as not existing: a request belongs to
+    // the startups it was made of.
+    if (!asked) return notFound(reply, 'Nothing is being asked of you there.');
+    if (!asked.config.items.some((i) => i.id === input.itemId)) {
+      return notFound(reply, 'That is not one of the things being asked for.');
+    }
+    const block = await repo.getBlock(input.blockId);
+    if (!block || blockStatus(block) !== 'live') {
+      throw new HttpError(403, 'That list is not open. Ask the team if you still need to send something.');
+    }
+
+    await repo.saveReturn(input.blockId, candidateId, input.itemId, input.value ?? null);
+    await repo.claimUploads(candidateId, { [input.itemId]: input.value });
+    return deliverablesFor(candidate.editionId, candidate);
   });
 
   /* ---- Closing your own account ---- */

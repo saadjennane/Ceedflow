@@ -6,6 +6,7 @@ import {
   type Block,
   type Candidate,
   type CommitteeConfig,
+  type DeliverableConfig,
   type EvaluationConfig,
   type SelectionConfig,
   type SourcingConfig,
@@ -20,6 +21,7 @@ import { ConfirmDialog, Drawer, useToast } from '../../ui/Overlays';
 import { APPLICATION_TABS, ApplicationSetup, type ApplicationTab } from './panels/ApplicationPanel';
 import { EVALUATION_TABS, EvaluationSetup, type EvaluationTab } from './panels/EvaluationPanel';
 import { CommitteeSetup, committeeTabs, type CommitteeTab } from './panels/CommitteePanel';
+import { DeliverableSetup } from './panels/DeliverablePanel';
 import { SelectionSetup } from './panels/SelectionPanel';
 import { SOURCING_TABS, SourcingSetup, type SourcingTab } from './panels/SourcingPanel';
 
@@ -31,6 +33,7 @@ const WORK_TAB: Partial<Record<string, { tab: string; label: string }>> = {
   sourcing: { tab: 'outreach', label: 'Outreach' },
   committee: { tab: 'committees', label: 'Committees' },
   evaluation: { tab: 'review', label: 'Review' },
+  deliverable: { tab: 'deliverables', label: 'Deliverables' },
   selection: { tab: 'review', label: 'Review' },
 };
 
@@ -242,6 +245,14 @@ export function BlockDrawer({
         )}
         {block.type === 'selection' && (
           <SelectionSetup block={block} config={draft as unknown as SelectionConfig} patch={patch} track={track} />
+        )}
+        {block.type === 'deliverable' && (
+          <DeliverableSetup
+            config={draft as unknown as DeliverableConfig}
+            patch={patch}
+            status={blockStatus({ ...block, config: draft })}
+            missing={blockMissing({ ...block, config: draft })}
+          />
         )}
         {!meta.implemented && (
           <div className="callout">

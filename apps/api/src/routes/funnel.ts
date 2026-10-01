@@ -23,6 +23,7 @@ import { peopleByIds } from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { SESSION_COOKIE, accountForToken } from '../services/auth.js';
 import { committeeForEvaluation, committeeView } from '../services/committee.js';
+import { deliverableView } from '../services/deliverables.js';
 import { reviewsFor } from '../services/reviews.js';
 import { outcomesByCandidate, outcomesOf, scoresByCandidate, setOutcomeByHand } from '../services/scoring.js';
 import {
@@ -519,6 +520,33 @@ export async function funnelRoutes(app: FastifyInstance) {
     const gone = await repo.deleteScore(id, candidateId, evaluatorId);
     if (!gone) return notFound(reply, 'There is no sheet to clear.');
     reply.code(204);
+  });
+
+  /* ---------------- deliverables ---------------- */
+
+  /**
+   * The whole matrix: who was asked, what was asked of them, what came back.
+   * One shape for both readings the screen offers — by startup and by item —
+   * because two endpoints for one table would eventually disagree.
+   */
+  app.get('/api/blocks/:id/deliverables', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    return (await deliverableView(id)) ?? notFound(reply, 'Deliverables block not found.');
+  });
+
+  /**
+   * CEED recording an item on a startup's behalf — a document handed over at a
+   * meeting, a figure given on the phone. The same act the founder performs on
+   * their own page, so it writes the same row.
+   */
+  app.post('/api/blocks/:id/deliverables/:candidateId', async (req, reply) => {
+    const { id, candidateId } = req.params as { id: string; candidateId: string };
+    const input = parse(z.object({ itemId: z.string(), value: z.unknown() }), req.body);
+    const block = await repo.getBlock(id);
+    if (!block || block.type !== 'deliverable') return notFound(reply, 'Deliverables block not found.');
+    await repo.saveReturn(id, candidateId, input.itemId, input.value ?? null);
+    await repo.claimUploads(candidateId, { [input.itemId]: input.value });
+    return deliverableView(id);
   });
 
   /* ---------------- selection ---------------- */

@@ -2,6 +2,7 @@ import type { TrackWithPhases } from '@ceed/shared';
 import { SourcingOutreach } from '../builder/panels/SourcingPanel';
 import { CommitteeWorkspace } from './CommitteeWorkspace';
 import { ReviewTab } from './ReviewTab';
+import { DeliverableTab } from './DeliverableTab';
 import { WorkspaceShell } from './WorkspaceShell';
 
 /** Runs one kind of work. Configuration stays in the builder. */
@@ -14,7 +15,7 @@ export function WorkTab({
   onOpenWork,
   onChanged,
 }: {
-  tab: 'outreach' | 'committees' | 'review';
+  tab: 'outreach' | 'committees' | 'review' | 'deliverables';
   track: TrackWithPhases;
   currentBlockId: string | null;
   onSelectBlock: (id: string) => void;
@@ -35,6 +36,18 @@ export function WorkTab({
   }
 
   const shared = { track, currentId: currentBlockId, onSelect: onSelectBlock, onOpenSetup };
+
+  if (tab === 'deliverables') {
+    return (
+      <WorkspaceShell
+        {...shared}
+        type="deliverable"
+        empty={{ title: 'No deliverables block', body: 'Add one in the builder to ask for documents and figures.' }}
+      >
+        {(block) => <DeliverableTab block={block} />}
+      </WorkspaceShell>
+    );
+  }
 
   if (tab === 'outreach') {
     return (

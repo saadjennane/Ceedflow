@@ -624,6 +624,12 @@ export async function releaseSlots(candidateId: string): Promise<void> {
   );
 }
 
+/** One candidacy by id, hydrated the way the lists hydrate theirs. */
+export async function getCandidate(id: string): Promise<Candidate | null> {
+  const rows = await all<Candidate>(`${CANDIDATE_SELECT} where c.id = $1`, [id]);
+  return rows[0] ?? null;
+}
+
 export async function updateCandidate(id: string, patch: Record<string, unknown>): Promise<Candidate | null> {
   await patchRow('candidates', id, patch, {
     source: 'source',
@@ -708,6 +714,73 @@ export async function deleteScore(blockId: string, candidateId: string, evaluato
     [blockId, candidateId, evaluatorId],
   );
   return rows.length;
+}
+
+/* ------------------------------------------------------------------ */
+/* Deliverables                                                        */
+/* ------------------------------------------------------------------ */
+
+export interface DeliverableReturn {
+  candidateId: string;
+  itemId: string;
+  value: unknown;
+  returnedAt: string | null;
+  updatedAt: string;
+}
+
+/** Everything handed in against one block, in one query: the screen reads it whole. */
+export async function listReturns(blockId: string): Promise<DeliverableReturn[]> {
+  return all<DeliverableReturn>(
+    `select candidate_id as "candidateId", item_id as "itemId", value,
+            returned_at::text as "returnedAt", updated_at::text as "updatedAt"
+       from deliverable_returns where block_id = $1`,
+    [blockId],
+  );
+}
+
+/** What one startup has handed in, which is what its own page reads. */
+export async function listReturnsFor(blockId: string, candidateId: string): Promise<DeliverableReturn[]> {
+  return all<DeliverableReturn>(
+    `select candidate_id as "candidateId", item_id as "itemId", value,
+            returned_at::text as "returnedAt", updated_at::text as "updatedAt"
+       from deliverable_returns where block_id = $1 and candidate_id = $2`,
+    [blockId, candidateId],
+  );
+}
+
+/**
+ * Records one item. An empty value takes the row away rather than leaving a
+ * blank one behind: an item cleared is an item not handed in, and a row saying
+ * "returned, with nothing in it" would count as given on every screen that
+ * asks who is missing.
+ */
+export async function saveReturn(
+  blockId: string,
+  candidateId: string,
+  itemId: string,
+  value: unknown,
+): Promise<void> {
+  const conn = await db();
+  const empty = value === null || value === undefined || value === '' || (Array.isArray(value) && !value.length);
+  if (empty) {
+    await conn.query('delete from deliverable_returns where block_id = $1 and candidate_id = $2 and item_id = $3', [
+      blockId,
+      candidateId,
+      itemId,
+    ]);
+    return;
+  }
+  await conn.query(
+    `insert into deliverable_returns (block_id, candidate_id, item_id, value, returned_at, updated_at)
+     values ($1, $2, $3, $4, now(), now())
+     on conflict (block_id, candidate_id, item_id) do update
+       set value = excluded.value,
+           -- The first handing-in is the date that matters; a correction later
+           -- does not make the document newly arrived.
+           returned_at = coalesce(deliverable_returns.returned_at, excluded.returned_at),
+           updated_at = now()`,
+    [blockId, candidateId, itemId, value],
+  );
 }
 
 /** What each juror of a sitting has actually sent, so a removal can say what it costs. */

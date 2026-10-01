@@ -30,6 +30,7 @@ export const IMPLEMENTED_BLOCK_TYPES = [
   'evaluation',
   'committee',
   'selection',
+  'deliverable',
 ] as const satisfies readonly BlockType[];
 
 export type ImplementedBlockType = (typeof IMPLEMENTED_BLOCK_TYPES)[number];
@@ -81,7 +82,13 @@ export const BLOCK_TYPE_META: Record<BlockType, BlockTypeMeta> = {
   },
   workshop: { type: 'workshop', label: 'Workshop', blurb: 'Coming later.', icon: 'presentation', implemented: false },
   mentoring: { type: 'mentoring', label: 'Mentoring', blurb: 'Coming later.', icon: 'compass', implemented: false },
-  deliverable: { type: 'deliverable', label: 'Deliverables', blurb: 'Coming later.', icon: 'file', implemented: false },
+  deliverable: {
+    type: 'deliverable',
+    label: 'Deliverables',
+    blurb: 'Ask the startups still in for documents and figures, and follow who has sent what.',
+    icon: 'file',
+    implemented: true,
+  },
   event: { type: 'event', label: 'Event', blurb: 'Coming later.', icon: 'calendar', implemented: false },
   campaign: { type: 'campaign', label: 'Campaign', blurb: 'Coming later.', icon: 'send', implemented: false },
   meeting: { type: 'meeting', label: 'Meeting', blurb: 'Coming later.', icon: 'users', implemented: false },
@@ -823,12 +830,34 @@ export const selectionConfigSchema = z.object({
   publishedAt: z.string().nullable().default(null),
 });
 
+/**
+ * Something asked of a startup that is already in.
+ *
+ * It reuses the form's field shape on purpose: a due diligence asks for
+ * documents and for figures — the effectif at the 31st, an IBAN, the name of
+ * an auditor — and the medium is a property of the item, not a different kind
+ * of thing. Reusing the vocabulary means the founder's side already knows how
+ * to draw every one of them.
+ *
+ * What it does not reuse is the rest of a form: no pages, no sections, no
+ * eligibility. A form is put once to people nobody knows yet; this is followed
+ * item by item with a population that is known, and the tracking is the
+ * subject.
+ */
+export const deliverableConfigSchema = z.object({
+  ...brickWindowFields,
+  /** What the startups are told when they open their list. */
+  intro: z.string().default(''),
+  items: z.array(formFieldSchema).default([]),
+});
+
 export const blockConfigSchemas = {
   sourcing: sourcingConfigSchema,
   application: applicationConfigSchema,
   evaluation: evaluationConfigSchema,
   committee: committeeConfigSchema,
   selection: selectionConfigSchema,
+  deliverable: deliverableConfigSchema,
 } as const;
 
 export type SourcingConfig = z.infer<typeof sourcingConfigSchema>;
@@ -836,6 +865,7 @@ export type ApplicationConfig = z.infer<typeof applicationConfigSchema>;
 export type EvaluationConfig = z.infer<typeof evaluationConfigSchema>;
 export type CommitteeConfig = z.infer<typeof committeeConfigSchema>;
 export type SelectionConfig = z.infer<typeof selectionConfigSchema>;
+export type DeliverableConfig = z.infer<typeof deliverableConfigSchema>;
 
 export type BlockConfigMap = {
   sourcing: SourcingConfig;
@@ -843,6 +873,7 @@ export type BlockConfigMap = {
   evaluation: EvaluationConfig;
   committee: CommitteeConfig;
   selection: SelectionConfig;
+  deliverable: DeliverableConfig;
 };
 
 export type AnyBlockConfig = BlockConfigMap[ImplementedBlockType] | Record<string, unknown>;
@@ -901,6 +932,8 @@ export function blockConfigured(
       if (door === 'rsvp') return c.rsvpMode !== 'none' && sittings > 0;
       return sittings > 0;
     }
+    case 'deliverable':
+      return (block.config as DeliverableConfig).items.length > 0;
     default:
       return true;
   }
@@ -951,6 +984,7 @@ export function blockMissing(
     return (block.config as EvaluationConfig).method === 'verdict' ? 'Name a status' : 'Add a criterion';
   }
   if (block.type === 'committee') return 'Create a sitting';
+  if (block.type === 'deliverable') return 'Ask for something';
   return null;
 }
 

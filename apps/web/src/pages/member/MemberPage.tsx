@@ -12,6 +12,7 @@ import { Modal, useToast } from '../../ui/Overlays';
 import '../../ui/builder.css';
 import '../../ui/directory.css';
 import { initials } from '../directory/DirectoryPage';
+import { OwedItems } from './OwedItems';
 import { TeamModal } from './TeamPanel';
 
 /**
@@ -407,6 +408,12 @@ function Programs({ programs }: { programs: AsyncState<MyProgram[]> }) {
                 ))}
               </div>
             )}
+
+            {/* Anything CEED is still waiting on, under the programme asking
+                for it. It draws nothing when nothing is owed. */}
+            {p.mine.map((c) => (
+              <OwedItems key={`owed-${c.id}`} candidateId={c.id} orgName={c.orgName} />
+            ))}
 
             {p.applyUrl && !p.mine.length && (
               <a className="btn primary sm" style={{ alignSelf: 'flex-start' }} href={p.applyUrl}>

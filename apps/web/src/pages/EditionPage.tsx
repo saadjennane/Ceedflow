@@ -14,7 +14,7 @@ import { WorkTab } from './work/WorkTab';
 import '../ui/builder.css';
 import '../ui/programs.css';
 
-type Tab = 'builder' | 'startups' | 'outreach' | 'committees' | 'review';
+type Tab = 'builder' | 'startups' | 'outreach' | 'committees' | 'review' | 'deliverables';
 
 /**
  * The builder composes the workflow; these run it. A work tab only appears when
@@ -25,10 +25,11 @@ const WORK_TABS: { key: Tab; label: string; types: BlockType[] }[] = [
   { key: 'committees', label: 'Committees', types: ['committee'] },
   // Measuring and cutting are one moment of the funnel, so they are one screen.
   { key: 'review', label: 'Review', types: ['evaluation', 'selection'] },
+  { key: 'deliverables', label: 'Deliverables', types: ['deliverable'] },
 ];
 
 /** Still to build. They stay visible and inert so the shape of the product reads. */
-const LATER_TABS = ['Activities', 'Deliverables', 'Reports', 'Settings'];
+const LATER_TABS = ['Activities', 'Reports', 'Settings'];
 
 export function EditionPage() {
   const { editionId = '' } = useParams();
