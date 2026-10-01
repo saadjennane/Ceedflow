@@ -549,6 +549,35 @@ export async function funnelRoutes(app: FastifyInstance) {
     return deliverableView(id);
   });
 
+  /**
+   * Reading one thing that was handed in: in order, or to be sent again.
+   *
+   * A refusal carries its reason, because "send it again" with nothing else
+   * attached is how a file goes round twice. Sending something again puts it
+   * back to unread, which the saving does on its own — a refusal that survived
+   * the answer to it would leave a file refused for a reason already dealt
+   * with.
+   */
+  app.post('/api/blocks/:id/deliverables/:candidateId/review', async (req, reply) => {
+    const { id, candidateId } = req.params as { id: string; candidateId: string };
+    const input = parse(
+      z.object({
+        itemId: z.string(),
+        state: z.enum(['received', 'accepted', 'rejected']),
+        reason: z.string().default(''),
+      }),
+      req.body,
+    );
+    if (input.state === 'rejected' && !input.reason.trim()) {
+      throw new HttpError(422, 'Say why it has to be sent again.', { reason: 'They need to know what to fix.' });
+    }
+    const block = await repo.getBlock(id);
+    if (!block || block.type !== 'deliverable') return notFound(reply, 'Deliverables block not found.');
+    const found = await repo.reviewReturn(id, candidateId, input.itemId, input.state, input.reason.trim());
+    if (!found) return notFound(reply, 'There is nothing there to read yet.');
+    return deliverableView(id);
+  });
+
   /* ---------------- selection ---------------- */
 
   app.get('/api/blocks/:id/selection', async (req, reply) => {

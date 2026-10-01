@@ -720,11 +720,17 @@ export async function deleteScore(blockId: string, candidateId: string, evaluato
 /* Deliverables                                                        */
 /* ------------------------------------------------------------------ */
 
+export type ReturnState = 'received' | 'accepted' | 'rejected';
+
 export interface DeliverableReturn {
   candidateId: string;
   itemId: string;
   value: unknown;
+  state: ReturnState;
+  /** Why it was refused, in the words of whoever refused it. */
+  reason: string;
   returnedAt: string | null;
+  reviewedAt: string | null;
   updatedAt: string;
 }
 
@@ -732,7 +738,8 @@ export interface DeliverableReturn {
 export async function listReturns(blockId: string): Promise<DeliverableReturn[]> {
   return all<DeliverableReturn>(
     `select candidate_id as "candidateId", item_id as "itemId", value,
-            returned_at::text as "returnedAt", updated_at::text as "updatedAt"
+            state, reason, returned_at::text as "returnedAt",
+            reviewed_at::text as "reviewedAt", updated_at::text as "updatedAt"
        from deliverable_returns where block_id = $1`,
     [blockId],
   );
@@ -742,7 +749,8 @@ export async function listReturns(blockId: string): Promise<DeliverableReturn[]>
 export async function listReturnsFor(blockId: string, candidateId: string): Promise<DeliverableReturn[]> {
   return all<DeliverableReturn>(
     `select candidate_id as "candidateId", item_id as "itemId", value,
-            returned_at::text as "returnedAt", updated_at::text as "updatedAt"
+            state, reason, returned_at::text as "returnedAt",
+            reviewed_at::text as "reviewedAt", updated_at::text as "updatedAt"
        from deliverable_returns where block_id = $1 and candidate_id = $2`,
     [blockId, candidateId],
   );
@@ -778,9 +786,43 @@ export async function saveReturn(
            -- The first handing-in is the date that matters; a correction later
            -- does not make the document newly arrived.
            returned_at = coalesce(deliverable_returns.returned_at, excluded.returned_at),
+           -- Something sent again is something to read again. A refusal that
+           -- survived the answer to it would leave a file refused for a reason
+           -- that has been dealt with.
+           state = 'received',
+           reason = '',
+           reviewed_at = null,
            updated_at = now()`,
     [blockId, candidateId, itemId, value],
   );
+}
+
+/**
+ * Reading one thing that was handed in.
+ *
+ * Only on something that exists: accepting a document nobody sent would put a
+ * file in order on the strength of nothing.
+ */
+export async function reviewReturn(
+  blockId: string,
+  candidateId: string,
+  itemId: string,
+  state: ReturnState,
+  reason: string,
+): Promise<boolean> {
+  const rows = await (
+    await db()
+  ).query<{ item_id: string }>(
+    `update deliverable_returns
+        set state = $4,
+            reason = case when $4 = 'rejected' then $5 else '' end,
+            reviewed_at = case when $4 = 'received' then null else now() end,
+            updated_at = now()
+      where block_id = $1 and candidate_id = $2 and item_id = $3
+      returning item_id`,
+    [blockId, candidateId, itemId, state, reason],
+  );
+  return rows.length > 0;
 }
 
 /** What each juror of a sitting has actually sent, so a removal can say what it costs. */

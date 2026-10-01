@@ -9,11 +9,14 @@ import { useToast } from '../../ui/Overlays';
 interface Owed {
   block: { id: string; name: string };
   config: DeliverableConfig;
-  returns: { itemId: string; value: unknown; returnedAt: string | null }[];
+  returns: {
+    itemId: string;
+    value: unknown;
+    state: 'received' | 'accepted' | 'rejected';
+    reason: string;
+    returnedAt: string | null;
+  }[];
 }
-
-const given = (value: unknown) =>
-  !(value === null || value === undefined || value === '' || (Array.isArray(value) && !value.length));
 
 /**
  * What a startup still owes, on its own page.
@@ -42,7 +45,11 @@ export function OwedItems({ candidateId, orgName }: { candidateId: string; orgNa
     <>
       {owed.data.map((ask) => {
         const need = ask.config.items.filter((i) => i.required);
-        const done = need.filter((i) => given(ask.returns.find((r) => r.itemId === i.id)?.value)).length;
+        const mineOf = (id: string) => ask.returns.find((r) => r.itemId === id);
+        // Accepted, not merely sent: what they want to know is whether they
+        // are done, and a document waiting to be read is not done.
+        const done = need.filter((i) => mineOf(i.id)?.state === 'accepted').length;
+        const back = ask.returns.filter((r) => r.state === 'rejected');
 
         return (
           <section className="card card-pad stack" key={ask.block.id} style={{ gap: 12 }}>
@@ -65,9 +72,24 @@ export function OwedItems({ candidateId, orgName }: { candidateId: string; orgNa
               </div>
             )}
 
+            {/* Said once at the top as well as on each item: somebody coming
+                back to this page wants to know whether anything is waiting on
+                them before reading the whole list. */}
+            {back.length > 0 && (
+              <div className="callout warn">
+                <Icon name="alert" size={15} />
+                <div>
+                  <strong>
+                    {back.length === 1 ? 'One thing has to be sent again.' : `${back.length} things have to be sent again.`}
+                  </strong>{' '}
+                  What to fix is written under each one.
+                </div>
+              </div>
+            )}
+
             <div className="stack" style={{ gap: 14 }}>
               {ask.config.items.map((item) => {
-                const mine = ask.returns.find((r) => r.itemId === item.id);
+                const mine = mineOf(item.id);
                 return (
                   <div key={item.id}>
                     <FormFieldInput
@@ -76,12 +98,23 @@ export function OwedItems({ candidateId, orgName }: { candidateId: string; orgNa
                       onChange={(v) => void save(ask.block.id, item.id, v)}
                     />
                     {/* Said back, because the thing people want to know after
-                        sending a document is whether it arrived. */}
-                    {mine?.returnedAt && (
-                      <div className="faint" style={{ fontSize: 12, marginTop: 3 }}>
-                        <Icon name="check" size={12} /> Received {formatDate(mine.returnedAt.slice(0, 10))}
+                        sending a document is what became of it. */}
+                    {mine?.state === 'rejected' ? (
+                      <div className="callout warn" style={{ marginTop: 5 }}>
+                        <Icon name="alert" size={14} />
+                        <div style={{ fontSize: 12.5 }}>
+                          <strong>To send again.</strong> {mine.reason}
+                        </div>
                       </div>
-                    )}
+                    ) : mine?.state === 'accepted' ? (
+                      <div style={{ fontSize: 12, marginTop: 3, color: 'var(--ok)' }}>
+                        <Icon name="check" size={12} /> Accepted
+                      </div>
+                    ) : mine?.returnedAt ? (
+                      <div className="faint" style={{ fontSize: 12, marginTop: 3 }}>
+                        Sent {formatDate(mine.returnedAt.slice(0, 10))} — waiting to be read
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}

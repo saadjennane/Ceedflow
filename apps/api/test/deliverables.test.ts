@@ -57,18 +57,61 @@ describe('what a deliverables block asks, and of whom', { skip: skipWithoutServe
     const before = (await deliverableView(due.id))!.rows[0]!;
     assert.equal(before.required, 2, 'two of the three hold the file open');
     assert.equal(before.done, 0);
-    assert.equal(before.complete, false);
 
     await repo.saveReturn(due.id, kept.id, 'cac', 'Cabinet Atlas');
-    const optional = (await deliverableView(due.id))!.rows[0]!;
-    assert.equal(optional.done, 0, 'an optional answer moves nothing');
-    assert.equal(optional.complete, false);
+    assert.equal((await deliverableView(due.id))!.rows[0]!.done, 0, 'an optional answer moves nothing');
 
     await repo.saveReturn(due.id, kept.id, 'rc', { uploadId: 'up_1', filename: 'rc.pdf' });
     await repo.saveReturn(due.id, kept.id, 'nb', 12);
     const done = (await deliverableView(due.id))!.rows[0]!;
-    assert.equal(done.done, 2);
-    assert.equal(done.complete, true, 'the file is complete without the optional one');
+    assert.equal(done.done, 2, 'both required ones have arrived');
+  });
+
+  it('is not complete until somebody has read it', async () => {
+    /* The distinction the whole second half of this brick exists for: a file
+       nobody has opened is not a file in order, and the selection downstream
+       reads `complete`. */
+    const { due, kept } = await setUp();
+    await repo.saveReturn(due.id, kept.id, 'rc', { uploadId: 'up_1', filename: 'rc.pdf' });
+    await repo.saveReturn(due.id, kept.id, 'nb', 12);
+    const arrived = (await deliverableView(due.id))!.rows[0]!;
+    assert.equal(arrived.done, 2, 'everything asked for is in');
+    assert.equal(arrived.accepted, 0);
+    assert.equal(arrived.complete, false, 'and the file is still not in order');
+
+    await repo.reviewReturn(due.id, kept.id, 'rc', 'accepted', '');
+    assert.equal((await deliverableView(due.id))!.rows[0]!.complete, false, 'one of two is not two');
+
+    await repo.reviewReturn(due.id, kept.id, 'nb', 'accepted', '');
+    const read = (await deliverableView(due.id))!.rows[0]!;
+    assert.equal(read.accepted, 2);
+    assert.equal(read.complete, true, 'the optional one was never in the way');
+  });
+
+  it('puts something sent back to unread when it is sent again', async () => {
+    // A refusal that survived the answer to it would leave a file refused for
+    // a reason that has been dealt with.
+    const { due, kept } = await setUp();
+    await repo.saveReturn(due.id, kept.id, 'rc', { uploadId: 'up_1', filename: 'old.pdf' });
+    await repo.reviewReturn(due.id, kept.id, 'rc', 'rejected', 'Le registre date de 2024.');
+
+    const sent = (await deliverableView(due.id))!.rows[0]!;
+    assert.equal(sent.returns[0]!.state, 'rejected');
+    assert.equal(sent.returns[0]!.reason, 'Le registre date de 2024.');
+    assert.equal(sent.rejected, 1, 'the file says what it owes');
+
+    await repo.saveReturn(due.id, kept.id, 'rc', { uploadId: 'up_2', filename: 'new.pdf' });
+    const again = (await deliverableView(due.id))!.rows[0]!;
+    assert.equal(again.returns[0]!.state, 'received', 'back to be read');
+    assert.equal(again.returns[0]!.reason, '', 'and the old reason goes with it');
+    assert.equal(again.rejected, 0);
+  });
+
+  it('refuses to read something nobody sent', async () => {
+    // Accepting a document that does not exist would put a file in order on
+    // the strength of nothing.
+    const { due, kept } = await setUp();
+    assert.equal(await repo.reviewReturn(due.id, kept.id, 'rc', 'accepted', ''), false);
   });
 
   it('takes an answer back out when it is cleared', async () => {

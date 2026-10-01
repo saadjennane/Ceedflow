@@ -4,18 +4,26 @@ import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
+import { Modal, useToast } from '../../ui/Overlays';
 import { download, toWorkbook, type Cell } from '../../lib/xlsx';
+
+type State = 'received' | 'accepted' | 'rejected';
 
 interface ReturnView {
   itemId: string;
   value: unknown;
+  state: State;
+  reason: string;
   returnedAt: string | null;
+  reviewedAt: string | null;
 }
 
 interface Row {
   candidate: Candidate;
   returns: ReturnView[];
   done: number;
+  accepted: number;
+  rejected: number;
   required: number;
   complete: boolean;
 }
@@ -46,6 +54,76 @@ function Given({ value }: { value: unknown }) {
 }
 
 /**
+ * One thing handed in, with what CEED made of it.
+ *
+ * The two buttons only appear on something nobody has read yet. Once a cell
+ * has been judged it says so and offers the way back instead — a row of
+ * identical controls on every cell would make a read file look exactly like
+ * an unread one, which is the distinction this whole screen is for.
+ */
+function Cell({
+  got,
+  onAccept,
+  onSendBack,
+  onReopen,
+}: {
+  got: ReturnView | undefined;
+  onAccept: () => void;
+  onSendBack: () => void;
+  onReopen: () => void;
+}) {
+  if (!got || !given(got.value)) return <span className="faint">—</span>;
+
+  if (got.state === 'accepted') {
+    return (
+      <span className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
+        <Given value={got.value} />
+        <button
+          className="btn ghost icon sm"
+          title="Accepted — put it back to unread"
+          aria-label="Put back to unread"
+          style={{ color: 'var(--ok)' }}
+          onClick={onReopen}
+        >
+          <Icon name="check" size={13} />
+        </button>
+      </span>
+    );
+  }
+
+  if (got.state === 'rejected') {
+    return (
+      <span className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
+        <span className="faint" style={{ textDecoration: 'line-through' }}>
+          <Given value={got.value} />
+        </span>
+        <span className="badge warn" title={got.reason}>
+          Sent back
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <span className="row" style={{ gap: 4, justifyContent: 'flex-end' }}>
+      <Given value={got.value} />
+      <button className="btn ghost icon sm" title="In order" aria-label="Accept" onClick={onAccept}>
+        <Icon name="check" size={13} />
+      </button>
+      <button
+        className="btn ghost icon sm"
+        title="Send it back"
+        aria-label="Send it back"
+        style={{ color: 'var(--stop)' }}
+        onClick={onSendBack}
+      >
+        <Icon name="x" size={13} />
+      </button>
+    </span>
+  );
+}
+
+/**
  * Who has sent what.
  *
  * The same matrix, read along either axis: by startup to ask whether a file is
@@ -56,6 +134,23 @@ function Given({ value }: { value: unknown }) {
 export function DeliverableTab({ block }: { block: Block }) {
   const view = useAsync(() => api.get<View>(`/api/blocks/${block.id}/deliverables`), block.id);
   const [by, setBy] = useState<'startup' | 'item'>('startup');
+  const [sendingBack, setSendingBack] = useState<{ row: Row; item: FormField } | null>(null);
+  const [reason, setReason] = useState('');
+  const toast = useToast();
+
+  const review = async (candidateId: string, itemId: string, state: State, why = '') => {
+    try {
+      view.set(
+        await api.post<View>(`/api/blocks/${block.id}/deliverables/${candidateId}/review`, {
+          itemId,
+          state,
+          reason: why,
+        }),
+      );
+    } catch (err) {
+      toast((err as Error).message, true);
+    }
+  };
 
   if (view.error) return <div className="empty">{view.error}</div>;
   if (!view.data) return <div className="empty" style={{ padding: 40 }} />;
@@ -155,15 +250,33 @@ export function DeliverableTab({ block }: { block: Block }) {
                 <tr key={row.candidate.id}>
                   <td className="name">{row.candidate.orgName}</td>
                   <td>
+                    {/* Accepted over required, because a file nobody has read
+                        is not a file in order. What merely arrived is said
+                        beside it, in the quieter tone. */}
                     <span className={row.complete ? 'badge ok num' : 'badge num'}>
-                      {row.done}/{row.required}
+                      {row.accepted}/{row.required}
                     </span>
+                    {row.rejected > 0 && (
+                      <span className="badge warn num" style={{ marginLeft: 5 }}>
+                        {row.rejected} back
+                      </span>
+                    )}
                   </td>
                   {items.map((item) => {
                     const got = valueOf(row, item.id);
                     return (
-                      <td key={item.id} className="muted" title={got?.returnedAt ? formatDate(got.returnedAt.slice(0, 10)) : undefined}>
-                        <Given value={got?.value} />
+                      <td
+                        key={item.id}
+                        className="muted"
+                        style={{ textAlign: 'right' }}
+                        title={got?.returnedAt ? `Sent ${formatDate(got.returnedAt.slice(0, 10))}` : undefined}
+                      >
+                        <Cell
+                          got={got}
+                          onAccept={() => void review(row.candidate.id, item.id, 'accepted')}
+                          onSendBack={() => { setReason(''); setSendingBack({ row, item }); }}
+                          onReopen={() => void review(row.candidate.id, item.id, 'received')}
+                        />
                       </td>
                     );
                   })}
@@ -210,8 +323,13 @@ export function DeliverableTab({ block }: { block: Block }) {
                         <span className="faint" style={{ fontSize: 12, flexShrink: 0 }}>
                           {got?.returnedAt ? formatDate(got.returnedAt.slice(0, 10)) : ''}
                         </span>
-                        <span style={{ fontSize: 13, textAlign: 'right', minWidth: 90 }}>
-                          <Given value={got?.value} />
+                        <span style={{ fontSize: 13, textAlign: 'right', minWidth: 160 }}>
+                          <Cell
+                            got={got}
+                            onAccept={() => void review(row.candidate.id, item.id, 'accepted')}
+                            onSendBack={() => { setReason(''); setSendingBack({ row, item }); }}
+                            onReopen={() => void review(row.candidate.id, item.id, 'received')}
+                          />
                         </span>
                       </div>
                     );
@@ -226,6 +344,47 @@ export function DeliverableTab({ block }: { block: Block }) {
             );
           })}
         </div>
+      )}
+
+      {/* A reason is asked for, not offered: "send it again" with nothing
+          attached is how a file goes round twice. */}
+      {sendingBack && (
+        <Modal
+          title={`Send ${sendingBack.item.label || 'this'} back to ${sendingBack.row.candidate.orgName}?`}
+          subtitle="They see what you write here, and sending it again puts it back to unread."
+          onClose={() => setSendingBack(null)}
+          footer={
+            <>
+              <div className="spacer" />
+              <button className="btn ghost" onClick={() => setSendingBack(null)}>
+                Cancel
+              </button>
+              <button
+                className="btn primary"
+                disabled={!reason.trim()}
+                onClick={async () => {
+                  const { row, item } = sendingBack;
+                  setSendingBack(null);
+                  await review(row.candidate.id, item.id, 'rejected', reason.trim());
+                }}
+              >
+                Send it back
+              </button>
+            </>
+          }
+        >
+          <div className="field">
+            <label>What has to be fixed</label>
+            <textarea
+              className="textarea"
+              rows={3}
+              autoFocus
+              value={reason}
+              placeholder="The registre is from 2024 — we need one less than three months old."
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </div>
+        </Modal>
       )}
     </div>
   );
