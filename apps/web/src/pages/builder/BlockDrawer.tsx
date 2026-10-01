@@ -21,7 +21,7 @@ import { ConfirmDialog, Drawer, useToast } from '../../ui/Overlays';
 import { APPLICATION_TABS, ApplicationSetup, type ApplicationTab } from './panels/ApplicationPanel';
 import { EVALUATION_TABS, EvaluationSetup, type EvaluationTab } from './panels/EvaluationPanel';
 import { CommitteeSetup, committeeTabs, type CommitteeTab } from './panels/CommitteePanel';
-import { DeliverableSetup } from './panels/DeliverablePanel';
+import { DELIVERABLE_TABS, DeliverableSetup, type DeliverableTab } from './panels/DeliverablePanel';
 import { SelectionSetup } from './panels/SelectionPanel';
 import { SOURCING_TABS, SourcingSetup, type SourcingTab } from './panels/SourcingPanel';
 
@@ -71,6 +71,11 @@ export function BlockDrawer({
   const [confirm, setConfirm] = useState(false);
   const [appTab, setAppTab] = useState<ApplicationTab>('Overview');
   const [evalTab, setEvalTab] = useState<EvaluationTab>('Overview');
+  /* Opening a deliverables block from its own tab is nearly always about the
+     list, the same way a committee's setup is nearly always about its panels. */
+  const [delivTab, setDelivTab] = useState<DeliverableTab>(
+    currentTab === 'deliverables' ? 'What you ask for' : 'Overview',
+  );
   // Opening a committee's setup from the Committees tab is nearly always about
   // its panels, so that is where it lands.
   const [commTab, setCommTab] = useState<CommitteeTab>(currentTab === 'committees' ? 'Panels' : 'Overview');
@@ -170,6 +175,17 @@ export function BlockDrawer({
                       {t}
                     </button>
                   ))
+                : block.type === 'deliverable'
+                ? DELIVERABLE_TABS.map((t) => (
+                    <button
+                      key={t}
+                      role="tab"
+                      className={t === delivTab ? 'tab on' : 'tab'}
+                      onClick={() => setDelivTab(t)}
+                    >
+                      {t}
+                    </button>
+                  ))
                 : block.type === 'committee'
                 ? commTabs.map((t) => (
                     <button
@@ -250,6 +266,7 @@ export function BlockDrawer({
           <DeliverableSetup
             config={draft as unknown as DeliverableConfig}
             patch={patch}
+            tab={delivTab}
             status={blockStatus({ ...block, config: draft })}
             missing={blockMissing({ ...block, config: draft })}
           />

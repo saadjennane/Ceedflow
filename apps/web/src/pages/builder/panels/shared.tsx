@@ -22,6 +22,7 @@ import {
 } from '@ceed/shared';
 import { useState } from 'react';
 import { api } from '../../../lib/api';
+import { formatDate } from '../../../lib/format';
 import { SelectField, TextField } from '../../../ui/Field';
 import { GridMarks } from '../../../ui/GridMarks';
 import { Icon } from '../../../ui/Icon';
@@ -135,7 +136,13 @@ export function VisibilityControl({
           {empty
             ? 'A door needs something behind it and a date before it can open.'
             : overridden
-              ? `${config.visibility === 'open' ? 'Held open' : 'Held closed'} since ${config.visibilitySetAt}, whatever the dates say.`
+              ? /* The date is stamped by the toggle, so it is there whenever a
+                   person did this. A config written any other way — an import,
+                   a fixture — has none, and "since null" reads as a broken
+                   door rather than as a missing date. */
+                `${config.visibility === 'open' ? 'Held open' : 'Held closed'}${
+                  config.visibilitySetAt ? ` since ${formatDate(config.visibilitySetAt)}` : ''
+                }, whatever the dates say.`
               : config.opensAt || config.closesAt
                 ? 'Following the dates above.'
                 : 'No dates, so nothing opens it on its own — use the toggle.'}

@@ -1,7 +1,13 @@
 import { FIELD_TYPE_LABEL, FIELD_TYPES, idOf, type DeliverableConfig, type FormField } from '@ceed/shared';
 import { Icon } from '../../../ui/Icon';
-import { TextField } from '../../../ui/Field';
+import { DateField, TextField } from '../../../ui/Field';
 import { VisibilityControl } from './shared';
+
+/* Two sides to set up, so two tabs: when the list is open, and what is on it.
+   A dozen documents under the dates made the dates hard to find and the list
+   hard to read. */
+export const DELIVERABLE_TABS = ['Overview', 'What you ask for'] as const;
+export type DeliverableTab = (typeof DELIVERABLE_TABS)[number];
 
 /* ------------------------------------------------------------------ */
 /* Setup                                                               */
@@ -20,11 +26,13 @@ export function DeliverableSetup({
   patch,
   status,
   missing,
+  tab = 'Overview',
 }: {
   config: DeliverableConfig;
   patch: (partial: Partial<DeliverableConfig>) => void;
   status: Parameters<typeof VisibilityControl>[0]['status'];
   missing?: string | null;
+  tab?: DeliverableTab;
 }) {
   const setItem = (id: string, partial: Partial<FormField>) =>
     patch({ items: config.items.map((item) => (item.id === id ? { ...item, ...partial } : item)) });
@@ -46,55 +54,64 @@ export function DeliverableSetup({
       ],
     });
 
-  return (
-    <>
-      <div className="callout">
-        <Icon name="file" size={15} />
-        <div>
-          Ask the startups still in for what a file needs — the documents and the figures both. Only those that passed
-          the selection before this block are asked, and each one sees nothing but its own list.
+  if (tab === 'Overview') {
+    return (
+      <>
+        <div className="callout">
+          <Icon name="file" size={15} />
+          <div>
+            Ask the startups still in for what a file needs — the documents and the figures both. Only those that
+            passed the selection before this block are asked, and each one sees nothing but its own list.
+          </div>
         </div>
-      </div>
 
-      <VisibilityControl
+        <div className="grid-2">
+          <DateField label="Opens on" value={config.opensAt} onChange={(v) => patch({ opensAt: v })} />
+          <DateField label="Closes on" value={config.closesAt} onChange={(v) => patch({ closesAt: v })} />
+        </div>
+
+        <VisibilityControl
         config={config}
         patch={patch}
         status={status}
         missing={missing}
-        what={{
-          open: 'Startups can send what is asked',
-          closed: 'The list is shut — nothing more can be sent',
-          notOpen: 'Not open yet',
-          empty: 'Ask for something first',
-        }}
-      />
+          what={{
+            open: 'Startups can send what is asked',
+            closed: 'The list is shut — nothing more can be sent',
+            notOpen: 'Not open yet',
+            empty: 'Ask for something first',
+          }}
+        />
 
-      <TextField
-        label="What they are told"
-        value={config.intro}
-        onChange={(v) => patch({ intro: v })}
-        placeholder="Please send the documents below before 15 November."
-        hint="optional"
-      />
+        <TextField
+          label="What they are told"
+          value={config.intro}
+          onChange={(v) => patch({ intro: v })}
+          placeholder="Please send the documents below before 15 November."
+          hint="optional"
+        />
+      </>
+    );
+  }
 
+  return (
+    <>
       <div className="field">
         <div className="row">
           <label style={{ flex: 1 }}>What you are asking for</label>
           <span className="badge num">{config.items.length}</span>
-          <button className="btn sm" onClick={add}>
-            <Icon name="plus" size={13} /> Add
-          </button>
         </div>
         <div className="help">
           A document, or an answer. Marking one <strong>required</strong> is what makes a file complete or not — the
           rest are asked for without holding anything up.
         </div>
 
-        {config.items.length === 0 ? (
-          <div className="empty" style={{ padding: 14 }}>
+        {config.items.length === 0 && (
+          <div className="empty" style={{ padding: 14, marginTop: 6 }}>
             Nothing is being asked yet.
           </div>
-        ) : (
+        )}
+        {config.items.length > 0 && (
           <div className="rows" style={{ marginTop: 6 }}>
             {config.items.map((item) => (
               <div className="rowcard card-pad stack" key={item.id} style={{ gap: 8 }}>
@@ -159,6 +176,13 @@ export function DeliverableSetup({
             ))}
           </div>
         )}
+
+        {/* Under the list, not above it. Adding the eighth document and being
+            sent back to the top to find what you just made is the thing that
+            makes a list of a dozen tedious to build. */}
+        <button className="btn sm" style={{ alignSelf: 'flex-start', marginTop: 8 }} onClick={add}>
+          <Icon name="plus" size={13} /> Add something to ask for
+        </button>
       </div>
     </>
   );
