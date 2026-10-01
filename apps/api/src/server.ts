@@ -16,6 +16,7 @@ import { funnelRoutes } from './routes/funnel.js';
 import { programRoutes } from './routes/programs.js';
 import { staffRoutes } from './routes/staff.js';
 import { bootstrapAdmin } from './services/bootstrap.js';
+import { flush, sendingIsLive } from './services/mail.js';
 import { HttpError } from './routes/util.js';
 
 const app = Fastify({
@@ -110,3 +111,26 @@ const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
 await app.listen({ port, host });
 console.log(`api ready on http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`);
+
+/*
+ * The outbox is emptied on a timer rather than at the moment a message is
+ * written. Two reasons, and the second is the one that matters: a provider
+ * being slow must not make a password reset slow, and a provider being down
+ * must not make it fail — the message waits and goes out when it can.
+ *
+ * Nothing runs at all where sending is not live, so a development machine
+ * never so much as looks at the queue.
+ */
+if (sendingIsLive()) {
+  const EVERY = 20_000;
+  const tick = async () => {
+    try {
+      const { sent, failed } = await flush();
+      if (sent || failed) app.log.info({ sent, failed }, 'outbox');
+    } catch (err) {
+      app.log.error(err, 'outbox');
+    }
+  };
+  setInterval(() => void tick(), EVERY).unref();
+  void tick();
+}

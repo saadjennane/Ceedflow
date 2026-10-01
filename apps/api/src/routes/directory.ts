@@ -27,6 +27,7 @@ import {
   reissueProvisionalPassword,
   setAccountDisabled,
 } from '../services/auth.js';
+import { post } from '../services/mail.js';
 import { HttpError, notFound, parse } from './util.js';
 import { requireWorkspaceAdmin, workspaceGuard } from './guard.js';
 
@@ -204,8 +205,30 @@ export async function directoryRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const account = await accountOfRecord(id);
     if (!account) return notFound(reply, 'This person has no account.');
+    const record = await dir.getRecord(id);
     const password = suggestPassword();
     await reissueProvisionalPassword(account.id, password);
+
+    /* Posted as well as shown. The screen shows it once because somebody is
+       often on the phone with the person; the message is for the case where
+       they are not, and for the person who writes it down wrong. */
+    await post({
+      kind: 'password_reset',
+      to: account.email,
+      toName: record?.name ?? '',
+      recordId: id,
+      subject: 'Your CEED password has been reset',
+      body: [
+        `${record?.name ? `${record.name},` : 'Hello,'}`,
+        '',
+        'CEED has given your account a new password. Sign in with it and you will be asked to choose your own.',
+        '',
+        `    ${password}`,
+        '',
+        'Anything you had open has been signed out. If this was not expected, tell CEED — somebody there did it on purpose.',
+      ].join('\n'),
+    });
+
     // Provisional again: whoever reads this screen knows it, so it is not
     // theirs until they have replaced it. Their sessions end with the old one.
     return { account: await accountOfRecord(id), password };
