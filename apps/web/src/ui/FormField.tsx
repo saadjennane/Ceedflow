@@ -104,7 +104,7 @@ function FileField({
 }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
-  const current = value as { uploadId: string; filename: string; size: number } | undefined;
+  const current = value as { uploadId: string; filename: string; size?: number } | undefined;
 
   const upload = async (file: File) => {
     setProblem('');
@@ -134,9 +134,14 @@ function FileField({
         <Icon name="file" size={15} />
         <span style={{ flex: 1, minWidth: 0 }}>
           <strong style={{ fontSize: 13 }}>{current.filename}</strong>
-          <span className="faint num" style={{ display: 'block', fontSize: 12 }}>
-            {(current.size / 1024).toFixed(0)} KB
-          </span>
+          {/* A file recorded without its size — handed over at a meeting and
+              typed in by CEED, or saved by an older version — showed "NaN KB",
+              which reads as a broken file rather than a missing figure. */}
+          {typeof current.size === 'number' && Number.isFinite(current.size) && (
+            <span className="faint num" style={{ display: 'block', fontSize: 12 }}>
+              {(current.size / 1024).toFixed(0)} KB
+            </span>
+          )}
         </span>
         <button className="btn ghost sm" onClick={() => onChange(undefined)}>
           Replace
