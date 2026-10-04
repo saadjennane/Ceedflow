@@ -251,14 +251,23 @@ export interface Roster {
  * whatever this returns and works nothing out of its own — a count that is a
  * promise about who will be written to must not be computed twice.
  */
-export async function noticeRoster(blockId: string, kind: 'request' | 'reminder'): Promise<RosterEntry[]> {
+export async function noticeRoster(
+  blockId: string,
+  kind: 'request' | 'reminder',
+  only?: string,
+): Promise<RosterEntry[]> {
   const view = await deliverableView(blockId);
   if (!view) return [];
   /* A request goes to whoever has not been asked; a reminder to whoever still
      owes something. Both read what the view already worked out, so the number
-     in the button and the badge on the row are the same fact. */
+     in the button and the badge on the row are the same fact.
+     Naming one startup skips both filters on purpose: they exist to build a
+     list nobody has looked at, and somebody pressing a button on one row has
+     looked. The ordinary case is a letter that bounced and an address
+     corrected since — the filters would say "already asked" and leave that
+     startup to miss the whole phase. */
   return view.rows
-    .filter((row) => (kind === 'request' ? !row.askedAt : row.owes))
+    .filter((row) => (only ? row.candidate.id === only : kind === 'request' ? !row.askedAt : row.owes))
     .map((row) => ({
       candidate: row.candidate,
       owes: row.owes,
@@ -269,11 +278,11 @@ export async function noticeRoster(blockId: string, kind: 'request' | 'reminder'
 }
 
 /** The list, plus what the screen needs to compose against it. */
-export async function rosterFor(blockId: string, kind: 'request' | 'reminder'): Promise<Roster> {
+export async function rosterFor(blockId: string, kind: 'request' | 'reminder', only?: string): Promise<Roster> {
   const block = await repo.getBlock(blockId);
   const config = block?.config as DeliverableConfig | undefined;
   return {
-    entries: await noticeRoster(blockId, kind),
+    entries: await noticeRoster(blockId, kind, only),
     link: await appLink(),
     closesAt: config?.closesAt ?? null,
     dateLabel: longDate(config?.closesAt),
@@ -387,13 +396,26 @@ const WAIT_FOR_THE_DOOR_DAYS = 7;
 
 export async function launchNotice(
   blockId: string,
-  input: { kind: 'request' | 'reminder'; scheduledFor?: string | null; body: string; by?: { id: string; name: string } },
+  input: {
+    kind: 'request' | 'reminder';
+    scheduledFor?: string | null;
+    body: string;
+    by?: { id: string; name: string };
+    /** One startup, named by somebody looking at its row. */
+    only?: string;
+  },
 ): Promise<void> {
-  const roster = await noticeRoster(blockId, input.kind);
+  const roster = await noticeRoster(blockId, input.kind, input.only);
   // Only those who can actually hear it are named. The rest are shown on the
   // screen by name, which is the point of looking before sending.
   const named = roster.filter((r) => r.blocked === 'none').map((r) => r.candidate.id);
   if (!named.length) return;
+
+  /* Writing to one startup again is a deliberate act, so it supersedes the
+     slot that stops the list writing to it twice. The old target keeps its
+     date and its letter — what was done stays on the record — but it no
+     longer bars this. */
+  if (input.only) await repo.releaseTargets(blockId, input.only);
 
   await repo.createNotice(
     {

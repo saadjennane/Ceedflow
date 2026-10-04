@@ -55,23 +55,58 @@ const WHY: Record<Exclude<Blocked, 'none'>, string> = {
 
 const KNOWN: ReadonlySet<string> = new Set<string>(DELIVERABLE_VARIABLES.map((v) => v.name));
 
+/** One letter already written to this startup, and what became of it. */
+interface Letter {
+  id: string;
+  kind: string;
+  state: 'queued' | 'held' | 'sent' | 'failed' | 'bounced';
+  error: string;
+  createdAt: string;
+  sentAt: string | null;
+  deliveredAt: string | null;
+}
+
+const BECAME: Record<Letter['state'], string> = {
+  held: 'written, not sent',
+  queued: 'waiting to go',
+  sent: 'handed over',
+  failed: 'could not be sent',
+  bounced: 'came back',
+};
+
 export function NotifyDialog({
   block,
   kind,
   status,
+  only,
   onDone,
   onClose,
 }: {
   block: Block;
   kind: 'request' | 'reminder';
   status: BrickStatus;
+  /** One startup, named from its own row — rather than whoever the list says. */
+  only?: { id: string; name: string };
   onDone: (view: unknown) => void;
   onClose: () => void;
 }) {
   const config = block.config as DeliverableConfig;
   const roster = useAsync(
-    () => api.get<Roster>(`/api/blocks/${block.id}/deliverables/roster?kind=${kind}`),
-    `${block.id}:${kind}`,
+    () =>
+      api.get<Roster>(
+        `/api/blocks/${block.id}/deliverables/roster?kind=${kind}${only ? `&candidateId=${only.id}` : ''}`,
+      ),
+    `${block.id}:${kind}:${only?.id ?? ''}`,
+  );
+  /* What has already gone to this one, read before writing again: "we told
+     them" and "it reached them" are different answers, and the second is the
+     one somebody acts on. */
+  const history = useAsync(
+    () =>
+      only
+        ? api.get<Letter[]>(`/api/blocks/${block.id}/deliverables/${only.id}/letters`)
+        : Promise.resolve([] as Letter[]),
+    `${block.id}:${only?.id ?? ''}`,
   );
   const [body, setBody] = useState(kind === 'request' ? config.messages.request : config.messages.reminder);
   const [when, setWhen] = useState<'now' | 'later'>('now');
@@ -127,6 +162,7 @@ export function NotifyDialog({
           kind,
           scheduledFor: when === 'later' ? day : null,
           body,
+          ...(only ? { candidateId: only.id } : {}),
         }),
       );
       toast(
@@ -142,16 +178,24 @@ export function NotifyDialog({
     }
   };
 
-  const title = kind === 'request' ? 'Ask for the documents' : 'Chase the files still short';
+  const title = only
+    ? `Write to ${only.name}`
+    : kind === 'request'
+      ? 'Ask for the documents'
+      : 'Chase the files still short';
   const blocking = !willHear.length || needsLink || (when === 'later' && !day);
 
   return (
     <Modal
       title={title}
       subtitle={
-        roster.data
-          ? `${willHear.length} will be written to${left.length ? `, ${left.length} cannot be` : ''}.`
-          : undefined
+        !roster.data
+          ? undefined
+          : only
+            ? left.length
+              ? `${only.name} cannot be written to.`
+              : 'This one, whatever the list says — a letter that came back, or an address fixed since.'
+            : `${willHear.length} will be written to${left.length ? `, ${left.length} cannot be` : ''}.`
       }
       wide
       onClose={onClose}
@@ -198,10 +242,37 @@ export function NotifyDialog({
               <Icon name="alert" size={15} />
               <div>
                 <strong>Nobody to write to.</strong>{' '}
-                {kind === 'request'
-                  ? 'Every startup on this list has already been asked.'
-                  : 'Every file is either complete or waiting on CEED to read it.'}
+                {only
+                  ? `${only.name} has no address that can be reached — fix it on their record first.`
+                  : kind === 'request'
+                    ? 'Every startup on this list has already been asked.'
+                    : 'Every file is either complete or waiting on CEED to read it.'}
               </div>
+            </div>
+          )}
+
+          {/* What was already written to them, oldest fact first in each line:
+              when, and what became of it. A date alone would read as "they
+              know", which a letter that came back is not. */}
+          {only && history.data && history.data.length > 0 && (
+            <div className="rows">
+              {history.data.map((letter) => (
+                <div className="rowcard row" key={letter.id} style={{ padding: '6px 10px', gap: 10, fontSize: 12.5 }}>
+                  <span className="faint" style={{ width: 86, flexShrink: 0 }}>
+                    {formatDate(letter.createdAt.slice(0, 10))}
+                  </span>
+                  <span style={{ flex: 1 }}>{letter.kind.replace(/^deliverable_/, '').replace(/_/g, ' ')}</span>
+                  {letter.deliveredAt ? (
+                    <span className="badge ok">arrived</span>
+                  ) : letter.state === 'bounced' || letter.state === 'failed' ? (
+                    <span className="badge warn" title={letter.error}>
+                      {BECAME[letter.state]}
+                    </span>
+                  ) : (
+                    <span className="faint">{BECAME[letter.state]}</span>
+                  )}
+                </div>
+              ))}
             </div>
           )}
           {needsLink && (
@@ -315,7 +386,7 @@ export function NotifyDialog({
               </summary>
               <div className="rows" style={{ marginTop: 6 }}>
                 {left.map((e) => (
-                  <div className="rowcard" key={e.candidate.id} style={{ padding: '6px 10px', gap: 10 }}>
+                  <div className="rowcard row" key={e.candidate.id} style={{ padding: '6px 10px', gap: 10 }}>
                     <span style={{ flex: 1, fontSize: 13 }}>{e.candidate.orgName}</span>
                     <span className="badge warn">{WHY[e.blocked as Exclude<Blocked, 'none'>]}</span>
                   </div>

@@ -162,6 +162,22 @@ describe('what the provider tells us back', { skip: skipWithoutServer }, () => {
     assert.match(row!.deliveredAt, /09:02/);
   });
 
+  it('leaves a letter in flight when the bounce was only a bad afternoon', async () => {
+    /* A full mailbox is retried for hours and usually lands. Writing 'bounced'
+       on it would put "did not arrive" on that startup's row while the letter
+       is still on its way. */
+    await (await db()).query(
+      `insert into outbox (id, kind, to_email, subject, body, state, provider_id)
+       values ('msg_t', 'deliverable_request', 'plein@example.test', 's', 'b', 'sent', 'em_1')`,
+    );
+    await send(call(bounce('plein@example.test', 'Transient')));
+    const [row] = await (await db()).query<{ state: string; error: string }>(
+      `select state, error from outbox where id = 'msg_t'`,
+    );
+    assert.equal(row?.state, 'sent', 'still on its way');
+    assert.match(row!.error, /Transient/, 'but what is known so far is written down');
+  });
+
   it('acknowledges an event it has no opinion about', async () => {
     // A provider that gains a new event type must not start seeing failures.
     const res = await send(call({ type: 'email.opened', data: { email_id: 'em_9' } }));

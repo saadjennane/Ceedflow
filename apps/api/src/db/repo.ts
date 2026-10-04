@@ -987,6 +987,22 @@ export async function markTarget(
   );
 }
 
+/**
+ * Hands back the slot that stops a block writing to one startup twice.
+ *
+ * For the deliberate individual send: somebody is looking at that row and has
+ * decided it must hear this again. The target rows stay — their date, their
+ * letter, what became of it — because what was done is not undone by doing it
+ * again.
+ */
+export async function releaseTargets(blockId: string, candidateId: string): Promise<void> {
+  await (await db()).query(
+    `update deliverable_notice_targets set released_at = now()
+      where block_id = $1 and candidate_id = $2 and kind = 'request' and released_at is null`,
+    [blockId, candidateId],
+  );
+}
+
 export async function settleNotice(id: string, state: NoticeState, reason = ''): Promise<void> {
   const conn = await db();
   await conn.query(

@@ -197,17 +197,27 @@ export async function flush(limit = 25): Promise<{ sent: number; failed: number 
 }
 
 /** What went out, or did not, about one person — for the screen that asks. */
-export async function letters(where: { email?: string; candidateId?: string }, limit = 50): Promise<OutboxRow[]> {
+export async function letters(
+  where: { email?: string; candidateId?: string; blockId?: string },
+  limit = 50,
+): Promise<OutboxRow[]> {
   const conn = await db();
   const select = `select id, kind, to_email as "to", to_name as "toName", subject, body,
                          state, error, attempts, created_at::text as "createdAt", sent_at::text as "sentAt",
                          delivered_at::text as "deliveredAt"
                     from outbox`;
   if (where.candidateId) {
-    return conn.query<OutboxRow>(`${select} where candidate_id = $1 order by created_at desc limit $2`, [
-      where.candidateId,
-      limit,
-    ]);
+    // Narrowed to one block when asked: a startup's history on this list is
+    // what the row is about, not everything the platform ever wrote to it.
+    return where.blockId
+      ? conn.query<OutboxRow>(
+          `${select} where candidate_id = $1 and block_id = $2 order by created_at desc limit $3`,
+          [where.candidateId, where.blockId, limit],
+        )
+      : conn.query<OutboxRow>(`${select} where candidate_id = $1 order by created_at desc limit $2`, [
+          where.candidateId,
+          limit,
+        ]);
   }
   return conn.query<OutboxRow>(`${select} where to_email = $1 order by created_at desc limit $2`, [
     (where.email ?? '').trim().toLowerCase(),

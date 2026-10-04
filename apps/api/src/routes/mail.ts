@@ -96,16 +96,24 @@ export async function mailRoutes(app: FastifyInstance) {
     const conn = await db();
 
     if (kind === 'email.bounced') {
+      /* Permanent or not, and the difference runs through both facts.
+         A full mailbox or a server having a bad afternoon is transient: the
+         sending side keeps retrying for hours and it usually lands. Writing
+         'bounced' on it would put "did not arrive" on that startup's row
+         while the letter is still in flight — and retiring the address over
+         one would quietly drop a founder for the rest of the programme. */
+      const permanent = (event.data?.bounce?.type ?? '').toLowerCase().startsWith('perm');
       if (id) {
+        const why = `${event.data?.bounce?.type ?? 'bounce'} ${event.data?.bounce?.subType ?? ''}`.trim().slice(0, 500);
+        // A transient one is recorded as what is known so far, without
+        // declaring the letter lost.
         await conn.query(
-          `update outbox set state = 'bounced', error = $2, updated_at = now() where provider_id = $1`,
-          [id, `${event.data?.bounce?.type ?? 'bounce'} ${event.data?.bounce?.subType ?? ''}`.trim().slice(0, 500)],
+          permanent
+            ? `update outbox set state = 'bounced', error = $2, updated_at = now() where provider_id = $1`
+            : `update outbox set error = $2, updated_at = now() where provider_id = $1`,
+          [id, why],
         );
       }
-      /* Only a bounce that will happen again. A full mailbox or a server
-         having a bad afternoon is transient, and retiring an address over one
-         would quietly drop a founder for the rest of the programme. */
-      const permanent = (event.data?.bounce?.type ?? '').toLowerCase().startsWith('perm');
       if (permanent) {
         for (const email of addressesOf(event.data)) await suppress(email, 'hard bounce');
       }

@@ -23,6 +23,7 @@ import { peopleByIds } from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { SESSION_COOKIE, accountForToken } from '../services/auth.js';
 import { committeeForEvaluation, committeeView } from '../services/committee.js';
+import { letters } from '../services/mail.js';
 import {
   appLink,
   deliverableView,
@@ -602,10 +603,23 @@ export async function funnelRoutes(app: FastifyInstance) {
   /** Who a notice would name, and what stands in the way of each. */
   app.get('/api/blocks/:id/deliverables/roster', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const kind = ((req.query as { kind?: string }).kind ?? 'request') as 'request' | 'reminder';
+    const query = req.query as { kind?: string; candidateId?: string };
+    const kind = (query.kind ?? 'request') as 'request' | 'reminder';
     const block = await repo.getBlock(id);
     if (!block || block.type !== 'deliverable') return notFound(reply, 'Deliverables block not found.');
-    return rosterFor(id, kind);
+    return rosterFor(id, kind, query.candidateId);
+  });
+
+  /**
+   * What has been written to one startup about this block, and what became of
+   * it. Read before writing again: "we already told them" and "it reached
+   * them" are different answers, and the second is the one that decides.
+   */
+  app.get('/api/blocks/:id/deliverables/:candidateId/letters', async (req, reply) => {
+    const { id, candidateId } = req.params as { id: string; candidateId: string };
+    const block = await repo.getBlock(id);
+    if (!block || block.type !== 'deliverable') return notFound(reply, 'Deliverables block not found.');
+    return letters({ candidateId, blockId: id });
   });
 
   /**
@@ -619,6 +633,8 @@ export async function funnelRoutes(app: FastifyInstance) {
         kind: z.enum(['request', 'reminder']),
         scheduledFor: z.string().nullable().optional(),
         body: z.string().min(1, 'Write what they are going to read.'),
+        /** One startup, named from its own row. */
+        candidateId: z.string().optional(),
       }),
       req.body,
     );
@@ -638,6 +654,7 @@ export async function funnelRoutes(app: FastifyInstance) {
       kind: input.kind,
       scheduledFor: input.scheduledFor ?? null,
       body: input.body,
+      only: input.candidateId,
       by: req.staff ? { id: req.staff.id, name: req.staff.email } : undefined,
     });
     // Immediate means scheduled for now, and the tick is the only sender — so

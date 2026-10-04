@@ -504,6 +504,50 @@ describe('telling the startups', { skip: skipWithoutServer }, () => {
     assert.equal((await letters({ candidateId: mute.id })).length, 0);
   });
 
+  it('writes to one startup again when somebody asks for it by name', async () => {
+    /* The case this exists for: a letter that bounced and an address corrected
+       since. The list would say "already asked" and leave that startup to miss
+       the whole phase — so naming one skips the filters on purpose. */
+    const { due, a } = await setUp();
+    await launchNotice(due.id, { kind: 'request', body: BODY });
+    await sendDueNotices();
+    assert.equal(await lettersFor(due.id), 2);
+    assert.equal((await noticeRoster(due.id, 'request')).length, 0, 'the list has nobody left');
+
+    const named = await noticeRoster(due.id, 'request', a.id);
+    assert.equal(named.length, 1, 'naming one finds it anyway');
+
+    await launchNotice(due.id, { kind: 'request', body: BODY, only: a.id });
+    await sendDueNotices();
+    assert.equal(await lettersFor(due.id), 3, 'and it goes');
+    assert.equal(
+      (await letters({ candidateId: a.id, blockId: due.id })).length,
+      2,
+      'both are on that startup’s record',
+    );
+  });
+
+  it('writes to nobody else when one is named', async () => {
+    const { due, a, b } = await setUp();
+    await launchNotice(due.id, { kind: 'request', body: BODY, only: a.id });
+    await sendDueNotices();
+    assert.equal((await letters({ candidateId: a.id, blockId: due.id })).length, 1);
+    assert.equal((await letters({ candidateId: b.id, blockId: due.id })).length, 0);
+  });
+
+  it('keeps what was already done on the record when it writes again', async () => {
+    const { due, a } = await setUp();
+    await launchNotice(due.id, { kind: 'request', body: BODY });
+    await sendDueNotices();
+    const first = (await deliverableView(due.id))!.rows.find((r) => r.candidate.id === a.id)!.askedAt;
+
+    await launchNotice(due.id, { kind: 'request', body: BODY, only: a.id });
+    await sendDueNotices();
+    const notices = await repo.listNotices(due.id);
+    assert.equal(notices.length, 2, 'two acts, neither erased');
+    assert.ok(first, 'and the first date was real');
+  });
+
   it('says the same closing date in the preview and in the letter', async () => {
     /* The screen used to format the day itself — “15 Nov 2026” on screen, and
        “2026-11-15” in what went out. A preview whose job is to show the letter

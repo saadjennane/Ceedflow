@@ -165,6 +165,10 @@ export function DeliverableTab({ block }: { block: Block }) {
   const [sendingBack, setSendingBack] = useState<{ row: Row; item: FormField } | null>(null);
   const [reason, setReason] = useState('');
   const [notifying, setNotifying] = useState<'request' | 'reminder' | null>(null);
+  /* Writing to one startup, from its own row. Always offered: the list's
+     filters build a list nobody has looked at, and somebody pressing this has
+     looked — at a letter that came back, or at an address fixed since. */
+  const [writingTo, setWritingTo] = useState<Row | null>(null);
   const toast = useToast();
 
   const review = async (candidateId: string, itemId: string, state: State, why = '') => {
@@ -332,7 +336,7 @@ export function DeliverableTab({ block }: { block: Block }) {
       {planned.length > 0 && (
         <div className="rows">
           {planned.map((n) => (
-            <div className="rowcard" key={n.id} style={{ padding: '8px 11px', gap: 10 }}>
+            <div className="rowcard row" key={n.id} style={{ padding: '8px 11px', gap: 10 }}>
               <Icon name="clock" size={14} />
               <span style={{ flex: 1, fontSize: 13 }}>
                 {n.kind === 'request' ? 'Request' : 'Reminder'} to <span className="num">{n.named}</span>, the morning
@@ -426,6 +430,22 @@ export function DeliverableTab({ block }: { block: Block }) {
                         Not yet
                       </span>
                     )}
+                    <button
+                      className="btn ghost icon sm"
+                      style={{ marginLeft: 4 }}
+                      aria-label={`Write to ${row.candidate.orgName}`}
+                      title={
+                        row.blocked !== 'none'
+                          ? WHY[row.blocked]
+                          : row.askedAt
+                            ? 'Write to this one again'
+                            : 'Write to this one now'
+                      }
+                      disabled={row.blocked !== 'none'}
+                      onClick={() => setWritingTo(row)}
+                    >
+                      <Icon name="send" size={12} />
+                    </button>
                   </td>
                   <td>
                     {/* Accepted over required, because a file nobody has read
@@ -492,7 +512,7 @@ export function DeliverableTab({ block }: { block: Block }) {
                   {rows.map((row) => {
                     const got = valueOf(row, item.id);
                     return (
-                      <div className="rowcard" key={row.candidate.id} style={{ padding: '8px 11px', gap: 12 }}>
+                      <div className="rowcard row" key={row.candidate.id} style={{ padding: '8px 11px', gap: 12 }}>
                         {/* The ones still missing read heavier: this list is
                             for chasing, and the names to chase are the point. */}
                         <span style={{ flex: 1, fontSize: 13, fontWeight: given(got?.value) ? 400 : 600 }}>
@@ -531,6 +551,19 @@ export function DeliverableTab({ block }: { block: Block }) {
           status={view.data.status}
           onDone={(next) => view.set(next as View)}
           onClose={() => setNotifying(null)}
+        />
+      )}
+
+      {writingTo && (
+        <NotifyDialog
+          block={block}
+          /* A startup that owes nothing would get a chase about nothing, so
+             the letter matches what is actually true of it. */
+          kind={writingTo.askedAt && writingTo.owes ? 'reminder' : 'request'}
+          status={view.data.status}
+          only={{ id: writingTo.candidate.id, name: writingTo.candidate.orgName }}
+          onDone={(next) => view.set(next as View)}
+          onClose={() => setWritingTo(null)}
         />
       )}
 
