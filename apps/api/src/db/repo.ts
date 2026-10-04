@@ -869,14 +869,25 @@ export async function getNotice(id: string): Promise<DeliverableNotice | null> {
   return one<DeliverableNotice>(`select ${NOTICE_COLS} from deliverable_notices where id = $1`, [id]);
 }
 
-/** Everything a block has ever named, for the "has this one been asked" badge. */
-export async function listNoticeTargets(blockId: string): Promise<(DeliverableTarget & { kind: NoticeKind })[]> {
-  return all<DeliverableTarget & { kind: NoticeKind }>(
+/**
+ * Everything a block has ever named, for the "has this one been asked" badge
+ * and for what each notice did.
+ *
+ * Cancelled notices come back too, carrying their state: a notice called off is
+ * still an act this product shows, and leaving its targets out of the query
+ * would make it read as having named nobody. Whether a startup counts as asked
+ * is answered by `sentAt`, which a cancelled notice never has.
+ */
+export async function listNoticeTargets(
+  blockId: string,
+): Promise<(DeliverableTarget & { kind: NoticeKind; noticeState: NoticeState })[]> {
+  return all<DeliverableTarget & { kind: NoticeKind; noticeState: NoticeState }>(
     `select t.notice_id as "noticeId", t.candidate_id as "candidateId", t.kind,
-            t.sent_at::text as "sentAt", t.letter_id as "letterId", t.skipped
+            t.sent_at::text as "sentAt", t.letter_id as "letterId", t.skipped,
+            n.state as "noticeState"
        from deliverable_notice_targets t
        join deliverable_notices n on n.id = t.notice_id
-      where t.block_id = $1 and n.state <> 'cancelled'`,
+      where t.block_id = $1`,
     [blockId],
   );
 }
@@ -953,14 +964,18 @@ export async function markTarget(
 ): Promise<void> {
   await (await db()).query(
     `update deliverable_notice_targets
-        set letter_id = coalesce($3, letter_id), skipped = coalesce($4, skipped)
+        set letter_id = coalesce($3, letter_id), skipped = coalesce($4, skipped),
+            -- Named and then left out: nobody heard anything, so the slot that
+            -- stops a startup being asked twice goes back. The row stays.
+            released_at = case when coalesce($4, '') <> '' then now() else released_at end
       where notice_id = $1 and candidate_id = $2`,
     [noticeId, candidateId, patch.letterId ?? null, patch.skipped ?? null],
   );
 }
 
 export async function settleNotice(id: string, state: NoticeState, reason = ''): Promise<void> {
-  await (await db()).query(
+  const conn = await db();
+  await conn.query(
     `update deliverable_notices
         set state = $2, reason = $3,
             sent_at = case when $2 = 'sent' then now() else sent_at end,
@@ -968,6 +983,16 @@ export async function settleNotice(id: string, state: NoticeState, reason = ''):
       where id = $1`,
     [id, state, reason],
   );
+  /* Called off, or abandoned because the list never opened: nothing reached
+     anybody, so every startup it named can be asked again. Without this the
+     next launch would die on `deliverable_asked_once` instead of going out. */
+  if (state === 'cancelled' || state === 'abandoned') {
+    await conn.query(
+      `update deliverable_notice_targets set released_at = now()
+        where notice_id = $1 and letter_id is null and released_at is null`,
+      [id],
+    );
+  }
 }
 
 /** What each juror of a sitting has actually sent, so a removal can say what it costs. */

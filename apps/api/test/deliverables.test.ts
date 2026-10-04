@@ -406,12 +406,56 @@ describe('telling the startups', { skip: skipWithoutServer }, () => {
     assert.equal(await lettersFor(due.id), 1, 'the other one, exactly once');
   });
 
-  it('has asked nobody once it is cancelled', async () => {
+  it('has asked nobody once it is cancelled, and lets the next one go out', async () => {
+    /* Being named by a notice is not being told. `deliverable_asked_once` holds
+       a slot per startup from the moment one is named, so a notice called off
+       has to hand those slots back — otherwise the relaunch dies on a unique
+       violation and the startups it had named can never be asked at all. */
     const { due } = await setUp();
     await launchNotice(due.id, { kind: 'request', scheduledFor: '2099-01-01', body: BODY });
     const notice = (await repo.listNotices(due.id))[0]!;
     await repo.settleNotice(notice.id, 'cancelled', 'Called off.');
     assert.equal((await noticeRoster(due.id, 'request')).length, 2, 'both can be asked again');
+
+    await launchNotice(due.id, { kind: 'request', body: BODY });
+    await sendDueNotices();
+    assert.equal(await lettersFor(due.id), 2, 'and this time they hear it');
+
+    const kept = (await repo.listNotices(due.id)).find((n) => n.id === notice.id)!;
+    assert.equal(kept.state, 'cancelled', 'the act that was called off is still on the record');
+    assert.equal(kept.reason, 'Called off.');
+  });
+
+  it('asks a startup that had no address once somebody types one in', async () => {
+    /* Named, then left out at the hour: it was never told, so it must not be
+       barred for good. The case is ordinary — a contact filled in a week after
+       the first send. */
+    const { edition, due } = await setUp();
+    const detail = await repo.getEditionDetail(edition.id);
+    const org = await dir.createRecord({ kind: 'org', name: 'Sans adresse', origin: 'manual' });
+    const person = await dir.createRecord({ kind: 'person', name: 'Plus tard', origin: 'manual' });
+    const late = await repo.createCandidate({
+      editionId: edition.id, trackId: detail!.tracks[0].id, orgId: org.id, personId: person.id,
+    });
+
+    await launchNotice(due.id, { kind: 'request', body: BODY });
+    await sendDueNotices();
+    assert.equal(await lettersFor(due.id), 2, 'the two that could hear it');
+
+    const address = `plus-tard.${Date.now()}@example.test`;
+    await dir.updateRecord(person.id, { email: address });
+    await createAccount({ email: address, password: 'given-by-ceed', recordId: person.id });
+
+    const again = await noticeRoster(due.id, 'request');
+    assert.deepEqual(
+      again.map((r) => r.candidate.orgName),
+      ['Sans adresse'],
+      'back on the list, and nobody else with it',
+    );
+    await launchNotice(due.id, { kind: 'request', body: BODY });
+    await sendDueNotices();
+    assert.equal(await lettersFor(due.id), 3, 'and now there are three');
+    assert.equal((await noticeRoster(due.id, 'request')).find((r) => r.candidate.id === late.id), undefined);
   });
 
   it('leaves out a startup with no address, and says so by name', async () => {

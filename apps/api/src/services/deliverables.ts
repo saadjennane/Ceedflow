@@ -45,14 +45,38 @@ export interface DeliverableRow {
    * read is not a file in order, and the selection downstream reads this.
    */
   complete: boolean;
+  /** When this startup was last written to about this block, or null. */
+  askedAt: string | null;
+  /** Why it would hear nothing, if it would. */
+  blocked: Blocked;
+}
+
+/** One act of telling them, as the screen lists it. */
+export interface NoticeSummary {
+  id: string;
+  kind: 'request' | 'reminder';
+  state: 'planned' | 'sent' | 'cancelled' | 'abandoned';
+  reason: string;
+  scheduledFor: string;
+  sentAt: string | null;
+  createdByName: string;
+  /** How many it named when it was launched. */
+  named: number;
+  /** How many letters were actually written. */
+  wrote: number;
+  /** How many were named and then left out, with the reasons counted. */
+  skipped: Record<string, number>;
 }
 
 export interface DeliverableView {
   blockId: string;
   name: string;
   intro: string;
+  /** The door, so the screen warns about launching into a shut list. */
+  status: ReturnType<typeof blockStatus>;
   items: FormField[];
   rows: DeliverableRow[];
+  notices: NoticeSummary[];
 }
 
 const given = (value: unknown) =>
@@ -85,10 +109,40 @@ export async function deliverableView(blockId: string): Promise<DeliverableView 
 
   const required = config.items.filter((i) => i.required);
 
+  /* What has already been said, and who cannot hear it. Both live here rather
+     than in the resolver that reads them, so the table's badge and the count in
+     the launch button come from one computation and cannot drift apart. */
+  const targets = await repo.listNoticeTargets(blockId);
+  const askedAt = new Map<string, string>();
+  for (const t of targets) {
+    if (t.kind !== 'request' || !t.sentAt || t.skipped) continue;
+    askedAt.set(t.candidateId, t.sentAt);
+  }
+  const held = await suppressedAmong(intake.map((c) => c.email));
+  const notices = (await repo.listNotices(blockId)).map((notice) => {
+    const mine = targets.filter((t) => t.noticeId === notice.id);
+    const skipped: Record<string, number> = {};
+    for (const t of mine) if (t.skipped) skipped[t.skipped] = (skipped[t.skipped] ?? 0) + 1;
+    return {
+      id: notice.id,
+      kind: notice.kind,
+      state: notice.state,
+      reason: notice.reason,
+      scheduledFor: notice.scheduledFor,
+      sentAt: notice.sentAt,
+      createdByName: notice.createdByName,
+      named: mine.length,
+      wrote: mine.filter((t) => t.letterId).length,
+      skipped,
+    };
+  });
+
   return {
     blockId,
     name: context.block.name,
     intro: config.intro,
+    status: blockStatus(context.block),
+    notices,
     items: config.items,
     rows: intake.map((candidate) => {
       const mine = byCandidate.get(candidate.id) ?? [];
@@ -106,6 +160,16 @@ export async function deliverableView(blockId: string): Promise<DeliverableView 
         required: required.length,
         // An item that was never marked required cannot hold a file open.
         complete: accepted === required.length,
+        askedAt: askedAt.get(candidate.id) ?? null,
+        blocked: !candidate.email
+          ? ('no_email' as const)
+          : held.has(candidate.email.trim().toLowerCase())
+            ? ('suppressed' as const)
+            : // A letter that says "go to your page" is worth nothing to
+              // somebody with no way in, and nothing here opens one for them.
+              !candidate.accountState
+              ? ('no_account' as const)
+              : ('none' as const),
       };
     }),
   };
@@ -137,43 +201,12 @@ export interface RosterEntry {
 export async function noticeRoster(blockId: string, kind: 'request' | 'reminder'): Promise<RosterEntry[]> {
   const view = await deliverableView(blockId);
   if (!view) return [];
-
-  const targets = await repo.listNoticeTargets(blockId);
-  const askedAt = new Map<string, string>();
-  for (const t of targets) {
-    if (t.kind !== 'request' || !t.sentAt || t.skipped) continue;
-    askedAt.set(t.candidateId, t.sentAt);
-  }
-
-  const held = await suppressedAmong(view.rows.map((r) => r.candidate.email));
-
+  /* A request goes to whoever has not been asked; a reminder to whoever still
+     owes something. Both read what the view already worked out, so the number
+     in the button and the badge on the row are the same fact. */
   return view.rows
-    .filter((row) => (kind === 'request' ? !askedAt.has(row.candidate.id) : row.owes))
-    .map((row) => ({
-      candidate: row.candidate,
-      owes: row.owes,
-      askedAt: askedAt.get(row.candidate.id) ?? null,
-      blocked: !row.candidate.email
-        ? ('no_email' as const)
-        : held.has(row.candidate.email.trim().toLowerCase())
-          ? ('suppressed' as const)
-          : // A letter that says "go to your page" is worth nothing to somebody
-            // with no way in, and nothing here opens one for them.
-            !row.candidate.accountState
-            ? ('no_account' as const)
-            : ('none' as const),
-    }));
-}
-
-/** Everybody, with what has already been said to them — for the table. */
-export async function askedByCandidate(blockId: string): Promise<Map<string, string>> {
-  const targets = await repo.listNoticeTargets(blockId);
-  const out = new Map<string, string>();
-  for (const t of targets) {
-    if (t.kind !== 'request' || !t.sentAt || t.skipped) continue;
-    out.set(t.candidateId, t.sentAt);
-  }
-  return out;
+    .filter((row) => (kind === 'request' ? !row.askedAt : row.owes))
+    .map((row) => ({ candidate: row.candidate, owes: row.owes, askedAt: row.askedAt, blocked: row.blocked }));
 }
 
 /**
