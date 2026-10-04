@@ -849,7 +849,24 @@ export const deliverableConfigSchema = z.object({
   /** What the startups are told when they open their list. */
   intro: z.string().default(''),
   items: z.array(formFieldSchema).default([]),
+  /**
+   * The two words this block hands downstream, so a Selection can read it the
+   * way it reads a jury's. Renameable, because "complete" is a programme's own
+   * vocabulary — some call it conforme, some en règle.
+   */
+  passLabel: z.string().default('Dossier complet'),
+  failLabel: z.string().default('Dossier incomplet'),
 });
+
+/** The ids of what a deliverables block hands out. Fixed; only the words move. */
+export const DELIVERABLE_PASS = 'dd_complete';
+export const DELIVERABLE_FAIL = 'dd_incomplete';
+
+/** Its two outcomes, in the shape every other block hands downstream. */
+export const deliverableOutcomes = (config: DeliverableConfig): BlockOutcome[] => [
+  { id: DELIVERABLE_PASS, label: config.passLabel, tone: 'ok', minScore: null, whenSplit: false },
+  { id: DELIVERABLE_FAIL, label: config.failLabel, tone: 'stop', minScore: null, whenSplit: false },
+];
 
 export const blockConfigSchemas = {
   sourcing: sourcingConfigSchema,

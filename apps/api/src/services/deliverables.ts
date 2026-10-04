@@ -6,7 +6,7 @@
  * along its two axes, so the server sends the matrix and lets the screen turn
  * it — anything else would be two endpoints that can disagree.
  */
-import { orderedBlocks, type Candidate, type DeliverableConfig, type FormField } from '@ceed/shared';
+import { blockStatus, orderedBlocks, type Candidate, type DeliverableConfig, type FormField } from '@ceed/shared';
 import * as repo from '../db/repo.js';
 import { intakeFor, trackOf } from './selection.js';
 
@@ -109,7 +109,16 @@ export async function deliverableView(blockId: string): Promise<DeliverableView 
 export async function deliverablesFor(
   editionId: string,
   candidate: Candidate,
-): Promise<{ block: { id: string; name: string }; config: DeliverableConfig; returns: DeliverableReturnView[] }[]> {
+): Promise<
+  {
+    block: { id: string; name: string };
+    config: DeliverableConfig;
+    /** Whether the list still takes answers. The screen reads this rather than
+        working it out again, so the two cannot disagree. */
+    open: boolean;
+    returns: DeliverableReturnView[];
+  }[]
+> {
   const detail = await repo.getEditionDetail(editionId);
   const track = detail?.tracks.find((t) => t.id === candidate.trackId);
   if (!track) return [];
@@ -118,10 +127,17 @@ export async function deliverablesFor(
   for (const block of orderedBlocks(track).filter((b) => b.type === 'deliverable')) {
     const intake = await intakeFor(track, block.id, [candidate]);
     if (!intake.length) continue;
+    /* The door decides what a founder sees, which it did not before: a list
+       was visible the moment the upstream statuses put them in the pass set,
+       whether or not anybody had opened it. Shut, it stays readable — the
+       startup's own record of what it handed over — but nothing more. */
+    const status = blockStatus(block);
+    if (status !== 'live' && status !== 'closed') continue;
     const returns = await repo.listReturnsFor(block.id, candidate.id);
     out.push({
       block: { id: block.id, name: block.name },
       config: block.config as DeliverableConfig,
+      open: status === 'live',
       returns: returns.map((r) => ({
         itemId: r.itemId, value: r.value, state: r.state,
         reason: r.reason, returnedAt: r.returnedAt, reviewedAt: r.reviewedAt,

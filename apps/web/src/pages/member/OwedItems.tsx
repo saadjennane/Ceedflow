@@ -9,6 +9,7 @@ import { useToast } from '../../ui/Overlays';
 interface Owed {
   block: { id: string; name: string };
   config: DeliverableConfig;
+  open: boolean;
   returns: {
     itemId: string;
     value: unknown;
@@ -65,6 +66,17 @@ export function OwedItems({ candidateId, orgName }: { candidateId: string; orgNa
               </span>
             </div>
 
+            {/* Shut: what was sent stays readable, and nothing invites a
+                change the server would refuse. */}
+            {!ask.open && (
+              <div className="callout">
+                <Icon name="file" size={15} />
+                <div>
+                  This list is closed. What you sent is below — talk to CEED if something still has to change.
+                </div>
+              </div>
+            )}
+
             {ask.config.intro && (
               <div className="callout">
                 <Icon name="file" size={15} />
@@ -95,6 +107,7 @@ export function OwedItems({ candidateId, orgName }: { candidateId: string; orgNa
                     <FormFieldInput
                       field={item}
                       value={mine?.value ?? null}
+                      readOnly={!ask.open}
                       onChange={(v) => void save(ask.block.id, item.id, v)}
                     />
                     {/* Said back, because the thing people want to know after
@@ -120,9 +133,11 @@ export function OwedItems({ candidateId, orgName }: { candidateId: string; orgNa
               })}
             </div>
 
-            <p className="faint" style={{ margin: 0, fontSize: 12 }}>
-              Each answer is kept as you give it — there is nothing to send at the end.
-            </p>
+            {ask.open && (
+              <p className="faint" style={{ margin: 0, fontSize: 12 }}>
+                Each answer is kept as you give it — there is nothing to send at the end.
+              </p>
+            )}
           </section>
         );
       })}

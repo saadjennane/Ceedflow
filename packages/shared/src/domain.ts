@@ -296,7 +296,16 @@ export function selectionSource(track: TrackWithPhases, block: Block): Block | n
     return found?.type === 'committee' ? evaluationForCommittee(track, found.id) : found;
   }
   const index = ordered.findIndex((b) => b.id === block.id);
-  return ordered.slice(0, index === -1 ? undefined : index).filter((b) => b.type === 'evaluation').pop() ?? null;
+  /* A due diligence hands down a word of its own — complete, or not — so it
+     counts as a source like an evaluation does. Without this, a Selection
+     placed after one walked back to the jury's evaluation two phases up and
+     passed exactly the startups the shortlist had, file or no file. */
+  return (
+    ordered
+      .slice(0, index === -1 ? undefined : index)
+      .filter((b) => b.type === 'evaluation' || b.type === 'deliverable')
+      .pop() ?? null
+  );
 }
 
 /**

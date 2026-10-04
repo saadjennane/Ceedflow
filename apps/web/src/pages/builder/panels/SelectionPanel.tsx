@@ -2,7 +2,9 @@ import {
   orderedBlocks,
   selectionSource,
   DEFAULT_OUTCOMES,
+  deliverableOutcomes,
   type Block,
+  type DeliverableConfig,
   type EvaluationConfig,
   type SelectionConfig,
   type TrackWithPhases,
@@ -27,12 +29,21 @@ export function SelectionSetup({
 }) {
   const ordered = orderedBlocks(track);
   const index = ordered.findIndex((b) => b.id === block.id);
-  /** Only a block that hands out statuses can feed a funnel. */
-  const upstream = ordered.slice(0, index === -1 ? undefined : index).filter((b) => b.type === 'evaluation');
+  /** Only a block that hands out statuses can feed a funnel — an evaluation's
+      bands, or a due diligence's "complete" and "incomplete". */
+  const upstream = ordered
+    .slice(0, index === -1 ? undefined : index)
+    .filter((b) => b.type === 'evaluation' || b.type === 'deliverable');
 
   // The same rule the server applies, so the panel never promises another one.
   const source = selectionSource(track, { ...block, config } as Block);
-  const outcomes = source ? ((source.config as EvaluationConfig).outcomes ?? DEFAULT_OUTCOMES) : [];
+  // The same two readings the server makes: a due diligence hands down its own
+  // pair of words, an evaluation its bands.
+  const outcomes = !source
+    ? []
+    : source.type === 'deliverable'
+      ? deliverableOutcomes(source.config as DeliverableConfig)
+      : ((source.config as EvaluationConfig).outcomes ?? DEFAULT_OUTCOMES);
 
   const otherCohort = ordered.find(
     (b) => b.type === 'selection' && b.id !== block.id && (b.config as SelectionConfig).outputKind === 'cohort',

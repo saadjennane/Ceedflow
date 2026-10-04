@@ -11,7 +11,9 @@ import { after, before, describe, it } from 'node:test';
 import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
-import { deliverableView } from '../src/services/deliverables.js';
+import { selectionSource } from '@ceed/shared';
+import { deliverableView, deliverablesFor } from '../src/services/deliverables.js';
+import { outcomesByCandidate, outcomesOf, setOutcomeByHand } from '../src/services/scoring.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
 before(migrate);
@@ -143,5 +145,118 @@ describe('what a deliverables block asks, and of whom', { skip: skipWithoutServe
     await repo.updateCandidate(kept.id, { status: 'Withdrawn' });
     const view = (await deliverableView(due.id))!;
     assert.equal(view.rows.length, 0, 'chasing documents from somebody who has left is chasing nobody');
+  });
+});
+
+describe('a due diligence as a step of the funnel', { skip: skipWithoutServer }, () => {
+  /* Before this, a Selection placed after a deliverables block walked back to
+     the jury's evaluation two phases up and passed exactly the startups the
+     shortlist had, file or no file. The rule on the screen said otherwise. */
+  const setUp = async () => {
+    const program = await repo.createProgram({ name: 'The Builders' });
+    const edition = await repo.createEdition(program.id, { name: 'Cohorte 1' });
+    const detail = await repo.getEditionDetail(edition.id);
+    const track = detail!.tracks[0];
+    const phase = track.phases[0];
+    const jury = await repo.createBlock(phase.id, 'evaluation', 'Note du jury');
+    const shortlist = await repo.createBlock(phase.id, 'selection', 'Shortlist');
+    const due = await repo.createBlock(phase.id, 'deliverable', 'Due diligence');
+    await repo.updateBlock(due.id, { config: { visibility: 'open', items: ITEMS } });
+    const final = await repo.createBlock(phase.id, 'selection', 'Finale');
+
+    const candidacy = async (orgName: string) => {
+      const org = await dir.createRecord({ kind: 'org', name: orgName, origin: 'manual' });
+      return repo.createCandidate({ editionId: edition.id, trackId: track.id, orgId: org.id });
+    };
+    const ready = await candidacy('Rafid Tech');
+    const short = await candidacy('Nakhla Bio');
+    for (const c of [ready, short]) await repo.setOutcome(shortlist.id, c.id, 'pass', true);
+    return { edition, track, jury, due, final, ready, short };
+  };
+
+  it('is what the selection behind it reads, not the jury two phases up', async () => {
+    const { edition, track, due, final } = await setUp();
+    const detail = await repo.getEditionDetail(edition.id);
+    const fresh = detail!.tracks.find((t) => t.id === track.id)!;
+    const source = selectionSource(fresh, fresh.phases[0].blocks.find((b) => b.id === final.id)!);
+    assert.equal(source?.id, due.id, 'the due diligence, not the evaluation before it');
+  });
+
+  it('hands down complete and incomplete, by name', async () => {
+    const { due } = await setUp();
+    const block = (await repo.getBlock(due.id))!;
+    assert.deepEqual(
+      outcomesOf(block).map((o) => [o.id, o.label]),
+      [
+        ['dd_complete', 'Dossier complet'],
+        ['dd_incomplete', 'Dossier incomplet'],
+      ],
+    );
+  });
+
+  it('calls a file complete only once every required item is accepted', async () => {
+    const { due, ready, short } = await setUp();
+    const block = (await repo.getBlock(due.id))!;
+
+    const before = await outcomesByCandidate(block);
+    assert.equal(before.get(ready.id)?.outcomeId, 'dd_incomplete', 'nothing sent is not in order');
+
+    for (const item of ['rc', 'nb']) {
+      await repo.saveReturn(due.id, ready.id, item, item === 'nb' ? 12 : { uploadId: 'u', filename: 'f.pdf' });
+      await repo.reviewReturn(due.id, ready.id, item, 'accepted', '');
+    }
+    const after = await outcomesByCandidate(block);
+    assert.equal(after.get(ready.id)?.outcomeId, 'dd_complete');
+    assert.equal(after.get(short.id)?.outcomeId, 'dd_incomplete', 'the other one has not moved');
+  });
+
+  it('lets a call made by hand outrank the file', async () => {
+    // The same rule a grid lives by: a human decision outranks the arithmetic.
+    const { due, short } = await setUp();
+    // The act CEED performs on screen, not a raw write: setOutcomeByHand is
+    // what the route calls, and it clears the row again when the hand call
+    // happens to agree with what the file says.
+    await setOutcomeByHand((await repo.getBlock(due.id))!, short.id, 'dd_complete');
+    const out = await outcomesByCandidate((await repo.getBlock(due.id))!);
+    assert.equal(out.get(short.id)?.outcomeId, 'dd_complete');
+    assert.equal(out.get(short.id)?.overridden, true);
+  });
+});
+
+describe('what a founder sees of a deliverables list', { skip: skipWithoutServer }, () => {
+  const setUp = async (config: Record<string, unknown>) => {
+    const program = await repo.createProgram({ name: 'The Builders' });
+    const edition = await repo.createEdition(program.id, { name: 'Cohorte 1' });
+    const detail = await repo.getEditionDetail(edition.id);
+    const track = detail!.tracks[0];
+    const due = await repo.createBlock(track.phases[0].id, 'deliverable', 'Due diligence');
+    await repo.updateBlock(due.id, { config: { items: ITEMS, ...config } });
+    const org = await dir.createRecord({ kind: 'org', name: 'Rafid Tech', origin: 'manual' });
+    const candidate = await repo.createCandidate({ editionId: edition.id, trackId: track.id, orgId: org.id });
+    return { edition, candidate, due };
+  };
+
+  it('shows nothing at all before the list has opened', async () => {
+    // It used to appear the moment the upstream statuses put them in the pass
+    // set — before anybody had opened anything.
+    const { edition, candidate } = await setUp({ opensAt: '2099-01-01' });
+    assert.deepEqual(await deliverablesFor(edition.id, candidate), []);
+  });
+
+  it('shows it, and takes answers, while it is open', async () => {
+    const { edition, candidate } = await setUp({ visibility: 'open' });
+    const [owed] = await deliverablesFor(edition.id, candidate);
+    assert.equal(owed?.open, true);
+  });
+
+  it('still shows a closed list, but closed', async () => {
+    // What they sent is their own record of what they handed over.
+    const { edition, candidate, due } = await setUp({ visibility: 'open' });
+    await repo.saveReturn(due.id, candidate.id, 'nb', 12);
+    await repo.updateBlock(due.id, { config: { items: ITEMS, visibility: 'closed' } });
+
+    const [owed] = await deliverablesFor(edition.id, candidate);
+    assert.equal(owed?.open, false, 'shut');
+    assert.equal(owed?.returns.length, 1, 'and still readable');
   });
 });

@@ -19,11 +19,18 @@ export function FormFieldInput({
   value,
   onChange,
   error,
+  readOnly = false,
 }: {
   field: FormField;
   value: unknown;
   onChange: (v: unknown) => void;
   error?: string;
+  /**
+   * The list is shut. What was sent is still worth reading — it is the startup's
+   * own record of what it handed over — so the answers stay on screen and stop
+   * inviting a change that the server would refuse anyway.
+   */
+  readOnly?: boolean;
 }) {
   const label = (
     <label>
@@ -38,9 +45,20 @@ export function FormFieldInput({
       {field.help && <div className="hint" style={{ marginTop: -2, marginBottom: 5 }}>{field.help}</div>}
 
       {field.type === 'long_text' ? (
-        <textarea className="textarea" rows={4} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />
+        <textarea
+          className="textarea"
+          rows={4}
+          readOnly={readOnly}
+          value={String(value ?? '')}
+          onChange={(e) => onChange(e.target.value)}
+        />
       ) : field.type === 'select' ? (
-        <select className="input" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}>
+        <select
+          className="input"
+          disabled={readOnly}
+          value={String(value ?? '')}
+          onChange={(e) => onChange(e.target.value)}
+        >
           <option value="">Choose one</option>
           {field.options.map((o) => (
             <option key={o} value={o}>
@@ -56,6 +74,7 @@ export function FormFieldInput({
               <label className="check rowcard" style={{ padding: '8px 11px' }} key={o}>
                 <input
                   type="checkbox"
+                  disabled={readOnly}
                   checked={chosen.includes(o)}
                   onChange={(e) => onChange(e.target.checked ? [...chosen, o] : chosen.filter((x) => x !== o))}
                 />
@@ -65,7 +84,7 @@ export function FormFieldInput({
           })}
         </div>
       ) : field.type === 'file' ? (
-        <FileField field={field} value={value} onChange={onChange} />
+        <FileField field={field} value={value} onChange={onChange} readOnly={readOnly} />
       ) : (
         <input
           className={error ? 'input bad' : 'input'}
@@ -82,6 +101,7 @@ export function FormFieldInput({
                       ? 'tel'
                       : 'text'
           }
+          readOnly={readOnly}
           value={String(value ?? '')}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -97,10 +117,12 @@ function FileField({
   field,
   value,
   onChange,
+  readOnly = false,
 }: {
   field: FormField;
   value: unknown;
   onChange: (v: unknown) => void;
+  readOnly?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
@@ -143,12 +165,24 @@ function FileField({
             </span>
           )}
         </span>
-        <button className="btn ghost sm" onClick={() => onChange(undefined)}>
-          Replace
-        </button>
+        {/* Shut, the file is still there to open — only the way to change it
+            goes. */}
+        {readOnly ? (
+          <a className="btn ghost sm" href={`/api/uploads/${current.uploadId}`} target="_blank" rel="noreferrer">
+            Open
+          </a>
+        ) : (
+          <button className="btn ghost sm" onClick={() => onChange(undefined)}>
+            Replace
+          </button>
+        )}
       </div>
     );
   }
+
+  // Nothing sent and nothing to be done about it: say so rather than offer a
+  // drop zone that would refuse the file.
+  if (readOnly) return <div className="faint" style={{ fontSize: 12.5 }}>Nothing was sent.</div>;
 
   return (
     <>
