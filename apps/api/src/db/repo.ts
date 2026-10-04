@@ -825,6 +825,151 @@ export async function reviewReturn(
   return rows.length > 0;
 }
 
+/* ---------------- deliverable notices ---------------- */
+
+export type NoticeKind = 'request' | 'reminder';
+export type NoticeState = 'planned' | 'sent' | 'cancelled' | 'abandoned';
+
+export interface DeliverableNotice {
+  id: string;
+  blockId: string;
+  kind: NoticeKind;
+  state: NoticeState;
+  reason: string;
+  body: string;
+  scheduledFor: string;
+  sentAt: string | null;
+  cancelledAt: string | null;
+  createdBy: string | null;
+  createdByName: string;
+  createdAt: string;
+}
+
+export interface DeliverableTarget {
+  noticeId: string;
+  candidateId: string;
+  sentAt: string | null;
+  letterId: string | null;
+  skipped: string;
+}
+
+const NOTICE_COLS = `id, block_id as "blockId", kind, state, reason, body,
+  scheduled_for::text as "scheduledFor", sent_at::text as "sentAt",
+  cancelled_at::text as "cancelledAt", created_by as "createdBy",
+  created_by_name as "createdByName", created_at::text as "createdAt"`;
+
+export async function listNotices(blockId: string): Promise<DeliverableNotice[]> {
+  return all<DeliverableNotice>(
+    `select ${NOTICE_COLS} from deliverable_notices where block_id = $1 order by created_at desc`,
+    [blockId],
+  );
+}
+
+export async function getNotice(id: string): Promise<DeliverableNotice | null> {
+  return one<DeliverableNotice>(`select ${NOTICE_COLS} from deliverable_notices where id = $1`, [id]);
+}
+
+/** Everything a block has ever named, for the "has this one been asked" badge. */
+export async function listNoticeTargets(blockId: string): Promise<(DeliverableTarget & { kind: NoticeKind })[]> {
+  return all<DeliverableTarget & { kind: NoticeKind }>(
+    `select t.notice_id as "noticeId", t.candidate_id as "candidateId", t.kind,
+            t.sent_at::text as "sentAt", t.letter_id as "letterId", t.skipped
+       from deliverable_notice_targets t
+       join deliverable_notices n on n.id = t.notice_id
+      where t.block_id = $1 and n.state <> 'cancelled'`,
+    [blockId],
+  );
+}
+
+export async function targetsOf(noticeId: string): Promise<DeliverableTarget[]> {
+  return all<DeliverableTarget>(
+    `select notice_id as "noticeId", candidate_id as "candidateId",
+            sent_at::text as "sentAt", letter_id as "letterId", skipped
+       from deliverable_notice_targets where notice_id = $1`,
+    [noticeId],
+  );
+}
+
+/**
+ * Writes a notice and the startups it names, under a lock on the block.
+ *
+ * The lock is the half of the answer the unique index cannot give: two
+ * administrators launching at the same second would each resolve the same
+ * roster, write two notices with different ids, and everybody would hear twice.
+ */
+export async function createNotice(
+  input: Omit<DeliverableNotice, 'state' | 'reason' | 'sentAt' | 'cancelledAt' | 'createdAt'>,
+  candidateIds: string[],
+): Promise<void> {
+  const conn = await db();
+  await conn.tx(async () => {
+    await conn.query('select pg_advisory_xact_lock(hashtext($1))', [input.blockId]);
+    await conn.query(
+      `insert into deliverable_notices
+         (id, block_id, kind, body, scheduled_for, created_by, created_by_name)
+       values ($1,$2,$3,$4,$5,$6,$7)`,
+      [input.id, input.blockId, input.kind, input.body, input.scheduledFor, input.createdBy, input.createdByName],
+    );
+    for (const candidateId of candidateIds) {
+      await conn.query(
+        `insert into deliverable_notice_targets (notice_id, block_id, kind, candidate_id)
+         values ($1,$2,$3,$4)`,
+        [input.id, input.blockId, input.kind, candidateId],
+      );
+    }
+  });
+}
+
+/** The notices whose hour has come. */
+export async function dueNotices(): Promise<DeliverableNotice[]> {
+  return all<DeliverableNotice>(
+    `select ${NOTICE_COLS} from deliverable_notices
+      where state = 'planned' and scheduled_for <= now() order by scheduled_for`,
+  );
+}
+
+/**
+ * Claims one startup of a notice before its letter is written.
+ *
+ * False means somebody else has it — another tick, or the same one after a
+ * restart. One row, at most one letter, whatever happens.
+ */
+export async function claimTarget(noticeId: string, candidateId: string): Promise<boolean> {
+  const rows = await (
+    await db()
+  ).query<{ candidateId: string }>(
+    `update deliverable_notice_targets set sent_at = now()
+      where notice_id = $1 and candidate_id = $2 and sent_at is null
+      returning candidate_id as "candidateId"`,
+    [noticeId, candidateId],
+  );
+  return rows.length > 0;
+}
+
+export async function markTarget(
+  noticeId: string,
+  candidateId: string,
+  patch: { letterId?: string | null; skipped?: string },
+): Promise<void> {
+  await (await db()).query(
+    `update deliverable_notice_targets
+        set letter_id = coalesce($3, letter_id), skipped = coalesce($4, skipped)
+      where notice_id = $1 and candidate_id = $2`,
+    [noticeId, candidateId, patch.letterId ?? null, patch.skipped ?? null],
+  );
+}
+
+export async function settleNotice(id: string, state: NoticeState, reason = ''): Promise<void> {
+  await (await db()).query(
+    `update deliverable_notices
+        set state = $2, reason = $3,
+            sent_at = case when $2 = 'sent' then now() else sent_at end,
+            cancelled_at = case when $2 = 'cancelled' then now() else cancelled_at end
+      where id = $1`,
+    [id, state, reason],
+  );
+}
+
 /** What each juror of a sitting has actually sent, so a removal can say what it costs. */
 export async function marksPerJuror(
   sessionId: string,

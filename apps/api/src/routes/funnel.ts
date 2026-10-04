@@ -23,7 +23,7 @@ import { peopleByIds } from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { SESSION_COOKIE, accountForToken } from '../services/auth.js';
 import { committeeForEvaluation, committeeView } from '../services/committee.js';
-import { deliverableView } from '../services/deliverables.js';
+import { deliverableView, launchNotice, noticeRoster, sendDueNotices } from '../services/deliverables.js';
 import { reviewsFor } from '../services/reviews.js';
 import { outcomesByCandidate, outcomesOf, scoresByCandidate, setOutcomeByHand } from '../services/scoring.js';
 import {
@@ -575,6 +575,63 @@ export async function funnelRoutes(app: FastifyInstance) {
     if (!block || block.type !== 'deliverable') return notFound(reply, 'Deliverables block not found.');
     const found = await repo.reviewReturn(id, candidateId, input.itemId, input.state, input.reason.trim());
     if (!found) return notFound(reply, 'There is nothing there to read yet.');
+    return deliverableView(id);
+  });
+
+  /** Who a notice would name, and what stands in the way of each. */
+  app.get('/api/blocks/:id/deliverables/roster', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const kind = ((req.query as { kind?: string }).kind ?? 'request') as 'request' | 'reminder';
+    const block = await repo.getBlock(id);
+    if (!block || block.type !== 'deliverable') return notFound(reply, 'Deliverables block not found.');
+    return noticeRoster(id, kind);
+  });
+
+  /**
+   * Launching the act. The server resolves who it names — a client-sent list
+   * would make the verification theatre.
+   */
+  app.post('/api/blocks/:id/deliverables/notify', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const input = parse(
+      z.object({
+        kind: z.enum(['request', 'reminder']),
+        scheduledFor: z.string().nullable().optional(),
+        body: z.string().min(1, 'Write what they are going to read.'),
+      }),
+      req.body,
+    );
+    const block = await repo.getBlock(id);
+    if (!block || block.type !== 'deliverable') return notFound(reply, 'Deliverables block not found.');
+
+    // A date past the closing day asks for something nobody will be able to
+    // send — refused here rather than abandoned silently a fortnight later.
+    const closesAt = (block.config as { closesAt?: string | null }).closesAt;
+    if (input.scheduledFor && closesAt && input.scheduledFor.slice(0, 10) > closesAt) {
+      throw new HttpError(422, `This list closes on ${closesAt} — a notice dated after that asks for nothing.`, {
+        scheduledFor: 'After the list closes.',
+      });
+    }
+
+    await launchNotice(id, {
+      kind: input.kind,
+      scheduledFor: input.scheduledFor ?? null,
+      body: input.body,
+      by: req.staff ? { id: req.staff.id, name: req.staff.email } : undefined,
+    });
+    // Immediate means scheduled for now, and the tick is the only sender — so
+    // a crash is a retry rather than a half-sent notice nothing picks up.
+    if (!input.scheduledFor) await sendDueNotices();
+    return deliverableView(id);
+  });
+
+  /** Calling one off. Cancelled, never deleted: this product does not erase an act. */
+  app.post('/api/blocks/:id/deliverables/notices/:noticeId/cancel', async (req, reply) => {
+    const { id, noticeId } = req.params as { id: string; noticeId: string };
+    const notice = await repo.getNotice(noticeId);
+    if (!notice || notice.blockId !== id) return notFound(reply, 'Notice not found.');
+    if (notice.state !== 'planned') throw new HttpError(422, 'That one has already gone out.');
+    await repo.settleNotice(noticeId, 'cancelled', 'Called off before it went.');
     return deliverableView(id);
   });
 

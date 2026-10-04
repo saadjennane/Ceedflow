@@ -8,11 +8,19 @@
  */
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { migrate } from '../src/db/client.js';
+import { db, migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
 import { selectionSource } from '@ceed/shared';
-import { deliverableView, deliverablesFor } from '../src/services/deliverables.js';
+import {
+  deliverableView,
+  deliverablesFor,
+  fill,
+  launchNotice,
+  noticeRoster,
+  sendDueNotices,
+} from '../src/services/deliverables.js';
+import { createAccount } from '../src/services/auth.js';
 import { outcomesByCandidate, outcomesOf, setOutcomeByHand } from '../src/services/scoring.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
@@ -253,10 +261,176 @@ describe('what a founder sees of a deliverables list', { skip: skipWithoutServer
     // What they sent is their own record of what they handed over.
     const { edition, candidate, due } = await setUp({ visibility: 'open' });
     await repo.saveReturn(due.id, candidate.id, 'nb', 12);
-    await repo.updateBlock(due.id, { config: { items: ITEMS, visibility: 'closed' } });
+    await repo.updateBlock(due.id, { config: { visibility: 'closed' } });
 
     const [owed] = await deliverablesFor(edition.id, candidate);
     assert.equal(owed?.open, false, 'shut');
     assert.equal(owed?.returns.length, 1, 'and still readable');
+  });
+});
+
+describe('telling the startups', { skip: skipWithoutServer }, () => {
+  const BODY = 'Bonjour {{startup}}, merci avant le {{date}}.\n\n{{pieces}}';
+
+  const setUp = async () => {
+    const program = await repo.createProgram({ name: 'The Builders' });
+    const edition = await repo.createEdition(program.id, { name: 'Cohorte 1' });
+    const detail = await repo.getEditionDetail(edition.id);
+    const track = detail!.tracks[0];
+    const due = await repo.createBlock(track.phases[0].id, 'deliverable', 'Due diligence');
+    await repo.updateBlock(due.id, { config: { visibility: 'open', items: ITEMS } });
+
+    const candidacy = async (orgName: string, email: string) => {
+      const org = await dir.createRecord({ kind: 'org', name: orgName, origin: 'manual' });
+      const person = await dir.createRecord({ kind: 'person', name: `${orgName} F`, email, origin: 'manual' });
+      await createAccount({ email, password: 'given-by-ceed', recordId: person.id, mustChangePassword: true });
+      return repo.createCandidate({
+        editionId: edition.id, trackId: track.id, orgId: org.id, personId: person.id,
+      });
+    };
+    const a = await candidacy('Rafid Tech', `rafid.${Date.now()}@example.test`);
+    const b = await candidacy('Nakhla Bio', `nakhla.${Date.now()}@example.test`);
+    return { edition, due, a, b };
+  };
+
+  const lettersFor = async (blockId: string) =>
+    (await (await db()).query<{ n: number }>(
+      `select count(*)::int as n from outbox where block_id = $1`,
+      [blockId],
+    ))[0]!.n;
+
+  it('asks each startup once, however many times the button is pressed', async () => {
+    const { due } = await setUp();
+    await launchNotice(due.id, { kind: 'request', body: BODY });
+    await sendDueNotices();
+    assert.equal(await lettersFor(due.id), 2);
+
+    // The second press finds nobody left to ask.
+    assert.equal((await noticeRoster(due.id, 'request')).length, 0);
+    await launchNotice(due.id, { kind: 'request', body: BODY });
+    await sendDueNotices();
+    assert.equal(await lettersFor(due.id), 2, 'still two');
+  });
+
+  it('does not write twice when two people launch at the same moment', async () => {
+    /* The lock and the partial unique index together. Without both, each
+       launch resolves the same roster, writes its own notice, and everybody
+       hears about it twice. */
+    const { due } = await setUp();
+    await Promise.allSettled([
+      launchNotice(due.id, { kind: 'request', body: BODY }),
+      launchNotice(due.id, { kind: 'request', body: BODY }),
+    ]);
+    await sendDueNotices();
+    assert.equal(await lettersFor(due.id), 2, 'one letter per startup, not two');
+  });
+
+  it('drops a startup that withdrew between the launch and the send', async () => {
+    const { due, a } = await setUp();
+    await launchNotice(due.id, { kind: 'request', scheduledFor: '2020-01-01', body: BODY });
+    await repo.updateCandidate(a.id, { status: 'Withdrawn' });
+    await sendDueNotices();
+
+    assert.equal(await lettersFor(due.id), 1, 'only the one still in');
+    const notice = (await repo.listNotices(due.id))[0]!;
+    assert.equal(notice.state, 'sent', 'the notice still went');
+    const target = (await repo.targetsOf(notice.id)).find((t) => t.candidateId === a.id)!;
+    assert.equal(target.skipped, 'withdrawn');
+  });
+
+  it('never adds a startup that was not read back', async () => {
+    const { edition, due } = await setUp();
+    await launchNotice(due.id, { kind: 'request', scheduledFor: '2020-01-01', body: BODY });
+
+    const detail = await repo.getEditionDetail(edition.id);
+    const track = detail!.tracks[0];
+    const org = await dir.createRecord({ kind: 'org', name: 'Latecomer', origin: 'manual' });
+    await repo.createCandidate({ editionId: edition.id, trackId: track.id, orgId: org.id });
+
+    await sendDueNotices();
+    assert.equal(await lettersFor(due.id), 2, 'the two that were looked at, and no more');
+  });
+
+  it('waits while the list has not opened, and goes once it has', async () => {
+    const { due } = await setUp();
+    await repo.updateBlock(due.id, { config: { visibility: 'auto', opensAt: '2099-01-01' } });
+    // Launched now, against a list that opens later — the ordinary case of
+    // somebody who tells people before setting the opening date.
+    await launchNotice(due.id, { kind: 'request', body: BODY });
+
+    const waited = await sendDueNotices();
+    assert.equal(waited.held, 1, 'held, not abandoned');
+    assert.equal(await lettersFor(due.id), 0);
+
+    await repo.updateBlock(due.id, { config: { visibility: 'open' } });
+    await sendDueNotices();
+    assert.equal(await lettersFor(due.id), 2);
+  });
+
+  it('abandons with a reason when the list was shut', async () => {
+    const { due } = await setUp();
+    await launchNotice(due.id, { kind: 'request', scheduledFor: '2020-01-01', body: BODY });
+    await repo.updateBlock(due.id, { config: { visibility: 'closed' } });
+
+    await sendDueNotices();
+    assert.equal(await lettersFor(due.id), 0);
+    const notice = (await repo.listNotices(due.id))[0]!;
+    assert.equal(notice.state, 'abandoned');
+    assert.match(notice.reason, /shut/i, 'and says why');
+  });
+
+  it('reminds the ones who still owe something, not the ones CEED has not read', async () => {
+    const { due, a, b } = await setUp();
+    // a has sent everything; nobody has read it. b has sent nothing.
+    for (const item of ['rc', 'nb']) {
+      await repo.saveReturn(due.id, a.id, item, item === 'nb' ? 12 : { uploadId: 'u', filename: 'f.pdf' });
+    }
+    const roster = await noticeRoster(due.id, 'reminder');
+    assert.deepEqual(roster.map((r) => r.candidate.id), [b.id], 'chasing a would be chasing CEED');
+
+    // One of a's items comes back: now a owes something again.
+    await repo.reviewReturn(due.id, a.id, 'rc', 'rejected', 'Illisible.');
+    const after = await noticeRoster(due.id, 'reminder');
+    assert.equal(after.length, 2);
+  });
+
+  it('finishes a send that was interrupted', async () => {
+    const { due, a } = await setUp();
+    await launchNotice(due.id, { kind: 'request', scheduledFor: '2020-01-01', body: BODY });
+    const notice = (await repo.listNotices(due.id))[0]!;
+    // As if the process died after the first letter.
+    await repo.claimTarget(notice.id, a.id);
+    await repo.markTarget(notice.id, a.id, { letterId: 'msg_pretend' });
+
+    await sendDueNotices();
+    assert.equal(await lettersFor(due.id), 1, 'the other one, exactly once');
+  });
+
+  it('has asked nobody once it is cancelled', async () => {
+    const { due } = await setUp();
+    await launchNotice(due.id, { kind: 'request', scheduledFor: '2099-01-01', body: BODY });
+    const notice = (await repo.listNotices(due.id))[0]!;
+    await repo.settleNotice(notice.id, 'cancelled', 'Called off.');
+    assert.equal((await noticeRoster(due.id, 'request')).length, 2, 'both can be asked again');
+  });
+
+  it('leaves out a startup with no address, and says so by name', async () => {
+    const { edition, due } = await setUp();
+    const detail = await repo.getEditionDetail(edition.id);
+    const org = await dir.createRecord({ kind: 'org', name: 'Sans adresse', origin: 'manual' });
+    await repo.createCandidate({ editionId: edition.id, trackId: detail!.tracks[0].id, orgId: org.id });
+
+    const roster = await noticeRoster(due.id, 'request');
+    const mute = roster.find((r) => r.candidate.orgName === 'Sans adresse')!;
+    assert.equal(mute.blocked, 'no_email', 'named on the screen, left out of the send');
+
+    await launchNotice(due.id, { kind: 'request', body: BODY });
+    await sendDueNotices();
+    assert.equal(await lettersFor(due.id), 2, 'the two that can hear it');
+  });
+
+  it('fills a letter with what that startup owes, and leaves an unknown name alone', async () => {
+    assert.equal(fill('Bonjour {{startup}}', { startup: 'Rafid Tech' }), 'Bonjour Rafid Tech');
+    assert.equal(fill('Bonjour {{inconnu}}', {}), 'Bonjour {{inconnu}}', 'visible rather than silently empty');
   });
 });

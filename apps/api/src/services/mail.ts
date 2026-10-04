@@ -58,6 +58,17 @@ export async function suppressed(email: string): Promise<boolean> {
   return rows.length > 0;
 }
 
+/** Which of these came back for good — one question, not fifty-four. */
+export async function suppressedAmong(emails: string[]): Promise<Set<string>> {
+  const wanted = emails.map((e) => e.trim().toLowerCase()).filter(Boolean);
+  if (!wanted.length) return new Set();
+  const rows = await (await db()).query<{ email: string }>(
+    'select email from email_suppressions where email = any($1::text[])',
+    [wanted],
+  );
+  return new Set(rows.map((r) => r.email));
+}
+
 export async function suppress(email: string, reason: string): Promise<void> {
   await (await db()).query(
     `insert into email_suppressions (email, reason) values ($1, $2)

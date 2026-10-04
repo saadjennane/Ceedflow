@@ -16,6 +16,7 @@ import { funnelRoutes } from './routes/funnel.js';
 import { programRoutes } from './routes/programs.js';
 import { staffRoutes } from './routes/staff.js';
 import { bootstrapAdmin } from './services/bootstrap.js';
+import { sendDueNotices } from './services/deliverables.js';
 import { flush, sendingIsLive } from './services/mail.js';
 import { HttpError } from './routes/util.js';
 
@@ -111,6 +112,27 @@ const port = Number(process.env.PORT ?? 4000);
 const host = process.env.HOST ?? (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1');
 await app.listen({ port, host });
 console.log(`api ready on http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`);
+
+/*
+ * Notices whose hour has come. This one runs wherever the server runs, not
+ * only where sending is live: it writes rows into the outbox, and `post()`
+ * marks them held when nothing is going out. The whole chain can therefore be
+ * exercised against four hundred real addresses without one of them hearing
+ * about it.
+ */
+{
+  const EVERY = 60_000;
+  const tick = async () => {
+    try {
+      const { sent, held } = await sendDueNotices();
+      if (sent || held) app.log.info({ sent, held }, 'notices');
+    } catch (err) {
+      app.log.error(err, 'notices');
+    }
+  };
+  setInterval(() => void tick(), EVERY).unref();
+  void tick();
+}
 
 /*
  * The outbox is emptied on a timer rather than at the moment a message is
