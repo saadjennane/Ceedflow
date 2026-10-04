@@ -6,7 +6,15 @@
  * along its two axes, so the server sends the matrix and lets the screen turn
  * it — anything else would be two endpoints that can disagree.
  */
-import { blockStatus, orderedBlocks, type Candidate, type DeliverableConfig, type FormField } from '@ceed/shared';
+import {
+  blockStatus,
+  fillTemplate,
+  longDate,
+  orderedBlocks,
+  type Candidate,
+  type DeliverableConfig,
+  type FormField,
+} from '@ceed/shared';
 import { newId } from '@ceed/shared';
 import * as repo from '../db/repo.js';
 import { post, suppressedAmong } from './mail.js';
@@ -188,7 +196,33 @@ export interface RosterEntry {
   /** When it was last written to about this block, or null. */
   askedAt: string | null;
   blocked: Blocked;
+  /**
+   * `{{pieces}}` for this one, as the letter will read it.
+   *
+   * Sent rather than worked out again on the screen: it is the one variable
+   * that says something different to every recipient, which is the whole
+   * reason the preview steps through them — and a second implementation of it
+   * would be a preview that shows a letter nobody receives.
+   */
+  owed: string;
 }
+
+/** Everything the composing screen needs beside the list itself. */
+export interface Roster {
+  entries: RosterEntry[];
+  /** Where the letter sends them, empty when this platform has no address set. */
+  link: string;
+  closesAt: string | null;
+  /**
+   * `{{date}}` as the letter will read it, composed here rather than on the
+   * screen. The preview exists to show what goes out; a screen that formatted
+   * the day its own way would show a date nobody receives — which is precisely
+   * what it did before this field: “15 Nov 2026” on screen, “2026-11-15” in
+   * the letter.
+   */
+  dateLabel: string;
+}
+
 
 /**
  * Who a notice of this kind would name, and what stands in the way.
@@ -206,7 +240,25 @@ export async function noticeRoster(blockId: string, kind: 'request' | 'reminder'
      in the button and the badge on the row are the same fact. */
   return view.rows
     .filter((row) => (kind === 'request' ? !row.askedAt : row.owes))
-    .map((row) => ({ candidate: row.candidate, owes: row.owes, askedAt: row.askedAt, blocked: row.blocked }));
+    .map((row) => ({
+      candidate: row.candidate,
+      owes: row.owes,
+      askedAt: row.askedAt,
+      blocked: row.blocked,
+      owed: owedLines(view, row.candidate.id),
+    }));
+}
+
+/** The list, plus what the screen needs to compose against it. */
+export async function rosterFor(blockId: string, kind: 'request' | 'reminder'): Promise<Roster> {
+  const block = await repo.getBlock(blockId);
+  const config = block?.config as DeliverableConfig | undefined;
+  return {
+    entries: await noticeRoster(blockId, kind),
+    link: appLink(),
+    closesAt: config?.closesAt ?? null,
+    dateLabel: longDate(config?.closesAt),
+  };
 }
 
 /**
@@ -257,6 +309,43 @@ export async function deliverablesFor(
   return out;
 }
 
+/**
+ * Telling a startup that something it sent has to be sent again.
+ *
+ * Immediate, and not an act somebody launches: a file sitting refused that
+ * nobody mentioned is the worst state this block can be in — CEED waits, the
+ * startup waits, and the closing date arrives. The reason has already been
+ * typed, so there is nothing left to compose.
+ */
+export async function tellReturned(
+  blockId: string,
+  candidateId: string,
+  itemId: string,
+  reason: string,
+): Promise<void> {
+  const block = await repo.getBlock(blockId);
+  if (!block || block.type !== 'deliverable') return;
+  const candidate = await repo.getCandidate(candidateId);
+  if (!candidate?.email) return;
+
+  const config = block.config as DeliverableConfig;
+  const item = config.items.find((i) => i.id === itemId);
+  await post({
+    kind: 'deliverable_rejected',
+    to: candidate.email,
+    toName: candidate.contactName,
+    blockId,
+    candidateId,
+    subject: `${block.name} — ${item?.label ?? 'une pièce'} à renvoyer`,
+    body: fillTemplate(config.messages.rejected, {
+      startup: candidate.orgName,
+      piece: item?.label ?? '',
+      motif: reason,
+      lien: appLink(),
+    }),
+  });
+}
+
 /* ------------------------------------------------------------------ */
 /* Launching, and sending                                              */
 /* ------------------------------------------------------------------ */
@@ -300,6 +389,16 @@ export async function launchNotice(
     named,
   );
 }
+
+/**
+ * Where a letter sends them.
+ *
+ * Empty when nothing says what this platform's address is, which the composing
+ * screen refuses to send on: "connect somewhere" is not a call to action, and a
+ * letter that says `{{lien}}` is worse than one not sent.
+ */
+export const appLink = (): string =>
+  process.env.APP_URL ? `${process.env.APP_URL.replace(/\/$/, '')}/me?tab=Programs` : '';
 
 /** The items this startup still owes, in the words the letter uses. */
 function owedLines(view: DeliverableView, candidateId: string): string {
@@ -380,11 +479,11 @@ export async function sendDueNotices(): Promise<{ sent: number; held: number }> 
         blockId: notice.blockId,
         candidateId: target.candidateId,
         subject: `${block.name} — ${row!.candidate.orgName}`,
-        body: fill(notice.body, {
+        body: fillTemplate(notice.body, {
           startup: row!.candidate.orgName,
           pieces: owedLines(view, target.candidateId),
-          date: config.closesAt ?? '',
-          lien: process.env.APP_URL ? `${process.env.APP_URL.replace(/\/$/, '')}/me?tab=Programs` : '',
+          date: longDate(config.closesAt),
+          lien: appLink(),
         }),
       });
       // post() never throws and answers null when it could not: a loop of
@@ -400,9 +499,4 @@ export async function sendDueNotices(): Promise<{ sent: number; held: number }> 
   }
 
   return { sent, held };
-}
-
-/** `{{startup}}` and the rest, replaced. An unknown name is left where it is. */
-export function fill(template: string, values: Record<string, string>): string {
-  return template.replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g, (whole, name: string) => values[name] ?? whole);
 }

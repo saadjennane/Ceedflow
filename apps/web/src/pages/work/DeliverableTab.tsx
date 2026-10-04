@@ -1,4 +1,4 @@
-import { type Block, type Candidate, type FormField } from '@ceed/shared';
+import { type Block, type BrickStatus, type Candidate, type FormField } from '@ceed/shared';
 import { useState } from 'react';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
@@ -6,6 +6,7 @@ import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
 import { Modal, useToast } from '../../ui/Overlays';
 import { download, toWorkbook, type Cell } from '../../lib/xlsx';
+import { NotifyDialog } from './NotifyDialog';
 
 type State = 'received' | 'accepted' | 'rejected';
 
@@ -24,17 +25,43 @@ interface Row {
   done: number;
   accepted: number;
   rejected: number;
+  owes: boolean;
   required: number;
   complete: boolean;
+  askedAt: string | null;
+  blocked: 'none' | 'no_email' | 'no_account' | 'suppressed';
+}
+
+interface Notice {
+  id: string;
+  kind: 'request' | 'reminder';
+  state: 'planned' | 'sent' | 'cancelled' | 'abandoned';
+  reason: string;
+  scheduledFor: string;
+  sentAt: string | null;
+  createdByName: string;
+  named: number;
+  wrote: number;
+  skipped: Record<string, number>;
 }
 
 interface View {
   blockId: string;
   name: string;
   intro: string;
+  status: BrickStatus;
   items: FormField[];
   rows: Row[];
+  notices: Notice[];
 }
+
+/** Why a startup will hear nothing — the same words the launch dialog uses. */
+const WHY: Record<Row['blocked'], string> = {
+  none: '',
+  no_email: 'No address on the candidacy — nothing to write to.',
+  no_account: 'No account to log into, so a link would lead nowhere.',
+  suppressed: 'Their address bounced for good; nothing is sent to it again.',
+};
 
 const given = (value: unknown) =>
   !(value === null || value === undefined || value === '' || (Array.isArray(value) && !value.length));
@@ -136,6 +163,7 @@ export function DeliverableTab({ block }: { block: Block }) {
   const [by, setBy] = useState<'startup' | 'item'>('startup');
   const [sendingBack, setSendingBack] = useState<{ row: Row; item: FormField } | null>(null);
   const [reason, setReason] = useState('');
+  const [notifying, setNotifying] = useState<'request' | 'reminder' | null>(null);
   const toast = useToast();
 
   const review = async (candidateId: string, itemId: string, state: State, why = '') => {
@@ -176,6 +204,29 @@ export function DeliverableTab({ block }: { block: Block }) {
   const valueOf = (row: Row, itemId: string) => row.returns.find((r) => r.itemId === itemId);
   const sentFor = (itemId: string) => rows.filter((row) => given(valueOf(row, itemId)?.value)).length;
   const complete = rows.filter((r) => r.complete).length;
+
+  /* The two acts, counted the way the server resolves them: whoever has not
+     been asked, and whoever still owes something they can act on.
+     Reachable only — the number is in the button, so it is a promise about
+     what pressing it does. Counting a startup with no address there offered
+     an act that could not happen: the button said one, the dialog said none,
+     and the only thing left to press was Cancel. Who cannot be reached is the
+     callout's business, which names them. */
+  const unheard = rows.filter((r) => !r.askedAt);
+  const toAsk = unheard.filter((r) => r.blocked === 'none').length;
+  const toChase = rows.filter((r) => r.askedAt && r.owes && r.blocked === 'none').length;
+  const mute = unheard.length - toAsk;
+  const asked = rows.length - unheard.length;
+  const planned = view.data.notices.filter((n) => n.state === 'planned');
+
+  const cancel = async (noticeId: string) => {
+    try {
+      view.set(await api.post<View>(`/api/blocks/${block.id}/deliverables/notices/${noticeId}/cancel`, {}));
+      toast('Called off.');
+    } catch (err) {
+      toast((err as Error).message, true);
+    }
+  };
 
   const exportMatrix = () => {
     const head: Cell[] = ['Startup', 'Contact', 'Dossier'];
@@ -222,7 +273,101 @@ export function DeliverableTab({ block }: { block: Block }) {
         <button className="btn sm" onClick={exportMatrix}>
           <Icon name="file" size={13} /> Export
         </button>
+        {/* Chasing is offered only once there is somebody who has been asked
+            and is late. Before that it would be a button for nothing. */}
+        {toChase > 0 && (
+          <button className="btn sm" onClick={() => setNotifying('reminder')}>
+            <Icon name="clock" size={13} /> Chase {toChase}
+          </button>
+        )}
+        {toAsk > 0 && (
+          <button className="btn primary sm" onClick={() => setNotifying('request')}>
+            <Icon name="send" size={13} /> Ask {toAsk} startup{toAsk === 1 ? '' : 's'}
+          </button>
+        )}
       </div>
+
+      {/* Where this stands as an act, not as a table. The three states are the
+          three questions somebody opening this tab actually has: has anybody
+          been told, is anything waiting to go, and is anybody still late. */}
+      {asked === 0 && toAsk > 0 ? (
+        <div className="callout">
+          <Icon name="alert" size={15} />
+          <div>
+            <strong>Nobody has been asked yet.</strong> The list below is who the selection kept — opening the block
+            lets them send, and asking them is what tells them to.
+          </div>
+        </div>
+      ) : unheard.length > 0 ? (
+        <div className="callout warn">
+          <Icon name="alert" size={15} />
+          <div>
+            <strong>
+              {unheard.length} of {rows.length} have not been asked.
+            </strong>{' '}
+            {mute > 0 && (
+              <>
+                {mute === unheard.length ? 'They have' : `${mute} of them have`} nothing to write to — no address, no
+                account, or an address that bounced. Fixing that in the directory is what puts{' '}
+                {mute === 1 ? 'it' : 'them'} back on the list.{' '}
+              </>
+            )}
+            {toAsk > 0 && 'The rest are startups the selection has added since the last send.'}
+          </div>
+        </div>
+      ) : (
+        <div className="callout ok">
+          <Icon name="check" size={15} />
+          <div>
+            <strong>All {rows.length} have been asked.</strong>{' '}
+            {toChase > 0
+              ? `${toChase} still owe something — chasing writes to those, and to nobody whose file is only waiting on us.`
+              : 'Nothing is outstanding on their side.'}
+          </div>
+        </div>
+      )}
+
+      {/* Planned, and callable off until the morning it goes. */}
+      {planned.length > 0 && (
+        <div className="rows">
+          {planned.map((n) => (
+            <div className="rowcard" key={n.id} style={{ padding: '8px 11px', gap: 10 }}>
+              <Icon name="clock" size={14} />
+              <span style={{ flex: 1, fontSize: 13 }}>
+                {n.kind === 'request' ? 'Request' : 'Reminder'} to <span className="num">{n.named}</span>, the morning
+                of {formatDate(n.scheduledFor.slice(0, 10))}
+                {n.createdByName && <span className="faint"> · set by {n.createdByName}</span>}
+              </span>
+              <button className="btn ghost sm" onClick={() => void cancel(n.id)}>
+                Call it off
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* A send that did not reach everybody it named says so here, once, with
+          the reason — never folded into a count that reads as success. */}
+      {view.data.notices
+        .filter((n) => n.state === 'sent' && Object.keys(n.skipped).length > 0)
+        .slice(0, 1)
+        .map((n) => (
+          <p className="warnline" key={n.id} style={{ margin: 0, fontSize: 12.5 }}>
+            Last send: {n.wrote} written, {n.named - n.wrote} not —{' '}
+            {Object.entries(n.skipped)
+              .map(([why, count]) => `${count} ${why.replace(/_/g, ' ')}`)
+              .join(', ')}
+            .
+          </p>
+        ))}
+      {view.data.notices
+        .filter((n) => n.state === 'abandoned')
+        .slice(0, 1)
+        .map((n) => (
+          <p className="warnline" key={n.id} style={{ margin: 0, fontSize: 12.5 }}>
+            A {n.kind} planned for {formatDate(n.scheduledFor.slice(0, 10))} never went out. {n.reason}
+          </p>
+        ))}
 
       {view.data.intro && (
         <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
@@ -236,6 +381,7 @@ export function DeliverableTab({ block }: { block: Block }) {
             <thead>
               <tr>
                 <th>Startup</th>
+                <th>Asked</th>
                 <th>File</th>
                 {items.map((item) => (
                   <th key={item.id} title={item.help || undefined}>
@@ -249,6 +395,24 @@ export function DeliverableTab({ block }: { block: Block }) {
               {rows.map((row) => (
                 <tr key={row.candidate.id}>
                   <td className="name">{row.candidate.orgName}</td>
+                  <td>
+                    {/* Whether this one knows it is being asked. The ones who
+                        cannot be written to carry why, because that is the row
+                        somebody has to go and fix in the directory. */}
+                    {row.askedAt ? (
+                      <span className="faint" style={{ fontSize: 12 }}>
+                        {formatDate(row.askedAt.slice(0, 10))}
+                      </span>
+                    ) : row.blocked !== 'none' ? (
+                      <span className="badge warn" title={WHY[row.blocked]}>
+                        {row.blocked === 'no_email' ? 'No address' : row.blocked === 'no_account' ? 'No account' : 'Bounced'}
+                      </span>
+                    ) : (
+                      <span className="faint" style={{ fontSize: 12 }}>
+                        Not yet
+                      </span>
+                    )}
+                  </td>
                   <td>
                     {/* Accepted over required, because a file nobody has read
                         is not a file in order. What merely arrived is said
@@ -344,6 +508,16 @@ export function DeliverableTab({ block }: { block: Block }) {
             );
           })}
         </div>
+      )}
+
+      {notifying && (
+        <NotifyDialog
+          block={block}
+          kind={notifying}
+          status={view.data.status}
+          onDone={(next) => view.set(next as View)}
+          onClose={() => setNotifying(null)}
+        />
       )}
 
       {/* A reason is asked for, not offered: "send it again" with nothing

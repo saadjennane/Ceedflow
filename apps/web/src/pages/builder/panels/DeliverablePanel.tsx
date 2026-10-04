@@ -1,12 +1,25 @@
-import { FIELD_TYPE_LABEL, FIELD_TYPES, idOf, type DeliverableConfig, type FormField } from '@ceed/shared';
+import {
+  DELIVERABLE_RETURN_VARIABLES,
+  DELIVERABLE_VARIABLES,
+  FIELD_TYPE_LABEL,
+  FIELD_TYPES,
+  fillTemplate,
+  idOf,
+  longDate,
+  type DeliverableConfig,
+  type FormField,
+} from '@ceed/shared';
+import { useRef, useState } from 'react';
 import { Icon } from '../../../ui/Icon';
 import { DateField, TextField } from '../../../ui/Field';
+import { Modal } from '../../../ui/Overlays';
+import { OwedList } from '../../member/OwedItems';
 import { VisibilityControl } from './shared';
 
-/* Two sides to set up, so two tabs: when the list is open, and what is on it.
-   A dozen documents under the dates made the dates hard to find and the list
-   hard to read. */
-export const DELIVERABLE_TABS = ['Overview', 'What you ask for'] as const;
+/* Three sides to set up, so three tabs: when the list is open, what is on it,
+   and what the startups are told. A dozen documents under the dates made the
+   dates hard to find and the list hard to read. */
+export const DELIVERABLE_TABS = ['Overview', 'What you ask for', 'Messages'] as const;
 export type DeliverableTab = (typeof DELIVERABLE_TABS)[number];
 
 /* ------------------------------------------------------------------ */
@@ -94,6 +107,8 @@ export function DeliverableSetup({
     );
   }
 
+  if (tab === 'Messages') return <MessagesTab config={config} patch={patch} />;
+
   return (
     <>
       <div className="field">
@@ -180,10 +195,208 @@ export function DeliverableSetup({
         {/* Under the list, not above it. Adding the eighth document and being
             sent back to the top to find what you just made is the thing that
             makes a list of a dozen tedious to build. */}
-        <button className="btn sm" style={{ alignSelf: 'flex-start', marginTop: 8 }} onClick={add}>
-          <Icon name="plus" size={13} /> Add something to ask for
+        <div className="row" style={{ marginTop: 8 }}>
+          <button className="btn sm" onClick={add}>
+            <Icon name="plus" size={13} /> Add something to ask for
+          </button>
+          <div className="spacer" />
+          <FounderPreview config={config} />
+        </div>
+      </div>
+    </>
+  );
+}
+
+/**
+ * The list as the startup opens it.
+ *
+ * The same component the founder's own page draws, against the config being
+ * edited rather than the saved one — so the order of the items, the labels and
+ * the instruction above them are checked before sixteen people read them. A
+ * window rather than a route, for the same reason the grid preview is one: what
+ * is being tried has not been saved.
+ */
+function FounderPreview({ config }: { config: DeliverableConfig }) {
+  const [open, setOpen] = useState(false);
+  if (!config.items.length) return null;
+  return (
+    <>
+      <button className="btn sm" onClick={() => setOpen(true)}>
+        <Icon name="eye" size={13} /> See their page
+      </button>
+      {open && (
+        <Modal
+          wide
+          title="What they see"
+          subtitle="Rafid Tech, as an example. Nothing here is saved — no answer, no row."
+          onClose={() => setOpen(false)}
+          footer={
+            <>
+              <div className="spacer" />
+              <button className="btn primary" onClick={() => setOpen(false)}>
+                Close
+              </button>
+            </>
+          }
+        >
+          <OwedList
+            ask={{ block: { id: 'preview', name: 'Due diligence' }, config, open: true, returns: [] }}
+            orgName="Rafid Tech"
+            onSave={() => {}}
+          />
+        </Modal>
+      )}
+    </>
+  );
+}
+
+/** One template, with its variables a click away and said back filled in. */
+function Template({
+  label,
+  help,
+  value,
+  onChange,
+  variables,
+  example,
+}: {
+  label: string;
+  help: string;
+  value: string;
+  onChange: (next: string) => void;
+  variables: readonly { name: string; label: string; what: string }[];
+  example: Record<string, string>;
+}) {
+  const box = useRef<HTMLTextAreaElement>(null);
+  const [show, setShow] = useState(false);
+
+  /* Dropped at the cursor, because the alternative — appended at the end, or
+     typed from memory — is how {{startup}} ends up spelled {{Startup}} and
+     goes out as four braces. */
+  const insert = (name: string) => {
+    const el = box.current;
+    const token = `{{${name}}}`;
+    if (!el) return onChange(value + token);
+    const from = el.selectionStart ?? value.length;
+    const to = el.selectionEnd ?? from;
+    onChange(value.slice(0, from) + token + value.slice(to));
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(from + token.length, from + token.length);
+    });
+  };
+
+  const known = new Set(variables.map((v) => v.name));
+  const unknown = [...new Set([...value.matchAll(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g)].map((m) => m[1]!))].filter(
+    (n) => !known.has(n),
+  );
+
+  return (
+    <div className="field">
+      <div className="row">
+        <label style={{ flex: 1 }}>{label}</label>
+        <button className="linkish" style={{ fontSize: 12 }} onClick={() => setShow(!show)}>
+          {show ? 'Hide the example' : 'See it filled in'}
         </button>
       </div>
+      <div className="help">{help}</div>
+      <textarea
+        ref={box}
+        className="textarea"
+        rows={9}
+        value={value}
+        style={{ marginTop: 6 }}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <div className="row wrap" style={{ gap: 5, marginTop: 6 }}>
+        {variables.map((v) => (
+          <button key={v.name} className="btn ghost sm" title={v.what} onClick={() => insert(v.name)}>
+            <Icon name="plus" size={11} /> {v.label}
+          </button>
+        ))}
+      </div>
+      {/* A name nobody replaces goes out written exactly as typed. Said here
+          rather than discovered in somebody's inbox. */}
+      {unknown.length > 0 && (
+        <p className="warnline" style={{ margin: '6px 0 0', fontSize: 12 }}>
+          {unknown.map((u) => `{{${u}}}`).join(', ')} {unknown.length === 1 ? 'is' : 'are'} not a variable here — it
+          will go out written like that.
+        </p>
+      )}
+      {show && <pre className="letter" style={{ marginTop: 6 }}>{fillTemplate(value, example)}</pre>}
+    </div>
+  );
+}
+
+/**
+ * What the startups read.
+ *
+ * Kept with the block rather than in a settings page somewhere: what a due
+ * diligence asks for and the words it asks in are one piece of work, done in
+ * one sitting. The defaults are whole letters — a template somebody has to
+ * finish before the first send is a template that goes out half-written.
+ */
+function MessagesTab({
+  config,
+  patch,
+}: {
+  config: DeliverableConfig;
+  patch: (partial: Partial<DeliverableConfig>) => void;
+}) {
+  const set = (key: keyof DeliverableConfig['messages'], next: string) =>
+    patch({ messages: { ...config.messages, [key]: next } });
+
+  const pieces = config.items
+    .filter((i) => i.required)
+    .slice(0, 3)
+    .map((i) => `  · ${i.label || 'Registre de commerce'}`)
+    .join('\n');
+  const example = {
+    startup: 'Rafid Tech',
+    pieces: pieces || '  · Registre de commerce\n  · Effectif au 31/12',
+    date: longDate(config.closesAt) || '15 novembre 2026',
+    lien: 'https://ceedflow.com/me?tab=Programs',
+  };
+
+  return (
+    <>
+      <div className="callout">
+        <Icon name="send" size={15} />
+        <div>
+          Written once here, sent from the work screen — where you see who it names before it goes. A message can
+          still be adjusted for one send without changing the template.
+        </div>
+      </div>
+
+      <Template
+        label="Asking for the documents"
+        help="The first letter. It goes to each startup once."
+        value={config.messages.request}
+        onChange={(v) => set('request', v)}
+        variables={DELIVERABLE_VARIABLES}
+        example={example}
+      />
+
+      <Template
+        label="Chasing a file still short"
+        help="Sent to whoever still owes something they can act on — never to a file that is only waiting on CEED."
+        value={config.messages.reminder}
+        onChange={(v) => set('reminder', v)}
+        variables={DELIVERABLE_VARIABLES}
+        example={example}
+      />
+
+      <Template
+        label="Sending one thing back"
+        help="Goes out the moment you send something back, carrying the reason you typed. Nothing to launch."
+        value={config.messages.rejected}
+        onChange={(v) => set('rejected', v)}
+        variables={DELIVERABLE_RETURN_VARIABLES}
+        example={{
+          ...example,
+          piece: config.items[0]?.label || 'Registre de commerce',
+          motif: 'Le registre date de 2024 — il nous en faut un de moins de trois mois.',
+        }}
+      />
     </>
   );
 }

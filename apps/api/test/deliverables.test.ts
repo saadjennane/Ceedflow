@@ -11,16 +11,18 @@ import { after, before, describe, it } from 'node:test';
 import { db, migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
-import { selectionSource } from '@ceed/shared';
+import { fillTemplate, selectionSource } from '@ceed/shared';
 import {
   deliverableView,
   deliverablesFor,
-  fill,
   launchNotice,
   noticeRoster,
+  rosterFor,
   sendDueNotices,
+  tellReturned,
 } from '../src/services/deliverables.js';
 import { createAccount } from '../src/services/auth.js';
+import { letters } from '../src/services/mail.js';
 import { outcomesByCandidate, outcomesOf, setOutcomeByHand } from '../src/services/scoring.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
@@ -473,8 +475,51 @@ describe('telling the startups', { skip: skipWithoutServer }, () => {
     assert.equal(await lettersFor(due.id), 2, 'the two that can hear it');
   });
 
+  it('tells a founder at once when something is sent back, with the reason', async () => {
+    /* The worst state this block can be in is a piece sitting refused that
+       nobody mentioned: CEED waits, the startup waits, and the closing date
+       arrives. So this one is not an act somebody launches. */
+    const { due, a } = await setUp();
+    await repo.saveReturn(due.id, a.id, 'rc', { uploadId: 'u1', filename: 'rc.pdf' });
+    await repo.reviewReturn(due.id, a.id, 'rc', 'rejected', 'Le registre date de 2024.');
+    await tellReturned(due.id, a.id, 'rc', 'Le registre date de 2024.');
+
+    const [letter] = await letters({ candidateId: a.id });
+    assert.equal(letter?.kind, 'deliverable_rejected');
+    assert.match(letter!.body, /Rafid Tech/, 'addressed by name');
+    assert.match(letter!.body, /Le registre date de 2024\./, 'carrying the reason already typed');
+    assert.match(letter!.subject, /Registre de commerce/, 'and says which piece in the subject');
+  });
+
+  it('says nothing to a founder with no address, rather than failing the review', async () => {
+    const { edition, due } = await setUp();
+    const detail = await repo.getEditionDetail(edition.id);
+    const org = await dir.createRecord({ kind: 'org', name: 'Sans adresse', origin: 'manual' });
+    const mute = await repo.createCandidate({
+      editionId: edition.id, trackId: detail!.tracks[0].id, orgId: org.id,
+    });
+    await repo.saveReturn(due.id, mute.id, 'rc', { uploadId: 'u2', filename: 'rc.pdf' });
+    await repo.reviewReturn(due.id, mute.id, 'rc', 'rejected', 'Illisible.');
+    await tellReturned(due.id, mute.id, 'rc', 'Illisible.');
+    assert.equal((await letters({ candidateId: mute.id })).length, 0);
+  });
+
+  it('says the same closing date in the preview and in the letter', async () => {
+    /* The screen used to format the day itself — “15 Nov 2026” on screen, and
+       “2026-11-15” in what went out. A preview whose job is to show the letter
+       cannot compose any part of it on its own. */
+    const { due, a } = await setUp();
+    await repo.updateBlock(due.id, { config: { closesAt: '2026-11-15' } });
+    assert.equal((await rosterFor(due.id, 'request')).dateLabel, '15 novembre 2026');
+
+    await launchNotice(due.id, { kind: 'request', body: 'avant le {{date}}' });
+    await sendDueNotices();
+    const [letter] = await letters({ candidateId: a.id });
+    assert.equal(letter?.body, 'avant le 15 novembre 2026');
+  });
+
   it('fills a letter with what that startup owes, and leaves an unknown name alone', async () => {
-    assert.equal(fill('Bonjour {{startup}}', { startup: 'Rafid Tech' }), 'Bonjour Rafid Tech');
-    assert.equal(fill('Bonjour {{inconnu}}', {}), 'Bonjour {{inconnu}}', 'visible rather than silently empty');
+    assert.equal(fillTemplate('Bonjour {{startup}}', { startup: 'Rafid Tech' }), 'Bonjour Rafid Tech');
+    assert.equal(fillTemplate('Bonjour {{inconnu}}', {}), 'Bonjour {{inconnu}}', 'visible rather than silently empty');
   });
 });

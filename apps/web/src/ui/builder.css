@@ -1600,3 +1600,45 @@ dl.answers dd {
   cursor: pointer;
   text-decoration: underline;
 }
+
+/* ---- composing a letter beside the letter itself ---- */
+
+/* Writing on one side, one recipient's copy on the other. They sit level
+   because the point is moving your eye between them: a change to {{pieces}}
+   and what it does to the third startup's letter, in one glance. Below the
+   narrow breakpoint they stack, writing first — a preview above the field it
+   previews reads as the thing you are editing. */
+.compose-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .compose-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* The letter as it will arrive: its own line breaks, its own spacing, and no
+   styling of ours — this is the one place on the screen that must not look
+   like our product. */
+.letter {
+  margin: 0;
+  padding: 11px 13px;
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  font: 13px/1.55 var(--body);
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 200px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+/* A remark about this one recipient, next to their copy. */
+.warnline {
+  color: var(--warn);
+}

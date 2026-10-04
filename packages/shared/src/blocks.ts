@@ -844,6 +844,61 @@ export const selectionConfigSchema = z.object({
  * item by item with a population that is known, and the tracking is the
  * subject.
  */
+/**
+ * The names a message may carry, and what each one stands for.
+ *
+ * One list, read by the buttons that insert them, by the preview that fills
+ * them, and by the server that sends. A variable that exists in one of those
+ * three and not the others is a letter that goes out saying `{{lien}}`.
+ */
+export const DELIVERABLE_VARIABLES = [
+  { name: 'startup', label: 'Startup', what: 'The organisation’s name' },
+  { name: 'pieces', label: 'What is missing', what: 'The items this one still owes, one per line' },
+  { name: 'date', label: 'Closing date', what: 'The day the list shuts' },
+  { name: 'lien', label: 'Link', what: 'Where they go to send it' },
+] as const;
+
+/** Only in a letter about one item sent back. */
+export const DELIVERABLE_RETURN_VARIABLES = [
+  { name: 'startup', label: 'Startup', what: 'The organisation’s name' },
+  { name: 'piece', label: 'The item', what: 'What was sent back' },
+  { name: 'motif', label: 'Reason', what: 'What you wrote when you sent it back' },
+  { name: 'lien', label: 'Link', what: 'Where they go to send it again' },
+] as const;
+
+/* The defaults are whole letters, in the language the founders are written to.
+   A template somebody has to finish before the first send is a template that
+   goes out half-written. */
+const DELIVERABLE_REQUEST = `Bonjour {{startup}},
+
+Votre dossier passe en revue administrative. Merci de nous transmettre les éléments suivants avant le {{date}} :
+
+{{pieces}}
+
+Tout se dépose depuis votre espace : {{lien}}
+
+L'équipe CEED`;
+
+const DELIVERABLE_REMINDER = `Bonjour {{startup}},
+
+Il manque encore des éléments à votre dossier, à transmettre avant le {{date}} :
+
+{{pieces}}
+
+Depuis votre espace : {{lien}}
+
+L'équipe CEED`;
+
+const DELIVERABLE_REJECTED = `Bonjour {{startup}},
+
+Nous devons vous redemander un élément de votre dossier : {{piece}}.
+
+{{motif}}
+
+Merci de le déposer à nouveau depuis votre espace : {{lien}}
+
+L'équipe CEED`;
+
 export const deliverableConfigSchema = z.object({
   ...brickWindowFields,
   /** What the startups are told when they open their list. */
@@ -856,7 +911,50 @@ export const deliverableConfigSchema = z.object({
    */
   passLabel: z.string().default('Dossier complet'),
   failLabel: z.string().default('Dossier incomplet'),
+  /**
+   * What the startups actually read. Kept with the block rather than in a
+   * global settings page, because what a due diligence asks for and the words
+   * it asks in are one piece of work, edited in one sitting.
+   */
+  messages: z
+    .object({
+      request: z.string().default(DELIVERABLE_REQUEST),
+      reminder: z.string().default(DELIVERABLE_REMINDER),
+      rejected: z.string().default(DELIVERABLE_REJECTED),
+    })
+    .default({}),
 });
+
+/**
+ * `{{startup}}` and the rest, replaced.
+ *
+ * Shared rather than kept with the sender, because the mail-merge preview has
+ * to be the letter and not a rendering of it — two implementations of this is
+ * how a screen shows a name filled in and the send goes out with the braces.
+ *
+ * An unknown name is left exactly where it is: a typo stays visible, where
+ * quietly emptying it would send a letter with a hole in the middle.
+ */
+export function fillTemplate(template: string, values: Record<string, string>): string {
+  return template.replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g, (whole, name: string) => values[name] ?? whole);
+}
+
+const MOIS = [
+  'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+];
+
+/**
+ * A day as a letter to a founder writes it. Parsed by hand, so no timezone
+ * moves it, and shared for the same reason as `fillTemplate`: the screen that
+ * previews a letter and the sender that writes it must say the same date.
+ */
+export function longDate(day: string | null | undefined): string {
+  if (!day) return '';
+  const [y, m, d] = day.slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return '';
+  return `${d} ${MOIS[m - 1]} ${y}`;
+}
 
 /** The ids of what a deliverables block hands out. Fixed; only the words move. */
 export const DELIVERABLE_PASS = 'dd_complete';

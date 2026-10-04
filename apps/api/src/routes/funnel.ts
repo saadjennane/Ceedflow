@@ -23,7 +23,13 @@ import { peopleByIds } from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { SESSION_COOKIE, accountForToken } from '../services/auth.js';
 import { committeeForEvaluation, committeeView } from '../services/committee.js';
-import { deliverableView, launchNotice, noticeRoster, sendDueNotices } from '../services/deliverables.js';
+import {
+  deliverableView,
+  launchNotice,
+  rosterFor,
+  sendDueNotices,
+  tellReturned,
+} from '../services/deliverables.js';
 import { reviewsFor } from '../services/reviews.js';
 import { outcomesByCandidate, outcomesOf, scoresByCandidate, setOutcomeByHand } from '../services/scoring.js';
 import {
@@ -575,6 +581,10 @@ export async function funnelRoutes(app: FastifyInstance) {
     if (!block || block.type !== 'deliverable') return notFound(reply, 'Deliverables block not found.');
     const found = await repo.reviewReturn(id, candidateId, input.itemId, input.state, input.reason.trim());
     if (!found) return notFound(reply, 'There is nothing there to read yet.');
+    /* Told at once, not at the next launch: a piece sitting refused that nobody
+       mentioned is the worst state this block has — both sides wait, and the
+       closing date arrives. post() never throws, so this cannot undo the call. */
+    if (input.state === 'rejected') await tellReturned(id, candidateId, input.itemId, input.reason.trim());
     return deliverableView(id);
   });
 
@@ -584,7 +594,7 @@ export async function funnelRoutes(app: FastifyInstance) {
     const kind = ((req.query as { kind?: string }).kind ?? 'request') as 'request' | 'reminder';
     const block = await repo.getBlock(id);
     if (!block || block.type !== 'deliverable') return notFound(reply, 'Deliverables block not found.');
-    return noticeRoster(id, kind);
+    return rosterFor(id, kind);
   });
 
   /**
