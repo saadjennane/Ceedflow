@@ -518,6 +518,32 @@ describe('telling the startups', { skip: skipWithoutServer }, () => {
     assert.equal(letter?.body, 'avant le 15 novembre 2026');
   });
 
+  it('says whether the letter arrived, not only that it was written', async () => {
+    /* A letter that came back is not a startup that was told, and a column
+       showing only the date it was written would read as though it were. */
+    const { due, a, b } = await setUp();
+    await launchNotice(due.id, { kind: 'request', body: BODY });
+    await sendDueNotices();
+
+    const flying = (await deliverableView(due.id))!.rows.find((r) => r.candidate.id === a.id);
+    assert.equal(flying?.delivery, 'flying', 'handed over, nothing back yet');
+
+    const conn = await db();
+    const [mine] = await conn.query<{ id: string }>(
+      `select id from outbox where block_id = $1 and candidate_id = $2`, [due.id, a.id],
+    );
+    await conn.query(`update outbox set delivered_at = now() where id = $1`, [mine!.id]);
+    const [theirs] = await conn.query<{ id: string }>(
+      `select id from outbox where block_id = $1 and candidate_id = $2`, [due.id, b.id],
+    );
+    await conn.query(`update outbox set state = 'bounced' where id = $1`, [theirs!.id]);
+
+    const after = (await deliverableView(due.id))!.rows;
+    assert.equal(after.find((r) => r.candidate.id === a.id)?.delivery, 'arrived');
+    assert.equal(after.find((r) => r.candidate.id === b.id)?.delivery, 'lost');
+    assert.ok(after.find((r) => r.candidate.id === b.id)?.askedAt, 'still on the record as written to');
+  });
+
   it('fills a letter with what that startup owes, and leaves an unknown name alone', async () => {
     assert.equal(fillTemplate('Bonjour {{startup}}', { startup: 'Rafid Tech' }), 'Bonjour Rafid Tech');
     assert.equal(fillTemplate('Bonjour {{inconnu}}', {}), 'Bonjour {{inconnu}}', 'visible rather than silently empty');

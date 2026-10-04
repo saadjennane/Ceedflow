@@ -34,6 +34,8 @@ export interface OutboxRow extends Letter {
   attempts: number;
   createdAt: string;
   sentAt: string | null;
+  /** When the receiving server took it — not when we handed it over. */
+  deliveredAt: string | null;
 }
 
 /**
@@ -198,7 +200,8 @@ export async function flush(limit = 25): Promise<{ sent: number; failed: number 
 export async function letters(where: { email?: string; candidateId?: string }, limit = 50): Promise<OutboxRow[]> {
   const conn = await db();
   const select = `select id, kind, to_email as "to", to_name as "toName", subject, body,
-                         state, error, attempts, created_at::text as "createdAt", sent_at::text as "sentAt"
+                         state, error, attempts, created_at::text as "createdAt", sent_at::text as "sentAt",
+                         delivered_at::text as "deliveredAt"
                     from outbox`;
   if (where.candidateId) {
     return conn.query<OutboxRow>(`${select} where candidate_id = $1 order by created_at desc limit $2`, [

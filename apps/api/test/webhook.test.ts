@@ -136,6 +136,32 @@ describe('what the provider tells us back', { skip: skipWithoutServer }, () => {
     assert.match(row!.error, /Permanent/);
   });
 
+  it('records when a letter actually arrived, which is not when we handed it over', async () => {
+    await (await db()).query(
+      `insert into outbox (id, kind, to_email, subject, body, state, provider_id)
+       values ('msg_d', 'deliverable_request', 'arrive@example.test', 's', 'b', 'sent', 'em_3')`,
+    );
+    await send(call({ type: 'email.delivered', data: { email_id: 'em_3' } }));
+    const [row] = await (await db()).query<{ deliveredAt: string | null }>(
+      `select delivered_at::text as "deliveredAt" from outbox where id = 'msg_d'`,
+    );
+    assert.ok(row?.deliveredAt, 'the hour the receiving server took it');
+  });
+
+  it('keeps the first delivery when the provider reports it twice', async () => {
+    /* "Arrived at 9:02" becoming "arrived at 14:30" on a retry would make the
+       history say something that never happened. */
+    await (await db()).query(
+      `insert into outbox (id, kind, to_email, subject, body, state, provider_id, delivered_at)
+       values ('msg_e', 'x', 'deux@example.test', 's', 'b', 'sent', 'em_4', timestamptz '2026-10-01 09:02:00+00')`,
+    );
+    await send(call({ type: 'email.delivered', data: { email_id: 'em_4' } }));
+    const [row] = await (await db()).query<{ deliveredAt: string }>(
+      `select delivered_at::text as "deliveredAt" from outbox where id = 'msg_e'`,
+    );
+    assert.match(row!.deliveredAt, /09:02/);
+  });
+
   it('acknowledges an event it has no opinion about', async () => {
     // A provider that gains a new event type must not start seeing failures.
     const res = await send(call({ type: 'email.opened', data: { email_id: 'em_9' } }));

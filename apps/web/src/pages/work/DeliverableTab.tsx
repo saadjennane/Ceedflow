@@ -29,6 +29,7 @@ interface Row {
   required: number;
   complete: boolean;
   askedAt: string | null;
+  delivery: 'arrived' | 'flying' | 'lost' | null;
   blocked: 'none' | 'no_email' | 'no_account' | 'suppressed';
 }
 
@@ -307,9 +308,9 @@ export function DeliverableTab({ block }: { block: Block }) {
             </strong>{' '}
             {mute > 0 && (
               <>
-                {mute === unheard.length ? 'They have' : `${mute} of them have`} nothing to write to — no address, no
-                account, or an address that bounced. Fixing that in the directory is what puts{' '}
-                {mute === 1 ? 'it' : 'them'} back on the list.{' '}
+                {mute === unheard.length ? (mute === 1 ? 'That one has' : 'They have') : `${mute} of them have`}{' '}
+                nothing to write to — no address, no account, or an address that bounced. Fixing that in the directory
+                puts them back on the list.{' '}
               </>
             )}
             {toAsk > 0 && 'The rest are startups the selection has added since the last send.'}
@@ -400,8 +401,21 @@ export function DeliverableTab({ block }: { block: Block }) {
                         cannot be written to carry why, because that is the row
                         somebody has to go and fix in the directory. */}
                     {row.askedAt ? (
-                      <span className="faint" style={{ fontSize: 12 }}>
-                        {formatDate(row.askedAt.slice(0, 10))}
+                      /* The date is when we wrote; the word after it is whether
+                         it arrived. A letter that came back is not a startup
+                         that was told, and a column that showed only the date
+                         would read as though it were. */
+                      <span className="row" style={{ gap: 5, fontSize: 12 }}>
+                        <span className="faint">{formatDate(row.askedAt.slice(0, 10))}</span>
+                        {row.delivery === 'lost' ? (
+                          <span className="badge warn" title="It came back, or could not be written.">
+                            did not arrive
+                          </span>
+                        ) : row.delivery === 'arrived' ? (
+                          <span style={{ color: 'var(--ok)' }} title="Their mail server took it.">
+                            <Icon name="check" size={12} />
+                          </span>
+                        ) : null}
                       </span>
                     ) : row.blocked !== 'none' ? (
                       <span className="badge warn" title={WHY[row.blocked]}>

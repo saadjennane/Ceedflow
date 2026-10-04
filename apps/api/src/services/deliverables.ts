@@ -56,6 +56,14 @@ export interface DeliverableRow {
   complete: boolean;
   /** When this startup was last written to about this block, or null. */
   askedAt: string | null;
+  /**
+   * What became of that letter: 'arrived' once the receiving server took it,
+   * 'lost' when it came back or could not be written, 'in flight' until one of
+   * those happens. Separate from `askedAt`, because "we wrote to them" and
+   * "it reached them" are the two questions of a chasing day and one date
+   * cannot answer both.
+   */
+  delivery: 'arrived' | 'flying' | 'lost' | null;
   /** Why it would hear nothing, if it would. */
   blocked: Blocked;
 }
@@ -123,9 +131,18 @@ export async function deliverableView(blockId: string): Promise<DeliverableView 
      the launch button come from one computation and cannot drift apart. */
   const targets = await repo.listNoticeTargets(blockId);
   const askedAt = new Map<string, string>();
+  const delivery = new Map<string, DeliverableRow['delivery']>();
   for (const t of targets) {
     if (t.kind !== 'request' || !t.sentAt || t.skipped) continue;
     askedAt.set(t.candidateId, t.sentAt);
+    delivery.set(
+      t.candidateId,
+      t.deliveredAt
+        ? 'arrived'
+        : t.letterState === 'bounced' || t.letterState === 'failed' || !t.letterId
+          ? 'lost'
+          : 'flying',
+    );
   }
   const held = await suppressedAmong(intake.map((c) => c.email));
   const notices = (await repo.listNotices(blockId)).map((notice) => {
@@ -170,6 +187,7 @@ export async function deliverableView(blockId: string): Promise<DeliverableView 
         // An item that was never marked required cannot hold a file open.
         complete: accepted === required.length,
         askedAt: askedAt.get(candidate.id) ?? null,
+        delivery: delivery.get(candidate.id) ?? null,
         blocked: !candidate.email
           ? ('no_email' as const)
           : held.has(candidate.email.trim().toLowerCase())

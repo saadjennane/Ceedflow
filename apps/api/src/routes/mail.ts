@@ -113,7 +113,14 @@ export async function mailRoutes(app: FastifyInstance) {
       // Somebody pressed "this is spam". Definitive, whatever the address does.
       for (const email of addressesOf(event.data)) await suppress(email, 'marked as spam');
     } else if (kind === 'email.delivered' && id) {
-      await conn.query(`update outbox set updated_at = now() where provider_id = $1 and state = 'sent'`, [id]);
+      /* The first delivery wins. A provider may report the same one twice, and
+         "arrived at 9:02" moving to "arrived at 14:30" on a retry would make
+         the history say something that never happened. */
+      await conn.query(
+        `update outbox set delivered_at = now(), updated_at = now()
+          where provider_id = $1 and delivered_at is null`,
+        [id],
+      );
     }
 
     // Anything else is acknowledged and ignored: a provider that gains a new

@@ -880,13 +880,27 @@ export async function getNotice(id: string): Promise<DeliverableNotice | null> {
  */
 export async function listNoticeTargets(
   blockId: string,
-): Promise<(DeliverableTarget & { kind: NoticeKind; noticeState: NoticeState })[]> {
-  return all<DeliverableTarget & { kind: NoticeKind; noticeState: NoticeState }>(
+): Promise<
+  (DeliverableTarget & {
+    kind: NoticeKind;
+    noticeState: NoticeState;
+    /** When the receiving server took it, from the letter itself. */
+    deliveredAt: string | null;
+    /** What became of the letter: 'sent', 'bounced', 'failed', 'held'… */
+    letterState: string | null;
+  })[]
+> {
+  /* Left join to the letter, because "written" and "arrived" are two different
+     facts and the screen is asked for both. A target with no letter — somebody
+     named and then left out — simply has neither. */
+  return all(
     `select t.notice_id as "noticeId", t.candidate_id as "candidateId", t.kind,
             t.sent_at::text as "sentAt", t.letter_id as "letterId", t.skipped,
-            n.state as "noticeState"
+            n.state as "noticeState",
+            o.delivered_at::text as "deliveredAt", o.state as "letterState"
        from deliverable_notice_targets t
        join deliverable_notices n on n.id = t.notice_id
+       left join outbox o on o.id = t.letter_id
       where t.block_id = $1`,
     [blockId],
   );
