@@ -44,7 +44,7 @@ export function AccountCard({
   const [confirmDisable, setConfirmDisable] = useState(false);
   /* Shown once and never again: the password is stored as a hash, so this is
      the only moment it exists in a form anybody can read. */
-  const [issued, setIssued] = useState<string | null>(null);
+  const [issued, setIssued] = useState<{ password: string; emailed: boolean } | null>(null);
   const toast = useToast();
 
   const act = async (what: () => Promise<void>) => {
@@ -61,8 +61,10 @@ export function AccountCard({
 
   const resetPassword = () =>
     act(async () => {
-      const out = await api.post<{ password: string }>(`/api/records/${record.id}/account/password`);
-      setIssued(out.password);
+      const out = await api.post<{ password: string; emailed: boolean }>(
+        `/api/records/${record.id}/account/password`,
+      );
+      setIssued(out);
     });
 
   const setDisabled = (disabled: boolean) =>
@@ -71,18 +73,16 @@ export function AccountCard({
       toast(disabled ? `${record.name} can no longer sign in.` : `${record.name} can sign in again.`);
     });
 
-  const invite = async () => {
-    setBusy(true);
-    try {
-      await api.post(`/api/records/${record.id}/account/invite`);
-      toast('Marked as invited. No mail left — that comes with the mail routing.');
-      onChanged();
-    } catch (err) {
-      toast((err as Error).message, true);
-    } finally {
-      setBusy(false);
-    }
-  };
+  /* The invitation carries a fresh password, so the one shown afterwards is
+     the one in their inbox — and whoever pressed this is often on the phone
+     with them while the letter takes its minute. */
+  const invite = () =>
+    act(async () => {
+      const out = await api.post<{ password: string; emailed: boolean }>(
+        `/api/records/${record.id}/account/invite`,
+      );
+      setIssued(out);
+    });
 
   return (
     <>
@@ -117,7 +117,7 @@ export function AccountCard({
                 ? 'They chose their own password. Nobody at CEED can read it, and nobody here can change it.'
                 : account.state === 'invited'
                   ? 'The invitation went out and they have not come yet. Inviting again is a reminder.'
-                    : 'The account is open but nobody has been told. Invite them, or hand the password over yourself.'}
+                    : 'The account is open but nobody has been told. Inviting them emails a password; or hand one over yourself.'}
             </p>
 
             <div className="row wrap" style={{ gap: 7 }}>
@@ -193,7 +193,11 @@ export function AccountCard({
       {issued && (
         <Modal
           title="Their new password"
-          subtitle={`Hand it to ${record.name}. It is not stored anywhere you can read it again.`}
+          subtitle={
+            issued.emailed
+              ? `On its way to ${record.name} by email. This is the last time it is readable here.`
+              : `Hand it to ${record.name} — no mail went out. It is not stored anywhere you can read it again.`
+          }
           onClose={() => setIssued(null)}
           footer={
             <>
@@ -207,13 +211,13 @@ export function AccountCard({
           <div className="stack" style={{ gap: 10 }}>
             <div className="row" style={{ gap: 8 }}>
               <code className="input num" style={{ flex: 1, fontSize: 16, letterSpacing: '0.02em' }}>
-                {issued}
+                {issued.password}
               </code>
               <button
                 className="btn sm"
                 onClick={async () => {
                   try {
-                    await navigator.clipboard.writeText(issued);
+                    await navigator.clipboard.writeText(issued.password);
                     toast('Copied.');
                   } catch {
                     toast('Select it and copy it by hand.', true);

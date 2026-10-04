@@ -27,7 +27,8 @@ import {
   reissueProvisionalPassword,
   setAccountDisabled,
 } from '../services/auth.js';
-import { post } from '../services/mail.js';
+import { post, sendingIsLive } from '../services/mail.js';
+import { publicOrigin } from '../services/platform.js';
 import { HttpError, notFound, parse } from './util.js';
 import { requireWorkspaceAdmin, workspaceGuard } from './guard.js';
 
@@ -174,10 +175,18 @@ export async function directoryRoutes(app: FastifyInstance) {
   });
 
   /**
-   * Sending the invitation. No mail leaves yet — this records that the person
-   * has been told, which is the difference between an account nobody knows
-   * about and one whose owner has not come to claim it. Inviting an account
-   * that is already claimed would say something untrue, so it is refused.
+   * Sending the invitation.
+   *
+   * It carries a password, because an invitation that does not is a letter
+   * saying "you have an account somewhere" — the person then writes back to
+   * ask how to get in, which is the opposite of what inviting them was for.
+   *
+   * The password is issued here rather than taken, and it is a fresh one each
+   * time: an invitation sent twice is somebody saying the first never arrived,
+   * and what has to work is the one in their hand now. Only an account whose
+   * password nobody has chosen can be invited — `claimed` is exactly that, so
+   * refusing it is what keeps this from being a way to reset a password
+   * without saying so.
    */
   app.post('/api/records/:id/account/invite', async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -186,8 +195,40 @@ export async function directoryRoutes(app: FastifyInstance) {
     if (account.state === 'claimed') {
       throw new HttpError(422, 'This account is already claimed — there is nothing to invite.');
     }
+    if (account.state === 'disabled') {
+      throw new HttpError(422, 'This account is switched off — inviting somebody into it would be a dead end.');
+    }
+
+    const record = await dir.getRecord(id);
+    const password = suggestPassword();
+    await reissueProvisionalPassword(account.id, password);
     await markInvited(account.id);
-    return accountOfRecord(id);
+
+    const origin = await publicOrigin();
+    const letter = await post({
+      kind: 'account_invite',
+      to: account.email,
+      toName: record?.name ?? '',
+      recordId: id,
+      subject: 'Your CEED account',
+      body: [
+        record?.name ? `${record.name},` : 'Hello,',
+        '',
+        'CEED has opened an account for you. Sign in with the password below and you will be asked to choose your own.',
+        '',
+        `    ${account.email}`,
+        `    ${password}`,
+        '',
+        ...(origin ? [`    ${origin}/login`, ''] : []),
+        'If you were not expecting this, you can ignore it — nothing happens until somebody signs in.',
+      ].join('\n'),
+    });
+
+    /* The password goes back once, the way opening an account does: whoever
+       pressed this is often on the phone with the person, and the letter can
+       take a minute. Whether it actually left is said rather than assumed —
+       "we have emailed it" is a sentence somebody acts on. */
+    return { ...(await accountOfRecord(id))!, password, emailed: sendingIsLive() && Boolean(letter) };
   });
 
   /**
@@ -212,7 +253,7 @@ export async function directoryRoutes(app: FastifyInstance) {
     /* Posted as well as shown. The screen shows it once because somebody is
        often on the phone with the person; the message is for the case where
        they are not, and for the person who writes it down wrong. */
-    await post({
+    const letter = await post({
       kind: 'password_reset',
       to: account.email,
       toName: record?.name ?? '',
@@ -231,7 +272,7 @@ export async function directoryRoutes(app: FastifyInstance) {
 
     // Provisional again: whoever reads this screen knows it, so it is not
     // theirs until they have replaced it. Their sessions end with the old one.
-    return { account: await accountOfRecord(id), password };
+    return { account: await accountOfRecord(id), password, emailed: sendingIsLive() && Boolean(letter) };
   });
 
   /**

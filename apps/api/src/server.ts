@@ -10,6 +10,7 @@ import Fastify from 'fastify';
 import { migrate } from './db/client.js';
 import { actionRoutes } from './routes/actions.js';
 import { authRoutes } from './routes/auth.js';
+import { mailRoutes } from './routes/mail.js';
 import { builderRoutes } from './routes/builder.js';
 import { directoryRoutes } from './routes/directory.js';
 import { funnelRoutes } from './routes/funnel.js';
@@ -79,6 +80,7 @@ await app.register(actionRoutes);
 await app.register(directoryRoutes);
 await app.register(staffRoutes);
 await app.register(authRoutes);
+await app.register(mailRoutes);
 
 /* A deployment that owns the schema step sets SKIP_MIGRATE and runs
    `npm run migrate` before starting anything, so the schema settles once while
