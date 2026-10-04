@@ -16,6 +16,7 @@ import { funnelRoutes } from './routes/funnel.js';
 import { programRoutes } from './routes/programs.js';
 import { staffRoutes } from './routes/staff.js';
 import { bootstrapAdmin } from './services/bootstrap.js';
+import { noteOrigin } from './services/platform.js';
 import { sendDueNotices } from './services/deliverables.js';
 import { flush, sendingIsLive } from './services/mail.js';
 import { HttpError } from './routes/util.js';
@@ -54,6 +55,19 @@ app.setErrorHandler((error, _req, reply) => {
     error: 'Something went wrong on our side.',
     detail: process.env.NODE_ENV === 'production' ? undefined : (error as Error).message,
   });
+});
+
+/* The platform learns its own address from what it is asked on, so a letter
+   saying "go to your space" has somewhere to point without anybody setting a
+   variable for it. Health checks and internal names are ignored inside. */
+app.addHook('onRequest', async (req) => {
+  /* Only the proxy's own word on the scheme is passed on. `req.protocol`
+     would always answer something — 'http', for the connection this process
+     actually accepted — and that is the socket in front of it, not how
+     anybody reached the site. Saying nothing lets the sender assume https,
+     which is the safe way to be wrong about a link going into a letter. */
+  const forwarded = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0]!.trim();
+  void noteOrigin(forwarded || undefined, req.headers.host);
 });
 
 app.get('/api/health', async () => ({ ok: true }));

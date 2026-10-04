@@ -18,6 +18,7 @@ import {
 import { newId } from '@ceed/shared';
 import * as repo from '../db/repo.js';
 import { post, suppressedAmong } from './mail.js';
+import { publicOrigin } from './platform.js';
 import { intakeFor, trackOf } from './selection.js';
 
 export interface DeliverableReturnView {
@@ -255,7 +256,7 @@ export async function rosterFor(blockId: string, kind: 'request' | 'reminder'): 
   const config = block?.config as DeliverableConfig | undefined;
   return {
     entries: await noticeRoster(blockId, kind),
-    link: appLink(),
+    link: await appLink(),
     closesAt: config?.closesAt ?? null,
     dateLabel: longDate(config?.closesAt),
   };
@@ -341,7 +342,7 @@ export async function tellReturned(
       startup: candidate.orgName,
       piece: item?.label ?? '',
       motif: reason,
-      lien: appLink(),
+      lien: await appLink(),
     }),
   });
 }
@@ -397,8 +398,10 @@ export async function launchNotice(
  * screen refuses to send on: "connect somewhere" is not a call to action, and a
  * letter that says `{{lien}}` is worse than one not sent.
  */
-export const appLink = (): string =>
-  process.env.APP_URL ? `${process.env.APP_URL.replace(/\/$/, '')}/me?tab=Programs` : '';
+export async function appLink(): Promise<string> {
+  const origin = await publicOrigin();
+  return origin ? `${origin}/me?tab=Programs` : '';
+}
 
 /** The items this startup still owes, in the words the letter uses. */
 function owedLines(view: DeliverableView, candidateId: string): string {
@@ -483,7 +486,7 @@ export async function sendDueNotices(): Promise<{ sent: number; held: number }> 
           startup: row!.candidate.orgName,
           pieces: owedLines(view, target.candidateId),
           date: longDate(config.closesAt),
-          lien: appLink(),
+          lien: await appLink(),
         }),
       });
       // post() never throws and answers null when it could not: a loop of

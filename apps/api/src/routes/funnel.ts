@@ -597,7 +597,7 @@ export async function funnelRoutes(app: FastifyInstance) {
    * one address while the sender used another. Empty is an answer — it means
    * nothing has told this platform its own address, and the screen says so.
    */
-  app.get('/api/app-link', async () => ({ link: appLink() }));
+  app.get('/api/app-link', async () => ({ link: await appLink() }));
 
   /** Who a notice would name, and what stands in the way of each. */
   app.get('/api/blocks/:id/deliverables/roster', async (req, reply) => {

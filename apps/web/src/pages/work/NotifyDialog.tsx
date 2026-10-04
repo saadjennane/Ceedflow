@@ -208,8 +208,8 @@ export function NotifyDialog({
             <div className="callout warn">
               <Icon name="alert" size={15} />
               <div>
-                <strong>This platform has no public address set.</strong> The letter ends on “go here”, and there is
-                nowhere to point. Set <code>APP_URL</code> on the server, or take the link out of the message.
+                <strong>We don’t know this platform’s own web address yet.</strong> The letter ends on “go here”, and
+                there is nowhere to point. Reload this page, or take the link out of the message.
               </div>
             </div>
           )}

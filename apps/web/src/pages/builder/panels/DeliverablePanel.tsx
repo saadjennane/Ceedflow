@@ -360,14 +360,17 @@ function MessagesTab({
         </div>
       </div>
 
-      {/* Said here rather than discovered when a send is refused: the link is
-          the whole point of the first letter. */}
+      {/* Almost never seen: the platform picks its address up from the first
+          page anybody opens. If it is still blank, something is genuinely
+          wrong with how this is being served, and saying so beats sending a
+          letter whose only instruction leads nowhere. */}
       {link.data && !link.data.link && (
         <div className="callout warn">
           <Icon name="alert" size={15} />
           <div>
-            <strong>This platform has no public address set.</strong> <code>Link</code> would go out empty, so a
-            message carrying it cannot be sent. Set <code>APP_URL</code> on the server.
+            <strong>We don’t know this platform’s own web address yet.</strong> A message using <strong>Link</strong>{' '}
+            would have nowhere to send anybody, so it won’t go out. Reload this page; if it persists, whoever hosts
+            this needs to look at it.
           </div>
         </div>
       )}
