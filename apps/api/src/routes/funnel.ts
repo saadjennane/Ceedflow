@@ -24,6 +24,7 @@ import * as repo from '../db/repo.js';
 import { SESSION_COOKIE, accountForToken } from '../services/auth.js';
 import { committeeForEvaluation, committeeView } from '../services/committee.js';
 import {
+  appLink,
   deliverableView,
   launchNotice,
   rosterFor,
@@ -587,6 +588,16 @@ export async function funnelRoutes(app: FastifyInstance) {
     if (input.state === 'rejected') await tellReturned(id, candidateId, input.itemId, input.reason.trim());
     return deliverableView(id);
   });
+
+  /**
+   * Where a letter sends a founder.
+   *
+   * Asked for rather than guessed at: the setup screen shows what `{{lien}}`
+   * becomes, and a screen that assembled that URL itself would eventually show
+   * one address while the sender used another. Empty is an answer — it means
+   * nothing has told this platform its own address, and the screen says so.
+   */
+  app.get('/api/app-link', async () => ({ link: appLink() }));
 
   /** Who a notice would name, and what stands in the way of each. */
   app.get('/api/blocks/:id/deliverables/roster', async (req, reply) => {

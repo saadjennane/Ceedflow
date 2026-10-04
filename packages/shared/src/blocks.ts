@@ -854,8 +854,8 @@ export const selectionConfigSchema = z.object({
 export const DELIVERABLE_VARIABLES = [
   { name: 'startup', label: 'Startup', what: 'The organisation’s name' },
   { name: 'pieces', label: 'What is missing', what: 'The items this one still owes, one per line' },
-  { name: 'date', label: 'Closing date', what: 'The day the list shuts' },
-  { name: 'lien', label: 'Link', what: 'Where they go to send it' },
+  { name: 'date', label: 'Closing date', what: 'The day this list shuts, written out' },
+  { name: 'lien', label: 'Link', what: 'Their own space on this platform, where this list is' },
 ] as const;
 
 /** Only in a letter about one item sent back. */
@@ -863,7 +863,7 @@ export const DELIVERABLE_RETURN_VARIABLES = [
   { name: 'startup', label: 'Startup', what: 'The organisation’s name' },
   { name: 'piece', label: 'The item', what: 'What was sent back' },
   { name: 'motif', label: 'Reason', what: 'What you wrote when you sent it back' },
-  { name: 'lien', label: 'Link', what: 'Where they go to send it again' },
+  { name: 'lien', label: 'Link', what: 'Their own space on this platform, where this list is' },
 ] as const;
 
 /* The defaults are whole letters, in the language the founders are written to.

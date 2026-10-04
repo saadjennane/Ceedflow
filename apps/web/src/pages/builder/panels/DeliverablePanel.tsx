@@ -10,11 +10,12 @@ import {
   type FormField,
 } from '@ceed/shared';
 import { useRef, useState } from 'react';
+import { api } from '../../../lib/api';
+import { useAsync } from '../../../lib/useAsync';
 import { Icon } from '../../../ui/Icon';
 import { DateField, TextField } from '../../../ui/Field';
 import { Modal } from '../../../ui/Overlays';
 import { OwedList } from '../../member/OwedItems';
-import { VisibilityControl } from './shared';
 
 /* Three sides to set up, so three tabs: when the list is open, what is on it,
    and what the startups are told. A dozen documents under the dates made the
@@ -37,14 +38,10 @@ export type DeliverableTab = (typeof DELIVERABLE_TABS)[number];
 export function DeliverableSetup({
   config,
   patch,
-  status,
-  missing,
   tab = 'Overview',
 }: {
   config: DeliverableConfig;
   patch: (partial: Partial<DeliverableConfig>) => void;
-  status: Parameters<typeof VisibilityControl>[0]['status'];
-  missing?: string | null;
   tab?: DeliverableTab;
 }) {
   const setItem = (id: string, partial: Partial<FormField>) =>
@@ -83,26 +80,6 @@ export function DeliverableSetup({
           <DateField label="Closes on" value={config.closesAt} onChange={(v) => patch({ closesAt: v })} />
         </div>
 
-        <VisibilityControl
-        config={config}
-        patch={patch}
-        status={status}
-        missing={missing}
-          what={{
-            open: 'Startups can send what is asked',
-            closed: 'The list is shut — nothing more can be sent',
-            notOpen: 'Not open yet',
-            empty: 'Ask for something first',
-          }}
-        />
-
-        <TextField
-          label="What they are told"
-          value={config.intro}
-          onChange={(v) => patch({ intro: v })}
-          placeholder="Please send the documents below before 15 November."
-          hint="optional"
-        />
       </>
     );
   }
@@ -111,6 +88,16 @@ export function DeliverableSetup({
 
   return (
     <>
+      {/* Above the list, because that is where it sits on their page: it is the
+          sentence they read before the first item, not a separate setting. */}
+      <TextField
+        label="What they read above the list"
+        value={config.intro}
+        onChange={(v) => patch({ intro: v })}
+        placeholder="Merci de déposer les pièces ci-dessous avant le 15 novembre."
+        hint="optional"
+      />
+
       <div className="field">
         <div className="row">
           <label style={{ flex: 1 }}>What you are asking for</label>
@@ -295,7 +282,7 @@ function Template({
       <div className="row">
         <label style={{ flex: 1 }}>{label}</label>
         <button className="linkish" style={{ fontSize: 12 }} onClick={() => setShow(!show)}>
-          {show ? 'Hide the example' : 'See it filled in'}
+          {show ? 'Hide preview' : 'Preview'}
         </button>
       </div>
       <div className="help">{help}</div>
@@ -345,16 +332,22 @@ function MessagesTab({
   const set = (key: keyof DeliverableConfig['messages'], next: string) =>
     patch({ messages: { ...config.messages, [key]: next } });
 
-  const pieces = config.items
-    .filter((i) => i.required)
-    .slice(0, 3)
-    .map((i) => `  · ${i.label || 'Registre de commerce'}`)
-    .join('\n');
+  /* What this block actually asks for — never an invented document. A preview
+     that filled {{pieces}} with two plausible examples read as configuration:
+     it showed a Registre de commerce nobody had asked for, on a block whose
+     list was empty. A preview is only worth having if everything in it is
+     true, so an empty list says it is empty. */
+  const required = config.items.filter((i) => i.required);
+  const pieces = required.length
+    ? required.map((i) => `  · ${i.label || '(this one has no name yet)'}`).join('\n')
+    : '  (nothing is being asked for yet — add it under “What you ask for”)';
+
+  const link = useAsync(() => api.get<{ link: string }>('/api/app-link'), 'app-link');
   const example = {
     startup: 'Rafid Tech',
-    pieces: pieces || '  · Registre de commerce\n  · Effectif au 31/12',
-    date: longDate(config.closesAt) || '15 novembre 2026',
-    lien: 'https://ceedflow.com/me?tab=Programs',
+    pieces,
+    date: longDate(config.closesAt) || '(no closing date set)',
+    lien: link.data?.link || '(this platform has no public address set)',
   };
 
   return (
@@ -366,6 +359,18 @@ function MessagesTab({
           still be adjusted for one send without changing the template.
         </div>
       </div>
+
+      {/* Said here rather than discovered when a send is refused: the link is
+          the whole point of the first letter. */}
+      {link.data && !link.data.link && (
+        <div className="callout warn">
+          <Icon name="alert" size={15} />
+          <div>
+            <strong>This platform has no public address set.</strong> <code>Link</code> would go out empty, so a
+            message carrying it cannot be sent. Set <code>APP_URL</code> on the server.
+          </div>
+        </div>
+      )}
 
       <Template
         label="Asking for the documents"

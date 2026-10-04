@@ -42,6 +42,7 @@ const DOOR_LABEL: Partial<Record<string, string>> = {
   application: 'the application form',
   evaluation: 'reviewing',
   committee: 'the panel, for its jurors',
+  deliverable: 'the list, for the startups',
 };
 
 export function BlockDrawer({
@@ -108,7 +109,14 @@ export function BlockDrawer({
   // so a tab that is no longer there falls back rather than showing nothing.
   const commTabs = committeeTabs(draft as unknown as CommitteeConfig);
   // Only the three bricks that show something to somebody outside CEED.
-  const hasDoor = block.type === 'application' || block.type === 'evaluation' || block.type === 'committee';
+  /* Deliverables sits here with the rest rather than carrying its own copy of
+     the control in its Overview: it has exactly one door, and a block with one
+     door shows it in one place. */
+  const hasDoor =
+    block.type === 'application' ||
+    block.type === 'evaluation' ||
+    block.type === 'committee' ||
+    block.type === 'deliverable';
   const committeeTab = commTabs.includes(commTab) ? commTab : 'Overview';
 
   return (
@@ -267,8 +275,6 @@ export function BlockDrawer({
             config={draft as unknown as DeliverableConfig}
             patch={patch}
             tab={delivTab}
-            status={blockStatus({ ...block, config: draft })}
-            missing={blockMissing({ ...block, config: draft })}
           />
         )}
         {!meta.implemented && (
