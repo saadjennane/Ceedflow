@@ -84,6 +84,7 @@ function MessagesTab({
     patch({ messages: { ...config.messages, [key]: next } });
 
   const example = (decision: string) => ({
+    prenom: 'Karim',
     startup: 'Rafid Tech',
     decision,
     phase: block.name,

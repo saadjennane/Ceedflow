@@ -9,12 +9,13 @@ import {
   type DeliverableItem,
   type FormField,
 } from '@ceed/shared';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { api } from '../../../lib/api';
 import { useAsync } from '../../../lib/useAsync';
 import { Icon } from '../../../ui/Icon';
 import { DateField, TextField } from '../../../ui/Field';
 import { Modal } from '../../../ui/Overlays';
+import { DropRow, Grip, moved, nudged, useDragging, type Dragging } from '../../../ui/Reorderable';
 import { Template } from './Template';
 import { OwedList } from '../../member/OwedItems';
 
@@ -45,6 +46,9 @@ export function DeliverableSetup({
   patch: (partial: Partial<DeliverableConfig>) => void;
   tab?: DeliverableTab;
 }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const drag = useDragging((fromId, toId) => patch({ items: moved(config.items, fromId, toId) }));
+
   const setItem = (id: string, partial: Partial<DeliverableItem>) =>
     patch({ items: config.items.map((item) => (item.id === id ? { ...item, ...partial } : item)) });
 
@@ -63,21 +67,19 @@ export function DeliverableSetup({
      same kind of choice: the dropdown says what ONE answer looks like, and a
      group says what counts as one thing. Hiding that distinction in a list
      beside "File" and "Short text" is how it gets missed. */
-  const add = (kind: 'field' | 'group') =>
-    patch({
-      items: [
-        ...config.items,
-        {
-          ...blank(),
-          ...(kind === 'group'
-            ? { kind: 'group' as const, label: '', required: true, fields: [blank()] }
-            : { kind: 'field' as const }),
-          fields: kind === 'group' ? [blank()] : [],
-          repeatable: false,
-          each: '',
-        },
-      ],
-    });
+  const add = (kind: 'field' | 'group') => {
+    const made: DeliverableItem = {
+      ...blank(),
+      ...(kind === 'group' ? { kind: 'group' as const, label: '', required: true } : { kind: 'field' as const }),
+      fields: kind === 'group' ? [blank()] : [],
+      repeatable: false,
+      each: '',
+    };
+    // Opened at once: a new row is empty, and a shut empty row is somewhere to
+    // click rather than something to fill in.
+    setOpenId(made.id);
+    patch({ items: [...config.items, made] });
+  };
 
   if (tab === 'Overview') {
     return (
@@ -130,13 +132,22 @@ export function DeliverableSetup({
         )}
         {config.items.length > 0 && (
           <div className="rows" style={{ marginTop: 6 }}>
-            {config.items.map((item) => (
+            {config.items.map((item, index) => (
               <ItemEditor
                 key={item.id}
                 item={item}
+                open={openId === item.id}
+                /* One open at a time: that is what keeps the list short by
+                   construction, which is what keeps a drag short. */
+                onOpen={() => setOpenId(openId === item.id ? null : item.id)}
                 onChange={(partial) => setItem(item.id, partial)}
                 onRemove={() => patch({ items: config.items.filter((x) => x.id !== item.id) })}
                 blank={blank}
+                drag={drag}
+                onUp={index > 0 ? () => patch({ items: nudged(config.items, item.id, -1) }) : null}
+                onDown={
+                  index < config.items.length - 1 ? () => patch({ items: nudged(config.items, item.id, 1) }) : null
+                }
               />
             ))}
           </div>
@@ -166,16 +177,19 @@ function FieldRow({
   onChange,
   onRemove,
   requiredShown = true,
+  handle,
 }: {
   field: FormField;
   onChange: (partial: Partial<FormField>) => void;
   onRemove?: () => void;
   /** Hidden where it could not mean anything different from the item's own. */
   requiredShown?: boolean;
+  handle?: ReactNode;
 }) {
   return (
     <div className="stack" style={{ gap: 8 }}>
       <div className="row" style={{ gap: 8 }}>
+        {handle}
         <input
           className="input"
           style={{ flex: 1 }}
@@ -221,122 +235,188 @@ function FieldRow({
   );
 }
 
+/** What an item is, in one line, for the row that is shut. */
+function summaryOf(item: DeliverableItem): string {
+  const kind = item.kind === 'group' ? 'Group' : FIELD_TYPE_LABEL[item.type];
+  const inside =
+    item.kind === 'group'
+      ? item.fields.map((f) => f.label || 'untitled').join(', ') || 'no fields yet'
+      : '';
+  return [item.repeatable ? `${kind} · list` : kind, inside].filter(Boolean).join(' · ');
+}
+
 /**
  * One thing asked for, as it is set up.
+ *
+ * Shut by default, and one open at a time. A dozen items fully unfolded made a
+ * column taller than the screen — unreadable at a glance, and impossible to
+ * drag across without the list scrolling under the cursor. The setup should
+ * read like the list it is.
  *
  * The two checkboxes describe the item rather than the screen, and they are
  * independent on purpose. **Required** says the file is not complete without
  * it. **Repeatable** says there may be several — and only then does the
- * singular word appear, which is what makes the founder read "Add an associé"
- * instead of "Add an entry". Having that field surface at the moment the box
- * is ticked teaches the box better than any help text under it.
+ * singular word appear, which is what makes the founder read "Add another
+ * associé" instead of "Add another entry".
  */
 function ItemEditor({
   item,
+  open,
+  onOpen,
   onChange,
   onRemove,
   blank,
+  drag,
+  onUp,
+  onDown,
 }: {
   item: DeliverableItem;
+  open: boolean;
+  onOpen: () => void;
   onChange: (partial: Partial<DeliverableItem>) => void;
   onRemove: () => void;
   blank: () => FormField;
+  drag: Dragging;
+  onUp: (() => void) | null;
+  onDown: (() => void) | null;
 }) {
   const group = item.kind === 'group';
+  /* Its own drag state, so hovering a field inside a group moves the field and
+     not the group that holds it. */
+  const inner = useDragging((fromId, toId) => onChange({ fields: moved(item.fields, fromId, toId) }));
   const setField = (id: string, partial: Partial<FormField>) =>
     onChange({ fields: item.fields.map((f) => (f.id === id ? { ...f, ...partial } : f)) });
 
   return (
-    <div className="rowcard card-pad stack" style={{ gap: 10 }}>
-      {group ? (
-        <div className="row" style={{ gap: 8 }}>
-          <input
-            className="input"
-            style={{ flex: 1 }}
-            value={item.label}
-            placeholder="Associés"
-            aria-label="What this group is called"
-            onChange={(e) => onChange({ label: e.target.value })}
-          />
-          <button className="btn ghost icon sm" aria-label="Remove" onClick={onRemove}>
-            <Icon name="trash" size={13} />
-          </button>
-        </div>
-      ) : (
-        <FieldRow field={item} onChange={onChange} onRemove={onRemove} />
-      )}
-
-      <div className="row" style={{ gap: 10 }}>
-        <input
-          className="input"
-          style={{ flex: 1 }}
-          value={item.help}
-          placeholder="A note for whoever has to find it"
-          aria-label="Note"
-          onChange={(e) => onChange({ help: e.target.value })}
-        />
-        {group && (
-          <label className="row" style={{ gap: 6, fontSize: 12.5, flexShrink: 0 }}>
-            <input type="checkbox" checked={item.required} onChange={(e) => onChange({ required: e.target.checked })} />
-            Required
-          </label>
-        )}
-        <label className="row" style={{ gap: 6, fontSize: 12.5, flexShrink: 0 }}>
-          <input
-            type="checkbox"
-            checked={item.repeatable}
-            onChange={(e) => onChange({ repeatable: e.target.checked })}
-          />
-          Repeatable
-        </label>
+    <DropRow
+      id={item.id}
+      drag={drag}
+      className={drag.id === item.id ? 'rowcard in-flight' : 'rowcard'}
+    >
+      <div className="rowcard-head">
+        <Grip id={item.id} drag={drag} onUp={onUp} onDown={onDown} label={item.label || 'this item'} />
+        <button className="rowcard-title" onClick={onOpen}>
+          {item.label || <span className="faint">Untitled</span>}
+        </button>
+        <span className="mini">{summaryOf(item)}</span>
+        {item.required && <span className="badge stop">Required</span>}
+        <button className="btn ghost icon sm" onClick={onOpen} aria-label={open ? 'Close' : 'Edit'}>
+          <Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} />
+        </button>
+        <button className="btn ghost icon sm" aria-label="Remove" onClick={onRemove}>
+          <Icon name="trash" size={13} />
+        </button>
       </div>
 
-      {item.repeatable && (
-        <TextField
-          label="Each one is a"
-          value={item.each}
-          onChange={(v) => onChange({ each: v })}
-          placeholder="associé"
-          hint="singular"
-        />
-      )}
+      {open && (
+        <div className="rowcard-body stack" style={{ gap: 10 }}>
+          {group ? (
+            <TextField
+              label="What this group is called"
+              value={item.label}
+              onChange={(v) => onChange({ label: v })}
+              placeholder="Associés"
+            />
+          ) : (
+            <FieldRow field={item} onChange={onChange} />
+          )}
 
-      {group && (
-        <div className="field">
-          <label>{item.repeatable && item.each ? `Asked for each ${item.each.toLowerCase()}` : 'The fields it holds'}</label>
-          <div className="rows" style={{ marginTop: 6 }}>
-            {item.fields.map((field) => (
-              <div className="rowcard card-pad" key={field.id}>
-                <FieldRow
-                  field={field}
-                  onChange={(partial) => setField(field.id, partial)}
-                  onRemove={
-                    item.fields.length > 1
-                      ? () => onChange({ fields: item.fields.filter((f) => f.id !== field.id) })
-                      : undefined
-                  }
-                  /* With one field, its own Required could not mean anything
-                     different from the group's: an entry exists because
-                     something was typed in it, or it does not exist. */
-                  requiredShown={item.fields.length > 1}
+          <div className="row" style={{ gap: 10 }}>
+            <input
+              className="input"
+              style={{ flex: 1 }}
+              value={item.help}
+              placeholder="A note for whoever has to find it"
+              aria-label="Note"
+              onChange={(e) => onChange({ help: e.target.value })}
+            />
+            {group && (
+              <label className="row" style={{ gap: 6, fontSize: 12.5, flexShrink: 0 }}>
+                <input
+                  type="checkbox"
+                  checked={item.required}
+                  onChange={(e) => onChange({ required: e.target.checked })}
                 />
-              </div>
-            ))}
+                Required
+              </label>
+            )}
+            <label className="row" style={{ gap: 6, fontSize: 12.5, flexShrink: 0 }}>
+              <input
+                type="checkbox"
+                checked={item.repeatable}
+                onChange={(e) => onChange({ repeatable: e.target.checked })}
+              />
+              Repeatable
+            </label>
           </div>
-          {/* "to each associé" rather than "to this group": it changes the
-              shape, it does not add one more associé. That sentence is where
-              the whole idea is either understood or not. */}
-          <button
-            className="btn sm"
-            style={{ alignSelf: 'flex-start', marginTop: 8 }}
-            onClick={() => onChange({ fields: [...item.fields, blank()] })}
-          >
-            <Icon name="plus" size={13} />{' '}
-            {item.repeatable && item.each ? `Add a field to each ${item.each.toLowerCase()}` : 'Add a field to it'}
-          </button>
+
+          {item.repeatable && (
+            <TextField
+              label="Each one is a"
+              value={item.each}
+              onChange={(v) => onChange({ each: v })}
+              placeholder="associé"
+              hint="singular"
+            />
+          )}
+
+          {group && (
+            <div className="field">
+              <label>
+                {item.repeatable && item.each ? `Asked for each ${item.each.toLowerCase()}` : 'The fields it holds'}
+              </label>
+              <div className="rows" style={{ marginTop: 6 }}>
+                {item.fields.map((field, index) => (
+                  <DropRow
+                    key={field.id}
+                    id={field.id}
+                    drag={inner}
+                    className={inner.id === field.id ? 'rowcard card-pad in-flight' : 'rowcard card-pad'}
+                  >
+                    <FieldRow
+                      field={field}
+                      handle={
+                        <Grip
+                          id={field.id}
+                          drag={inner}
+                          label={field.label || 'this field'}
+                          onUp={index > 0 ? () => onChange({ fields: nudged(item.fields, field.id, -1) }) : null}
+                          onDown={
+                            index < item.fields.length - 1
+                              ? () => onChange({ fields: nudged(item.fields, field.id, 1) })
+                              : null
+                          }
+                        />
+                      }
+                      onChange={(partial) => setField(field.id, partial)}
+                      onRemove={
+                        item.fields.length > 1
+                          ? () => onChange({ fields: item.fields.filter((f) => f.id !== field.id) })
+                          : undefined
+                      }
+                      /* With one field, its own Required could not mean
+                         anything different from the group's: an entry exists
+                         because something was typed in it, or it does not. */
+                      requiredShown={item.fields.length > 1}
+                    />
+                  </DropRow>
+                ))}
+              </div>
+              {/* "to each associé" rather than "to this group": it changes the
+                  shape, it does not add one more associé. */}
+              <button
+                className="btn sm"
+                style={{ alignSelf: 'flex-start', marginTop: 8 }}
+                onClick={() => onChange({ fields: [...item.fields, blank()] })}
+              >
+                <Icon name="plus" size={13} />{' '}
+                {item.repeatable && item.each ? `Add a field to each ${item.each.toLowerCase()}` : 'Add a field to it'}
+              </button>
+            </div>
+          )}
         </div>
       )}
-    </div>
+    </DropRow>
   );
 }
 
@@ -413,6 +493,7 @@ function MessagesTab({
 
   const link = useAsync(() => api.get<{ link: string }>('/api/app-link'), 'app-link');
   const example = {
+    prenom: 'Karim',
     startup: 'Rafid Tech',
     pieces,
     date: longDate(config.closesAt) || '(no closing date set)',

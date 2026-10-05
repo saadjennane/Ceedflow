@@ -105,6 +105,7 @@ describe('calling for applications', { skip: skipWithoutServer }, () => {
     assert.match(letter!.body, /Karim/);
     assert.match(letter!.body, /15 novembre 2026/);
     assert.equal(letter!.subject, 'Candidatez à The Builders');
+    assert.ok(!letter!.body.includes('{{'), 'and nothing left unfilled');
   });
 
   it('waits rather than inviting people to a form nobody can open', async () => {

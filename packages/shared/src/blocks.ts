@@ -400,6 +400,7 @@ export type SourcingAudience = z.infer<typeof sourcingAudienceSchema>;
 
 /** What an invitation to apply may carry. */
 export const SOURCING_VARIABLES = [
+  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to' },
   { name: 'nom', label: 'Their name', what: 'The person or organisation written to' },
   { name: 'lien', label: 'Apply link', what: 'The channel’s own link — what makes a candidacy traceable to this call' },
   { name: 'canal', label: 'Channel', what: 'What this call is counted as' },
@@ -439,6 +440,7 @@ export type Eligibility = z.infer<typeof eligibilitySchema>;
 
 /** What an acknowledgment of a submitted application may carry. */
 export const APPLICATION_VARIABLES = [
+  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to' },
   { name: 'startup', label: 'Startup', what: 'The organisation that applied' },
   { name: 'programme', label: 'Programme', what: 'The edition they applied to' },
   { name: 'appel', label: 'Call', what: 'The name of this application block' },
@@ -447,7 +449,7 @@ export const APPLICATION_VARIABLES = [
 
 /* A receipt, and nothing more. The one thing it has to do is stop somebody
    writing to ask whether their file arrived. */
-const APPLICATION_RECEIVED = `Bonjour,
+const APPLICATION_RECEIVED = `Bonjour {{prenom}},
 
 Nous avons bien reçu la candidature de {{startup}} à {{programme}}.
 
@@ -731,6 +733,7 @@ export type CommitteeFormat = (typeof COMMITTEE_FORMATS)[number];
  */
 /** What a letter to a juror may carry. */
 export const COMMITTEE_JURY_VARIABLES = [
+  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to' },
   { name: 'jure', label: 'Juror', what: 'Their own name' },
   { name: 'panel', label: 'Sitting', what: 'The name of the sitting they sit on' },
   { name: 'date', label: 'Date', what: 'The day it is held, written out' },
@@ -742,6 +745,7 @@ export const COMMITTEE_JURY_VARIABLES = [
 
 /** What a letter to a startup being convened may carry. */
 export const COMMITTEE_STARTUP_VARIABLES = [
+  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to' },
   { name: 'startup', label: 'Startup', what: 'The organisation’s name' },
   { name: 'panel', label: 'Sitting', what: 'The name of the sitting' },
   { name: 'date', label: 'Date', what: 'The day, written out' },
@@ -764,7 +768,7 @@ Merci de votre temps.
 
 L'équipe CEED`;
 
-const COMMITTEE_STARTUP = `Bonjour {{startup}},
+const COMMITTEE_STARTUP = `Bonjour {{prenom}},
 
 Votre passage devant le jury est fixé au {{date}}{{heure}}{{lieu}}.
 
@@ -906,6 +910,7 @@ export type CommitteeAssignment = z.infer<typeof committeeAssignmentSchema>;
  */
 /** The names a selection's letters may carry. */
 export const SELECTION_VARIABLES = [
+  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to' },
   { name: 'startup', label: 'Startup', what: 'The organisation’s name' },
   { name: 'decision', label: 'Decision', what: 'What this selection called them — your own label' },
   { name: 'phase', label: 'Step', what: 'The name of this selection block' },
@@ -915,7 +920,7 @@ export const SELECTION_VARIABLES = [
 /* Whole letters by default, in the language the founders are written to. A
    template somebody has to finish before the first send is a template that
    goes out half-written — and this is the one message a startup remembers. */
-const SELECTION_PASS = `Bonjour {{startup}},
+const SELECTION_PASS = `Bonjour {{prenom}},
 
 Nous avons le plaisir de vous annoncer que {{startup}} est retenue à l'issue de {{phase}}.
 
@@ -923,7 +928,7 @@ Nous revenons vers vous très vite avec la suite. Vous pouvez suivre votre dossi
 
 L'équipe CEED`;
 
-const SELECTION_WAIT = `Bonjour {{startup}},
+const SELECTION_WAIT = `Bonjour {{prenom}},
 
 À l'issue de {{phase}}, {{startup}} est placée sur liste d'attente.
 
@@ -931,7 +936,7 @@ Cela signifie que votre candidature reste en lice : nous revenons vers vous dès
 
 L'équipe CEED`;
 
-const SELECTION_FAIL = `Bonjour {{startup}},
+const SELECTION_FAIL = `Bonjour {{prenom}},
 
 Nous vous remercions d'avoir présenté {{startup}}. À l'issue de {{phase}}, votre candidature n'a pas été retenue.
 
@@ -1103,6 +1108,7 @@ export function uploadIdsIn(value: unknown): string[] {
  * three and not the others is a letter that goes out saying `{{lien}}`.
  */
 export const DELIVERABLE_VARIABLES = [
+  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to' },
   { name: 'startup', label: 'Startup', what: 'The organisation’s name' },
   { name: 'pieces', label: 'What is missing', what: 'The items this one still owes, one per line' },
   { name: 'date', label: 'Closing date', what: 'The day this list shuts, written out' },
@@ -1111,6 +1117,7 @@ export const DELIVERABLE_VARIABLES = [
 
 /** Only in a letter about one item sent back. */
 export const DELIVERABLE_RETURN_VARIABLES = [
+  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to' },
   { name: 'startup', label: 'Startup', what: 'The organisation’s name' },
   { name: 'piece', label: 'The item', what: 'What was sent back' },
   { name: 'motif', label: 'Reason', what: 'What you wrote when you sent it back' },
@@ -1120,7 +1127,7 @@ export const DELIVERABLE_RETURN_VARIABLES = [
 /* The defaults are whole letters, in the language the founders are written to.
    A template somebody has to finish before the first send is a template that
    goes out half-written. */
-const DELIVERABLE_REQUEST = `Bonjour {{startup}},
+const DELIVERABLE_REQUEST = `Bonjour {{prenom}},
 
 Votre dossier passe en revue administrative. Merci de nous transmettre les éléments suivants avant le {{date}} :
 
@@ -1130,7 +1137,7 @@ Tout se dépose depuis votre espace : {{lien}}
 
 L'équipe CEED`;
 
-const DELIVERABLE_REMINDER = `Bonjour {{startup}},
+const DELIVERABLE_REMINDER = `Bonjour {{prenom}},
 
 Il manque encore des éléments à votre dossier, à transmettre avant le {{date}} :
 
@@ -1140,7 +1147,7 @@ Depuis votre espace : {{lien}}
 
 L'équipe CEED`;
 
-const DELIVERABLE_REJECTED = `Bonjour {{startup}},
+const DELIVERABLE_REJECTED = `Bonjour {{prenom}},
 
 Nous devons vous redemander un élément de votre dossier : {{piece}}.
 

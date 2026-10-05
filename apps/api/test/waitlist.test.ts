@@ -227,6 +227,7 @@ describe('telling each audience what was decided', { skip: skipWithoutServer }, 
     assert.match(letter!.body, /Rafid Tech/);
     assert.match(letter!.body, /Shortlisted/, 'the label this selection hands out');
     assert.match(letter!.body, /Comité/, 'and the step it is');
+    assert.ok(!letter!.body.includes('{{'), 'and nothing left unfilled');
   });
 
   it('says it again to nobody, however many times the button is pressed', async () => {

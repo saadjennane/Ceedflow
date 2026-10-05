@@ -45,6 +45,7 @@ describe('acknowledging an application', { skip: skipWithoutServer }, () => {
     assert.equal(letter?.kind, 'application_received');
     assert.match(letter!.body, new RegExp(org.name));
     assert.match(letter!.body, /The Builders — Cohorte 1/, 'named the way an applicant knows it');
+    assert.ok(!letter!.body.includes('{{'), 'and nothing left unfilled');
   });
 
   it('says nothing when the receipt is switched off', async () => {

@@ -129,6 +129,20 @@ export interface AffiliationView {
 }
 
 /** A person named from elsewhere in the model: the link, and what to display. */
+/**
+ * The name to open a letter with.
+ *
+ * The record's own first name when it has one; otherwise the first word, which
+ * is right far more often than it is wrong for a directory filled by import.
+ * Empty when there is no name at all, so a template can fall back to a plain
+ * greeting rather than to "Bonjour ,".
+ */
+export function firstNameOf(full: string, first?: string | null): string {
+  const given = (first ?? '').trim();
+  if (given) return given;
+  return (full ?? '').trim().split(/\s+/)[0] ?? '';
+}
+
 export interface PersonRef {
   id: string;
   name: string;

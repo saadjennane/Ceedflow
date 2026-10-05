@@ -12,7 +12,7 @@
  * requires an account and membership of the organisation — so this is not a
  * way to make the platform write to a stranger.
  */
-import { APPLICATION_VARIABLES, fillTemplate, type ApplicationConfig } from '@ceed/shared';
+import { APPLICATION_VARIABLES, fillTemplate, firstNameOf, type ApplicationConfig } from '@ceed/shared';
 import * as repo from '../db/repo.js';
 import { appLink } from './deliverables.js';
 import { post } from './mail.js';
@@ -27,6 +27,7 @@ export async function acknowledge(blockId: string, candidateId: string): Promise
   const config = context.block.config as ApplicationConfig;
   const edition = await repo.getEditionDetail(context.editionId);
   const values = {
+    prenom: firstNameOf(candidate.contactName, candidate.contactFirstName),
     startup: candidate.orgName,
     /* The programme, then the edition: "The Builders — Cohorte 1" is what an
        applicant recognises. The edition's name alone means nothing outside. */

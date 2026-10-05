@@ -9,6 +9,7 @@
 import {
   blockStatus,
   fillTemplate,
+  firstNameOf,
   itemComplete,
   itemGiven,
   longDate,
@@ -300,7 +301,13 @@ export async function rosterFor(blockId: string, kind: 'request' | 'reminder', o
   const date = longDate(config?.closesAt);
   const entries = (await noticeRoster(blockId, kind, only)).map((e) => ({
     ...e,
-    values: { startup: e.candidate.orgName, pieces: e.owed, date, lien: link },
+    values: {
+      prenom: firstNameOf(e.candidate.contactName, e.candidate.contactFirstName),
+      startup: e.candidate.orgName,
+      pieces: e.owed,
+      date,
+      lien: link,
+    },
   }));
   return { entries, link, closesAt: config?.closesAt ?? null, dateLabel: date };
 }
@@ -382,6 +389,7 @@ export async function tellReturned(
     candidateId,
     subject: `${block.name} — ${item?.label ?? 'une pièce'} à renvoyer`,
     body: fillTemplate(config.messages.rejected, {
+      prenom: firstNameOf(candidate.contactName, candidate.contactFirstName),
       startup: candidate.orgName,
       piece: item?.label ?? '',
       motif: reason,
@@ -496,6 +504,7 @@ export const deliverableNotices: NoticeSource = {
       toName: row.candidate.contactName,
       subject: `${block.name} — ${row.candidate.orgName}`,
       body: fillTemplate(body, {
+        prenom: firstNameOf(row.candidate.contactName, row.candidate.contactFirstName),
         startup: row.candidate.orgName,
         pieces: owedLines(view, candidateId),
         date: longDate(config.closesAt),

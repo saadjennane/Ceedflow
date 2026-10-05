@@ -1,5 +1,6 @@
 import {
   blockStatus,
+  firstNameOf,
   type SelectionConfig,
   brickClosedOn,
   newId,
@@ -719,7 +720,13 @@ export async function funnelRoutes(app: FastifyInstance) {
         askedAt: null,
         owes: false,
         owed: '',
-        values: { startup: e.orgName, decision, phase: block.name, lien: link },
+        values: {
+          prenom: firstNameOf(e.toName),
+          startup: e.orgName,
+          decision,
+          phase: block.name,
+          lien: link,
+        },
       })),
       link,
       closesAt: null,

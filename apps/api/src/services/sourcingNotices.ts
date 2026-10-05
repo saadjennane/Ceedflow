@@ -7,7 +7,8 @@
  * sending through the wrong channel, or through none, quietly loses the only
  * question this brick exists to answer.
  */
-import { applyLink, fillTemplate, longDate, type SourcingConfig } from '@ceed/shared';
+import { applyLink, fillTemplate, firstNameOf, longDate, type SourcingConfig } from '@ceed/shared';
+import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { suppressedAmong } from './mail.js';
 import { publicOrigin } from './platform.js';
@@ -107,7 +108,9 @@ export async function sourcingValues(blockId: string, subjectId: string): Promis
   const form = view.form;
   const link = form && origin ? applyLink(form.token, channel?.id ?? null, origin) : '';
 
+  const record = await dir.getRecord(subjectId);
   return {
+    prenom: firstNameOf(person.name, record?.firstName),
     nom: person.name,
     lien: link,
     canal: channel?.label ?? '',

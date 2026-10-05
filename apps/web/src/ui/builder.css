@@ -1642,3 +1642,29 @@ dl.answers dd {
 .warnline {
   color: var(--warn);
 }
+
+/* ---- reordering a list ---- */
+
+/* The arrows sit tight under one another beside the handle: two half-height
+   buttons read as one control, where two full ones read as a toolbar. */
+.nudge {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.nudge .btn {
+  height: 15px;
+  min-height: 0;
+  padding: 0 3px;
+}
+
+.nudge .btn:disabled {
+  opacity: 0.3;
+}
+
+/* A row being dragged folds to a line and greys, so the list stays short for
+   the length of the trip and the gap it would land in is obvious. */
+.rowcard.in-flight {
+  opacity: 0.45;
+}

@@ -10,7 +10,7 @@
  * this second: a score arriving after the announcement does not change what has
  * already left somebody's inbox.
  */
-import { type SelectionConfig, fillTemplate } from '@ceed/shared';
+import { type SelectionConfig, fillTemplate, firstNameOf } from '@ceed/shared';
 import * as repo from '../db/repo.js';
 import { appLink } from './deliverables.js';
 import { suppressedAmong } from './mail.js';
@@ -221,6 +221,7 @@ export const selectionNotices: NoticeSource = {
       toName: candidate.contactName,
       subject: `${block.name} — ${candidate.orgName}`,
       body: fillTemplate(body, {
+        prenom: firstNameOf(candidate.contactName, candidate.contactFirstName),
         startup: candidate.orgName,
         decision: labelOf(config, call),
         phase: block.name,

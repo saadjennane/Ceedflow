@@ -488,7 +488,10 @@ describe('telling the startups', { skip: skipWithoutServer }, () => {
 
     const [letter] = await letters({ candidateId: a.id });
     assert.equal(letter?.kind, 'deliverable_rejected');
-    assert.match(letter!.body, /Rafid Tech/, 'addressed by name');
+    /* By first name now, which is what the default template opens on — and
+       the org's own name is in the subject, where it belongs. */
+    assert.match(letter!.body, /Bonjour Rafid,/, 'addressed by their own name');
+    assert.ok(!letter!.body.includes('{{'), 'and nothing left unfilled');
     assert.match(letter!.body, /Le registre date de 2024\./, 'carrying the reason already typed');
     assert.match(letter!.subject, /Registre de commerce/, 'and says which piece in the subject');
   });

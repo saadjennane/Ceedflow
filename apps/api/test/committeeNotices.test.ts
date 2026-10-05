@@ -175,5 +175,6 @@ describe('convening a committee', { skip: skipWithoutServer }, () => {
     assert.match(letter!.body, /Rafid Tech/);
     assert.match(letter!.body, /20 octobre 2026/);
     assert.match(letter!.body, /Villa des Arts/);
+    assert.ok(!letter!.body.includes('{{'), 'and nothing left unfilled');
   });
 });

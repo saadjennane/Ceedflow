@@ -15,6 +15,7 @@ import {
   COMMITTEE_JURY_VARIABLES,
   COMMITTEE_STARTUP_VARIABLES,
   fillTemplate,
+  firstNameOf,
   longDate,
   type CommitteeConfig,
 } from '@ceed/shared';
@@ -170,7 +171,9 @@ export async function committeeValues(
     const sitting = sittingOf(view.sessions, (s) => s.jury.some((j) => j.id === subjectId));
     if (!sitting) return null;
     const person = sitting.jury.find((j) => j.id === subjectId)!;
+    const record = await dir.getRecord(subjectId);
     return {
+      prenom: firstNameOf(person.name, record?.firstName),
       jure: person.name,
       panel: sitting.session.name,
       date: longDate(sitting.session.heldOn),
@@ -185,6 +188,7 @@ export async function committeeValues(
   if (!sitting) return null;
   const seat = sitting.assignments.find((a) => a.candidate.id === subjectId)!;
   return {
+    prenom: firstNameOf(seat.candidate.contactName, seat.candidate.contactFirstName),
     startup: seat.candidate.orgName,
     panel: sitting.session.name,
     date: longDate(sitting.session.heldOn),

@@ -11,7 +11,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  APPLICATION_VARIABLES,
+  COMMITTEE_JURY_VARIABLES,
+  COMMITTEE_STARTUP_VARIABLES,
+  DELIVERABLE_RETURN_VARIABLES,
+  DELIVERABLE_VARIABLES,
+  SELECTION_VARIABLES,
+  applicationConfigSchema,
+  committeeConfigSchema,
+  deliverableConfigSchema,
   deliverableItemSchema,
+  selectionConfigSchema,
   entryComplete,
   itemComplete,
   itemEntries,
@@ -125,4 +135,32 @@ describe('the files inside all that', () => {
   it('finds none where there are none', () => {
     assert.deepEqual(uploadIdsIn({ a: 'x', b: [1, 2] }), []);
   });
+});
+
+describe('every default letter only names variables it is offered', () => {
+  /* A template that greets by first name and a sender that does not fill it
+     sends "Bonjour {{prenom}}," to a founder. An unknown name survives on
+     purpose — silently emptying it would be worse — so this checks the other
+     half: that no default message names something its own list does not
+     offer. */
+  const cases: [string, string, readonly { name: string }[]][] = [
+    ['deliverable · request', deliverableConfigSchema.parse({}).messages.request, DELIVERABLE_VARIABLES],
+    ['deliverable · reminder', deliverableConfigSchema.parse({}).messages.reminder, DELIVERABLE_VARIABLES],
+    ['deliverable · rejected', deliverableConfigSchema.parse({}).messages.rejected, DELIVERABLE_RETURN_VARIABLES],
+    ['selection · pass', selectionConfigSchema.parse({}).messages.pass, SELECTION_VARIABLES],
+    ['selection · wait', selectionConfigSchema.parse({}).messages.wait, SELECTION_VARIABLES],
+    ['selection · fail', selectionConfigSchema.parse({}).messages.fail, SELECTION_VARIABLES],
+    ['committee · jury', committeeConfigSchema.parse({}).messages.jury, COMMITTEE_JURY_VARIABLES],
+    ['committee · startup', committeeConfigSchema.parse({}).messages.startup, COMMITTEE_STARTUP_VARIABLES],
+    ['application · receipt', applicationConfigSchema.parse({}).receivedMessage, APPLICATION_VARIABLES],
+  ];
+
+  for (const [what, template, variables] of cases) {
+    it(what, () => {
+      const known = new Set(variables.map((v) => v.name));
+      for (const [, name] of template.matchAll(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g)) {
+        assert.ok(known.has(name), `{{${name}}} is not offered for this message`);
+      }
+    });
+  }
 });

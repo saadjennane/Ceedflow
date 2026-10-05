@@ -924,6 +924,7 @@ function MessagesTab({
         onChange={(v) => set('jury', v)}
         variables={COMMITTEE_JURY_VARIABLES}
         example={{
+          prenom: 'Nawal',
           jure: 'Nawal Benjelloun',
           panel: 'Séance 1',
           date: '20 octobre 2026',
@@ -942,6 +943,7 @@ function MessagesTab({
           onChange={(v) => set('startup', v)}
           variables={COMMITTEE_STARTUP_VARIABLES}
           example={{
+            prenom: 'Karim',
             startup: 'Rafid Tech',
             panel: 'Séance 1',
             date: '20 octobre 2026',
