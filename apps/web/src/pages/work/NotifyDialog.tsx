@@ -162,6 +162,12 @@ export function NotifyDialog({
      letter carried its link, so the warning fired on a letter that was fine —
      and it blocks sending, which made it a false refusal. */
   const needsLink = body.includes('{{lien}}') && willHear.length > 0 && !willHear[0]!.values.lien;
+  /* Who would be handed a first password, if the message asked for one. The
+     default templates do; a block set up before the variable existed kept its
+     own wording and does not — and nothing would say so, which is how
+     twenty-five people are sent to a page they cannot open. */
+  const newcomers = willHear.filter((e) => e.values.acces).length;
+  const silentOnAccess = newcomers > 0 && !body.includes('{{acces}}');
   const shown = willHear[Math.min(at, Math.max(willHear.length - 1, 0))];
   /* Filled with what the server says it will fill — never with a map this
      screen assembles. The preview's whole job is to be the letter, and a
@@ -186,17 +192,23 @@ export function NotifyDialog({
     if (!shown) return;
     setBusy(true);
     try {
-      const out = await api.post<{ written: boolean; live: boolean }>(`/api/blocks/${block.id}/notices/test`, {
-        kind,
-        body,
-        subjectId: shown.candidate.id,
-        to: tryAt.trim(),
-      });
-      // Said rather than assumed: outside production nothing leaves, and a
-      // toast that claimed otherwise would send somebody to check an inbox
-      // that will stay empty.
-      toast(out.live ? `Sent to ${tryAt.trim()}.` : 'Written and held — nothing leaves outside production.');
-      setTrying(false);
+      const out = await api.post<{ live: boolean; state: string; error: string }>(
+        `/api/blocks/${block.id}/notices/test`,
+        { kind, body, subjectId: shown.candidate.id, to: tryAt.trim() },
+      );
+      /* What actually happened, from the provider itself. Announcing "sent"
+         before anything was attempted is how somebody watches an inbox for a
+         letter that was refused — and a refusal names the address or the
+         domain that refused it, which is the only way to tell "my gmail works
+         but my colleague's does not" from a product fault. */
+      if (!out.live) {
+        toast('Written and held — nothing leaves outside production.');
+      } else if (out.state === 'sent') {
+        toast(`Sent to ${tryAt.trim()}.`);
+      } else {
+        toast(`Not sent — ${out.error || 'the provider refused it.'}`, true);
+      }
+      if (out.state !== 'failed') setTrying(false);
     } catch (err) {
       toast((err as Error).message, true);
     } finally {
@@ -244,6 +256,7 @@ export function NotifyDialog({
             : `${willHear.length} will be written to${left.length ? `, ${left.length} cannot be` : ''}.`
       }
       wide
+      full={writing}
       onClose={onClose}
       footer={
         <>
@@ -341,6 +354,22 @@ export function NotifyDialog({
               </div>
             </div>
           )}
+          {silentOnAccess && (
+            <div className="callout warn">
+              <Icon name="alert" size={15} />
+              <div>
+                <strong>
+                  {newcomers === 1
+                    ? 'One of them has no account yet'
+                    : `${newcomers} of them have no account yet`}
+                  , and this message does not say how to get in.
+                </strong>{' '}
+                They would be sent to a page they cannot open. Add <strong>First login</strong> to the message — it
+                stays empty for everybody who already signs in.
+              </div>
+            </div>
+          )}
+
           {unknown.length > 0 && (
             <div className="callout warn">
               <Icon name="alert" size={15} />

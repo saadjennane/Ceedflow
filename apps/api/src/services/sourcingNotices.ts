@@ -10,9 +10,9 @@
 import { ACCESS_SAMPLE, applyLink, fillTemplate, firstNameOf, longDate, type SourcingConfig } from '@ceed/shared';
 import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
-import { accessFor } from './invitations.js';
+import { accessFor, wouldAccess } from './invitations.js';
 import { suppressedAmong } from './mail.js';
-import { publicOrigin } from './platform.js';
+import { accessMessage, publicOrigin } from './platform.js';
 import { outreachView, resolveAudience } from './sourcing.js';
 import type { Gate, NoticeSource, NoticeTargetRow } from './notices.js';
 
@@ -129,7 +129,8 @@ export const sourcingNotices: NoticeSource = {
   async preview(blockId, _kind, subjectId): Promise<Record<string, string>> {
     const values = await sourcingValues(blockId, subjectId, true);
     const rows = await sourcingRoster(blockId, SOURCING_KIND, subjectId);
-    return { ...(values ?? {}), acces: ACCESS_SAMPLE(rows[0]?.email ?? '') };
+    const sample = (await wouldAccess(subjectId)) ? ACCESS_SAMPLE(rows[0]?.email ?? '', await accessMessage()) : '';
+    return { ...(values ?? {}), acces: sample };
   },
 
   roster: sourcingRoster,

@@ -792,6 +792,14 @@ table.data td.name {
   width: min(760px, 100%);
 }
 
+/* Writing a letter beside the letter it produces needs the page: at 760px the
+   two columns are each too narrow to read a paragraph in, and judging a
+   wording in a column of six words is judging something else. */
+.modal.full {
+  width: min(1180px, 100%);
+  max-height: 92vh;
+}
+
 @keyframes pop {
   from {
     transform: translateY(8px) scale(0.985);

@@ -13,7 +13,8 @@
 import { ACCESS_SAMPLE, type SelectionConfig, fillTemplate, firstNameOf } from '@ceed/shared';
 import * as repo from '../db/repo.js';
 import { appLink } from './deliverables.js';
-import { accessFor } from './invitations.js';
+import { accessFor, wouldAccess } from './invitations.js';
+import { accessMessage } from './platform.js';
 import { suppressedAmong } from './mail.js';
 import { selectionView, type SelectionCall } from './selection.js';
 import type { Gate, NoticeSource, NoticeTargetRow } from './notices.js';
@@ -186,7 +187,9 @@ export const selectionNotices: NoticeSource = {
     const config = block.config as SelectionConfig;
     return {
       prenom: firstNameOf(candidate.contactName, candidate.contactFirstName),
-      acces: candidate.accountState === 'claimed' ? '' : ACCESS_SAMPLE(candidate.email),
+      acces: (await wouldAccess(candidate.personId))
+        ? ACCESS_SAMPLE(candidate.email, await accessMessage())
+        : '',
       startup: candidate.orgName,
       decision: labelOf(config, call),
       phase: block.name,

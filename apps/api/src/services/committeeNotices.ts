@@ -24,7 +24,8 @@ import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { committeeView, type SessionView } from './committee.js';
 import { appLink } from './deliverables.js';
-import { accessFor } from './invitations.js';
+import { accessFor, wouldAccess } from './invitations.js';
+import { accessMessage } from './platform.js';
 import { suppressedAmong } from './mail.js';
 import type { Gate, NoticeSource, NoticeTargetRow } from './notices.js';
 
@@ -210,7 +211,9 @@ export const committeeNotices: NoticeSource = {
   async preview(blockId, kind, subjectId): Promise<Record<string, string>> {
     const values = await committeeValues(blockId, kind, subjectId, true);
     const rows = await committeeRoster(blockId, kind, subjectId);
-    return { ...(values ?? {}), acces: ACCESS_SAMPLE(rows[0]?.email ?? '') };
+    const who = audienceOfKind(kind) === 'jury' ? subjectId : (await repo.getCandidate(subjectId))?.personId;
+    const sample = (await wouldAccess(who)) ? ACCESS_SAMPLE(rows[0]?.email ?? '', await accessMessage()) : '';
+    return { ...(values ?? {}), acces: sample };
   },
 
   roster: committeeRoster,

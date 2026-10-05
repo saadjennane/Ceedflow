@@ -59,6 +59,7 @@ export function Modal({
   children,
   footer,
   wide,
+  full,
 }: {
   title: string;
   subtitle?: string;
@@ -66,11 +67,18 @@ export function Modal({
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  /** Wider still, for the one screen that holds a letter and its editor. */
+  full?: boolean;
 }) {
   useEscape(onClose);
   return (
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={wide ? 'modal wide' : 'modal'} role="dialog" aria-modal="true" aria-label={title}>
+      <div
+        className={full ? 'modal full' : wide ? 'modal wide' : 'modal'}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+      >
         <div className="modal-head">
           <div style={{ flex: 1 }}>
             <h2>{title}</h2>

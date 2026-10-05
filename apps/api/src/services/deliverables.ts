@@ -21,8 +21,8 @@ import {
 } from '@ceed/shared';
 import * as repo from '../db/repo.js';
 import { post, suppressedAmong } from './mail.js';
-import { publicOrigin } from './platform.js';
-import { accessFor } from './invitations.js';
+import { accessMessage, publicOrigin } from './platform.js';
+import { accessFor, wouldAccess } from './invitations.js';
 import { intakeFor, trackOf } from './selection.js';
 import type { NoticeSource } from './notices.js';
 
@@ -448,7 +448,9 @@ export const deliverableNotices: NoticeSource = {
       prenom: firstNameOf(row.candidate.contactName, row.candidate.contactFirstName),
       /* The one value a preview cannot be: a password is generated as the
          letter is written, and asking for the real one would open an account. */
-      acces: row.candidate.accountState === 'claimed' ? '' : ACCESS_SAMPLE(row.candidate.email),
+      acces: (await wouldAccess(row.candidate.personId))
+        ? ACCESS_SAMPLE(row.candidate.email, await accessMessage())
+        : '',
       startup: row.candidate.orgName,
       pieces: owedLines(view, subjectId),
       date: longDate(config?.closesAt),

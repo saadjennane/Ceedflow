@@ -20,6 +20,7 @@ import {
   tellReturned,
 } from '../src/services/deliverables.js';
 import { launchNotice, sendDueNotices, sendTest } from '../src/services/notices.js';
+import { deliverableNotices } from '../src/services/deliverables.js';
 import { accountOfRecord, createAccount } from '../src/services/auth.js';
 import { letters } from '../src/services/mail.js';
 import { outcomesByCandidate, outcomesOf, setOutcomeByHand } from '../src/services/scoring.js';
@@ -597,6 +598,32 @@ describe('telling the startups', { skip: skipWithoutServer }, () => {
     assert.equal(fillTemplate('Bonjour {{startup}}', { startup: 'Rafid Tech' }), 'Bonjour Rafid Tech');
     assert.equal(fillTemplate('Bonjour {{inconnu}}', {}), 'Bonjour {{inconnu}}', 'visible rather than silently empty');
   });
+
+  /* La plupart des destinataires ont déjà un accès : c'est le cas courant, pas
+     le cas limite, et il ne doit pas laisser de trou. */
+  it('lets a variable with nothing to say take its own line with it', () => {
+    const letter = 'Depuis votre espace : ici\n\n{{acces}}\n\nL\'équipe CEED';
+    assert.equal(
+      fillTemplate(letter, { acces: '' }),
+      "Depuis votre espace : ici\n\nL'équipe CEED",
+      'no gap where the paragraph would have been',
+    );
+    assert.equal(
+      fillTemplate(letter, { acces: 'Votre mot de passe : abc' }),
+      "Depuis votre espace : ici\n\nVotre mot de passe : abc\n\nL'équipe CEED",
+      'and nothing moved when it does have something to say',
+    );
+    assert.equal(
+      fillTemplate('Bonjour\n\n{{acces}}', { acces: '' }),
+      'Bonjour',
+      'including at the very end, where no blank line follows it',
+    );
+    assert.equal(
+      fillTemplate('Bonjour {{acces}} vous', { acces: '' }),
+      'Bonjour  vous',
+      'a name used inside a sentence stays inside its sentence',
+    );
+  });
 });
 
 /**
@@ -664,6 +691,33 @@ describe('sending a test', { skip: skipWithoutServer }, () => {
     assert.equal(await accountOfRecord(person.id), null);
     const [letter] = await letters({ email: `b.${stamp}@ceed.test` });
     assert.match(letter!.body, /••/, 'dots, not a password that works');
+  });
+
+  it('says what became of it rather than announcing a success it cannot know', async () => {
+    /* Outside production nothing leaves, and a button that said "sent" would
+       send somebody to watch an inbox that stays empty. */
+    const { due, candidate, stamp } = await setUp();
+    const out = await sendTest(due.id, {
+      kind: 'request', body: 'x', subjectId: candidate.id, to: `d.${stamp}@ceed.test`,
+    });
+    assert.equal(out.live, false);
+    assert.equal(out.written, true, 'written down all the same');
+    assert.equal(out.state, 'held', 'and said to be held, not sent');
+  });
+
+  it('promises a first login only where the letter will carry one', async () => {
+    /* A candidacy with no person attached has nobody to open an account for.
+       Showing the paragraph in the preview and omitting it from the letter is
+       the one thing this preview exists to prevent. */
+    const { due } = await setUp();
+    const org = await dir.createRecord({ kind: 'org', name: `Sans contact ${Date.now()}`, origin: 'manual' });
+    const detail = await repo.blockContext(due.id);
+    const alone = await repo.createCandidate({
+      editionId: detail!.editionId, trackId: (await repo.getEditionDetail(detail!.editionId))!.tracks[0].id,
+      orgId: org.id,
+    });
+    const values = await deliverableNotices.preview(due.id, 'request', alone.id);
+    assert.equal(values.acces, '', 'nothing promised');
   });
 
   it('writes nothing to the startup itself', async () => {

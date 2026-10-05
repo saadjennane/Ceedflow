@@ -5,6 +5,7 @@ import {
   type StaffMember,
 } from '@ceed/shared';
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import * as dir from '../db/directory.js';
 import {
   adminCount,
@@ -15,6 +16,7 @@ import {
   reissueProvisionalPassword,
   setStaffRole,
 } from '../services/auth.js';
+import { accessMessage, setAccessMessage } from '../services/platform.js';
 import { requireWorkspaceAdmin, workspaceGuard } from './guard.js';
 import { HttpError, notFound, parse } from './util.js';
 
@@ -24,6 +26,22 @@ import { HttpError, notFound, parse } from './util.js';
  * separately.
  */
 export async function staffRoutes(app: FastifyInstance) {
+  /**
+   * The paragraph that hands somebody their first password.
+   *
+   * One wording for the whole workspace: this is the platform telling a person
+   * how to sign in, not a programme's own vocabulary, and a copy per block
+   * would be a copy per chance to say it differently.
+   */
+  app.get('/api/settings/access-message', async () => ({ text: await accessMessage() }));
+
+  app.patch('/api/settings/access-message', async (req) => {
+    requireWorkspaceAdmin(req);
+    const input = parse(z.object({ text: z.string().min(1, 'Say something, or leave the default.') }), req.body);
+    await setAccessMessage(input.text);
+    return { text: await accessMessage() };
+  });
+
   app.addHook('preHandler', workspaceGuard());
 
   const resolve = async (): Promise<StaffMember[]> => {

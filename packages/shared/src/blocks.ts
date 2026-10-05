@@ -398,9 +398,43 @@ export const sourcingAudienceSchema = z.object({
 
 export type SourcingAudience = z.infer<typeof sourcingAudienceSchema>;
 
+/**
+ * La première connexion, quand la personne n'en a pas encore.
+ *
+ * Composed in one place so the preview and the sender write the same
+ * paragraph. It travels inside the letter that gives it a reason to exist: a
+ * password arriving on its own, an hour before or after the message it is for,
+ * reads as two systems talking past each other — and the recipient opens the
+ * wrong one first.
+ */
+export const ACCESS_DEFAULT = `Votre première connexion :
+    {{email}}
+    {{motdepasse}}
+Il vous sera demandé de le remplacer.`;
+
+/** The two names that paragraph may carry, and nothing else. */
+export const ACCESS_VARIABLES = [
+  { name: 'email', label: 'Their address', what: 'The address they sign in with', example: 'karim@rafid.ma' },
+  { name: 'motdepasse', label: 'Password', what: 'The first one, generated as the letter is written', example: '••••-••••-••••' },
+] as const;
+
+export function accessBlock(email: string, password: string, template = ACCESS_DEFAULT): string {
+  return fillTemplate(template, { email, motdepasse: password });
+}
+
+/**
+ * What the preview shows in its place.
+ *
+ * Everything is the letter except these characters, which cannot exist before
+ * the letter does — a password is generated as it is written. Shown as dots so
+ * nobody mistakes the sample for the real one.
+ */
+export const ACCESS_SAMPLE = (email: string, template?: string) =>
+  accessBlock(email || 'leur@adresse', '••••-••••-••••', template);
+
 /** What an invitation to apply may carry. */
 export const SOURCING_VARIABLES = [
-  { name: 'acces', label: 'Their way in', what: 'A first password, only for somebody who has no account yet — empty for everybody else', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
   { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
   { name: 'nom', label: 'Their name', what: 'The person or organisation written to', example: 'Karim Benali' },
   { name: 'lien', label: 'Apply link', what: 'The channel’s own link — what makes a candidacy traceable to this call', example: 'https://www.ceedflow.com/me?tab=Programs' },
@@ -441,7 +475,7 @@ export type Eligibility = z.infer<typeof eligibilitySchema>;
 
 /** What an acknowledgment of a submitted application may carry. */
 export const APPLICATION_VARIABLES = [
-  { name: 'acces', label: 'Their way in', what: 'A first password, only for somebody who has no account yet — empty for everybody else', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
   { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
   { name: 'startup', label: 'Startup', what: 'The organisation that applied', example: 'Rafid Tech' },
   { name: 'programme', label: 'Programme', what: 'The edition they applied to', example: 'The Builders — Cohorte 1' },
@@ -737,7 +771,7 @@ export type CommitteeFormat = (typeof COMMITTEE_FORMATS)[number];
  */
 /** What a letter to a juror may carry. */
 export const COMMITTEE_JURY_VARIABLES = [
-  { name: 'acces', label: 'Their way in', what: 'A first password, only for somebody who has no account yet — empty for everybody else', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
   { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
   { name: 'jure', label: 'Juror', what: 'Their own name', example: 'Nawal Benjelloun' },
   { name: 'panel', label: 'Sitting', what: 'The name of the sitting they sit on', example: 'Séance 1' },
@@ -750,7 +784,7 @@ export const COMMITTEE_JURY_VARIABLES = [
 
 /** What a letter to a startup being convened may carry. */
 export const COMMITTEE_STARTUP_VARIABLES = [
-  { name: 'acces', label: 'Their way in', what: 'A first password, only for somebody who has no account yet — empty for everybody else', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
   { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
   { name: 'startup', label: 'Startup', what: 'The organisation’s name', example: 'Rafid Tech' },
   { name: 'panel', label: 'Sitting', what: 'The name of the sitting', example: 'Séance 1' },
@@ -920,7 +954,7 @@ export type CommitteeAssignment = z.infer<typeof committeeAssignmentSchema>;
  */
 /** The names a selection's letters may carry. */
 export const SELECTION_VARIABLES = [
-  { name: 'acces', label: 'Their way in', what: 'A first password, only for somebody who has no account yet — empty for everybody else', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
   { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
   { name: 'startup', label: 'Startup', what: 'The organisation’s name', example: 'Rafid Tech' },
   { name: 'decision', label: 'Decision', what: 'What this selection called them — your own label', example: 'Retenue' },
@@ -1121,7 +1155,7 @@ export function uploadIdsIn(value: unknown): string[] {
  * three and not the others is a letter that goes out saying `{{lien}}`.
  */
 export const DELIVERABLE_VARIABLES = [
-  { name: 'acces', label: 'Their way in', what: 'A first password, only for somebody who has no account yet — empty for everybody else', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
   { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
   { name: 'startup', label: 'Startup', what: 'The organisation’s name', example: 'Rafid Tech' },
   {
@@ -1139,7 +1173,7 @@ export const DELIVERABLE_VARIABLES = [
 
 /** Only in a letter about one item sent back. */
 export const DELIVERABLE_RETURN_VARIABLES = [
-  { name: 'acces', label: 'Their way in', what: 'A first password, only for somebody who has no account yet — empty for everybody else', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
   { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
   { name: 'startup', label: 'Startup', what: 'The organisation’s name', example: 'Rafid Tech' },
   { name: 'piece', label: 'The item', what: 'What was sent back', example: 'Registre de commerce' },
@@ -1213,30 +1247,6 @@ export const deliverableConfigSchema = z.object({
 });
 
 /**
- * La première connexion, quand la personne n'en a pas encore.
- *
- * Composed in one place so the preview and the sender write the same
- * paragraph. It travels inside the letter that gives it a reason to exist: a
- * password arriving on its own, an hour before or after the message it is for,
- * reads as two systems talking past each other — and the recipient opens the
- * wrong one first.
- */
-export function accessBlock(email: string, password: string): string {
-  return [`Votre première connexion :`, `    ${email}`, `    ${password}`, `Il vous sera demandé de le remplacer.`].join(
-    '\n',
-  );
-}
-
-/**
- * What the preview shows in its place.
- *
- * Everything is the letter except these characters, which cannot exist before
- * the letter does — a password is generated as it is written. Shown as dots so
- * nobody mistakes the sample for the real one.
- */
-export const ACCESS_SAMPLE = (email: string) => accessBlock(email || 'leur@adresse', '••••-••••-••••');
-
-/**
  * `{{startup}}` and the rest, replaced.
  *
  * Shared rather than kept with the sender, because the mail-merge preview has
@@ -1245,9 +1255,24 @@ export const ACCESS_SAMPLE = (email: string) => accessBlock(email || 'leur@adres
  *
  * An unknown name is left exactly where it is: a typo stays visible, where
  * quietly emptying it would send a letter with a hole in the middle.
+ *
+ * A *known* name with nothing to say is the opposite case, and it takes its
+ * line with it. `{{acces}}` sits on a line of its own between two blank ones,
+ * and most recipients already have a way in — leaving the line behind would
+ * open a three-line gap above the signature in every one of those letters.
  */
 export function fillTemplate(template: string, values: Record<string, string>): string {
-  return template.replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g, (whole, name: string) => values[name] ?? whole);
+  const whole = template
+    // The line, and the blank one under it: removing only the line still
+    // leaves the gap it was keeping.
+    .replace(/^[ \t]*\{\{\s*([a-zA-Z_]+)\s*\}\}[ \t]*\r?\n[ \t]*\r?\n/gm, (line, name: string) =>
+      values[name] === '' ? '' : line,
+    )
+    // The same thing at the very end, where there is no blank line under it.
+    .replace(/(?:\r?\n[ \t]*)+\{\{\s*([a-zA-Z_]+)\s*\}\}[ \t]*$/g, (line, name: string) =>
+      values[name] === '' ? '' : line,
+    );
+  return whole.replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g, (found, name: string) => values[name] ?? found);
 }
 
 const MOIS = [

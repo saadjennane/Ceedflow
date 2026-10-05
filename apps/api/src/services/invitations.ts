@@ -17,6 +17,7 @@ import {
 } from './auth.js';
 import { appLink } from './deliverables.js';
 import { post, sendingIsLive } from './mail.js';
+import { accessMessage } from './platform.js';
 
 /** Why somebody hears nothing, in words a screen prints. */
 export type InviteBlock = 'no_email' | 'claimed' | 'disabled';
@@ -103,6 +104,19 @@ export async function invite(recordId: string, sendAfter: Date | null = null): P
  * was sent before — which is the right way round: the letter in front of them
  * is the one that works.
  */
+export async function wouldAccess(recordId: string | null | undefined): Promise<boolean> {
+  /* The same question `accessFor` answers, asked without answering it — so a
+     preview can show the paragraph exactly where the letter will have one. A
+     candidacy with no person attached has nobody to open an account for, and
+     promising it in the preview would be promising a paragraph that never
+     arrives. */
+  if (!recordId) return false;
+  const record = await dir.getRecord(recordId);
+  if (!record?.email?.trim()) return false;
+  const account = await accountOfRecord(recordId);
+  return account?.state !== 'claimed' && account?.state !== 'disabled';
+}
+
 export async function accessFor(recordId: string | null | undefined): Promise<string> {
   if (!recordId) return '';
   const record = await dir.getRecord(recordId);
@@ -121,7 +135,7 @@ export async function accessFor(recordId: string | null | undefined): Promise<st
   const opened = account ?? (await accountOfRecord(recordId));
   if (opened) await markInvited(opened.id);
 
-  return accessBlock(email, password);
+  return accessBlock(email, password, await accessMessage());
 }
 
 /**

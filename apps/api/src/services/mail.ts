@@ -206,6 +206,44 @@ export async function flush(limit = 25): Promise<{ sent: number; failed: number 
   return { sent, failed };
 }
 
+/**
+ * Offers one message now, and says what became of it.
+ *
+ * For a trial send, where waiting twenty seconds to learn nothing is the
+ * difference between a useful button and a decorative one — and where "sent"
+ * announced before anything was attempted is worse than useless: it sends
+ * somebody to watch an inbox for a letter the provider refused.
+ */
+export async function flushOne(id: string): Promise<{ state: OutboxState; error: string }> {
+  const conn = await db();
+  const [row] = await conn.query<OutboxRow & { to: string }>(
+    `select id, kind, to_email as "to", to_name as "toName", subject, body,
+            state, error, attempts, created_at::text as "createdAt", sent_at::text as "sentAt",
+            delivered_at::text as "deliveredAt"
+       from outbox where id = $1`,
+    [id],
+  );
+  if (!row) return { state: 'failed', error: 'There is no such message.' };
+  if (row.state !== 'queued') return { state: row.state, error: row.error };
+
+  const out = await handOver(row);
+  if (out.ok) {
+    await conn.query(
+      `update outbox set state = 'sent', provider_id = $2, sent_at = now(),
+                         attempts = attempts + 1, updated_at = now() where id = $1`,
+      [id, out.id],
+    );
+    return { state: 'sent', error: '' };
+  }
+  /* A trial is not retried: it is somebody standing in front of the screen
+     waiting for an answer, and "we will try again later" is not one. */
+  await conn.query(
+    `update outbox set state = 'failed', error = $2, attempts = attempts + 1, updated_at = now() where id = $1`,
+    [id, out.why.slice(0, 500)],
+  );
+  return { state: 'failed', error: out.why };
+}
+
 /** What went out, or did not, about one person — for the screen that asks. */
 export async function letters(
   where: { email?: string; candidateId?: string; blockId?: string },

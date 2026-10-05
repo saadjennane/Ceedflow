@@ -15,7 +15,7 @@
 import { newId } from '@ceed/shared';
 import * as repo from '../db/repo.js';
 import { fillTemplate } from '@ceed/shared';
-import { post, sendingIsLive } from './mail.js';
+import { flushOne, post, sendingIsLive } from './mail.js';
 import { deliverableNotices } from './deliverables.js';
 import { selectionNotices } from './selectionNotices.js';
 import { committeeNotices } from './committeeNotices.js';
@@ -175,10 +175,10 @@ export async function launchNotice(
 export async function sendTest(
   blockId: string,
   input: { kind: string; body: string; subjectId: string; to: string },
-): Promise<{ written: boolean; live: boolean }> {
+): Promise<{ written: boolean; live: boolean; state: string; error: string }> {
   const block = await repo.getBlock(blockId);
   const source = block && SOURCES[block.type];
-  if (!source) return { written: false, live: false };
+  if (!source) return { written: false, live: false, state: 'failed', error: 'The block no longer exists.' };
 
   const values = await source.preview(blockId, input.kind, input.subjectId);
   const letter = await post({
@@ -189,7 +189,11 @@ export async function sendTest(
     subject: `[Essai] ${block.name}`,
     body: fillTemplate(input.body, values),
   });
-  return { written: Boolean(letter), live: sendingIsLive() };
+  /* Offered at once rather than left to the timer: somebody is standing in
+     front of the screen, and a button that says "sent" twenty seconds before
+     the provider refuses it is worse than no button. */
+  const out = letter ? await flushOne(letter) : { state: 'failed' as const, error: 'It could not be written down.' };
+  return { written: Boolean(letter), live: sendingIsLive(), state: out.state, error: out.error };
 }
 
 export async function sendDueNotices(): Promise<{ sent: number; held: number }> {
