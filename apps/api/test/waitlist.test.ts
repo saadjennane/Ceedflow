@@ -197,9 +197,14 @@ describe('telling each audience what was decided', { skip: skipWithoutServer }, 
        cannot show them is a letter they cannot check. */
     const { pick, kept } = await setUp();
     await launchNotice(pick.id, { kind: SELECTION_KINDS.pass, body: BODY });
-    const { held } = await sendDueNotices();
+    await sendDueNotices();
     assert.equal(await lettersFor(kept.id), 0);
-    assert.equal(held, 1, 'waited rather than abandoned — announcing later is an ordinary order');
+    // This block's own notice, not the tick's total: the sender is global.
+    assert.equal(
+      (await repo.listNotices(pick.id))[0]!.state,
+      'planned',
+      'waited rather than abandoned — announcing later is an ordinary order',
+    );
   });
 
   it('writes to one audience and leaves the others untouched', async () => {

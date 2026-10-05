@@ -11,7 +11,7 @@
  * would think to look for it otherwise, and the people it happens to are the
  * ones left waiting without a word.
  */
-import { SELECTION_VARIABLES, type Block, type SelectionConfig } from '@ceed/shared';
+import { type Block } from '@ceed/shared';
 import { useState } from 'react';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
@@ -20,36 +20,50 @@ import { Icon } from '../../ui/Icon';
 import { NotifyDialog } from './NotifyDialog';
 
 interface Audience {
-  call: 'pass' | 'wait' | 'fail';
   kind: string;
   label: string;
   count: number;
   reachable: number;
   told: number;
-  lastToldAt: string | null;
+  lastToldAt?: string | null;
 }
 
 interface Payload {
   audiences: Audience[];
-  published: boolean;
-  contradicted: { candidateId: string; orgName: string; told: string; now: string }[];
+  /** Named startups whose decision moved after they were written to. */
+  contradicted?: { candidateId: string; orgName: string; told: string; now: string }[];
 }
 
 /** Whole days since a letter went out, for saying how long the others waited. */
 const daysSince = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
 
-export function TellThem({ block, onSent }: { block: Block; onSent?: () => void }) {
-  const view = useAsync(() => api.get<Payload>(`/api/blocks/${block.id}/selection/audiences`), block.id);
+export function TellThem({
+  block,
+  at,
+  bodyOf,
+  variablesOf,
+  onSent,
+}: {
+  block: Block;
+  /** Which brick's audiences these are: it names the two endpoints. */
+  at: string;
+  /** The template for one audience, from this block's own config. */
+  bodyOf: (kind: string) => string;
+  variablesOf: (kind: string) => readonly { name: string; label: string; what: string }[];
+  onSent?: () => void;
+}) {
+  const view = useAsync(() => api.get<Payload>(`/api/blocks/${block.id}/${at}/audiences`), `${block.id}:${at}`);
   const [telling, setTelling] = useState<Audience | null>(null);
 
   if (!view.data?.audiences.length) return null;
-  const { audiences, contradicted } = view.data;
+  const { audiences } = view.data;
+  const contradicted = view.data.contradicted ?? [];
 
   /* The oldest letter already out. An audience still silent is measured
      against it — "29 have heard nothing for 12 days" only means anything
      beside an audience that has. */
   const earliest = audiences
-    .map((a) => a.lastToldAt)
+    .map((a) => a.lastToldAt ?? null)
     .filter((x): x is string => Boolean(x))
     .sort()[0];
 
@@ -121,11 +135,11 @@ export function TellThem({ block, onSent }: { block: Block; onSent?: () => void 
           /* A selection has no door of its own; announcing is what opens this,
              and the caller only shows this block once it is announced. */
           status="live"
-          rosterPath={`/api/blocks/${block.id}/selection/roster`}
-          notifyPath={`/api/blocks/${block.id}/selection/notify`}
-          title={`Tell the ${telling.label.toLowerCase()}`}
-          body={(block.config as SelectionConfig).messages[telling.call]}
-          variables={SELECTION_VARIABLES}
+          rosterPath={`/api/blocks/${block.id}/${at}/roster`}
+          notifyPath={`/api/blocks/${block.id}/${at}/notify`}
+          title={`Tell ${telling.label.toLowerCase()}`}
+          body={bodyOf(telling.kind)}
+          variables={variablesOf(telling.kind)}
           onDone={() => {
             view.reload();
             onSent?.();

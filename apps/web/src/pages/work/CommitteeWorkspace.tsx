@@ -1,4 +1,6 @@
 import {
+  COMMITTEE_JURY_VARIABLES,
+  COMMITTEE_STARTUP_VARIABLES,
   type Block,
   type BlockOutcome,
   type Candidate,
@@ -13,6 +15,7 @@ import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
+import { TellThem } from './TellThem';
 import { Modal, useToast } from '../../ui/Overlays';
 
 interface AssignmentView {
@@ -259,6 +262,18 @@ export function CommitteeWorkspace({
         </div>
       ) : (
         <>
+          {/* Convening them: the jury, and the startups. Two acts, because a
+              juror is told who they will see and a startup when it is
+              expected, and neither sentence belongs in the other's letter. */}
+          <TellThem
+            block={block}
+            at="committee"
+            bodyOf={(kind) => (kind === 'committee_jury' ? config.messages.jury : config.messages.startup)}
+            variablesOf={(kind) =>
+              kind === 'committee_jury' ? COMMITTEE_JURY_VARIABLES : COMMITTEE_STARTUP_VARIABLES
+            }
+          />
+
           {/* ---- the jury, above ---- */}
           <section className="card jury-strip">
             {/* The count beside the word, because twelve chips wrap over two

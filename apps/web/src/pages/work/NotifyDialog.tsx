@@ -147,7 +147,11 @@ export function NotifyDialog({
     return [...found];
   }, [body, variables]);
 
-  const needsLink = body.includes('{{lien}}') && !roster.data?.link;
+  /* Asked of the substitutions the sender will actually make, not of a field
+     beside them: the committee's roster left that field empty while every
+     letter carried its link, so the warning fired on a letter that was fine —
+     and it blocks sending, which made it a false refusal. */
+  const needsLink = body.includes('{{lien}}') && willHear.length > 0 && !willHear[0]!.values.lien;
   const shown = willHear[Math.min(at, Math.max(willHear.length - 1, 0))];
   /* Filled with what the server says it will fill — never with a map this
      screen assembles. The preview's whole job is to be the letter, and a

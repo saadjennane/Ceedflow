@@ -359,8 +359,11 @@ describe('telling the startups', { skip: skipWithoutServer }, () => {
     // somebody who tells people before setting the opening date.
     await launchNotice(due.id, { kind: 'request', body: BODY });
 
-    const waited = await sendDueNotices();
-    assert.equal(waited.held, 1, 'held, not abandoned');
+    /* Asserted on this block's own notice rather than on the tick's total:
+       the sender is global, so another test file's pending notice would be
+       counted here and the number would mean nothing. */
+    await sendDueNotices();
+    assert.equal((await repo.listNotices(due.id))[0]!.state, 'planned', 'held, not abandoned');
     assert.equal(await lettersFor(due.id), 0);
 
     await repo.updateBlock(due.id, { config: { visibility: 'open' } });

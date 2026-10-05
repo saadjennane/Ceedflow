@@ -54,7 +54,8 @@ async function audienceOf(blockId: string, kind: string): Promise<NoticeTargetRo
   const held = await suppressedAmong(mine.map((r) => r.candidate.email));
 
   return mine.map((row) => ({
-    candidateId: row.candidate.id,
+    subjectId: row.candidate.id,
+    as: 'candidate' as const,
     email: row.candidate.email,
     toName: row.candidate.contactName,
     orgName: row.candidate.orgName,
@@ -84,9 +85,9 @@ async function audienceOf(blockId: string, kind: string): Promise<NoticeTargetRo
  */
 export async function selectionRoster(blockId: string, kind: string, only?: string): Promise<NoticeTargetRow[]> {
   const all = await audienceOf(blockId, kind);
-  if (only) return all.filter((r) => r.candidateId === only);
+  if (only) return all.filter((r) => r.subjectId === only);
   const told = await toldAbout(blockId);
-  return all.filter((r) => told.get(r.candidateId)?.kind !== kind);
+  return all.filter((r) => told.get(r.subjectId)?.kind !== kind);
 }
 
 /** Everybody this block has already written to, and what it told them. */
@@ -94,7 +95,7 @@ async function toldAbout(blockId: string): Promise<Map<string, { kind: string; a
   const out = new Map<string, { kind: string; at: string }>();
   for (const t of await repo.listNoticeTargets(blockId)) {
     if (!t.sentAt || t.skipped || !callOfKind(t.kind)) continue;
-    out.set(t.candidateId, { kind: t.kind, at: t.sentAt });
+    out.set(t.subjectId, { kind: t.kind, at: t.sentAt });
   }
   return out;
 }
@@ -186,12 +187,12 @@ export const selectionNotices: NoticeSource = {
    * telling somebody they are refused when the committee has just fished them
    * out is the one mistake this whole mechanism exists to prevent.
    */
-  async filter(blockId, kind, candidateIds) {
+  async filter(blockId, kind, subjectIds) {
     /* The audience, not the offer list: a startup already written to has
        dropped off the offer list, which is exactly the case an individual
        relaunch is for. */
-    const here = new Map((await audienceOf(blockId, kind)).map((r) => [r.candidateId, r]));
-    return new Map(candidateIds.map((id) => [id, here.has(id) ? here.get(id)!.blocked : 'decided otherwise']));
+    const here = new Map((await audienceOf(blockId, kind)).map((r) => [r.subjectId, r]));
+    return new Map(subjectIds.map((id) => [id, here.has(id) ? here.get(id)!.blocked : 'decided otherwise']));
   },
 
   async gate(blockId): Promise<Gate> {

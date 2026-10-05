@@ -699,6 +699,51 @@ export type CommitteeFormat = (typeof COMMITTEE_FORMATS)[number];
  * slot. A jury can be looking at its list days before the booking page opens,
  * and the booking page shuts long before the sitting.
  */
+/** What a letter to a juror may carry. */
+export const COMMITTEE_JURY_VARIABLES = [
+  { name: 'jure', label: 'Juror', what: 'Their own name' },
+  { name: 'panel', label: 'Sitting', what: 'The name of the sitting they sit on' },
+  { name: 'date', label: 'Date', what: 'The day it is held, written out' },
+  { name: 'heures', label: 'Hours', what: 'When it starts and ends' },
+  { name: 'lieu', label: 'Where', what: 'The location, when one is set' },
+  { name: 'startups', label: 'Who they see', what: 'The startups on their panel, one per line' },
+  { name: 'lien', label: 'Link', what: 'Their own space, where they mark' },
+] as const;
+
+/** What a letter to a startup being convened may carry. */
+export const COMMITTEE_STARTUP_VARIABLES = [
+  { name: 'startup', label: 'Startup', what: 'The organisation’s name' },
+  { name: 'panel', label: 'Sitting', what: 'The name of the sitting' },
+  { name: 'date', label: 'Date', what: 'The day, written out' },
+  { name: 'heure', label: 'Their slot', what: 'The time they are expected, when one is set' },
+  { name: 'lieu', label: 'Where', what: 'The location, when one is set' },
+  { name: 'lien', label: 'Link', what: 'Their own space on this platform' },
+] as const;
+
+const COMMITTEE_JURY = `Bonjour {{jure}},
+
+Vous siégez au jury de {{panel}}, le {{date}} de {{heures}}{{lieu}}.
+
+Les startups que vous verrez :
+
+{{startups}}
+
+Votre grille d'évaluation vous attend ici : {{lien}}
+
+Merci de votre temps.
+
+L'équipe CEED`;
+
+const COMMITTEE_STARTUP = `Bonjour {{startup}},
+
+Votre passage devant le jury est fixé au {{date}}{{heure}}{{lieu}}.
+
+Merci d'arriver dix minutes en avance. Tout le détail est dans votre espace : {{lien}}
+
+À très bientôt,
+
+L'équipe CEED`;
+
 export const committeeConfigSchema = z.preprocess(
   (value) => {
     // `rsvpDeadline` was the booking page's only date before it had a window of
@@ -724,6 +769,17 @@ export const committeeConfigSchema = z.preprocess(
     rsvp: z
       .object(brickWindowFields)
       .default({ opensAt: null, closesAt: null, visibility: 'auto', visibilitySetAt: null, openedAt: null }),
+    /**
+     * The two letters this block sends, and they are genuinely two: a juror is
+     * told who they will see, a startup is told when it is expected. Neither
+     * sentence belongs in the other's letter.
+     */
+    messages: z
+      .object({
+        jury: z.string().default(COMMITTEE_JURY),
+        startup: z.string().default(COMMITTEE_STARTUP),
+      })
+      .default({}),
   }),
 );
 

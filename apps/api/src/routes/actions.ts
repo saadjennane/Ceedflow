@@ -10,6 +10,9 @@ import { z } from 'zod';
 import { markAsJury } from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { committeeView, seatOnFreeSlots } from '../services/committee.js';
+import { committeeAudiences, committeeRoster, committeeValues } from '../services/committeeNotices.js';
+import { appLink } from '../services/deliverables.js';
+import { launchNotice, sendDueNotices } from '../services/notices.js';
 import { outreachView } from '../services/sourcing.js';
 import { HttpError, notFound, parse } from './util.js';
 import { workspaceGuard } from './guard.js';
@@ -41,6 +44,64 @@ export async function actionRoutes(app: FastifyInstance) {
   app.get('/api/blocks/:id/committee', async (req, reply) => {
     const { id } = req.params as { id: string };
     return (await committeeView(id)) ?? notFound(reply, 'Committee block not found.');
+  });
+
+  /** The two audiences of a committee, and what is left to say to each. */
+  app.get('/api/blocks/:id/committee/audiences', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const block = await repo.getBlock(id);
+    if (!block || block.type !== 'committee') return notFound(reply, 'Committee block not found.');
+    return committeeAudiences(id);
+  });
+
+  app.get('/api/blocks/:id/committee/roster', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const query = req.query as { kind?: string; candidateId?: string };
+    const block = await repo.getBlock(id);
+    if (!block || block.type !== 'committee') return notFound(reply, 'Committee block not found.');
+    const kind = query.kind ?? '';
+    const entries = await committeeRoster(id, kind, query.candidateId);
+    const withValues = await Promise.all(
+      entries.map(async (e) => ({
+        candidate: { id: e.subjectId, orgName: e.orgName, email: e.email, contactName: e.toName },
+        blocked: e.blocked || 'none',
+        askedAt: null,
+        owes: false,
+        owed: '',
+        values: (await committeeValues(id, kind, e.subjectId)) ?? {},
+      })),
+    );
+    return { entries: withValues, link: await appLink(), closesAt: null, dateLabel: '' };
+  });
+
+  /**
+   * Convening one audience. Two acts, never one: a juror is told who they will
+   * see and a startup when it is expected, and neither sentence belongs in the
+   * other's letter.
+   */
+  app.post('/api/blocks/:id/committee/notify', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const input = parse(
+      z.object({
+        kind: z.string().min(1),
+        scheduledFor: z.string().nullable().optional(),
+        body: z.string().min(1, 'Write what they are going to read.'),
+        candidateId: z.string().optional(),
+      }),
+      req.body,
+    );
+    const block = await repo.getBlock(id);
+    if (!block || block.type !== 'committee') return notFound(reply, 'Committee block not found.');
+
+    await launchNotice(id, {
+      kind: input.kind,
+      scheduledFor: input.scheduledFor ?? null,
+      body: input.body,
+      only: input.candidateId,
+      by: req.staff ? { id: req.staff.id, name: req.staff.email } : undefined,
+    });
+    if (!input.scheduledFor) await sendDueNotices();
+    return committeeAudiences(id);
   });
 
   app.post('/api/blocks/:id/sessions', async (req, reply) => {

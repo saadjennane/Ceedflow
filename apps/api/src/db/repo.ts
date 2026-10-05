@@ -853,7 +853,14 @@ export interface Notice {
 
 export interface NoticeTarget {
   noticeId: string;
-  candidateId: string;
+  /**
+   * Who it is for, whichever they are: a candidacy or a person in the
+   * directory. A committee writes to both, and the machinery around this has
+   * no reason to care which.
+   */
+  subjectId: string;
+  candidateId: string | null;
+  recordId: string | null;
   sentAt: string | null;
   letterId: string | null;
   skipped: string;
@@ -900,7 +907,8 @@ export async function listNoticeTargets(
      facts and the screen is asked for both. A target with no letter — somebody
      named and then left out — simply has neither. */
   return all(
-    `select t.notice_id as "noticeId", t.candidate_id as "candidateId", t.kind,
+    `select t.notice_id as "noticeId", coalesce(t.candidate_id, t.record_id) as "subjectId",
+            t.candidate_id as "candidateId", t.record_id as "recordId", t.kind,
             t.sent_at::text as "sentAt", t.letter_id as "letterId", t.skipped,
             n.state as "noticeState",
             o.delivered_at::text as "deliveredAt", o.state as "letterState"
@@ -914,7 +922,8 @@ export async function listNoticeTargets(
 
 export async function targetsOf(noticeId: string): Promise<NoticeTarget[]> {
   return all<NoticeTarget>(
-    `select notice_id as "noticeId", candidate_id as "candidateId",
+    `select notice_id as "noticeId", coalesce(candidate_id, record_id) as "subjectId",
+            candidate_id as "candidateId", record_id as "recordId",
             sent_at::text as "sentAt", letter_id as "letterId", skipped
        from notice_targets where notice_id = $1`,
     [noticeId],
@@ -930,9 +939,10 @@ export async function targetsOf(noticeId: string): Promise<NoticeTarget[]> {
  */
 export async function createNotice(
   input: Omit<Notice, 'state' | 'reason' | 'sentAt' | 'cancelledAt' | 'createdAt'>,
-  candidateIds: string[],
+  /** Who it goes to: a candidacy, or a person in the directory. */
+  subjects: { candidateId?: string; recordId?: string }[],
   /**
-   * Whether saying this twice to the same startup is a defect. True for a
+   * Whether saying this twice to the same person is a defect. True for a
    * request and for an announcement, false for a reminder, which exists to be
    * repeated. The caller knows; an index listing words would not.
    */
@@ -947,11 +957,11 @@ export async function createNotice(
        values ($1,$2,$3,$4,$5,$6,$7)`,
       [input.id, input.blockId, input.kind, input.body, input.scheduledFor, input.createdBy, input.createdByName],
     );
-    for (const candidateId of candidateIds) {
+    for (const who of subjects) {
       await conn.query(
-        `insert into notice_targets (notice_id, block_id, kind, candidate_id, once)
-         values ($1,$2,$3,$4,$5)`,
-        [input.id, input.blockId, input.kind, candidateId, once],
+        `insert into notice_targets (notice_id, block_id, kind, candidate_id, record_id, once)
+         values ($1,$2,$3,$4,$5,$6)`,
+        [input.id, input.blockId, input.kind, who.candidateId ?? null, who.recordId ?? null, once],
       );
     }
   });
@@ -971,21 +981,21 @@ export async function dueNotices(): Promise<Notice[]> {
  * False means somebody else has it — another tick, or the same one after a
  * restart. One row, at most one letter, whatever happens.
  */
-export async function claimTarget(noticeId: string, candidateId: string): Promise<boolean> {
+export async function claimTarget(noticeId: string, subjectId: string): Promise<boolean> {
   const rows = await (
     await db()
-  ).query<{ candidateId: string }>(
+  ).query<{ subjectId: string }>(
     `update notice_targets set sent_at = now()
-      where notice_id = $1 and candidate_id = $2 and sent_at is null
-      returning candidate_id as "candidateId"`,
-    [noticeId, candidateId],
+      where notice_id = $1 and coalesce(candidate_id, record_id) = $2 and sent_at is null
+      returning coalesce(candidate_id, record_id) as "subjectId"`,
+    [noticeId, subjectId],
   );
   return rows.length > 0;
 }
 
 export async function markTarget(
   noticeId: string,
-  candidateId: string,
+  subjectId: string,
   patch: { letterId?: string | null; skipped?: string },
 ): Promise<void> {
   await (await db()).query(
@@ -994,8 +1004,8 @@ export async function markTarget(
             -- Named and then left out: nobody heard anything, so the slot that
             -- stops a startup being asked twice goes back. The row stays.
             released_at = case when coalesce($4, '') <> '' then now() else released_at end
-      where notice_id = $1 and candidate_id = $2`,
-    [noticeId, candidateId, patch.letterId ?? null, patch.skipped ?? null],
+      where notice_id = $1 and coalesce(candidate_id, record_id) = $2`,
+    [noticeId, subjectId, patch.letterId ?? null, patch.skipped ?? null],
   );
 }
 
@@ -1007,11 +1017,11 @@ export async function markTarget(
  * letter, what became of it — because what was done is not undone by doing it
  * again.
  */
-export async function releaseTargets(blockId: string, candidateId: string, kind: NoticeKind): Promise<void> {
+export async function releaseTargets(blockId: string, subjectId: string, kind: NoticeKind): Promise<void> {
   await (await db()).query(
     `update notice_targets set released_at = now()
-      where block_id = $1 and candidate_id = $2 and kind = $3 and released_at is null`,
-    [blockId, candidateId, kind],
+      where block_id = $1 and coalesce(candidate_id, record_id) = $2 and kind = $3 and released_at is null`,
+    [blockId, subjectId, kind],
   );
 }
 

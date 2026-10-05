@@ -133,9 +133,9 @@ export async function deliverableView(blockId: string): Promise<DeliverableView 
   const delivery = new Map<string, DeliverableRow['delivery']>();
   for (const t of targets) {
     if (t.kind !== 'request' || !t.sentAt || t.skipped) continue;
-    askedAt.set(t.candidateId, t.sentAt);
+    askedAt.set(t.subjectId, t.sentAt);
     delivery.set(
-      t.candidateId,
+      t.subjectId,
       t.deliveredAt
         ? 'arrived'
         : t.letterState === 'bounced' || t.letterState === 'failed' || !t.letterId
@@ -435,7 +435,8 @@ export const deliverableNotices: NoticeSource = {
   async roster(blockId, kind, only) {
     const entries = await noticeRoster(blockId, kind as 'request' | 'reminder', only);
     return entries.map((e) => ({
-      candidateId: e.candidate.id,
+      subjectId: e.candidate.id,
+      as: 'candidate' as const,
       email: e.candidate.email,
       toName: e.candidate.contactName,
       orgName: e.candidate.orgName,

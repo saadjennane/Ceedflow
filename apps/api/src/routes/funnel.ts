@@ -709,7 +709,7 @@ export async function funnelRoutes(app: FastifyInstance) {
     const decision = call ? labelOf(config, call) : '';
     return {
       entries: entries.map((e) => ({
-        candidate: { id: e.candidateId, orgName: e.orgName, email: e.email, contactName: e.toName },
+        candidate: { id: e.subjectId, orgName: e.orgName, email: e.email, contactName: e.toName },
         blocked: e.blocked || 'none',
         askedAt: null,
         owes: false,

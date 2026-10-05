@@ -1,4 +1,5 @@
 import {
+  SELECTION_VARIABLES,
   criterionMark,
   funnelMoments,
   markCounts,
@@ -652,7 +653,17 @@ function Moment({
           waiting list exists because the decision is not closed, and a refusal
           sent to somebody who may be fished out next week is worse than the
           leak that sending everybody together would avoid. */}
-      {selection && decision?.published && <TellThem block={selection} />}
+      {selection && decision?.published && (
+        <TellThem
+          block={selection}
+          at="selection"
+          bodyOf={(kind) => {
+            const c = selection.config as SelectionConfig;
+            return kind === 'selection_pass' ? c.messages.pass : kind === 'selection_wait' ? c.messages.wait : c.messages.fail;
+          }}
+          variablesOf={() => SELECTION_VARIABLES}
+        />
+      )}
 
       {decision?.published && outOfLine > 0 && (
         <div className="callout warn">

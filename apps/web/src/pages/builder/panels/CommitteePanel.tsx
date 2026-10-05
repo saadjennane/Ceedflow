@@ -1,4 +1,6 @@
 import {
+  COMMITTEE_JURY_VARIABLES,
+  COMMITTEE_STARTUP_VARIABLES,
   blockMissing,
   blockStatus,
   windowMinutes,
@@ -19,12 +21,13 @@ import { Icon } from '../../../ui/Icon';
 import { SearchBox } from '../../../ui/SearchBox';
 import { ConfirmDialog, Modal, useToast } from '../../../ui/Overlays';
 import { VisibilityControl } from './shared';
+import { Template } from './Template';
 
 /* ------------------------------------------------------------------ */
 /* Tabs                                                                */
 /* ------------------------------------------------------------------ */
 
-export const COMMITTEE_TABS = ['Overview', 'Panels', 'Invitations'] as const;
+export const COMMITTEE_TABS = ['Overview', 'Panels', 'Invitations', 'Messages'] as const;
 export type CommitteeTab = (typeof COMMITTEE_TABS)[number];
 
 /** What one juror has sent on a sitting, as the marks endpoint gives it. */
@@ -38,7 +41,10 @@ const totalMarks = (jurors: JurorMarks[]) => jurors.reduce((n, j) => n + j.submi
 
 /** Work spread over days invites nobody, so it has no invitations to set. */
 export function committeeTabs(config: CommitteeConfig): CommitteeTab[] {
-  return config.format === 'event' ? [...COMMITTEE_TABS] : ['Overview', 'Panels'];
+  /* Work spread over days invites nobody, so it has no booking page — but it
+     still has a jury to tell, which is the letter CEED has been writing by
+     hand. */
+  return config.format === 'event' ? [...COMMITTEE_TABS] : ['Overview', 'Panels', 'Messages'];
 }
 
 /** A sitting of the jury on a day; a reading panel when the work is spread out. */
@@ -85,6 +91,7 @@ export function CommitteeSetup({
 }) {
   if (tab === 'Panels') return <PanelsTab block={block} config={config} />;
   if (tab === 'Invitations') return <InvitationsTab block={block} config={config} patch={patch} />;
+  if (tab === 'Messages') return <MessagesTab block={block} config={config} patch={patch} />;
   return <OverviewTab config={config} patch={patch} />;
 }
 
@@ -872,6 +879,75 @@ function PanelEditor({
             await api.del(`/api/sessions/${session.id}`);
             toast(`${word.charAt(0).toUpperCase() + word.slice(1)} deleted.`);
             onDone();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * What each of the two audiences reads.
+ *
+ * Genuinely two letters: a juror is told who they will see, a startup when it
+ * is expected. Putting both sentences in one message is how a startup learns
+ * who else is pitching that morning.
+ */
+function MessagesTab({
+  block,
+  config,
+  patch,
+}: {
+  block: Block;
+  config: CommitteeConfig;
+  patch: (partial: Partial<CommitteeConfig>) => void;
+}) {
+  const link = useAsync(() => api.get<{ link: string }>('/api/app-link'), 'app-link');
+  const set = (key: keyof CommitteeConfig['messages'], next: string) =>
+    patch({ messages: { ...config.messages, [key]: next } });
+  const where = link.data?.link || '(this platform has no public address set)';
+
+  return (
+    <>
+      <div className="callout">
+        <Icon name="send" size={15} />
+        <div>
+          Written once here, sent from <strong>Committees</strong> — one audience at a time, where you see who each
+          letter names before it goes.
+        </div>
+      </div>
+
+      <Template
+        label="To the jury"
+        help="Who they will see, when, and where their grid is. Each juror's letter carries their own panel."
+        value={config.messages.jury}
+        onChange={(v) => set('jury', v)}
+        variables={COMMITTEE_JURY_VARIABLES}
+        example={{
+          jure: 'Nawal Benjelloun',
+          panel: 'Séance 1',
+          date: '20 octobre 2026',
+          heures: '09:00 à 12:00',
+          lieu: ', à la Villa des Arts',
+          startups: '  · Rafid Tech\n  · Nakhla Bio',
+          lien: where,
+        }}
+      />
+
+      {config.format === 'event' && (
+        <Template
+          label="To the startups"
+          help="When they are expected. The slot appears only once you have given them one."
+          value={config.messages.startup}
+          onChange={(v) => set('startup', v)}
+          variables={COMMITTEE_STARTUP_VARIABLES}
+          example={{
+            startup: 'Rafid Tech',
+            panel: 'Séance 1',
+            date: '20 octobre 2026',
+            heure: ' à 09:20',
+            lieu: ', à la Villa des Arts',
+            lien: where,
           }}
         />
       )}

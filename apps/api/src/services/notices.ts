@@ -17,10 +17,14 @@ import * as repo from '../db/repo.js';
 import { post } from './mail.js';
 import { deliverableNotices } from './deliverables.js';
 import { selectionNotices } from './selectionNotices.js';
+import { committeeNotices } from './committeeNotices.js';
 
-/** One startup a notice could name, and what stands in the way. */
+/** One person a notice could name, and what stands in the way. */
 export interface NoticeTargetRow {
-  candidateId: string;
+  /** A candidacy or a directory record — whichever this audience is made of. */
+  subjectId: string;
+  /** Which of the two, so the target row names the right column. */
+  as: 'candidate' | 'person';
   email: string;
   toName: string;
   orgName: string;
@@ -51,7 +55,7 @@ export interface NoticeSource {
    * '' means send. The words are the brick's own — 'withdrawn' and 'not_owed'
    * say something a screen can print, where a single 'gone' says nothing.
    */
-  filter(blockId: string, kind: string, candidateIds: string[]): Promise<Map<string, string>>;
+  filter(blockId: string, kind: string, subjectIds: string[]): Promise<Map<string, string>>;
   /**
    * Whether the moment has come. `wait` asks the tick to try again later
    * rather than give up — a notice scheduled before its block was ready is an
@@ -68,7 +72,7 @@ export interface NoticeSource {
   letter(
     blockId: string,
     kind: string,
-    candidateId: string,
+    subjectId: string,
     body: string,
   ): Promise<{ kind: string; to: string; toName: string; subject: string; body: string } | null>;
 }
@@ -76,6 +80,7 @@ export interface NoticeSource {
 const SOURCES: Record<string, NoticeSource> = {
   deliverable: deliverableNotices,
   selection: selectionNotices,
+  committee: committeeNotices,
 };
 
 /**
@@ -115,7 +120,9 @@ export async function launchNotice(
   const roster = await source.roster(blockId, input.kind, input.only);
   // Only those who can actually hear it are named. The rest are shown on the
   // screen by name, which is the point of looking before sending.
-  const named = roster.filter((r) => !r.blocked).map((r) => r.candidateId);
+  const named = roster
+    .filter((r) => !r.blocked)
+    .map((r) => (r.as === 'candidate' ? { candidateId: r.subjectId } : { recordId: r.subjectId }));
   if (!named.length) return;
 
   /* Writing to one startup again is a deliberate act, so it supersedes the
@@ -176,18 +183,18 @@ export async function sendDueNotices(): Promise<{ sent: number; held: number }> 
     const reasons = await source.filter(
       notice.blockId,
       notice.kind,
-      waiting.map((t) => t.candidateId),
+      waiting.map((t) => t.subjectId),
     );
     for (const target of waiting) {
-      const why = reasons.get(target.candidateId) ?? 'gone';
+      const why = reasons.get(target.subjectId) ?? 'gone';
       if (why) {
-        await repo.claimTarget(notice.id, target.candidateId);
-        await repo.markTarget(notice.id, target.candidateId, { skipped: why });
+        await repo.claimTarget(notice.id, target.subjectId);
+        await repo.markTarget(notice.id, target.subjectId, { skipped: why });
         continue;
       }
 
-      if (!(await repo.claimTarget(notice.id, target.candidateId))) continue;
-      const written = await source.letter(notice.blockId, notice.kind, target.candidateId, notice.body);
+      if (!(await repo.claimTarget(notice.id, target.subjectId))) continue;
+      const written = await source.letter(notice.blockId, notice.kind, target.subjectId, notice.body);
       const letter = written
         ? await post({
             kind: written.kind,
@@ -201,7 +208,7 @@ export async function sendDueNotices(): Promise<{ sent: number; held: number }> 
         : null;
       // post() never throws and answers null when it could not: a loop of
       // fourteen can quietly write eleven, and the screen must not say otherwise.
-      await repo.markTarget(notice.id, target.candidateId, {
+      await repo.markTarget(notice.id, target.subjectId, {
         letterId: letter,
         skipped: letter ? '' : 'not_written',
       });
