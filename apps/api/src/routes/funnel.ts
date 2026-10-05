@@ -24,6 +24,7 @@ import { peopleByIds } from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { SESSION_COOKIE, accountForToken } from '../services/auth.js';
 import { committeeForEvaluation, committeeView } from '../services/committee.js';
+import { acknowledge } from '../services/applicationNotices.js';
 import { letters } from '../services/mail.js';
 import { launchNotice, sendDueNotices } from '../services/notices.js';
 import { callOfKind, labelOf, selectionAudiences, selectionRoster } from '../services/selectionNotices.js';
@@ -348,6 +349,10 @@ export async function funnelRoutes(app: FastifyInstance) {
     });
     // Attachments are uploaded before the form is sent, so they are claimed here.
     await repo.claimUploads(candidate.id, input.answers);
+    /* The receipt, and whoever at CEED asked to hear about each one. Both are
+       posted rather than sent: post() never throws, so a mail provider having
+       a bad minute cannot undo an application somebody just filed. */
+    await acknowledge(found.block.id, candidate.id);
     reply.code(201);
     return { confirmation: config.confirmation, candidateId: candidate.id };
   });

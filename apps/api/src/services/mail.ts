@@ -25,6 +25,13 @@ export interface Letter {
   recordId?: string | null;
   blockId?: string | null;
   candidateId?: string | null;
+  /**
+   * Not before this instant. Used to spread a large send over days: a new
+   * sending domain has no reputation, and four hundred letters on its first
+   * morning is how it is classed as spam — after which every other letter the
+   * programme sends goes to the same place.
+   */
+  sendAfter?: Date | null;
 }
 
 export interface OutboxRow extends Letter {
@@ -91,8 +98,8 @@ export async function post(letter: Letter): Promise<string | null> {
     const held = (await suppressed(to)) || !sendingIsLive();
     const id = newId('msg');
     await (await db()).query(
-      `insert into outbox (id, kind, to_email, to_name, subject, body, record_id, block_id, candidate_id, state)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      `insert into outbox (id, kind, to_email, to_name, subject, body, record_id, block_id, candidate_id, state, send_after)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [
         id,
         letter.kind,
@@ -104,6 +111,7 @@ export async function post(letter: Letter): Promise<string | null> {
         letter.blockId ?? null,
         letter.candidateId ?? null,
         held ? 'held' : 'queued',
+        letter.sendAfter ?? null,
       ],
     );
     return id;
@@ -167,7 +175,9 @@ export async function flush(limit = 25): Promise<{ sent: number; failed: number 
   const rows = await conn.query<OutboxRow & { to: string }>(
     `select id, kind, to_email as "to", to_name as "toName", subject, body,
             state, error, attempts, created_at::text as "createdAt", sent_at::text as "sentAt"
-       from outbox where state = 'queued' order by created_at limit $1`,
+       from outbox
+      where state = 'queued' and (send_after is null or send_after <= now())
+      order by send_after nulls first, created_at limit $1`,
     [limit],
   );
 

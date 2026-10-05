@@ -9,6 +9,7 @@ import '../../ui/builder.css';
 import '../../ui/directory.css';
 import { AccountBadge } from './AccountCard';
 import { ImportModal } from './ImportModal';
+import { InviteManyModal } from './InviteManyModal';
 import { RecordModal } from './RecordModal';
 
 /** A record as the list endpoint returns it: with how many affiliations it has. */
@@ -33,6 +34,10 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
   const [query, setQuery] = useState('');
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
+  /* Picking people to invite. Organisations never sign in, so the column only
+     exists on the individuals list. */
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [inviting, setInviting] = useState(false);
 
   const all = records.data ?? [];
   const isOrg = kind === 'org';
@@ -51,6 +56,19 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
   }, [all, role, query]);
 
   const countOf = (r: string) => all.filter((x) => (r === '__none' ? !x.roles.length : x.roles.includes(r))).length;
+
+  const toggle = (id: string) =>
+    setPicked((was) => {
+      const next = new Set(was);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  /* Select-all means what is on screen, not what is in the directory: the
+     filters above are how somebody narrows to the people they mean, and a box
+     that quietly took the other three hundred would be a trap. */
+  const allShown = rows.length > 0 && rows.every((r) => picked.has(r.id));
+  const chosen = all.filter((r) => picked.has(r.id));
 
   return (
     <>
@@ -103,6 +121,17 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
           <span className="faint num" style={{ fontSize: 12.5 }}>
             {rows.length} of {all.length}
           </span>
+          {!isOrg && picked.size > 0 && (
+            <>
+              <div className="spacer" />
+              <button className="linkish" style={{ fontSize: 12.5 }} onClick={() => setPicked(new Set())}>
+                Clear
+              </button>
+              <button className="btn primary sm" onClick={() => setInviting(true)}>
+                <Icon name="send" size={13} /> Invite {picked.size}
+              </button>
+            </>
+          )}
         </div>
 
         {records.error ? (
@@ -131,6 +160,23 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
             <table className="data">
               <thead>
                 <tr>
+                  {!isOrg && (
+                    <th style={{ width: 34 }}>
+                      <input
+                        type="checkbox"
+                        aria-label="Pick everybody shown"
+                        checked={allShown}
+                        onChange={() =>
+                          setPicked((was) => {
+                            const next = new Set(was);
+                            if (allShown) rows.forEach((r) => next.delete(r.id));
+                            else rows.forEach((r) => next.add(r.id));
+                            return next;
+                          })
+                        }
+                      />
+                    </th>
+                  )}
                   <th>Name</th>
                   <th>Roles</th>
                   <th>City</th>
@@ -142,6 +188,16 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id}>
+                    {!isOrg && (
+                      <td>
+                        <input
+                          type="checkbox"
+                          aria-label={`Pick ${r.name}`}
+                          checked={picked.has(r.id)}
+                          onChange={() => toggle(r.id)}
+                        />
+                      </td>
+                    )}
                     <td className="name">
                       <Link to={`/directory/${r.id}`} className="rec-name">
                         <span className="rec-mark">{initials(r.name)}</span>
@@ -198,6 +254,17 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
           onClose={() => setAdding(false)}
           onSaved={() => {
             setAdding(false);
+            records.reload();
+          }}
+        />
+      )}
+
+      {inviting && (
+        <InviteManyModal
+          people={chosen}
+          onClose={() => setInviting(false)}
+          onDone={() => {
+            setPicked(new Set());
             records.reload();
           }}
         />

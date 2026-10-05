@@ -14,7 +14,7 @@ import { exportSql } from '../src/db/export.js';
 import { importSql } from '../src/db/import.js';
 import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
-import { closeDb, skipWithoutServer } from './helpers.js';
+import { closeDb, freshSchema, skipWithoutServer } from './helpers.js';
 
 const COUNTED = [
   'records', 'candidates', 'programs', 'editions', 'blocks', 'accounts',
@@ -36,6 +36,12 @@ describe('a backup that loads back', { skip: skipWithoutServer }, () => {
   let personId = '';
 
   before(async () => {
+    /* Its own schema, because this one empties every table and puts them back:
+       sharing with files that run at the same time makes the restore collide
+       with rows written in between — which is a fault of the arrangement, not
+       of the backup. */
+    await migrate();
+    await freshSchema('backup_test');
     await migrate();
     /* Something of every shape the export has to carry: a configuration and a
        set of answers in jsonb, a seat on a sitting that points at three other

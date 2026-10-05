@@ -437,6 +437,26 @@ export const eligibilitySchema = z.object({
 
 export type Eligibility = z.infer<typeof eligibilitySchema>;
 
+/** What an acknowledgment of a submitted application may carry. */
+export const APPLICATION_VARIABLES = [
+  { name: 'startup', label: 'Startup', what: 'The organisation that applied' },
+  { name: 'programme', label: 'Programme', what: 'The edition they applied to' },
+  { name: 'appel', label: 'Call', what: 'The name of this application block' },
+  { name: 'lien', label: 'Link', what: 'Their own space, where they follow it' },
+] as const;
+
+/* A receipt, and nothing more. The one thing it has to do is stop somebody
+   writing to ask whether their file arrived. */
+const APPLICATION_RECEIVED = `Bonjour,
+
+Nous avons bien reçu la candidature de {{startup}} à {{programme}}.
+
+Vous pouvez la relire à tout moment depuis votre espace : {{lien}}
+
+Nous revenons vers vous à l'issue de l'instruction.
+
+L'équipe CEED`;
+
 export const applicationConfigSchema = z.object({
   ...brickWindowFields,
   /** What somebody arriving late is told. Empty falls back to a plain sentence. */
@@ -455,6 +475,8 @@ export const applicationConfigSchema = z.object({
   allowEditAfterSubmit: z.boolean().default(false),
   /** Waits on a mail provider. Recorded as intent until one is connected. */
   confirmationEmail: z.boolean().default(true),
+  /** What that acknowledgment says. One message, so it sits with its switch. */
+  receivedMessage: z.string().default(APPLICATION_RECEIVED),
   notifyOnSubmit: z.array(z.string()).default([]),
   /** Refuse a second application from the same organisation. */
   onePerOrganisation: z.boolean().default(true),

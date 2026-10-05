@@ -1,4 +1,5 @@
 import {
+  APPLICATION_VARIABLES,
   FIELD_TYPES,
   FIELD_TYPE_LABEL,
   blockStatus,
@@ -16,6 +17,7 @@ import { api } from '../../../lib/api';
 import { formatDate } from '../../../lib/format';
 import { DateField, SelectField, TagField, TextArea, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
+import { Template } from './Template';
 import { ConfirmDialog, useToast } from '../../../ui/Overlays';
 
 /* ------------------------------------------------------------------ */
@@ -155,7 +157,7 @@ export function ApplicationSetup({
   };
 
   if (tab === 'Eligibility') return <EligibilityTab config={config} patch={patch} />;
-  if (tab === 'Settings') return <SettingsTab config={config} patch={patch} />;
+  if (tab === 'Settings') return <SettingsTab block={block} config={config} patch={patch} />;
 
   return (
     <>
@@ -571,9 +573,11 @@ function EligibilityTab({
 /* ------------------------------------------------------------------ */
 
 function SettingsTab({
+  block,
   config,
   patch,
 }: {
+  block: Block;
   config: ApplicationConfig;
   patch: (partial: Partial<ApplicationConfig>) => void;
 }) {
@@ -614,14 +618,6 @@ function SettingsTab({
 
       <div className="public-sep" />
 
-      <div className="callout warn">
-        <Icon name="alert" size={15} />
-        <div>
-          <strong>No mail provider is connected.</strong> The two below are recorded as intent — they are what will
-          be sent the day one is wired in, and nothing leaves in the meantime.
-        </div>
-      </div>
-
       <label className="check">
         <input
           type="checkbox"
@@ -629,19 +625,37 @@ function SettingsTab({
           onChange={(e) => patch({ confirmationEmail: e.target.checked })}
         />
         <span>
-          <strong>Email the applicant a confirmation</strong>
+          <strong>Email the applicant a receipt</strong>
           <div className="faint" style={{ fontSize: 12 }}>
-            The message on screen after submitting is shown either way.
+            Sent the moment they submit. The message on screen is shown either way.
           </div>
         </span>
       </label>
+
+      {/* The one letter with no list to look at first, and rightly so: one
+          recipient, signed in, who has just pressed the button themselves. */}
+      {config.confirmationEmail && (
+        <Template
+          label="What the receipt says"
+          help="It answers one question — did you get it — asked the minute after submitting."
+          value={config.receivedMessage}
+          onChange={(v: string) => patch({ receivedMessage: v })}
+          variables={APPLICATION_VARIABLES}
+          example={{
+            startup: 'Rafid Tech',
+            programme: 'The Builders — Cohorte 1',
+            appel: block.name,
+            lien: 'https://www.ceedflow.com/me?tab=Programs',
+          }}
+        />
+      )}
 
       <TagField
         label="Tell these people about each submission"
         values={config.notifyOnSubmit}
         onChange={(v) => patch({ notifyOnSubmit: v })}
         placeholder="name@ceed.ma"
-        help="Addresses for now. Once the directory backs this, it becomes people."
+        help="They get the organisation's name and a link to the file, not a copy of the applicant's receipt."
       />
     </>
   );

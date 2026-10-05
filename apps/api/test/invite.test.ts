@@ -14,6 +14,8 @@ import * as dir from '../src/db/directory.js';
 import { directoryRoutes } from '../src/routes/directory.js';
 import { SESSION_COOKIE, createAccount, createSession, setStaffRole, verifyPassword, findAccount } from '../src/services/auth.js';
 import { letters } from '../src/services/mail.js';
+// Renamed: this file already has a local `invite` that goes through the route.
+import { invite as inviteDirect, inviteMany } from '../src/services/invitations.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
 before(migrate);
@@ -111,6 +113,56 @@ describe('inviting somebody into an account', { skip: skipWithoutServer }, () =>
     const res = await invite(record.id);
     assert.equal(res.statusCode, 422, 'inviting somebody into a dead end');
     assert.equal((await letters({ email })).length, 0);
+  });
+
+  it('opens an account for somebody who has none, rather than refusing', async () => {
+    /* Most of the four hundred in the directory have no account at all: an
+       invitation that only works on people who already have one would be
+       useless for the one case it exists for. */
+    const email = `jamais.${Date.now()}@example.test`;
+    const record = await dir.createRecord({ kind: 'person', name: `Jamais ${Date.now()}`, email, origin: 'manual' });
+    const out = await inviteDirect(record.id);
+    assert.equal(out.blocked, '');
+
+    const account = await findAccount(email);
+    assert.ok(account, 'an account exists now');
+    assert.equal(await verifyPassword(out.password!, account!.passwordHash), true);
+    assert.equal((await letters({ email }))[0]?.kind, 'account_invite');
+  });
+
+  it('spreads a long list over days instead of writing it all one morning', async () => {
+    /* A sending domain with no reputation that writes everything at once is
+       classed as spam, and from then on the convocations and the results go to
+       the same place. */
+    const stamp = Date.now();
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const email = `lot${i}.${stamp}@example.test`;
+      const r = await dir.createRecord({ kind: 'person', name: `Lot ${i} ${stamp}`, email, origin: 'manual' });
+      ids.push(r.id);
+    }
+    const out = await inviteMany(ids, 2);
+    assert.equal(out.written, 5);
+    assert.equal(out.days, 3);
+
+    const rows = await (await db()).query<{ n: number }>(
+      `select count(*)::int as n from outbox where record_id = any($1::text[]) and send_after is not null`,
+      [ids],
+    );
+    assert.equal(rows[0]!.n, 3, 'the first two go now, the other three wait their turn');
+  });
+
+  it('names those it cannot invite instead of quietly dropping them', async () => {
+    const stamp = Date.now();
+    const mute = await dir.createRecord({ kind: 'person', name: `Sans ${stamp}`, origin: 'manual' });
+    const claimedEmail = `claimee.${stamp}@example.test`;
+    const claimed = await dir.createRecord({ kind: 'person', name: `Déjà ${stamp}`, email: claimedEmail, origin: 'manual' });
+    await createAccount({ email: claimedEmail, password: 'chosen-by-them', recordId: claimed.id });
+
+    const out = await inviteMany([mute.id, claimed.id], null);
+    assert.equal(out.written, 0);
+    assert.deepEqual(out.blocked.map((b) => b.blocked).sort(), ['claimed', 'no_email']);
+    assert.ok(out.blocked.every((b) => b.name), 'each one by name');
   });
 
   it('says plainly whether anything left, rather than letting the screen assume', async () => {

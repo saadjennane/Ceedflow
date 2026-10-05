@@ -23,12 +23,11 @@ import {
   closeAccount,
   createAccount,
   findAccount,
-  markInvited,
   reissueProvisionalPassword,
   setAccountDisabled,
 } from '../services/auth.js';
 import { post, sendingIsLive } from '../services/mail.js';
-import { publicOrigin } from '../services/platform.js';
+import { invite, inviteBlock, inviteMany } from '../services/invitations.js';
 import { HttpError, notFound, parse } from './util.js';
 import { requireWorkspaceAdmin, workspaceGuard } from './guard.js';
 
@@ -190,45 +189,47 @@ export async function directoryRoutes(app: FastifyInstance) {
    */
   app.post('/api/records/:id/account/invite', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const account = await accountOfRecord(id);
-    if (!account) return notFound(reply, 'This person has no account to invite them to.');
-    if (account.state === 'claimed') {
+    const record = await dir.getRecord(id);
+    if (!record) return notFound(reply, 'Record not found.');
+
+    const blocked = await inviteBlock(id);
+    if (blocked === 'claimed') {
       throw new HttpError(422, 'This account is already claimed — there is nothing to invite.');
     }
-    if (account.state === 'disabled') {
+    if (blocked === 'disabled') {
       throw new HttpError(422, 'This account is switched off — inviting somebody into it would be a dead end.');
     }
+    if (blocked === 'no_email') {
+      throw new HttpError(422, 'There is no address to write to.', { email: 'Add one first.' });
+    }
 
-    const record = await dir.getRecord(id);
-    const password = suggestPassword();
-    await reissueProvisionalPassword(account.id, password);
-    await markInvited(account.id);
-
-    const origin = await publicOrigin();
-    const letter = await post({
-      kind: 'account_invite',
-      to: account.email,
-      toName: record?.name ?? '',
-      recordId: id,
-      subject: 'Your CEED account',
-      body: [
-        record?.name ? `${record.name},` : 'Hello,',
-        '',
-        'CEED has opened an account for you. Sign in with the password below and you will be asked to choose your own.',
-        '',
-        `    ${account.email}`,
-        `    ${password}`,
-        '',
-        ...(origin ? [`    ${origin}/login`, ''] : []),
-        'If you were not expecting this, you can ignore it — nothing happens until somebody signs in.',
-      ].join('\n'),
-    });
-
+    const out = await invite(id);
     /* The password goes back once, the way opening an account does: whoever
        pressed this is often on the phone with the person, and the letter can
-       take a minute. Whether it actually left is said rather than assumed —
-       "we have emailed it" is a sentence somebody acts on. */
-    return { ...(await accountOfRecord(id))!, password, emailed: sendingIsLive() && Boolean(letter) };
+       take a minute. Whether it actually left is said rather than assumed. */
+    return { ...(await accountOfRecord(id))!, password: out.password, emailed: out.emailed };
+  });
+
+  /**
+   * Inviting a list.
+   *
+   * Spread over days on purpose: a sending domain with no reputation that
+   * writes four hundred letters on its first morning is classed as spam, and
+   * from then on the jury convocations and the results go to the same place.
+   * A few days once, against a whole season.
+   */
+  app.post('/api/records/invite-many', async (req, reply) => {
+    requireWorkspaceAdmin(req);
+    const input = parse(
+      z.object({
+        recordIds: z.array(z.string()).min(1, 'Pick at least one person.').max(2000),
+        perDay: z.number().int().min(1).max(2000).nullable().default(null),
+      }),
+      req.body,
+    );
+    const out = await inviteMany(input.recordIds, input.perDay);
+    reply.code(202);
+    return out;
   });
 
   /**
