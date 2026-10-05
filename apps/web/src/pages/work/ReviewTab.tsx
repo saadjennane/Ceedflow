@@ -388,7 +388,15 @@ function Moment({
    * One table per sitting, each showing only the jury that sat on it. Pooling
    * them would give every row a column of dashes for the panels it never saw.
    */
-  const sections: { key: string; name: string; heldOn: string | null; evaluators: PersonRef[]; lines: Line[] }[] = (
+  const sections: {
+    key: string;
+    name: string;
+    heldOn: string | null;
+    evaluators: PersonRef[];
+    lines: Line[];
+    /** The two days read as one list. It has no jury and no day of its own. */
+    ranking?: boolean;
+  }[] = (
     scoring?.groups ?? []
   ).map((group) => ({
     key: group.sessionId ?? 'all',
@@ -417,6 +425,48 @@ function Moment({
       heldOn: null,
       evaluators: [],
       lines: unscored,
+    });
+  }
+
+  /** Which morning a startup pitched on — lost the moment the days are pooled. */
+  const dayOf = new Map((scoring?.groups ?? []).map((g) => [g.sessionId ?? 'all', g.name]));
+
+  /**
+   * Les deux journées en une seule liste, classée.
+   *
+   * The sittings are how the work is done — each has its own jury and its own
+   * morning — but the decision is taken across them: twenty-five out of fifty,
+   * not twelve out of twenty-four and thirteen out of twenty-six. That list
+   * exists nowhere until something builds it, and rebuilding it in a
+   * spreadsheet every time is how a programme ends up deciding from a file
+   * nobody can trace back.
+   *
+   * No juror columns: the two panels are not the same people, so pooling them
+   * would give every row a column of dashes for the panel it never sat in
+   * front of. The day each pitched on travels with the name instead, because
+   * that is the one thing the unified list would otherwise lose.
+   */
+  if ((scoring?.groups.length ?? 0) > 1) {
+    const byScore = [...byCandidate.values()].sort((a, b) => {
+      const av = scoreOf(a);
+      const bv = scoreOf(b);
+      if (av === null || bv === null) {
+        if (av === null && bv === null) return a.candidate.orgName.localeCompare(b.candidate.orgName);
+        return av === null ? 1 : -1;
+      }
+      return bv - av || a.candidate.orgName.localeCompare(b.candidate.orgName);
+    });
+    sections.push({
+      key: 'ranking',
+      name: 'Final ranking',
+      heldOn: null,
+      evaluators: [],
+      ranking: true,
+      /* The place is read here, off the order by score, so re-sorting the
+         table by name or by decision moves the rows without ever changing
+         what each one is ranked. A startup nobody scored is not ranked at
+         all — it is below the list, not last in it. */
+      lines: ordered(byScore.map((line, i) => ({ ...line, rank: scoreOf(line) === null ? 0 : i + 1 }))),
     });
   }
 
@@ -753,7 +803,11 @@ function Moment({
           </div>
         )}
 
-        {shown.map((section) => (
+        {shown.map((section) => {
+          /* A sitting numbers the order they pitched in; the final ranking
+             numbers the ranking. Either way there is a number in front. */
+          const numbered = running || Boolean(section.ranking);
+          return (
           <section key={section.key} className="stack" style={{ gap: 8 }}>
             {section.name && (
               <div className="row wrap">
@@ -768,6 +822,10 @@ function Moment({
                 </span>
                 {section.evaluators.length > 0 ? (
                   <Progress section={section} />
+                ) : section.ranking ? (
+                  <span className="faint" style={{ fontSize: 12 }}>
+                    Both days together, best first. The marks stay on each day’s own tab.
+                  </span>
                 ) : (
                   <span className="badge warn">No jury scored these</span>
                 )}
@@ -779,7 +837,7 @@ function Moment({
                 <thead>
                   {evaluation && selection && (
                     <tr>
-                      <th style={{ borderBottom: 0 }} colSpan={running ? 2 : 1} />
+                      <th style={{ borderBottom: 0 }} colSpan={numbered ? 2 : 1} />
                       <th style={{ borderBottom: 0, textAlign: 'center', color: 'var(--blue)' }}>
                         {selection.name}
                       </th>
@@ -805,7 +863,7 @@ function Moment({
                         job: a pile of paper sheets comes back in the order the
                         startups pitched, and finding each one in a table
                         sorted by score is what makes copying them out slow. */}
-                    {running && (
+                    {numbered && (
                       <th style={{ width: 34, textAlign: 'right', cursor: 'pointer' }}>
                         <button
                           className="th-sort"
@@ -813,8 +871,10 @@ function Moment({
                           onClick={() =>
                             setSort((x) => (x.key === 'rank' ? { key: 'rank', dir: x.dir === 1 ? -1 : 1 } : { key: 'rank', dir: 1 }))
                           }
-                          title="The order they pitched in"
-                          aria-label="Order by the order they pitched in"
+                          title={section.ranking ? 'Their place across both days' : 'The order they pitched in'}
+                          aria-label={
+                            section.ranking ? 'Order by their place' : 'Order by the order they pitched in'
+                          }
                         >
                           #
                           {sort.key === 'rank' && <Icon name={sort.dir === 1 ? 'chevronUp' : 'chevronDown'} size={11} />}
@@ -847,13 +907,20 @@ function Moment({
                     return (
                       <Fragment key={line.candidate.id}>
                         <tr>
-                          {running && (
+                          {numbered && (
                             <td className="score muted" style={{ textAlign: 'right' }}>
                               {line.rank || '—'}
                             </td>
                           )}
                           <td className="name">
                             {line.candidate.orgName}
+                            {/* Which morning this was, since the pooled list is
+                                the one place that cannot be read off the tab. */}
+                            {section.ranking && dayOf.get(line.sessionId ?? 'all') && (
+                              <span className="faint" style={{ marginLeft: 7, fontSize: 11.5, fontWeight: 400 }}>
+                                {dayOf.get(line.sessionId ?? 'all')}
+                              </span>
+                            )}
                             {line.decision?.stale && (
                               <span className="badge warn" style={{ marginLeft: 7 }} title="The rule now says otherwise">
                                 Rule moved on
@@ -1054,7 +1121,8 @@ function Moment({
               );
             })()}
           </section>
-        ))}
+          );
+        })}
         </>
       )}
 
