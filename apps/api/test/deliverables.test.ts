@@ -705,6 +705,30 @@ describe('sending a test', { skip: skipWithoutServer }, () => {
     assert.equal(out.state, 'held', 'and said to be held, not sent');
   });
 
+  it('hands over the password in this block\'s own words', async () => {
+    /* Le texte vit dans la brique, et c'est la brique qui l'envoie : une
+       deuxième brique qui dirait la même chose autrement ne doit rien changer
+       à celle-ci. */
+    const { due, candidate, stamp } = await setUp();
+    await repo.updateBlock(due.id, {
+      config: {
+        visibility: 'open',
+        closesAt: '2026-11-15',
+        items: ITEMS,
+        messages: { access: 'Vos identifiants :\n{{email}}\n{{motdepasse}}' },
+      },
+    });
+
+    const values = await deliverableNotices.preview(due.id, 'request', candidate.id);
+    assert.match(values.acces!, /Vos identifiants :/, 'the preview says what this block says');
+    assert.doesNotMatch(values.acces!, /Votre première connexion/, 'and not what the default said');
+
+    const written = await deliverableNotices.letter(due.id, 'request', candidate.id, '{{acces}}');
+    assert.match(written!.body, /Vos identifiants :/);
+    assert.match(written!.body, new RegExp(`karim\\.${stamp}@example\\.test`), 'with their address');
+    assert.doesNotMatch(written!.body, /••/, 'and a password that works');
+  });
+
   it('promises a first login only where the letter will carry one', async () => {
     /* A candidacy with no person attached has nobody to open an account for.
        Showing the paragraph in the preview and omitting it from the letter is

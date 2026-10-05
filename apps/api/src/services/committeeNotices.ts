@@ -25,7 +25,6 @@ import * as repo from '../db/repo.js';
 import { committeeView, type SessionView } from './committee.js';
 import { appLink } from './deliverables.js';
 import { accessFor, wouldAccess } from './invitations.js';
-import { accessMessage } from './platform.js';
 import { suppressedAmong } from './mail.js';
 import type { Gate, NoticeSource, NoticeTargetRow } from './notices.js';
 
@@ -51,6 +50,9 @@ const hoursOf = (s: SessionView): string => {
    "le 20 octobre ." is what a template full of bare variables produces, and it
    is the sort of thing that goes out to nine jurors before anybody notices. */
 const placeOf = (s: SessionView): string => (s.session.location ? `, à ${s.session.location}` : '');
+
+/** This block's own letters, including how it hands over a first password. */
+const letters = (view: { block: { config: unknown } }) => (view.block.config as CommitteeConfig).messages;
 
 async function everyone(blockId: string) {
   const view = await committeeView(blockId);
@@ -175,7 +177,7 @@ export async function committeeValues(
     const record = await dir.getRecord(subjectId);
     return {
       prenom: firstNameOf(person.name, record?.firstName),
-      acces: preview ? '' : await accessFor(subjectId),
+      acces: preview ? '' : await accessFor(subjectId, letters(view).access),
       jure: person.name,
       panel: sitting.session.name,
       date: longDate(sitting.session.heldOn),
@@ -191,7 +193,7 @@ export async function committeeValues(
   const seat = sitting.assignments.find((a) => a.candidate.id === subjectId)!;
   return {
     prenom: firstNameOf(seat.candidate.contactName, seat.candidate.contactFirstName),
-    acces: preview ? '' : await accessFor(seat.candidate.personId),
+    acces: preview ? '' : await accessFor(seat.candidate.personId, letters(view).access),
     startup: seat.candidate.orgName,
     panel: sitting.session.name,
     date: longDate(sitting.session.heldOn),
@@ -212,7 +214,9 @@ export const committeeNotices: NoticeSource = {
     const values = await committeeValues(blockId, kind, subjectId, true);
     const rows = await committeeRoster(blockId, kind, subjectId);
     const who = audienceOfKind(kind) === 'jury' ? subjectId : (await repo.getCandidate(subjectId))?.personId;
-    const sample = (await wouldAccess(who)) ? ACCESS_SAMPLE(rows[0]?.email ?? '', await accessMessage()) : '';
+    const view = await everyone(blockId);
+    const sample =
+      view && (await wouldAccess(who)) ? ACCESS_SAMPLE(rows[0]?.email ?? '', letters(view).access) : '';
     return { ...(values ?? {}), acces: sample };
   },
 

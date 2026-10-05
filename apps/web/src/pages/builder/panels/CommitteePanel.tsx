@@ -21,7 +21,7 @@ import { Icon } from '../../../ui/Icon';
 import { SearchBox } from '../../../ui/SearchBox';
 import { ConfirmDialog, Modal, useToast } from '../../../ui/Overlays';
 import { VisibilityControl } from './shared';
-import { Template } from './Template';
+import { AccessTemplate, Template } from './Template';
 
 /* ------------------------------------------------------------------ */
 /* Tabs                                                                */
@@ -936,6 +936,8 @@ function MessagesTab({
           example={{ panel: 'Séance 1', lien: where }}
         />
       )}
+
+      <AccessTemplate value={config.messages.access} onChange={(v) => set('access', v)} />
     </>
   );
 }

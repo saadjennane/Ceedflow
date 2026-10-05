@@ -13,7 +13,6 @@
  * speak for itself — a worker that serves nothing, a domain change made before
  * anybody visits.
  */
-import { ACCESS_DEFAULT } from '@ceed/shared';
 import { db } from '../db/client.js';
 
 const KEY = 'public_origin';
@@ -91,34 +90,4 @@ export async function publicOrigin(): Promise<string> {
   } catch {
     return '';
   }
-}
-
-/* ------------------------------------------------------------------ */
-/* What a first login says                                             */
-/* ------------------------------------------------------------------ */
-
-const ACCESS_KEY = 'access_message';
-
-/**
- * The paragraph that hands somebody their first password.
- *
- * One place for the whole workspace rather than one per block: this is the
- * platform telling a person how to sign in, not a programme's own vocabulary,
- * and five copies of it would be five chances to say it differently.
- */
-export async function accessMessage(): Promise<string> {
-  try {
-    const rows = await (await db()).query<{ value: string }>('select value from settings where key = $1', [ACCESS_KEY]);
-    return rows[0]?.value || ACCESS_DEFAULT;
-  } catch {
-    return ACCESS_DEFAULT;
-  }
-}
-
-export async function setAccessMessage(text: string): Promise<void> {
-  await (await db()).query(
-    `insert into settings (key, value) values ($1, $2)
-     on conflict (key) do update set value = excluded.value, updated_at = now()`,
-    [ACCESS_KEY, text],
-  );
 }

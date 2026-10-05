@@ -16,7 +16,7 @@ import { Icon } from '../../../ui/Icon';
 import { DateField, TextField } from '../../../ui/Field';
 import { Modal } from '../../../ui/Overlays';
 import { DropRow, Grip, moved, nudged, useDragging, type Dragging } from '../../../ui/Reorderable';
-import { Template } from './Template';
+import { AccessTemplate, Template } from './Template';
 import { OwedList } from '../../member/OwedItems';
 
 /* Three sides to set up, so three tabs: when the list is open, what is on it,
@@ -560,6 +560,8 @@ function MessagesTab({
           motif: 'Le registre date de 2024 — il nous en faut un de moins de trois mois.',
         }}
       />
+
+      <AccessTemplate value={config.messages.access} onChange={(v) => set('access', v)} />
     </>
   );
 }

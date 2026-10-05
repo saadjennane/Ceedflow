@@ -21,7 +21,7 @@ import {
 } from '@ceed/shared';
 import * as repo from '../db/repo.js';
 import { post, suppressedAmong } from './mail.js';
-import { accessMessage, publicOrigin } from './platform.js';
+import { publicOrigin } from './platform.js';
 import { accessFor, wouldAccess } from './invitations.js';
 import { intakeFor, trackOf } from './selection.js';
 import type { NoticeSource } from './notices.js';
@@ -387,7 +387,7 @@ export async function tellReturned(
     subject: `${block.name} — ${item?.label ?? 'une pièce'} à renvoyer`,
     body: fillTemplate(config.messages.rejected, {
       prenom: firstNameOf(candidate.contactName, candidate.contactFirstName),
-      acces: await accessFor(candidate.personId),
+      acces: await accessFor(candidate.personId, config.messages.access),
       startup: candidate.orgName,
       piece: item?.label ?? '',
       motif: reason,
@@ -449,7 +449,7 @@ export const deliverableNotices: NoticeSource = {
       /* The one value a preview cannot be: a password is generated as the
          letter is written, and asking for the real one would open an account. */
       acces: (await wouldAccess(row.candidate.personId))
-        ? ACCESS_SAMPLE(row.candidate.email, await accessMessage())
+        ? ACCESS_SAMPLE(row.candidate.email, config?.messages.access)
         : '',
       startup: row.candidate.orgName,
       pieces: owedLines(view, subjectId),
@@ -523,7 +523,7 @@ export const deliverableNotices: NoticeSource = {
       subject: `${block.name} — ${row.candidate.orgName}`,
       body: fillTemplate(body, {
         prenom: firstNameOf(row.candidate.contactName, row.candidate.contactFirstName),
-        acces: await accessFor(row.candidate.personId),
+        acces: await accessFor(row.candidate.personId, config.messages.access),
         startup: row.candidate.orgName,
         pieces: owedLines(view, candidateId),
         date: longDate(config.closesAt),

@@ -30,7 +30,7 @@ export async function acknowledge(blockId: string, candidateId: string): Promise
   const values = {
     prenom: firstNameOf(candidate.contactName, candidate.contactFirstName),
     // They are signed in to have applied, so this is all but always empty.
-    acces: await accessFor(candidate.personId),
+    acces: await accessFor(candidate.personId, config.access),
     startup: candidate.orgName,
     /* The programme, then the edition: "The Builders — Cohorte 1" is what an
        applicant recognises. The edition's name alone means nothing outside. */

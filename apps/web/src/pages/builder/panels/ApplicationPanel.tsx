@@ -17,7 +17,7 @@ import { api } from '../../../lib/api';
 import { formatDate } from '../../../lib/format';
 import { DateField, SelectField, TagField, TextArea, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
-import { Template } from './Template';
+import { AccessTemplate, Template } from './Template';
 import { ConfirmDialog, useToast } from '../../../ui/Overlays';
 
 /* ------------------------------------------------------------------ */
@@ -643,6 +643,10 @@ function SettingsTab({
           variables={APPLICATION_VARIABLES}
           example={{ appel: block.name }}
         />
+      )}
+
+      {config.confirmationEmail && (
+        <AccessTemplate value={config.access} onChange={(v) => patch({ access: v })} />
       )}
 
       <TagField

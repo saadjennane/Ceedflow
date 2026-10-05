@@ -7,7 +7,7 @@
  * data. A second copy of this would be a second place for the wording of a
  * programme to drift.
  */
-import { fillTemplate } from '@ceed/shared';
+import { ACCESS_VARIABLES, fillTemplate } from '@ceed/shared';
 import { useRef, useState } from 'react';
 import { Icon } from '../../../ui/Icon';
 
@@ -99,3 +99,22 @@ export function Template({
   );
 }
 
+/**
+ * Le paragraphe qui remet un mot de passe, dans les mots de cette brique.
+ *
+ * One component rather than the same field written out in five panels, because
+ * it is the same idea in each: what `{{acces}}` puts in this block's letters.
+ * The wording of a programme belongs to the programme, but the explanation of
+ * what this field is must not drift between bricks.
+ */
+export function AccessTemplate({ value, onChange }: { value: string; onChange: (next: string) => void }) {
+  return (
+    <Template
+      label="What a first login says"
+      help="Dropped in wherever a letter here uses First login — and only for somebody who cannot sign in yet. Anybody who already has a password reads nothing in its place."
+      value={value}
+      onChange={onChange}
+      variables={ACCESS_VARIABLES}
+    />
+  );
+}

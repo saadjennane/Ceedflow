@@ -1,5 +1,4 @@
 import {
-  ACCESS_VARIABLES,
   ACCOUNT_STATE_LABEL,
   STAFF_ROLES,
   STAFF_ROLE_HINT,
@@ -12,8 +11,6 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAccount } from '../lib/account';
 import { ApiError, api } from '../lib/api';
-import { useAsync } from '../lib/useAsync';
-import { Template } from './builder/panels/Template';
 import { initials } from './directory/DirectoryPage';
 import { Icon } from '../ui/Icon';
 import { Modal, useToast } from '../ui/Overlays';
@@ -26,72 +23,9 @@ interface Invite {
 }
 
 /**
- * The workspace's own settings: who is at CEED and what each of them may do,
- * and the one sentence the platform says in its own name rather than a
- * programme's.
- */
-function AccessMessage({ mayManage }: { mayManage: boolean }) {
-  const saved = useAsync(() => api.get<{ text: string }>('/api/settings/access-message'), 'access');
-  const [text, setText] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const toast = useToast();
-  const value = text ?? saved.data?.text ?? '';
-
-  const save = async () => {
-    setBusy(true);
-    try {
-      saved.set(await api.patch<{ text: string }>('/api/settings/access-message', { text: value }));
-      setText(null);
-      toast('Saved.');
-    } catch (err) {
-      toast((err as Error).message, true);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section className="card card-pad stack" style={{ maxWidth: 880, gap: 10 }}>
-      <div>
-        <h2 style={{ fontSize: 16, margin: 0 }}>What a first login says</h2>
-        <p className="faint" style={{ margin: '2px 0 0', fontSize: 12.5, lineHeight: 1.5 }}>
-          The paragraph that hands somebody their password, wherever{' '}
-          <strong>First login</strong> appears in a message. One wording for the
-          whole workspace: this is the platform speaking in its own name, not a
-          programme's, and a copy per block would be a copy per chance to say it
-          differently.
-        </p>
-      </div>
-
-      <Template
-        label="The paragraph"
-        help="It is left out entirely for anybody who already signs in."
-        value={value}
-        onChange={mayManage ? setText : () => {}}
-        variables={ACCESS_VARIABLES}
-      />
-
-      {mayManage && (
-        <div className="row">
-          <div className="spacer" />
-          {text !== null && (
-            <button className="btn ghost sm" onClick={() => setText(null)}>
-              Undo
-            </button>
-          )}
-          <button className="btn primary sm" disabled={busy || text === null || !value.trim()} onClick={() => void save()}>
-            Save
-          </button>
-        </div>
-      )}
-    </section>
-  );
-}
-
-/**
  * The workspace's own settings. Who is at CEED and what each of them may do,
  * because that is the part that decides everything else on the screens around
- * it — and the one sentence the platform says for itself.
+ * it.
  */
 export function SettingsPage() {
   const { me } = useAccount();
@@ -282,8 +216,6 @@ export function SettingsPage() {
             your password to end all of them at once.
           </p>
         </section>
-
-        <AccessMessage mayManage={mayManage} />
       </div>
 
       {adding && (

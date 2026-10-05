@@ -7,7 +7,7 @@
  * saying "you have an account somewhere" — the person then writes back to ask
  * how to get in, which is the opposite of what inviting them was for.
  */
-import { accessBlock, suggestPassword } from '@ceed/shared';
+import { ACCESS_DEFAULT, accessBlock, suggestPassword } from '@ceed/shared';
 import * as dir from '../db/directory.js';
 import {
   accountOfRecord,
@@ -17,7 +17,6 @@ import {
 } from './auth.js';
 import { appLink } from './deliverables.js';
 import { post, sendingIsLive } from './mail.js';
-import { accessMessage } from './platform.js';
 
 /** Why somebody hears nothing, in words a screen prints. */
 export type InviteBlock = 'no_email' | 'claimed' | 'disabled';
@@ -117,7 +116,11 @@ export async function wouldAccess(recordId: string | null | undefined): Promise<
   return account?.state !== 'claimed' && account?.state !== 'disabled';
 }
 
-export async function accessFor(recordId: string | null | undefined): Promise<string> {
+export async function accessFor(
+  recordId: string | null | undefined,
+  /** The block's own wording. Its default is the only wording there was. */
+  template: string = ACCESS_DEFAULT,
+): Promise<string> {
   if (!recordId) return '';
   const record = await dir.getRecord(recordId);
   const email = record?.email?.trim();
@@ -135,7 +138,7 @@ export async function accessFor(recordId: string | null | undefined): Promise<st
   const opened = account ?? (await accountOfRecord(recordId));
   if (opened) await markInvited(opened.id);
 
-  return accessBlock(email, password, await accessMessage());
+  return accessBlock(email, password, template || ACCESS_DEFAULT);
 }
 
 /**

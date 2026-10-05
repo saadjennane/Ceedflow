@@ -19,6 +19,7 @@ import { SelectField, TextArea, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
 import { useToast } from '../../../ui/Overlays';
 import { TellThem } from '../../work/TellThem';
+import { AccessTemplate } from './Template';
 
 /* ------------------------------------------------------------------ */
 /* Tabs                                                                */
@@ -349,6 +350,8 @@ function MessageTab({
         rows={7}
         placeholder="Tell them what the programme is, who it is for, and when applications close."
       />
+
+      <AccessTemplate value={config.outreach.access} onChange={(v) => setOutreach({ access: v })} />
 
       {token ? (
         <div className="field">

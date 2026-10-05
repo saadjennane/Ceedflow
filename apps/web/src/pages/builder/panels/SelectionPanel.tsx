@@ -13,7 +13,7 @@ import {
 } from '@ceed/shared';
 import { SelectField, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
-import { Template } from './Template';
+import { AccessTemplate, Template } from './Template';
 import { api } from '../../../lib/api';
 import { useAsync } from '../../../lib/useAsync';
 
@@ -142,6 +142,8 @@ function MessagesTab({
         variables={SELECTION_VARIABLES}
         example={example(config.failLabel)}
       />
+
+      <AccessTemplate value={config.messages.access} onChange={(v) => set('access', v)} />
     </>
   );
 }

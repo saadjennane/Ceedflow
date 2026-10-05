@@ -12,7 +12,7 @@ import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { accessFor, wouldAccess } from './invitations.js';
 import { suppressedAmong } from './mail.js';
-import { accessMessage, publicOrigin } from './platform.js';
+import { publicOrigin } from './platform.js';
 import { outreachView, resolveAudience } from './sourcing.js';
 import type { Gate, NoticeSource, NoticeTargetRow } from './notices.js';
 
@@ -117,7 +117,7 @@ export async function sourcingValues(
   const record = await dir.getRecord(subjectId);
   return {
     prenom: firstNameOf(person.name, record?.firstName),
-    acces: preview ? '' : await accessFor(subjectId),
+    acces: preview ? '' : await accessFor(subjectId, config.outreach.access),
     nom: person.name,
     lien: link,
     canal: channel?.label ?? '',
@@ -129,7 +129,10 @@ export const sourcingNotices: NoticeSource = {
   async preview(blockId, _kind, subjectId): Promise<Record<string, string>> {
     const values = await sourcingValues(blockId, subjectId, true);
     const rows = await sourcingRoster(blockId, SOURCING_KIND, subjectId);
-    const sample = (await wouldAccess(subjectId)) ? ACCESS_SAMPLE(rows[0]?.email ?? '', await accessMessage()) : '';
+    const config = (await repo.getBlock(blockId))?.config as SourcingConfig | undefined;
+    const sample = (await wouldAccess(subjectId))
+      ? ACCESS_SAMPLE(rows[0]?.email ?? '', config?.outreach.access)
+      : '';
     return { ...(values ?? {}), acces: sample };
   },
 

@@ -449,10 +449,20 @@ export const sourcingConfigSchema = z.object({
     .object({
       subject: z.string().default(''),
       body: z.string().default(''),
+      /**
+       * How this block hands somebody their first password.
+       *
+       * Here rather than in a settings page because it is part of the letter:
+       * whoever writes the letter is the one who can see whether the paragraph
+       * reads right under it, and sending them to another screen to find out
+       * what `{{acces}}` will say is sending them away from the only place the
+       * question can be answered.
+       */
+      access: z.string().default(ACCESS_DEFAULT),
       /** Which channel a mailed invitation counts as, so its link goes in. */
       channelId: z.string().nullable().default(null),
     })
-    .default({ subject: '', body: '', channelId: null }),
+    .default({ subject: '', body: '', channelId: null, access: ACCESS_DEFAULT }),
 });
 
 /** Where the form's link for one channel points. */
@@ -517,6 +527,16 @@ export const applicationConfigSchema = z.object({
   confirmationEmail: z.boolean().default(true),
   /** What that acknowledgment says. One message, so it sits with its switch. */
   receivedMessage: z.string().default(APPLICATION_RECEIVED),
+    /**
+     * How this block hands somebody their first password.
+     *
+     * Here rather than in a settings page because it is part of the letter:
+     * whoever writes the letter is the one who can see whether the paragraph
+     * reads right under it, and sending them to another screen to find out
+     * what `{{acces}}` will say is sending them away from the only place the
+     * question can be answered.
+     */
+    access: z.string().default(ACCESS_DEFAULT),
   notifyOnSubmit: z.array(z.string()).default([]),
   /** Refuse a second application from the same organisation. */
   onePerOrganisation: z.boolean().default(true),
@@ -856,6 +876,16 @@ export const committeeConfigSchema = z.preprocess(
       .object({
         jury: z.string().default(COMMITTEE_JURY),
         startup: z.string().default(COMMITTEE_STARTUP),
+        /**
+         * How this block hands somebody their first password.
+         *
+         * Here rather than in a settings page because it is part of the letter:
+         * whoever writes the letter is the one who can see whether the paragraph
+         * reads right under it, and sending them to another screen to find out
+         * what `{{acces}}` will say is sending them away from the only place the
+         * question can be answered.
+         */
+        access: z.string().default(ACCESS_DEFAULT),
       })
       .default({}),
   }),
@@ -1021,6 +1051,16 @@ export const selectionConfigSchema = z.object({
       pass: z.string().default(SELECTION_PASS),
       wait: z.string().default(SELECTION_WAIT),
       fail: z.string().default(SELECTION_FAIL),
+      /**
+       * How this block hands somebody their first password.
+       *
+       * Here rather than in a settings page because it is part of the letter:
+       * whoever writes the letter is the one who can see whether the paragraph
+       * reads right under it, and sending them to another screen to find out
+       * what `{{acces}}` will say is sending them away from the only place the
+       * question can be answered.
+       */
+      access: z.string().default(ACCESS_DEFAULT),
     })
     .default({}),
 });
@@ -1242,6 +1282,16 @@ export const deliverableConfigSchema = z.object({
       request: z.string().default(DELIVERABLE_REQUEST),
       reminder: z.string().default(DELIVERABLE_REMINDER),
       rejected: z.string().default(DELIVERABLE_REJECTED),
+      /**
+       * How this block hands somebody their first password.
+       *
+       * Here rather than in a settings page because it is part of the letter:
+       * whoever writes the letter is the one who can see whether the paragraph
+       * reads right under it, and sending them to another screen to find out
+       * what `{{acces}}` will say is sending them away from the only place the
+       * question can be answered.
+       */
+      access: z.string().default(ACCESS_DEFAULT),
     })
     .default({}),
 });
