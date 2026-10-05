@@ -15,12 +15,11 @@ import { fillTemplate, selectionSource } from '@ceed/shared';
 import {
   deliverableView,
   deliverablesFor,
-  launchNotice,
   noticeRoster,
   rosterFor,
-  sendDueNotices,
   tellReturned,
 } from '../src/services/deliverables.js';
+import { launchNotice, sendDueNotices } from '../src/services/notices.js';
 import { createAccount } from '../src/services/auth.js';
 import { letters } from '../src/services/mail.js';
 import { outcomesByCandidate, outcomesOf, setOutcomeByHand } from '../src/services/scoring.js';

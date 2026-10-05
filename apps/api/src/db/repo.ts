@@ -828,10 +828,15 @@ export async function reviewReturn(
 
 /* ---------------- deliverable notices ---------------- */
 
-export type NoticeKind = 'request' | 'reminder';
+/**
+ * What a notice is, as the product thinks of it: 'request', 'reminder',
+ * 'selection_pass'. Text rather than an enum, like `outbox.kind`, because a
+ * new sort of message is a line of code and not a migration.
+ */
+export type NoticeKind = string;
 export type NoticeState = 'planned' | 'sent' | 'cancelled' | 'abandoned';
 
-export interface DeliverableNotice {
+export interface Notice {
   id: string;
   blockId: string;
   kind: NoticeKind;
@@ -846,7 +851,7 @@ export interface DeliverableNotice {
   createdAt: string;
 }
 
-export interface DeliverableTarget {
+export interface NoticeTarget {
   noticeId: string;
   candidateId: string;
   sentAt: string | null;
@@ -859,15 +864,15 @@ const NOTICE_COLS = `id, block_id as "blockId", kind, state, reason, body,
   cancelled_at::text as "cancelledAt", created_by as "createdBy",
   created_by_name as "createdByName", created_at::text as "createdAt"`;
 
-export async function listNotices(blockId: string): Promise<DeliverableNotice[]> {
-  return all<DeliverableNotice>(
-    `select ${NOTICE_COLS} from deliverable_notices where block_id = $1 order by created_at desc`,
+export async function listNotices(blockId: string): Promise<Notice[]> {
+  return all<Notice>(
+    `select ${NOTICE_COLS} from notices where block_id = $1 order by created_at desc`,
     [blockId],
   );
 }
 
-export async function getNotice(id: string): Promise<DeliverableNotice | null> {
-  return one<DeliverableNotice>(`select ${NOTICE_COLS} from deliverable_notices where id = $1`, [id]);
+export async function getNotice(id: string): Promise<Notice | null> {
+  return one<Notice>(`select ${NOTICE_COLS} from notices where id = $1`, [id]);
 }
 
 /**
@@ -882,7 +887,7 @@ export async function getNotice(id: string): Promise<DeliverableNotice | null> {
 export async function listNoticeTargets(
   blockId: string,
 ): Promise<
-  (DeliverableTarget & {
+  (NoticeTarget & {
     kind: NoticeKind;
     noticeState: NoticeState;
     /** When the receiving server took it, from the letter itself. */
@@ -899,19 +904,19 @@ export async function listNoticeTargets(
             t.sent_at::text as "sentAt", t.letter_id as "letterId", t.skipped,
             n.state as "noticeState",
             o.delivered_at::text as "deliveredAt", o.state as "letterState"
-       from deliverable_notice_targets t
-       join deliverable_notices n on n.id = t.notice_id
+       from notice_targets t
+       join notices n on n.id = t.notice_id
        left join outbox o on o.id = t.letter_id
       where t.block_id = $1`,
     [blockId],
   );
 }
 
-export async function targetsOf(noticeId: string): Promise<DeliverableTarget[]> {
-  return all<DeliverableTarget>(
+export async function targetsOf(noticeId: string): Promise<NoticeTarget[]> {
+  return all<NoticeTarget>(
     `select notice_id as "noticeId", candidate_id as "candidateId",
             sent_at::text as "sentAt", letter_id as "letterId", skipped
-       from deliverable_notice_targets where notice_id = $1`,
+       from notice_targets where notice_id = $1`,
     [noticeId],
   );
 }
@@ -924,32 +929,38 @@ export async function targetsOf(noticeId: string): Promise<DeliverableTarget[]> 
  * roster, write two notices with different ids, and everybody would hear twice.
  */
 export async function createNotice(
-  input: Omit<DeliverableNotice, 'state' | 'reason' | 'sentAt' | 'cancelledAt' | 'createdAt'>,
+  input: Omit<Notice, 'state' | 'reason' | 'sentAt' | 'cancelledAt' | 'createdAt'>,
   candidateIds: string[],
+  /**
+   * Whether saying this twice to the same startup is a defect. True for a
+   * request and for an announcement, false for a reminder, which exists to be
+   * repeated. The caller knows; an index listing words would not.
+   */
+  once = true,
 ): Promise<void> {
   const conn = await db();
   await conn.tx(async () => {
     await conn.query('select pg_advisory_xact_lock(hashtext($1))', [input.blockId]);
     await conn.query(
-      `insert into deliverable_notices
+      `insert into notices
          (id, block_id, kind, body, scheduled_for, created_by, created_by_name)
        values ($1,$2,$3,$4,$5,$6,$7)`,
       [input.id, input.blockId, input.kind, input.body, input.scheduledFor, input.createdBy, input.createdByName],
     );
     for (const candidateId of candidateIds) {
       await conn.query(
-        `insert into deliverable_notice_targets (notice_id, block_id, kind, candidate_id)
-         values ($1,$2,$3,$4)`,
-        [input.id, input.blockId, input.kind, candidateId],
+        `insert into notice_targets (notice_id, block_id, kind, candidate_id, once)
+         values ($1,$2,$3,$4,$5)`,
+        [input.id, input.blockId, input.kind, candidateId, once],
       );
     }
   });
 }
 
 /** The notices whose hour has come. */
-export async function dueNotices(): Promise<DeliverableNotice[]> {
-  return all<DeliverableNotice>(
-    `select ${NOTICE_COLS} from deliverable_notices
+export async function dueNotices(): Promise<Notice[]> {
+  return all<Notice>(
+    `select ${NOTICE_COLS} from notices
       where state = 'planned' and scheduled_for <= now() order by scheduled_for`,
   );
 }
@@ -964,7 +975,7 @@ export async function claimTarget(noticeId: string, candidateId: string): Promis
   const rows = await (
     await db()
   ).query<{ candidateId: string }>(
-    `update deliverable_notice_targets set sent_at = now()
+    `update notice_targets set sent_at = now()
       where notice_id = $1 and candidate_id = $2 and sent_at is null
       returning candidate_id as "candidateId"`,
     [noticeId, candidateId],
@@ -978,7 +989,7 @@ export async function markTarget(
   patch: { letterId?: string | null; skipped?: string },
 ): Promise<void> {
   await (await db()).query(
-    `update deliverable_notice_targets
+    `update notice_targets
         set letter_id = coalesce($3, letter_id), skipped = coalesce($4, skipped),
             -- Named and then left out: nobody heard anything, so the slot that
             -- stops a startup being asked twice goes back. The row stays.
@@ -996,18 +1007,18 @@ export async function markTarget(
  * letter, what became of it — because what was done is not undone by doing it
  * again.
  */
-export async function releaseTargets(blockId: string, candidateId: string): Promise<void> {
+export async function releaseTargets(blockId: string, candidateId: string, kind: NoticeKind): Promise<void> {
   await (await db()).query(
-    `update deliverable_notice_targets set released_at = now()
-      where block_id = $1 and candidate_id = $2 and kind = 'request' and released_at is null`,
-    [blockId, candidateId],
+    `update notice_targets set released_at = now()
+      where block_id = $1 and candidate_id = $2 and kind = $3 and released_at is null`,
+    [blockId, candidateId, kind],
   );
 }
 
 export async function settleNotice(id: string, state: NoticeState, reason = ''): Promise<void> {
   const conn = await db();
   await conn.query(
-    `update deliverable_notices
+    `update notices
         set state = $2, reason = $3,
             sent_at = case when $2 = 'sent' then now() else sent_at end,
             cancelled_at = case when $2 = 'cancelled' then now() else cancelled_at end
@@ -1016,10 +1027,10 @@ export async function settleNotice(id: string, state: NoticeState, reason = ''):
   );
   /* Called off, or abandoned because the list never opened: nothing reached
      anybody, so every startup it named can be asked again. Without this the
-     next launch would die on `deliverable_asked_once` instead of going out. */
+     next launch would die on `notice_told_once` instead of going out. */
   if (state === 'cancelled' || state === 'abandoned') {
     await conn.query(
-      `update deliverable_notice_targets set released_at = now()
+      `update notice_targets set released_at = now()
         where notice_id = $1 and letter_id is null and released_at is null`,
       [id],
     );

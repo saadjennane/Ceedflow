@@ -18,7 +18,7 @@ import { programRoutes } from './routes/programs.js';
 import { staffRoutes } from './routes/staff.js';
 import { bootstrapAdmin } from './services/bootstrap.js';
 import { noteOrigin } from './services/platform.js';
-import { sendDueNotices } from './services/deliverables.js';
+import { sendDueNotices } from './services/notices.js';
 import { flush, sendingIsLive } from './services/mail.js';
 import { HttpError } from './routes/util.js';
 

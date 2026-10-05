@@ -24,12 +24,11 @@ import * as repo from '../db/repo.js';
 import { SESSION_COOKIE, accountForToken } from '../services/auth.js';
 import { committeeForEvaluation, committeeView } from '../services/committee.js';
 import { letters } from '../services/mail.js';
+import { launchNotice, sendDueNotices } from '../services/notices.js';
 import {
   appLink,
   deliverableView,
-  launchNotice,
   rosterFor,
-  sendDueNotices,
   tellReturned,
 } from '../services/deliverables.js';
 import { reviewsFor } from '../services/reviews.js';

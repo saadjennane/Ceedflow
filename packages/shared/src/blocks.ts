@@ -818,6 +818,41 @@ export type CommitteeAssignment = z.infer<typeof committeeAssignmentSchema>;
  * reaches the next phase. The band that earns a status lives in the Evaluation,
  * so a score is turned into a decision in exactly one place.
  */
+/** The names a selection's letters may carry. */
+export const SELECTION_VARIABLES = [
+  { name: 'startup', label: 'Startup', what: 'The organisation’s name' },
+  { name: 'decision', label: 'Decision', what: 'What this selection called them — your own label' },
+  { name: 'phase', label: 'Step', what: 'The name of this selection block' },
+  { name: 'lien', label: 'Link', what: 'Their own space on this platform' },
+] as const;
+
+/* Whole letters by default, in the language the founders are written to. A
+   template somebody has to finish before the first send is a template that
+   goes out half-written — and this is the one message a startup remembers. */
+const SELECTION_PASS = `Bonjour {{startup}},
+
+Nous avons le plaisir de vous annoncer que {{startup}} est retenue à l'issue de {{phase}}.
+
+Nous revenons vers vous très vite avec la suite. Vous pouvez suivre votre dossier ici : {{lien}}
+
+L'équipe CEED`;
+
+const SELECTION_WAIT = `Bonjour {{startup}},
+
+À l'issue de {{phase}}, {{startup}} est placée sur liste d'attente.
+
+Cela signifie que votre candidature reste en lice : nous revenons vers vous dès qu'une place se libère ou dès que les délibérations sont closes. Vous n'avez rien à faire d'ici là.
+
+L'équipe CEED`;
+
+const SELECTION_FAIL = `Bonjour {{startup}},
+
+Nous vous remercions d'avoir présenté {{startup}}. À l'issue de {{phase}}, votre candidature n'a pas été retenue.
+
+Le niveau des dossiers reçus était élevé et ce choix a été difficile. Nous vous encourageons à vous présenter à nos prochains appels.
+
+L'équipe CEED`;
+
 export const selectionConfigSchema = z.object({
   /** A shortlist keeps the funnel open. A cohort closes it and forms the promotion. */
   outputKind: z.enum(['shortlist', 'cohort']).default('shortlist'),
@@ -838,6 +873,18 @@ export const selectionConfigSchema = z.object({
   waitLabel: z.string().default('Waiting list'),
   failLabel: z.string().default('Not selected'),
   publishedAt: z.string().nullable().default(null),
+  /**
+   * What each audience reads. Kept with the block rather than centrally,
+   * because the letters depend on this block's own vocabulary: there is one
+   * per outcome, and the outcomes are named two fields above.
+   */
+  messages: z
+    .object({
+      pass: z.string().default(SELECTION_PASS),
+      wait: z.string().default(SELECTION_WAIT),
+      fail: z.string().default(SELECTION_FAIL),
+    })
+    .default({}),
 });
 
 /**

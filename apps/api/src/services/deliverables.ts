@@ -17,11 +17,11 @@ import {
   type DeliverableConfig,
   type DeliverableItem,
 } from '@ceed/shared';
-import { newId } from '@ceed/shared';
 import * as repo from '../db/repo.js';
 import { post, suppressedAmong } from './mail.js';
 import { publicOrigin } from './platform.js';
 import { intakeFor, trackOf } from './selection.js';
+import type { NoticeSource } from './notices.js';
 
 export interface DeliverableReturnView {
   itemId: string;
@@ -73,7 +73,7 @@ export interface DeliverableRow {
 /** One act of telling them, as the screen lists it. */
 export interface NoticeSummary {
   id: string;
-  kind: 'request' | 'reminder';
+  kind: string;
   state: 'planned' | 'sent' | 'cancelled' | 'abandoned';
   reason: string;
   scheduledFor: string;
@@ -390,52 +390,6 @@ export async function tellReturned(
  * notice is an instant. `new Date('2026-11-15')` is midnight UTC — one in the
  * morning in Casablanca — so the hour is said out loud rather than inherited.
  */
-const SEND_HOUR_UTC = Number(process.env.SEND_HOUR_UTC ?? 7);
-
-/** A day as the builder writes it, at the hour letters go out. */
-export const sendingInstant = (day: string): Date =>
-  new Date(`${day.slice(0, 10)}T${String(SEND_HOUR_UTC).padStart(2, '0')}:00:00Z`);
-
-/** How long a notice waits for a list that has not opened yet. */
-const WAIT_FOR_THE_DOOR_DAYS = 7;
-
-export async function launchNotice(
-  blockId: string,
-  input: {
-    kind: 'request' | 'reminder';
-    scheduledFor?: string | null;
-    body: string;
-    by?: { id: string; name: string };
-    /** One startup, named by somebody looking at its row. */
-    only?: string;
-  },
-): Promise<void> {
-  const roster = await noticeRoster(blockId, input.kind, input.only);
-  // Only those who can actually hear it are named. The rest are shown on the
-  // screen by name, which is the point of looking before sending.
-  const named = roster.filter((r) => r.blocked === 'none').map((r) => r.candidate.id);
-  if (!named.length) return;
-
-  /* Writing to one startup again is a deliberate act, so it supersedes the
-     slot that stops the list writing to it twice. The old target keeps its
-     date and its letter — what was done stays on the record — but it no
-     longer bars this. */
-  if (input.only) await repo.releaseTargets(blockId, input.only);
-
-  await repo.createNotice(
-    {
-      id: newId('dnt'),
-      blockId,
-      kind: input.kind,
-      body: input.body,
-      scheduledFor: (input.scheduledFor ? sendingInstant(input.scheduledFor) : new Date()).toISOString(),
-      createdBy: input.by?.id ?? null,
-      createdByName: input.by?.name ?? '',
-    },
-    named,
-  );
-}
-
 /**
  * Where a letter sends them.
  *
@@ -462,89 +416,79 @@ function owedLines(view: DeliverableView, candidateId: string): string {
 }
 
 /**
- * Sends what is due.
+ * What this brick knows about writing to its own startups.
  *
- * Every non-send carries a reason a human reads. A list that has not opened is
- * waited for rather than abandoned — the common case is somebody who scheduled
- * the notice before setting the opening date, and going out early is worse
- * than going out late.
+ * Three answers, and the generic machinery in notices.ts does the rest.
  */
-export async function sendDueNotices(): Promise<{ sent: number; held: number }> {
-  let sent = 0;
-  let held = 0;
+export const deliverableNotices: NoticeSource = {
+  async roster(blockId, kind, only) {
+    const entries = await noticeRoster(blockId, kind as 'request' | 'reminder', only);
+    return entries.map((e) => ({
+      candidateId: e.candidate.id,
+      email: e.candidate.email,
+      toName: e.candidate.contactName,
+      orgName: e.candidate.orgName,
+      blocked: e.blocked === 'none' ? '' : e.blocked,
+    }));
+  },
 
-  for (const notice of await repo.dueNotices()) {
-    const block = await repo.getBlock(notice.blockId);
-    if (!block || block.type !== 'deliverable') {
-      await repo.settleNotice(notice.id, 'abandoned', 'The block no longer exists.');
-      continue;
+  /**
+   * Why each of these can no longer hear it, at the hour it would go.
+   *
+   * Three distinct words, because the screen prints them: a startup that
+   * withdrew, a reminder about a file that owes nothing any more, and an
+   * address that cannot be written to are three different facts and one
+   * 'gone' would say none of them.
+   */
+  async filter(blockId, kind, candidateIds) {
+    const view = await deliverableView(blockId);
+    const out = new Map<string, string>();
+    for (const id of candidateIds) {
+      const row = view?.rows.find((r) => r.candidate.id === id);
+      out.set(
+        id,
+        !row
+          ? 'withdrawn'
+          : kind === 'reminder' && !row.owes
+            ? 'not_owed'
+            : row.blocked === 'none'
+              ? ''
+              : row.blocked,
+      );
     }
+    return out;
+  },
 
+  async gate(blockId) {
+    const block = await repo.getBlock(blockId);
+    if (!block || block.type !== 'deliverable') return { go: false, wait: false, why: 'The block no longer exists.' };
     const status = blockStatus(block);
-    if (status === 'scheduled') {
-      const waitedSince = new Date(notice.scheduledFor).getTime();
-      if (Date.now() - waitedSince < WAIT_FOR_THE_DOOR_DAYS * 86_400_000) {
-        held++;
-        continue;
-      }
-      await repo.settleNotice(notice.id, 'abandoned', 'The list never opened.');
-      continue;
-    }
-    if (status !== 'live') {
-      await repo.settleNotice(notice.id, 'abandoned', 'The list was shut before this went out.');
-      continue;
-    }
+    if (status === 'live') return { go: true };
+    /* Not open yet is waited for rather than abandoned: the common case is
+       somebody who scheduled the notice before setting the opening date, and a
+       letter that arrives before they can send anything is worse than one that
+       arrives late. */
+    if (status === 'scheduled') return { go: false, wait: true, why: 'The list never opened.' };
+    return { go: false, wait: false, why: 'The list was shut before this went out.' };
+  },
 
-    const view = (await deliverableView(notice.blockId))!;
-    const still = new Map((await noticeRoster(notice.blockId, notice.kind)).map((r) => [r.candidate.id, r]));
+  async letter(blockId, kind, candidateId, body) {
+    const block = await repo.getBlock(blockId);
+    const view = await deliverableView(blockId);
+    const row = view?.rows.find((r) => r.candidate.id === candidateId);
+    if (!block || !view || !row) return null;
     const config = block.config as DeliverableConfig;
-
-    for (const target of await repo.targetsOf(notice.id)) {
-      if (target.sentAt) continue;
-      /* The frozen set is a ceiling, never a floor: somebody who withdrew or
-         who the pass set lost since it was read back gets nothing, and nobody
-         who was not read back is ever added. */
-      const row = view.rows.find((r) => r.candidate.id === target.candidateId);
-      const present = still.get(target.candidateId);
-      const why = !row
-        ? 'withdrawn'
-        : notice.kind === 'reminder' && !row.owes
-          ? 'not_owed'
-          : present && present.blocked !== 'none'
-            ? present.blocked
-            : '';
-      if (why) {
-        await repo.claimTarget(notice.id, target.candidateId);
-        await repo.markTarget(notice.id, target.candidateId, { skipped: why });
-        continue;
-      }
-
-      if (!(await repo.claimTarget(notice.id, target.candidateId))) continue;
-      const letter = await post({
-        kind: notice.kind === 'request' ? 'deliverable_request' : 'deliverable_reminder',
-        to: row!.candidate.email,
-        toName: row!.candidate.contactName,
-        blockId: notice.blockId,
-        candidateId: target.candidateId,
-        subject: `${block.name} — ${row!.candidate.orgName}`,
-        body: fillTemplate(notice.body, {
-          startup: row!.candidate.orgName,
-          pieces: owedLines(view, target.candidateId),
-          date: longDate(config.closesAt),
-          lien: await appLink(),
-        }),
-      });
-      // post() never throws and answers null when it could not: a loop of
-      // fourteen can quietly write eleven, and the screen must not say otherwise.
-      await repo.markTarget(notice.id, target.candidateId, {
-        letterId: letter,
-        skipped: letter ? '' : 'not_written',
-      });
-      if (letter) sent++;
-    }
-
-    await repo.settleNotice(notice.id, 'sent');
-  }
-
-  return { sent, held };
-}
+    return {
+      kind: kind === 'request' ? 'deliverable_request' : 'deliverable_reminder',
+      to: row.candidate.email,
+      toName: row.candidate.contactName,
+      subject: `${block.name} — ${row.candidate.orgName}`,
+      body: fillTemplate(body, {
+        startup: row.candidate.orgName,
+        pieces: owedLines(view, candidateId),
+        date: longDate(config.closesAt),
+        lien: await appLink(),
+      }),
+    };
+  },
+};
