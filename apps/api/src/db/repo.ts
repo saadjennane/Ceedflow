@@ -1122,7 +1122,7 @@ export async function listOutcomes(blockId: string): Promise<SelectionOutcome[]>
 export async function setOutcome(
   blockId: string,
   candidateId: string,
-  outcome: 'pass' | 'fail',
+  outcome: 'pass' | 'wait' | 'fail',
   overridden: boolean,
 ): Promise<void> {
   await (await db()).query(

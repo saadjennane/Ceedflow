@@ -20,6 +20,12 @@ export const CANDIDATE_STATUSES = [
   'In review',
   'Shortlisted',
   'Selected',
+  /* Decided, and deliberately not final: a startup a committee is keeping
+     within reach. It is its own status rather than an absence of one, because
+     a programme has to be able to say "you are on the waiting list" — and a
+     startup left with no word while the retained ones are told is the thing a
+     waiting list exists to avoid. */
+  'Waitlisted',
   'Not selected',
   'Withdrawn',
 ] as const;
@@ -59,11 +65,13 @@ export const candidateSchema = z.object({
 
 export type Candidate = z.infer<typeof candidateSchema>;
 
-export const STATUS_TONE: Record<CandidateStatus, 'neutral' | 'info' | 'ok' | 'stop'> = {
+export const STATUS_TONE: Record<CandidateStatus, 'neutral' | 'info' | 'ok' | 'warn' | 'stop'> = {
   Applied: 'neutral',
   'In review': 'info',
   Shortlisted: 'info',
   Selected: 'ok',
+  // Held, not refused: the warn tone is the one that means "not finished".
+  Waitlisted: 'warn',
   'Not selected': 'stop',
   Withdrawn: 'neutral',
 };
@@ -156,7 +164,9 @@ export type BlockOutcomeRow = z.infer<typeof blockOutcomeRowSchema>;
 export const selectionOutcomeSchema = z.object({
   blockId: z.string(),
   candidateId: z.string(),
-  outcome: z.enum(['pass', 'fail']),
+  /* Three, not two: a waiting list is a decision of its own, and only `pass`
+     opens the door downstream. */
+  outcome: z.enum(['pass', 'wait', 'fail']),
   /** True once a human changed the computed result — a repêchage, a withdrawal. */
   overridden: z.boolean().default(false),
   decidedAt: z.string(),
@@ -166,7 +176,7 @@ export type SelectionOutcome = z.infer<typeof selectionOutcomeSchema>;
 
 export const setOutcomeInput = z.object({
   candidateId: z.string(),
-  outcome: z.enum(['pass', 'fail']),
+  outcome: z.enum(['pass', 'wait', 'fail']),
 });
 
 /** Applying is done signed in, as one of your organisations. */

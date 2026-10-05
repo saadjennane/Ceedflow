@@ -4,6 +4,7 @@ import {
   DEFAULT_OUTCOMES,
   deliverableOutcomes,
   type Block,
+  type BlockOutcome,
   type DeliverableConfig,
   type EvaluationConfig,
   type SelectionConfig,
@@ -15,6 +16,41 @@ import { Icon } from '../../../ui/Icon';
 /* ------------------------------------------------------------------ */
 /* Setup                                                               */
 /* ------------------------------------------------------------------ */
+
+/** One upstream status, offered to a list. */
+function StatusPick({
+  outcome,
+  on,
+  taken,
+  onToggle,
+}: {
+  outcome: BlockOutcome;
+  on: boolean;
+  /** Why this one cannot be picked here, when it cannot. */
+  taken?: string;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={on ? 'pick on' : 'pick'}
+      disabled={Boolean(taken)}
+      title={taken}
+      onClick={onToggle}
+    >
+      <Icon name={on ? 'check' : 'square'} />
+      <div>
+        <strong>{outcome.label}</strong>
+        <span>
+          {taken ??
+            (outcome.minScore === null
+              ? 'The fallback — everyone no other band caught.'
+              : `Earned from ${outcome.minScore} out of 100.`)}
+        </span>
+      </div>
+    </button>
+  );
+}
 
 export function SelectionSetup({
   block,
@@ -49,11 +85,9 @@ export function SelectionSetup({
     (b) => b.type === 'selection' && b.id !== block.id && (b.config as SelectionConfig).outputKind === 'cohort',
   );
 
-  const toggle = (id: string) =>
+  const toggle = (which: 'passOutcomeIds' | 'waitOutcomeIds') => (id: string) =>
     patch({
-      passOutcomeIds: config.passOutcomeIds.includes(id)
-        ? config.passOutcomeIds.filter((x) => x !== id)
-        : [...config.passOutcomeIds, id],
+      [which]: config[which].includes(id) ? config[which].filter((x) => x !== id) : [...config[which], id],
     });
 
   return (
@@ -125,22 +159,12 @@ export function SelectionSetup({
         {outcomes.length ? (
           <div className="pick-list">
             {outcomes.map((o) => (
-              <button
-                type="button"
+              <StatusPick
                 key={o.id}
-                className={config.passOutcomeIds.includes(o.id) ? 'pick on' : 'pick'}
-                onClick={() => toggle(o.id)}
-              >
-                <Icon name={config.passOutcomeIds.includes(o.id) ? 'check' : 'square'} />
-                <div>
-                  <strong>{o.label}</strong>
-                  <span>
-                    {o.minScore === null
-                      ? 'The fallback — everyone no other band caught.'
-                      : `Earned from ${o.minScore} out of 100.`}
-                  </span>
-                </div>
-              </button>
+                outcome={o}
+                on={config.passOutcomeIds.includes(o.id)}
+                onToggle={() => toggle('passOutcomeIds')(o.id)}
+              />
             ))}
           </div>
         ) : (
@@ -149,10 +173,37 @@ export function SelectionSetup({
           </div>
         )}
         <div className="hint">
-          Take the waitlist too when you need to fill more places. Nothing caps the number that passes — a startup you
-          want in or out whatever its status is settled row by row in Review.
+          Nothing caps the number that passes — a startup you want in or out whatever its status is settled row by row
+          in Review.
         </div>
       </div>
+
+      {/* The third answer, and it stays optional: a selection is binary until
+          somebody asks for a waiting list. Offered only once something upstream
+          hands out statuses, because there would be nothing to pick from. */}
+      {outcomes.length > 0 && (
+        <div className="field">
+          <label>Which statuses wait</label>
+          <div className="help">
+            Decided, and deliberately not final — a startup you are keeping within reach. They hear their own answer,
+            and the door downstream stays shut until you move them.
+          </div>
+          <div className="pick-list" style={{ marginTop: 6 }}>
+            {outcomes.map((o) => (
+              <StatusPick
+                key={o.id}
+                outcome={o}
+                on={config.waitOutcomeIds.includes(o.id)}
+                /* Passing outranks waiting, so a status in both is shown as
+                   taken rather than left to behave in whichever order the two
+                   arrays happened to be read. */
+                taken={config.passOutcomeIds.includes(o.id) ? 'already moves on' : undefined}
+                onToggle={() => toggle('waitOutcomeIds')(o.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {!config.passOutcomeIds.length && outcomes.length > 0 && (
         <div className="callout warn">
@@ -169,6 +220,10 @@ export function SelectionSetup({
           onChange={(v) => patch({ failLabel: v })}
         />
       </div>
+
+      {config.waitOutcomeIds.length > 0 && (
+        <TextField label="Label for those who wait" value={config.waitLabel} onChange={(v) => patch({ waitLabel: v })} />
+      )}
     </>
   );
 }

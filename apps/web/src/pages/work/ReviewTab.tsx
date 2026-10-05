@@ -65,8 +65,8 @@ interface DecisionRow {
   candidate: Candidate;
   score: number | null;
   outcomeId: string | null;
-  computed: 'pass' | 'fail';
-  outcome: 'pass' | 'fail';
+  computed: 'pass' | 'wait' | 'fail';
+  outcome: 'pass' | 'wait' | 'fail';
   overridden: boolean;
   stale: boolean;
   pending: boolean;
@@ -77,6 +77,7 @@ interface DecisionPayload {
   published: boolean;
   rows: DecisionRow[];
   passCount: number;
+  waitCount: number;
   failCount: number;
 }
 
@@ -318,7 +319,11 @@ function Moment({
     if (key === 'rank') return l.rank;
     if (key === 'orgName') return l.candidate.orgName;
     if (key === 'status') return statusOf(l) || null;
-    if (key === 'decision') return l.decision ? (l.decision.outcome === 'pass' ? 1 : 0) : null;
+    // Passed above held above refused, so sorting by the decision reads down
+    // the funnel rather than alphabetically by whatever it is called.
+    if (key === 'decision') {
+      return l.decision ? (l.decision.outcome === 'pass' ? 2 : l.decision.outcome === 'wait' ? 1 : 0) : null;
+    }
     return scoreOf(l);
   };
 
@@ -447,7 +452,17 @@ function Moment({
           voting ? '' : (line.scoring?.consensus ?? null),
           outcomes.find((o) => o.id === line.scoring?.outcomeId)?.label ?? '',
         );
-        if (selection) row.push(line.decision ? (line.decision.outcome === 'pass' ? passLabel : failLabel) : '');
+        if (selection) {
+          row.push(
+            line.decision
+              ? line.decision.outcome === 'pass'
+                ? passLabel
+                : line.decision.outcome === 'wait'
+                  ? waitLabel
+                  : failLabel
+              : '',
+          );
+        }
         rows.push(row);
       }
     }
@@ -527,7 +542,7 @@ function Moment({
     reload();
   };
 
-  const setDecision = async (candidateId: string, outcome: 'pass' | 'fail') => {
+  const setDecision = async (candidateId: string, outcome: 'pass' | 'wait' | 'fail') => {
     if (!selection) return;
     setBusy(true);
     try {
@@ -561,6 +576,10 @@ function Moment({
     .filter((label): label is string => Boolean(label));
   const passLabel = cfg?.passLabel ?? 'Passed';
   const failLabel = cfg?.failLabel ?? 'Not selected';
+  const waitLabel = cfg?.waitLabel ?? 'Waiting list';
+  /* The third answer is shown only where it exists: a selection that holds
+     nobody should not grow a column of empty buttons. */
+  const waits = Boolean(cfg?.waitOutcomeIds?.length) || (decision?.waitCount ?? 0) > 0;
 
   return (
     <>
@@ -593,6 +612,14 @@ function Moment({
               {decision.passCount}
             </div>
           </div>
+          {waits && (
+            <div className="funnel-step" style={{ borderColor: 'var(--warn)' }}>
+              <div className="eyebrow">{waitLabel}</div>
+              <div className="n" style={{ color: 'var(--warn)' }}>
+                {decision.waitCount}
+              </div>
+            </div>
+          )}
           <div className="funnel-step">
             <div className="eyebrow">{failLabel}</div>
             <div className="n faint">{decision.failCount}</div>
@@ -815,7 +842,7 @@ function Moment({
                           </td>
 
                           {selection && (
-                            <td style={{ width: 200 }}>
+                            <td style={{ width: waits ? 280 : 200 }}>
                               {line.decision ? (
                                 <div className="seg" role="group">
                                   <button
@@ -825,6 +852,15 @@ function Moment({
                                   >
                                     {passLabel}
                                   </button>
+                                  {waits && (
+                                    <button
+                                      className={line.decision.outcome === 'wait' ? 'on' : ''}
+                                      disabled={busy}
+                                      onClick={() => setDecision(line.candidate.id, 'wait')}
+                                    >
+                                      {waitLabel}
+                                    </button>
+                                  )}
                                   <button
                                     className={line.decision.outcome === 'fail' ? 'on' : ''}
                                     disabled={busy}

@@ -825,7 +825,17 @@ export const selectionConfigSchema = z.object({
   fromBlockId: z.string().nullable().default(null),
   /** The statuses that move on. None picked means the rule passes nobody. */
   passOutcomeIds: z.array(z.string()).default([]),
+  /**
+   * The statuses that are held rather than decided — the waiting list.
+   *
+   * Empty by default, which keeps a selection binary until somebody asks for a
+   * third answer. A status named in both lists passes: moving on outranks
+   * waiting, and the alternative was a rule whose result depended on the order
+   * two arrays happened to be read in.
+   */
+  waitOutcomeIds: z.array(z.string()).default([]),
   passLabel: z.string().default('Shortlisted'),
+  waitLabel: z.string().default('Waiting list'),
   failLabel: z.string().default('Not selected'),
   publishedAt: z.string().nullable().default(null),
 });

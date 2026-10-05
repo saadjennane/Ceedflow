@@ -18,8 +18,8 @@ export interface SelectionRow {
   /** The status the scoring block above gave them, if any. */
   outcomeId: string | null;
   /** What the configured method produces, before any human override. */
-  computed: 'pass' | 'fail';
-  outcome: 'pass' | 'fail';
+  computed: SelectionCall;
+  outcome: SelectionCall;
   overridden: boolean;
   /**
    * Publishing freezes each decision, so a late score or a changed rule does not
@@ -42,6 +42,7 @@ export interface SelectionView {
   published: boolean;
   rows: SelectionRow[];
   passCount: number;
+  waitCount: number;
   failCount: number;
 }
 
@@ -57,6 +58,23 @@ export function trackOf(tracks: TrackWithPhases[], blockId: string): TrackWithPh
  * else follows the statuses of the moment, which is why changing one moves the
  * count the same second.
  */
+/** What a selection can answer. Only `pass` opens the door downstream. */
+export type SelectionCall = 'pass' | 'wait' | 'fail';
+
+/**
+ * The rule, in one place.
+ *
+ * A status named in both lists passes: moving on outranks waiting, and the
+ * alternative was a result that depended on which array happened to be read
+ * first.
+ */
+export function callFor(config: SelectionConfig, outcomeId: string | null | undefined): SelectionCall {
+  if (!outcomeId) return 'fail';
+  if (config.passOutcomeIds.includes(outcomeId)) return 'pass';
+  if (config.waitOutcomeIds.includes(outcomeId)) return 'wait';
+  return 'fail';
+}
+
 export async function passSetOf(
   track: TrackWithPhases,
   block: Block,
@@ -65,7 +83,6 @@ export async function passSetOf(
   const config = block.config as SelectionConfig;
   const source = selectionSource(track, block);
   const statuses = source ? await outcomesByCandidate(source) : null;
-  const wanted = new Set(config.passOutcomeIds);
   const stored = new Map((await repo.listOutcomes(block.id)).map((o) => [o.candidateId, o]));
 
   const passed = new Set<string>();
@@ -75,8 +92,9 @@ export async function passSetOf(
       if (saved.outcome === 'pass') passed.add(candidate.id);
       continue;
     }
-    const status = statuses?.get(candidate.id)?.outcomeId;
-    if (status && wanted.has(status)) passed.add(candidate.id);
+    // Waiting is not passing: a startup held by the committee stays on this
+    // side of the door until somebody moves it.
+    if (callFor(config, statuses?.get(candidate.id)?.outcomeId) === 'pass') passed.add(candidate.id);
   }
   return passed;
 }
@@ -133,16 +151,14 @@ export async function selectionView(blockId: string): Promise<SelectionView | nu
 
   // And the statuses decide who moves on. Nothing else does — a startup whose
   // status is wrong is fixed where the status is given, not by a second rule.
-  const wanted = new Set(config.passOutcomeIds);
-  const passes = new Set<string>();
+  const calls = new Map<string, SelectionCall>();
   for (const candidate of roster) {
-    const status = statuses?.get(candidate.id)?.outcomeId;
-    if (status && wanted.has(status)) passes.add(candidate.id);
+    calls.set(candidate.id, callFor(config, statuses?.get(candidate.id)?.outcomeId));
   }
 
   const stored = new Map((await repo.listOutcomes(blockId)).map((o) => [o.candidateId, o]));
   const rows: SelectionRow[] = roster.map((candidate) => {
-    const computed: 'pass' | 'fail' = passes.has(candidate.id) ? 'pass' : 'fail';
+    const computed = calls.get(candidate.id) ?? 'fail';
     const saved = stored.get(candidate.id);
     // A saved row records what was announced; it no longer governs. Only a call
     // made by hand outranks the rule.
@@ -172,19 +188,26 @@ export async function selectionView(blockId: string): Promise<SelectionView | nu
     published: Boolean(config.publishedAt),
     rows,
     passCount: rows.filter((r) => r.outcome === 'pass').length,
+    waitCount: rows.filter((r) => r.outcome === 'wait').length,
     failCount: rows.filter((r) => r.outcome === 'fail').length,
   };
+}
+
+/** The word a candidacy carries once a decision is announced. */
+function statusFor(config: SelectionConfig, call: SelectionCall): CandidateStatus {
+  if (call === 'wait') return 'Waitlisted';
+  if (call === 'fail') return 'Not selected';
+  return config.outputKind === 'cohort' ? 'Selected' : 'Shortlisted';
 }
 
 /** Pushes the published decision onto every candidate's own status. */
 async function writeStatuses(blockId: string): Promise<void> {
   const view = await selectionView(blockId);
   if (!view) return;
-  const passStatus: CandidateStatus = view.config.outputKind === 'cohort' ? 'Selected' : 'Shortlisted';
   await repo.setCandidateStatuses(
     view.rows
       .filter((r) => r.candidate.status !== 'Withdrawn')
-      .map((r) => ({ id: r.candidate.id, status: r.outcome === 'pass' ? passStatus : 'Not selected' })),
+      .map((r) => ({ id: r.candidate.id, status: statusFor(view.config, r.outcome) })),
   );
 }
 
@@ -213,7 +236,7 @@ export async function publishSelection(blockId: string): Promise<SelectionView |
 export async function overrideOutcome(
   blockId: string,
   candidateId: string,
-  outcome: 'pass' | 'fail',
+  outcome: SelectionCall,
 ): Promise<SelectionView | null> {
   const view = await selectionView(blockId);
   if (!view) return null;
@@ -222,13 +245,8 @@ export async function overrideOutcome(
 
   await repo.setOutcome(blockId, candidateId, outcome, outcome !== row.computed);
 
-  if (view.published) {
-    const passStatus: CandidateStatus = view.config.outputKind === 'cohort' ? 'Selected' : 'Shortlisted';
-    if (row.candidate.status !== 'Withdrawn') {
-      await repo.setCandidateStatuses([
-        { id: candidateId, status: outcome === 'pass' ? passStatus : 'Not selected' },
-      ]);
-    }
+  if (view.published && row.candidate.status !== 'Withdrawn') {
+    await repo.setCandidateStatuses([{ id: candidateId, status: statusFor(view.config, outcome) }]);
   }
   return selectionView(blockId);
 }
