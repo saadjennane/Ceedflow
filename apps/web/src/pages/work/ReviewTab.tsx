@@ -640,8 +640,12 @@ function Moment({
   const passLabel = cfg?.passLabel ?? 'Passed';
   const failLabel = cfg?.failLabel ?? 'Not selected';
   const waitLabel = cfg?.waitLabel ?? 'Waiting list';
-  /* The third answer is shown only where it exists: a selection that holds
-     nobody should not grow a column of empty buttons. */
+  /* Le compteur, pas le bouton.
+     The funnel shows a third figure only where there is one to show — a column
+     reading nought beside two real counts says nothing. The decision itself is
+     another matter: holding a startup back is a thing somebody does by hand,
+     most often because the deliberation is not closed, and a rule naming a
+     holding outcome is not a condition for it. */
   const waits = Boolean(cfg?.waitOutcomeIds?.length) || (decision?.waitCount ?? 0) > 0;
 
   return (
@@ -938,7 +942,7 @@ function Moment({
                           </td>
 
                           {selection && (
-                            <td style={{ width: waits ? 280 : 200 }}>
+                            <td style={{ width: 280 }}>
                               {line.decision ? (
                                 <div className="seg" role="group">
                                   <button
@@ -948,15 +952,17 @@ function Moment({
                                   >
                                     {passLabel}
                                   </button>
-                                  {waits && (
-                                    <button
-                                      className={line.decision.outcome === 'wait' ? 'on' : ''}
-                                      disabled={busy}
-                                      onClick={() => setDecision(line.candidate.id, 'wait')}
-                                    >
-                                      {waitLabel}
-                                    </button>
-                                  )}
+                                  {/* Always offered: this is the answer you
+                                      reach for when the room has not finished
+                                      deciding, and it cannot wait on a setting
+                                      made in another screen. */}
+                                  <button
+                                    className={line.decision.outcome === 'wait' ? 'on' : ''}
+                                    disabled={busy}
+                                    onClick={() => setDecision(line.candidate.id, 'wait')}
+                                  >
+                                    {waitLabel}
+                                  </button>
                                   <button
                                     className={line.decision.outcome === 'fail' ? 'on' : ''}
                                     disabled={busy}

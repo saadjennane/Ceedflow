@@ -89,8 +89,6 @@ function MessagesTab({
     lien: link.data?.link || undefined,
   });
 
-  const holds = config.waitOutcomeIds.length > 0;
-
   return (
     <>
       <div className="callout">
@@ -120,19 +118,17 @@ function MessagesTab({
         example={example(config.passLabel)}
       />
 
-      {/* Offered only where somebody is actually held: a letter for an audience
-          that does not exist is a letter nobody will ever read, taking up the
-          room of the two that matter. */}
-      {holds && (
-        <Template
-          label={`To those you hold — “${config.waitLabel}”`}
-          help="Say what waiting means and what happens next — the absence of that is what makes a waiting list feel like a refusal."
-          value={config.messages.wait}
-          onChange={(v) => set('wait', v)}
-          variables={SELECTION_VARIABLES}
-          example={example(config.waitLabel)}
-        />
-      )}
+      {/* Here whether or not a rule holds anybody: Review can put a startup on
+          this list by hand at any moment, and a programme that discovers the
+          letter only once somebody is waiting for it writes it in a hurry. */}
+      <Template
+        label={`To those you hold — “${config.waitLabel}”`}
+        help="Say what waiting means and what happens next — the absence of that is what makes a waiting list feel like a refusal."
+        value={config.messages.wait}
+        onChange={(v) => set('wait', v)}
+        variables={SELECTION_VARIABLES}
+        example={example(config.waitLabel)}
+      />
 
       <Template
         label={`To those you do not — “${config.failLabel}”`}
@@ -320,9 +316,10 @@ export function SelectionSetup({
         />
       </div>
 
-      {config.waitOutcomeIds.length > 0 && (
-        <TextField label="Label for those who wait" value={config.waitLabel} onChange={(v) => patch({ waitLabel: v })} />
-      )}
+      {/* Named here even when no rule holds anybody, because the word is on a
+          button in Review from the first day — and a button nobody can rename
+          is a programme speaking in the platform's vocabulary. */}
+      <TextField label="Label for those who wait" value={config.waitLabel} onChange={(v) => patch({ waitLabel: v })} />
     </>
   );
 }
