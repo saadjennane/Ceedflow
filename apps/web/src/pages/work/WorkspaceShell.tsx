@@ -6,6 +6,8 @@ import {
   type BlockType,
   type TrackWithPhases,
 } from '@ceed/shared';
+import { api } from '../../lib/api';
+import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
 
 /**
@@ -30,8 +32,18 @@ export function WorkspaceShell({
   children: (block: Block) => React.ReactNode;
 }) {
   const blocks = orderedBlocks(track).filter((b) => b.type === type);
-  // Opens where the work is, not on whichever block happens to come first.
-  const current = blocks.find((b) => b.id === currentId) ?? blockAtWork(blocks) ?? null;
+  const held = useAsync(
+    () => api.get<Record<string, number>>(`/api/editions/${track.editionId}/populations?trackId=${track.id}`),
+    track.id,
+  );
+  /* The furthest one down the funnel that still has somebody in it. Opening on
+     whichever block happens to be live lands on an empty page while the work
+     is two steps back — a block can be open and hold nobody, and often is at
+     the start of a phase. Falls back to the old reading while the counts are
+     on their way, and whenever every block is empty. */
+  const peopled = held.data ? blocks.filter((b) => (held.data![b.id] ?? 0) > 0) : [];
+  const current =
+    blocks.find((b) => b.id === currentId) ?? peopled[peopled.length - 1] ?? blockAtWork(blocks) ?? null;
 
   if (!current) {
     return (

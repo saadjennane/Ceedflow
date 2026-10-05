@@ -69,7 +69,11 @@ export function CandidatesTab({
   // There is no view of the funnel from nowhere: the deepest step is where the
   // work is, so that is what opens until somebody picks another.
   const steps = funnel.data ?? [];
-  const stepId = picked ?? steps[steps.length - 1]?.blockId ?? null;
+  /* The deepest step that still holds somebody. The last one is often a
+     selection nobody has reached yet, and landing on an empty list says the
+     programme is empty when it is merely further back. */
+  const peopled = steps.filter((s) => s.count > 0);
+  const stepId = picked ?? (peopled[peopled.length - 1] ?? steps[steps.length - 1])?.blockId ?? null;
   const step = steps.find((f) => f.blockId === stepId) ?? null;
   const roster = useAsync(
     () => (stepId ? api.get<RosterRow[]>(`/api/blocks/${stepId}/roster`) : Promise.resolve(null)),

@@ -42,6 +42,7 @@ import {
   funnelFor,
   intakeFor,
   overrideOutcome,
+  populationsFor,
   publishSelection,
   rosterAt,
   selectionView,
@@ -98,6 +99,22 @@ export async function funnelRoutes(app: FastifyInstance) {
     const detail = await repo.getEditionDetail(id);
     const track = trackId ? detail?.tracks.find((t) => t.id === trackId) : detail?.tracks[0];
     return track ? funnelFor(id, track.id) : [];
+  });
+
+  /**
+   * How many startups each block holds right now.
+   *
+   * Read by every work screen to open on the furthest block down the funnel
+   * that still has somebody in it — rather than on whichever one happens to
+   * be live, which is how you land on an empty page while the work is two
+   * steps back.
+   */
+  app.get('/api/editions/:id/populations', async (req) => {
+    const { id } = req.params as { id: string };
+    const { trackId } = req.query as { trackId?: string };
+    const detail = await repo.getEditionDetail(id);
+    const track = trackId ? detail?.tracks.find((t) => t.id === trackId) : detail?.tracks[0];
+    return track ? populationsFor(id, track.id) : {};
   });
 
   app.post('/api/editions/:id/candidates', async (req, reply) => {

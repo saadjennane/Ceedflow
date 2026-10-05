@@ -1,4 +1,4 @@
-import { itemUnfinished, type DeliverableConfig } from '@ceed/shared';
+import { itemComplete, itemUnfinished, type DeliverableConfig } from '@ceed/shared';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
@@ -75,9 +75,12 @@ export function OwedList({
 }) {
   const need = ask.config.items.filter((i) => i.required);
   const mineOf = (id: string) => ask.returns.find((r) => r.itemId === id);
-  // Accepted, not merely sent: what they want to know is whether they are
-  // done, and a document waiting to be read is not done.
-  const done = need.filter((i) => mineOf(i.id)?.state === 'accepted').length;
+  /* What they have sent, over what is asked. That is the only number they can
+     act on: a document waiting to be read is not their problem, and showing it
+     as missing asked them to send something they had already sent. Whether
+     CEED has read it is the colour. */
+  const sent = need.filter((i) => itemComplete(i, mineOf(i.id)?.value)).length;
+  const read = need.filter((i) => mineOf(i.id)?.state === 'accepted').length;
   /* Said in words rather than left to the count: three associés of whom one
      has no CIN is not "two associés", and a tally there would read as one. */
   const unfinished = ask.config.items
@@ -94,8 +97,17 @@ export function OwedList({
             What CEED needs from {orgName}
           </p>
         </div>
-        <span className={done === need.length ? 'badge ok num' : 'badge num'}>
-          {done}/{need.length}
+        <span
+          className={read === need.length && need.length > 0 ? 'badge ok num' : 'badge num'}
+          title={
+            sent < need.length
+              ? `${need.length - sent} still to send`
+              : read === need.length
+                ? 'Everything in, and read'
+                : 'Everything in — CEED is reading it'
+          }
+        >
+          {sent}/{need.length}
         </span>
       </div>
 

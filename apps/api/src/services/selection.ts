@@ -1,4 +1,5 @@
 import {
+  committeeForEvaluation,
   orderedBlocks,
   selectionSource,
   type Block,
@@ -269,6 +270,44 @@ export async function funnelFor(editionId: string, trackId: string) {
   return steps;
 }
 
+
+/**
+ * Combien de startups chaque brique tient, en ce moment.
+ *
+ * Read by every work screen to decide which block to open on. The rule they
+ * all want is the same — the furthest one down the funnel that still has
+ * somebody in it — and without this each would have had to guess from the
+ * dates, which is how you land on a block that is live and empty while the
+ * work is two steps back.
+ *
+ * A committee counts the startups actually seated rather than the ones it
+ * could seat: an empty panel is nothing to open onto.
+ */
+export async function populationsFor(editionId: string, trackId: string): Promise<Record<string, number>> {
+  const detail = await repo.getEditionDetail(editionId);
+  const track = detail?.tracks.find((t) => t.id === trackId);
+  if (!track) return {};
+  const everyone = (await repo.listCandidates(editionId, trackId)).filter((c) => c.status !== 'Withdrawn');
+
+  const out: Record<string, number> = {};
+  for (const block of orderedBlocks(track)) {
+    if (block.type === 'application') {
+      out[block.id] = everyone.length;
+    } else if (block.type === 'selection') {
+      out[block.id] = (await passSetOf(track, block, everyone)).size;
+    } else if (block.type === 'committee') {
+      out[block.id] = (await repo.listAssignments(block.id)).length;
+    } else if (block.type === 'evaluation') {
+      // An evaluation is worked through its committee's sittings, so what it
+      // holds is what that committee seated.
+      const panel = committeeForEvaluation(track, block.id);
+      out[block.id] = panel ? (await repo.listAssignments(panel.id)).length : (await intakeFor(track, block.id, everyone)).length;
+    } else {
+      out[block.id] = (await intakeFor(track, block.id, everyone)).length;
+    }
+  }
+  return out;
+}
 
 /* ------------------------------------------------------------------ */
 /* Who stands at one step of the funnel, and under which word          */

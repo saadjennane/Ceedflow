@@ -573,11 +573,24 @@ export function DeliverableTab({ block }: { block: Block }) {
                     </button>
                   </td>
                   <td>
-                    {/* Accepted over required, because a file nobody has read
-                        is not a file in order. What merely arrived is said
-                        beside it, in the quieter tone. */}
-                    <span className={row.complete ? 'badge ok num' : 'badge num'}>
-                      {row.accepted}/{row.required}
+                    {/* What the startup has sent, over what is asked of it.
+                        That is the question a chasing day poses — "have they
+                        done their part" — and it is the number you act on.
+                        Whether CEED has read it is the colour: green once
+                        every required piece is accepted, plain while one is
+                        still waiting on us. Two facts, one figure, no second
+                        badge to decode. */}
+                    <span
+                      className={row.complete ? 'badge ok num' : 'badge num'}
+                      title={
+                        row.done < row.required
+                          ? `${row.required - row.done} still to send`
+                          : row.complete
+                            ? 'Everything in, and read'
+                            : `Everything in — ${row.done - row.accepted} waiting on us`
+                      }
+                    >
+                      {row.done}/{row.required}
                     </span>
                     {row.rejected > 0 && (
                       <span className="badge warn num" style={{ marginLeft: 5 }}>

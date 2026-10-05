@@ -272,6 +272,24 @@ export function blocksOfType<T extends BlockType>(track: TrackWithPhases, type: 
  * The Evaluation that scores a committee: one sitting in the same phase, which is
  * how dropping the two together links them, unless a block names it explicitly.
  */
+/**
+ * The committee a scoped Evaluation scores.
+ *
+ * The other half of `evaluationForCommittee`, and here beside it for the same
+ * reason: the pairing is one rule, and two copies of it would eventually
+ * disagree about which panel an evaluation belongs to.
+ */
+export function committeeForEvaluation(track: TrackWithPhases, evaluationId: string): Block | null {
+  const evaluation = orderedBlocks(track).find((b) => b.id === evaluationId);
+  if (!evaluation) return null;
+  const scope = (evaluation.config as EvaluationConfig).scopeBlockId;
+  if (scope === 'standalone') return null;
+  if (scope) return orderedBlocks(track).find((b) => b.id === scope && b.type === 'committee') ?? null;
+  const phase = track.phases.find((p) => p.blocks.some((b) => b.id === evaluationId));
+  return phase?.blocks.find((b) => b.type === 'committee') ?? null;
+}
+
+
 export function evaluationForCommittee(track: TrackWithPhases, committeeId: string): Block | null {
   const pinned = orderedBlocks(track).find(
     (b) => b.type === 'evaluation' && (b.config as EvaluationConfig).scopeBlockId === committeeId,

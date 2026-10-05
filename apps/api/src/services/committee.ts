@@ -1,4 +1,5 @@
 import {
+  committeeForEvaluation,
   evaluationForCommittee,
   orderedBlocks,
   sessionSlots,
@@ -56,18 +57,7 @@ function trackOf(tracks: TrackWithPhases[], blockId: string): TrackWithPhases | 
 
 // The rule lives in the shared model: a selection resolves a committee the same
 // way, and the two must never drift apart.
-export { evaluationForCommittee };
-
-/** The committee a scoped Evaluation scores, resolved the same way. */
-export function committeeForEvaluation(track: TrackWithPhases, evaluationId: string): Block | null {
-  const evaluation = orderedBlocks(track).find((b) => b.id === evaluationId);
-  if (!evaluation) return null;
-  const scope = (evaluation.config as EvaluationConfig).scopeBlockId;
-  if (scope === 'standalone') return null;
-  if (scope) return orderedBlocks(track).find((b) => b.id === scope && b.type === 'committee') ?? null;
-  const phase = track.phases.find((p) => p.blocks.some((b) => b.id === evaluationId));
-  return phase?.blocks.find((b) => b.type === 'committee') ?? null;
-}
+export { committeeForEvaluation, evaluationForCommittee };
 
 /** What the last published selection upstream sent here. */
 function intakeLabel(track: TrackWithPhases, blockId: string): string | null {

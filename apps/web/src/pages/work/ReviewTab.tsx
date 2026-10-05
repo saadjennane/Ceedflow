@@ -119,16 +119,27 @@ export function ReviewTab({
   onChanged: () => void;
 }) {
   const moments = funnelMoments(track);
-  /* A moment is judged by the brick that measures — the evaluation — because
-     that is what startups wait on. Reading order breaks the ties, so the funnel
-     still reads left to right. */
+  const held = useAsync(
+    () => api.get<Record<string, number>>(`/api/editions/${track.editionId}/populations?trackId=${track.id}`),
+    track.id,
+  );
+  /* The furthest moment that still has somebody in it. A moment can be live
+     and empty — a jury day set up before anybody reached it — and opening
+     there shows an empty table while the work is two steps back.
+     While the counts are on their way, and when every moment is empty, the
+     older reading stands: judged by the brick that measures, because that is
+     what startups wait on, with reading order breaking the ties. */
+  const peopled = held.data
+    ? moments.filter((m) => (held.data![(m.evaluation ?? m.selection!).id] ?? 0) > 0)
+    : [];
   const openOn =
-    moments.length > 0
+    peopled[peopled.length - 1] ??
+    (moments.length > 0
       ? moments.reduce((best, m) => {
           const rank = (x: typeof m) => rankAtWork(x.evaluation ?? x.selection!);
           return rank(m) < rank(best) ? m : best;
         })
-      : null;
+      : null);
   const moment =
     moments.find((m) => m.id === currentId || m.evaluation?.id === currentId) ?? openOn ?? null;
 
