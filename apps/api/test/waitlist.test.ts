@@ -187,7 +187,18 @@ describe('telling each audience what was decided', { skip: skipWithoutServer }, 
     const kept = await candidacy('Rafid Tech', 'yes');
     const held = await candidacy('Nakhla Bio', 'maybe');
     const out = await candidacy('Atlas Mobility', 'no');
-    return { pick, kept, held, out };
+    /** Une fiche, une adresse, et aucun compte : la cohorte réelle. */
+    const newcomer = async (orgName: string) => {
+      const org = await dir.createRecord({ kind: 'org', name: orgName, origin: 'manual' });
+      const person = await dir.createRecord({
+        kind: 'person', name: `${orgName} F`, origin: 'manual',
+        email: `${orgName.split(' ')[0]!.toLowerCase()}.${Date.now()}.${Math.random().toString(36).slice(2, 6)}@example.test`,
+      });
+      return repo.createCandidate({
+        editionId: edition.id, trackId: track.id, orgId: org.id, personId: person.id,
+      });
+    };
+    return { pick, kept, held, out, newcomer };
   };
 
   const BODY = 'Bonjour {{startup}}, {{decision}} à l’issue de {{phase}}.';
@@ -253,6 +264,28 @@ describe('telling each audience what was decided', { skip: skipWithoutServer }, 
     assert.equal(by.get('wait')?.told, 0);
     assert.equal(by.get('wait')?.reachable, 1);
     assert.equal(by.get('fail')?.told, 0);
+  });
+
+  it('writes to a cohort that has never signed in — the letter is what lets them', async () => {
+    /* Le cas courant, pas le cas limite : une cohorte qu'on annonce retenue
+       est par construction une cohorte qui ne s'est jamais connectée. Tant que
+       la lettre ne portait pas le mot de passe, ne pas écrire se défendait ;
+       elle le porte, et refuser d'écrire, c'est refuser ce qui leur ouvre la
+       porte. */
+    const { pick, newcomer } = await setUp();
+    const fresh = await newcomer('Sans compte');
+    await overrideOutcome(pick.id, fresh.id, 'pass');
+
+    const row = (await selectionRoster(pick.id, SELECTION_KINDS.pass)).find((r) => r.subjectId === fresh.id);
+    assert.ok(row, 'on the list to write to');
+    assert.equal(row!.blocked, '', 'and nothing stands in the way');
+
+    await publishSelection(pick.id);
+    await launchNotice(pick.id, { kind: SELECTION_KINDS.pass, body: 'Bonjour\n\n{{acces}}' });
+    await sendDueNotices();
+    assert.equal(await lettersFor(fresh.id), 1, 'the letter went');
+    const [letter] = await letters({ candidateId: fresh.id });
+    assert.match(letter!.body, /première connexion/, 'carrying the way in');
   });
 
   it('does not write to a startup the committee moved between the launch and the send', async () => {

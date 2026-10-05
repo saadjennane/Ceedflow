@@ -64,12 +64,17 @@ async function audienceOf(blockId: string, kind: string): Promise<NoticeTargetRo
       ? 'no_email'
       : held.has(row.candidate.email.trim().toLowerCase())
         ? 'suppressed'
-        : /* No account is no reason to withhold a refusal — there is nothing
-             for them to log into and nothing to do. It only blocks a letter
-             whose point is to send them somewhere. */
-          call !== 'fail' && !row.candidate.accountState
-          ? 'no_account'
-          : '',
+        : /* Avoir un compte n'est plus une condition.
+             It was one while a letter could only point at a door the startup
+             had no key to. The letter now carries the key — `{{acces}}` opens
+             the account and hands over the password — so refusing to write is
+             refusing the very thing that would let them in. And it refused it
+             exactly where it hurts: a cohort told it is retained is, almost by
+             definition, a cohort that has never signed in. What is left is a
+             question about the wording, which the send window asks by name:
+             somebody with no account and a letter that never says how to get
+             in. */
+          '',
   }));
 }
 

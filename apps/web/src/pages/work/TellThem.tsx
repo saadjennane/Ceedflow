@@ -12,7 +12,7 @@
  * ones left waiting without a word.
  */
 import { type Block } from '@ceed/shared';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
@@ -42,6 +42,7 @@ export function TellThem({
   at,
   bodyOf,
   variablesOf,
+  locked,
   onSent,
 }: {
   block: Block;
@@ -50,6 +51,14 @@ export function TellThem({
   /** The template for one audience, from this block's own config. */
   bodyOf: (kind: string) => string;
   variablesOf: (kind: string) => readonly { name: string; label: string; what: string }[];
+  /**
+   * Pourquoi rien ne peut partir pour l'instant.
+   *
+   * Shown rather than hidden: a panel that only appears once it works answers
+   * no question, and the question here — what is the button above for — is one
+   * somebody asks exactly while nothing can be sent.
+   */
+  locked?: ReactNode;
   onSent?: () => void;
 }) {
   const view = useAsync(() => api.get<Payload>(`/api/blocks/${block.id}/${at}/audiences`), `${block.id}:${at}`);
@@ -78,6 +87,13 @@ export function TellThem({
         </span>
       </div>
 
+      {locked && (
+        <div className="callout">
+          <Icon name="alert" size={15} />
+          <div>{locked}</div>
+        </div>
+      )}
+
       <div className="rows">
         {audiences.map((a) => {
           const left = a.count - a.told;
@@ -99,7 +115,7 @@ export function TellThem({
               </span>
               {/* Nothing to press once everybody reachable has heard it. */}
               {a.reachable > 0 && (
-                <button className="btn sm" onClick={() => setTelling(a)}>
+                <button className="btn sm" disabled={Boolean(locked)} onClick={() => setTelling(a)}>
                   <Icon name="send" size={13} /> Tell {a.reachable}
                 </button>
               )}
