@@ -9,11 +9,13 @@
 import {
   blockStatus,
   fillTemplate,
+  itemComplete,
+  itemGiven,
   longDate,
   orderedBlocks,
   type Candidate,
   type DeliverableConfig,
-  type FormField,
+  type DeliverableItem,
 } from '@ceed/shared';
 import { newId } from '@ceed/shared';
 import * as repo from '../db/repo.js';
@@ -91,13 +93,10 @@ export interface DeliverableView {
   intro: string;
   /** The door, so the screen warns about launching into a shut list. */
   status: ReturnType<typeof blockStatus>;
-  items: FormField[];
+  items: DeliverableItem[];
   rows: DeliverableRow[];
   notices: NoticeSummary[];
 }
-
-const given = (value: unknown) =>
-  !(value === null || value === undefined || value === '' || (Array.isArray(value) && !value.length));
 
 export async function deliverableView(blockId: string): Promise<DeliverableView | null> {
   const context = await repo.blockContext(blockId);
@@ -172,9 +171,15 @@ export async function deliverableView(blockId: string): Promise<DeliverableView 
     items: config.items,
     rows: intake.map((candidate) => {
       const mine = byCandidate.get(candidate.id) ?? [];
-      const sent = (item: { id: string }) => mine.find((r) => r.itemId === item.id && given(r.value));
-      const done = required.filter((item) => sent(item)).length;
-      const accepted = required.filter((item) => sent(item)?.state === 'accepted').length;
+      /* Counted through the item's own rule rather than "is there something
+         in the cell": a group with two of its three fields filled, or a list
+         with one associé missing a CIN, has arrived without being whole. */
+      const sent = (item: DeliverableItem) => {
+        const row = mine.find((r) => r.itemId === item.id);
+        return row && itemGiven(item, row.value) ? row : undefined;
+      };
+      const done = required.filter((item) => itemComplete(item, sent(item)?.value)).length;
+      const accepted = required.filter((item) => sent(item) && sent(item)!.state === 'accepted').length;
       return {
         candidate,
         returns: mine,
@@ -451,7 +456,7 @@ function owedLines(view: DeliverableView, candidateId: string): string {
   for (const item of view.items) {
     const mine = row.returns.find((r) => r.itemId === item.id);
     if (mine?.state === 'rejected') lines.push(`  · ${item.label} — à renvoyer : ${mine.reason}`);
-    else if (item.required && !(mine && given(mine.value))) lines.push(`  · ${item.label}`);
+    else if (item.required && !itemComplete(item, mine?.value)) lines.push(`  · ${item.label}`);
   }
   return lines.join('\n');
 }

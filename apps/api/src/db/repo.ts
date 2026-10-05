@@ -11,6 +11,7 @@ import {
   type BlockOutcomeRow,
   type Candidate,
   type CommitteeAssignment,
+  uploadIdsIn,
   type CommitteeSession,
   type Edition,
   type EditionDetail,
@@ -1481,9 +1482,12 @@ export async function saveUpload(input: {
  * Submitting is what attaches it — anything never claimed is an abandoned draft.
  */
 export async function claimUploads(candidateId: string, answers: Record<string, unknown>): Promise<void> {
-  const ids = Object.values(answers)
-    .filter((v): v is { uploadId: string } => typeof v === 'object' && v !== null && 'uploadId' in v)
-    .map((v) => v.uploadId);
+  /* All the way down, because an answer is no longer always one level deep: a
+     CIN now sits inside the third associé of a repeatable group. A file that
+     this misses stays unattached to any candidacy — and who may open a file
+     follows from the candidacy it belongs to, so a missed one is an access
+     rule with nothing behind it. */
+  const ids = uploadIdsIn(Object.values(answers));
   if (!ids.length) return;
   await (await db()).query('update uploads set candidate_id = $1 where id = any($2::text[])', [candidateId, ids]);
 }

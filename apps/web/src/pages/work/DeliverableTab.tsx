@@ -1,4 +1,14 @@
-import { type Block, type BrickStatus, type Candidate, type FormField } from '@ceed/shared';
+import {
+  entryComplete,
+  itemEntries,
+  itemFields,
+  itemGiven,
+  itemUnfinished,
+  type Block,
+  type BrickStatus,
+  type Candidate,
+  type DeliverableItem,
+} from '@ceed/shared';
 import { useState } from 'react';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
@@ -51,7 +61,7 @@ interface View {
   name: string;
   intro: string;
   status: BrickStatus;
-  items: FormField[];
+  items: DeliverableItem[];
   rows: Row[];
   notices: Notice[];
 }
@@ -89,23 +99,56 @@ function Given({ value }: { value: unknown }) {
  * identical controls on every cell would make a read file look exactly like
  * an unread one, which is the distinction this whole screen is for.
  */
+/**
+ * What is in the cell, in one line.
+ *
+ * A group or a list cannot show its contents in a table cell, so it shows its
+ * count and opens. A count rather than the values joined: the column stays
+ * even from row to row, which is what a matrix is for — and the detail is one
+ * click away.
+ */
+function Summary({ item, value, onOpen }: { item: DeliverableItem; value: unknown; onOpen: () => void }) {
+  const entries = itemEntries(item, value);
+  if (!entries.length) return <span className="faint">—</span>;
+  const left = itemUnfinished(item, value);
+  const word = item.each || (item.kind === 'group' ? 'entry' : 'answer');
+  return (
+    <button className="linkish" onClick={onOpen} style={{ fontSize: 13 }}>
+      {item.repeatable ? `${entries.length} ${word}${entries.length === 1 ? '' : 's'}` : 'Open'}
+      {left > 0 && <span className="warnline"> · {left} incomplete</span>}
+    </button>
+  );
+}
+
 function Cell({
+  item,
   got,
+  onOpen,
   onAccept,
   onSendBack,
   onReopen,
 }: {
+  item: DeliverableItem;
   got: ReturnView | undefined;
+  onOpen: () => void;
   onAccept: () => void;
   onSendBack: () => void;
   onReopen: () => void;
 }) {
-  if (!got || !given(got.value)) return <span className="faint">—</span>;
+  if (!got || !itemGiven(item, got.value)) return <span className="faint">—</span>;
+  /* A plain single answer reads in the cell; anything with several parts says
+     how many and opens. */
+  const What =
+    item.kind === 'group' || item.repeatable ? (
+      <Summary item={item} value={got.value} onOpen={onOpen} />
+    ) : (
+      <Given value={got.value} />
+    );
 
   if (got.state === 'accepted') {
     return (
       <span className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
-        <Given value={got.value} />
+        {What}
         <button
           className="btn ghost icon sm"
           title="Accepted — put it back to unread"
@@ -122,9 +165,7 @@ function Cell({
   if (got.state === 'rejected') {
     return (
       <span className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
-        <span className="faint" style={{ textDecoration: 'line-through' }}>
-          <Given value={got.value} />
-        </span>
+        <span className="faint" style={{ textDecoration: 'line-through' }}>{What}</span>
         <span className="badge warn" title={got.reason}>
           Sent back
         </span>
@@ -134,7 +175,7 @@ function Cell({
 
   return (
     <span className="row" style={{ gap: 4, justifyContent: 'flex-end' }}>
-      <Given value={got.value} />
+      {What}
       <button className="btn ghost icon sm" title="In order" aria-label="Accept" onClick={onAccept}>
         <Icon name="check" size={13} />
       </button>
@@ -152,6 +193,55 @@ function Cell({
 }
 
 /**
+ * Every entry of one item, read as a table.
+ *
+ * The founder fills a list of cards; CEED reads a table. Same answers, and
+ * this is the shape the work has — the CINs are checked one after another, so
+ * they belong in a column.
+ */
+function EntryTable({ item, value }: { item: DeliverableItem; value: unknown }) {
+  const entries = itemEntries(item, value);
+  const fields = itemFields(item);
+  if (!entries.length) return <div className="empty">Nothing was sent.</div>;
+
+  return (
+    <div className="table-wrap">
+      <table className="data">
+        <thead>
+          <tr>
+            {item.repeatable && <th style={{ width: 40 }}>#</th>}
+            {fields.map((field) => (
+              <th key={field.id}>
+                {field.label || 'Untitled'}
+                {field.required && <span style={{ color: 'var(--stop)' }}> *</span>}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map((entry, index) => {
+            const whole = entryComplete(item, entry);
+            const values = (item.kind === 'group' ? (entry ?? {}) : { [item.id]: entry }) as Record<string, unknown>;
+            return (
+              /* An entry missing a required field is marked on its own row:
+                 "three associés" with one of them short is not three. */
+              <tr key={index} className={whole ? undefined : 'warnline'}>
+                {item.repeatable && <td className="num faint">{index + 1}</td>}
+                {fields.map((field) => (
+                  <td key={field.id}>
+                    <Given value={values[field.id]} />
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
  * Who has sent what.
  *
  * The same matrix, read along either axis: by startup to ask whether a file is
@@ -162,13 +252,16 @@ function Cell({
 export function DeliverableTab({ block }: { block: Block }) {
   const view = useAsync(() => api.get<View>(`/api/blocks/${block.id}/deliverables`), block.id);
   const [by, setBy] = useState<'startup' | 'item'>('startup');
-  const [sendingBack, setSendingBack] = useState<{ row: Row; item: FormField } | null>(null);
+  const [sendingBack, setSendingBack] = useState<{ row: Row; item: DeliverableItem } | null>(null);
   const [reason, setReason] = useState('');
   const [notifying, setNotifying] = useState<'request' | 'reminder' | null>(null);
   /* Writing to one startup, from its own row. Always offered: the list's
      filters build a list nobody has looked at, and somebody pressing this has
      looked — at a letter that came back, or at an address fixed since. */
   const [writingTo, setWritingTo] = useState<Row | null>(null);
+  /* Reading one group or one list in full. It cannot fit in a cell, and this
+     is where the CINs are actually checked one after another. */
+  const [looking, setLooking] = useState<{ row: Row; item: DeliverableItem } | null>(null);
   const toast = useToast();
 
   const review = async (candidateId: string, itemId: string, state: State, why = '') => {
@@ -233,27 +326,59 @@ export function DeliverableTab({ block }: { block: Block }) {
     }
   };
 
+  /** One value as a spreadsheet writes it: a file by its name, a list joined. */
+  const asCell = (value: unknown): Cell => {
+    if (!given(value)) return '';
+    if (typeof value === 'object' && value !== null && 'filename' in value) {
+      return String((value as { filename: string }).filename);
+    }
+    return Array.isArray(value) ? value.join(', ') : (value as string | number);
+  };
+
   const exportMatrix = () => {
+    const several = items.filter((item) => item.kind === 'group' || item.repeatable);
+
     const head: Cell[] = ['Startup', 'Contact', 'Dossier'];
     for (const item of items) head.push(item.required ? `${item.label} *` : item.label);
+
     const sheet: Cell[][] = [head];
     for (const row of rows) {
-      const line: Cell[] = [
-        row.candidate.orgName,
-        row.candidate.contactName || '',
-        `${row.done}/${row.required}`,
-      ];
+      const line: Cell[] = [row.candidate.orgName, row.candidate.contactName || '', `${row.done}/${row.required}`];
       for (const item of items) {
-        const got = valueOf(row, item.id)?.value;
-        if (!given(got)) line.push('');
-        else if (typeof got === 'object' && got !== null && 'filename' in got) {
-          line.push(String((got as { filename: string }).filename));
-        } else line.push(Array.isArray(got) ? got.join(', ') : (got as string | number));
+        const value = valueOf(row, item.id)?.value;
+        if (item.kind !== 'group' && !item.repeatable) {
+          line.push(asCell(value));
+          continue;
+        }
+        // A column cannot hold five associés: the main sheet says how many,
+        // and the detail gets a sheet of its own.
+        const entries = itemEntries(item, value);
+        line.push(entries.length ? (item.repeatable ? entries.length : 'see sheet') : '');
       }
       sheet.push(line);
     }
+
+    /* One sheet per list or group — the shape the data actually has, and what
+       somebody does with it: the associés go to the lawyer as a list. */
+    const sheets = [{ name: block.name.slice(0, 31) || 'Deliverables', rows: sheet }];
+    for (const item of several) {
+      const fields = itemFields(item);
+      const lines: Cell[][] = [['Startup', ...(item.repeatable ? ['#'] : []), ...fields.map((f) => f.label)]];
+      for (const row of rows) {
+        itemEntries(item, valueOf(row, item.id)?.value).forEach((entry, index) => {
+          const values = (item.kind === 'group' ? (entry ?? {}) : { [item.id]: entry }) as Record<string, unknown>;
+          lines.push([
+            row.candidate.orgName,
+            ...(item.repeatable ? [index + 1] : []),
+            ...fields.map((f) => asCell(values[f.id])),
+          ]);
+        });
+      }
+      sheets.push({ name: (item.label || 'List').slice(0, 31), rows: lines });
+    }
+
     download(
-      toWorkbook([{ name: block.name.slice(0, 31) || 'Deliverables', rows: sheet }]),
+      toWorkbook(sheets),
       `${block.name} — ${new Date().toISOString().slice(0, 10)}.xlsx`.replace(/[/\\:*?"<>|]/g, '-'),
     );
   };
@@ -470,7 +595,9 @@ export function DeliverableTab({ block }: { block: Block }) {
                         title={got?.returnedAt ? `Sent ${formatDate(got.returnedAt.slice(0, 10))}` : undefined}
                       >
                         <Cell
+                          item={item}
                           got={got}
+                          onOpen={() => setLooking({ row, item })}
                           onAccept={() => void review(row.candidate.id, item.id, 'accepted')}
                           onSendBack={() => { setReason(''); setSendingBack({ row, item }); }}
                           onReopen={() => void review(row.candidate.id, item.id, 'received')}
@@ -523,7 +650,9 @@ export function DeliverableTab({ block }: { block: Block }) {
                         </span>
                         <span style={{ fontSize: 13, textAlign: 'right', minWidth: 160 }}>
                           <Cell
+                            item={item}
                             got={got}
+                            onOpen={() => setLooking({ row, item })}
                             onAccept={() => void review(row.candidate.id, item.id, 'accepted')}
                             onSendBack={() => { setReason(''); setSendingBack({ row, item }); }}
                             onReopen={() => void review(row.candidate.id, item.id, 'received')}
@@ -542,6 +671,33 @@ export function DeliverableTab({ block }: { block: Block }) {
             );
           })}
         </div>
+      )}
+
+      {looking && (
+        <Modal
+          wide
+          title={`${looking.item.label} — ${looking.row.candidate.orgName}`}
+          subtitle={
+            looking.item.repeatable
+              ? `${itemEntries(looking.item, valueOf(looking.row, looking.item.id)?.value).length} in all${
+                  itemUnfinished(looking.item, valueOf(looking.row, looking.item.id)?.value)
+                    ? `, of which ${itemUnfinished(looking.item, valueOf(looking.row, looking.item.id)?.value)} incomplete`
+                    : ''
+                }`
+              : undefined
+          }
+          onClose={() => setLooking(null)}
+          footer={
+            <>
+              <div className="spacer" />
+              <button className="btn primary" onClick={() => setLooking(null)}>
+                Close
+              </button>
+            </>
+          }
+        >
+          <EntryTable item={looking.item} value={valueOf(looking.row, looking.item.id)?.value} />
+        </Modal>
       )}
 
       {notifying && (

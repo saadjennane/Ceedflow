@@ -7,6 +7,7 @@ import {
   idOf,
   longDate,
   type DeliverableConfig,
+  type DeliverableItem,
   type FormField,
 } from '@ceed/shared';
 import { useRef, useState } from 'react';
@@ -44,22 +45,36 @@ export function DeliverableSetup({
   patch: (partial: Partial<DeliverableConfig>) => void;
   tab?: DeliverableTab;
 }) {
-  const setItem = (id: string, partial: Partial<FormField>) =>
+  const setItem = (id: string, partial: Partial<DeliverableItem>) =>
     patch({ items: config.items.map((item) => (item.id === id ? { ...item, ...partial } : item)) });
 
-  const add = () =>
+  const blank = (): FormField => ({
+    id: idOf.field(),
+    type: 'file',
+    label: '',
+    help: '',
+    required: true,
+    options: [],
+    showInTable: false,
+    pageId: '',
+  });
+
+  /* Two buttons rather than a type in the dropdown, because these are not the
+     same kind of choice: the dropdown says what ONE answer looks like, and a
+     group says what counts as one thing. Hiding that distinction in a list
+     beside "File" and "Short text" is how it gets missed. */
+  const add = (kind: 'field' | 'group') =>
     patch({
       items: [
         ...config.items,
         {
-          id: idOf.field(),
-          type: 'file',
-          label: '',
-          help: '',
-          required: true,
-          options: [],
-          showInTable: false,
-          pageId: '',
+          ...blank(),
+          ...(kind === 'group'
+            ? { kind: 'group' as const, label: '', required: true, fields: [blank()] }
+            : { kind: 'field' as const }),
+          fields: kind === 'group' ? [blank()] : [],
+          repeatable: false,
+          each: '',
         },
       ],
     });
@@ -116,65 +131,13 @@ export function DeliverableSetup({
         {config.items.length > 0 && (
           <div className="rows" style={{ marginTop: 6 }}>
             {config.items.map((item) => (
-              <div className="rowcard card-pad stack" key={item.id} style={{ gap: 8 }}>
-                <div className="row" style={{ gap: 8 }}>
-                  <input
-                    className="input"
-                    style={{ flex: 1 }}
-                    value={item.label}
-                    placeholder="Registre de commerce"
-                    aria-label="What is being asked for"
-                    onChange={(e) => setItem(item.id, { label: e.target.value })}
-                  />
-                  <select
-                    className="status-select"
-                    value={item.type}
-                    aria-label="Kind of answer"
-                    onChange={(e) => setItem(item.id, { type: e.target.value as FormField['type'] })}
-                  >
-                    {FIELD_TYPES.map((type) => (
-                      <option key={type} value={type}>
-                        {FIELD_TYPE_LABEL[type]}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="btn ghost icon sm"
-                    aria-label="Remove"
-                    onClick={() => patch({ items: config.items.filter((x) => x.id !== item.id) })}
-                  >
-                    <Icon name="trash" size={13} />
-                  </button>
-                </div>
-
-                <div className="row" style={{ gap: 10 }}>
-                  <input
-                    className="input"
-                    style={{ flex: 1 }}
-                    value={item.help}
-                    placeholder="A note for whoever has to find it"
-                    aria-label="Note"
-                    onChange={(e) => setItem(item.id, { help: e.target.value })}
-                  />
-                  <label className="row" style={{ gap: 6, fontSize: 12.5 }}>
-                    <input
-                      type="checkbox"
-                      checked={item.required}
-                      onChange={(e) => setItem(item.id, { required: e.target.checked })}
-                    />
-                    Required
-                  </label>
-                </div>
-
-                {(item.type === 'select' || item.type === 'multiselect') && (
-                  <TextField
-                    label="Choices"
-                    value={item.options.join(', ')}
-                    onChange={(v) => setItem(item.id, { options: v.split(',').map((x) => x.trim()).filter(Boolean) })}
-                    placeholder="Oui, Non, En cours"
-                  />
-                )}
-              </div>
+              <ItemEditor
+                key={item.id}
+                item={item}
+                onChange={(partial) => setItem(item.id, partial)}
+                onRemove={() => patch({ items: config.items.filter((x) => x.id !== item.id) })}
+                blank={blank}
+              />
             ))}
           </div>
         )}
@@ -182,15 +145,198 @@ export function DeliverableSetup({
         {/* Under the list, not above it. Adding the eighth document and being
             sent back to the top to find what you just made is the thing that
             makes a list of a dozen tedious to build. */}
-        <div className="row" style={{ marginTop: 8 }}>
-          <button className="btn sm" onClick={add}>
-            <Icon name="plus" size={13} /> Add something to ask for
+        <div className="row wrap" style={{ marginTop: 8, gap: 7 }}>
+          <button className="btn sm" onClick={() => add('field')}>
+            <Icon name="plus" size={13} /> Add a field
+          </button>
+          <button className="btn sm" onClick={() => add('group')} title="Several fields that count as one thing">
+            <Icon name="plus" size={13} /> Add a group
           </button>
           <div className="spacer" />
           <FounderPreview config={config} />
         </div>
       </div>
     </>
+  );
+}
+
+/** One field's own row: what it is called, what kind of answer, is it needed. */
+function FieldRow({
+  field,
+  onChange,
+  onRemove,
+  requiredShown = true,
+}: {
+  field: FormField;
+  onChange: (partial: Partial<FormField>) => void;
+  onRemove?: () => void;
+  /** Hidden where it could not mean anything different from the item's own. */
+  requiredShown?: boolean;
+}) {
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <div className="row" style={{ gap: 8 }}>
+        <input
+          className="input"
+          style={{ flex: 1 }}
+          value={field.label}
+          placeholder="Registre de commerce"
+          aria-label="What is being asked for"
+          onChange={(e) => onChange({ label: e.target.value })}
+        />
+        <select
+          className="status-select"
+          value={field.type}
+          aria-label="Kind of answer"
+          onChange={(e) => onChange({ type: e.target.value as FormField['type'] })}
+        >
+          {FIELD_TYPES.map((type) => (
+            <option key={type} value={type}>
+              {FIELD_TYPE_LABEL[type]}
+            </option>
+          ))}
+        </select>
+        {requiredShown && (
+          <label className="row" style={{ gap: 6, fontSize: 12.5, flexShrink: 0 }}>
+            <input type="checkbox" checked={field.required} onChange={(e) => onChange({ required: e.target.checked })} />
+            Required
+          </label>
+        )}
+        {onRemove && (
+          <button className="btn ghost icon sm" aria-label="Remove" onClick={onRemove}>
+            <Icon name="trash" size={13} />
+          </button>
+        )}
+      </div>
+
+      {(field.type === 'select' || field.type === 'multiselect') && (
+        <TextField
+          label="Choices"
+          value={field.options.join(', ')}
+          onChange={(v) => onChange({ options: v.split(',').map((x) => x.trim()).filter(Boolean) })}
+          placeholder="Oui, Non, En cours"
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * One thing asked for, as it is set up.
+ *
+ * The two checkboxes describe the item rather than the screen, and they are
+ * independent on purpose. **Required** says the file is not complete without
+ * it. **Repeatable** says there may be several — and only then does the
+ * singular word appear, which is what makes the founder read "Add an associé"
+ * instead of "Add an entry". Having that field surface at the moment the box
+ * is ticked teaches the box better than any help text under it.
+ */
+function ItemEditor({
+  item,
+  onChange,
+  onRemove,
+  blank,
+}: {
+  item: DeliverableItem;
+  onChange: (partial: Partial<DeliverableItem>) => void;
+  onRemove: () => void;
+  blank: () => FormField;
+}) {
+  const group = item.kind === 'group';
+  const setField = (id: string, partial: Partial<FormField>) =>
+    onChange({ fields: item.fields.map((f) => (f.id === id ? { ...f, ...partial } : f)) });
+
+  return (
+    <div className="rowcard card-pad stack" style={{ gap: 10 }}>
+      {group ? (
+        <div className="row" style={{ gap: 8 }}>
+          <input
+            className="input"
+            style={{ flex: 1 }}
+            value={item.label}
+            placeholder="Associés"
+            aria-label="What this group is called"
+            onChange={(e) => onChange({ label: e.target.value })}
+          />
+          <button className="btn ghost icon sm" aria-label="Remove" onClick={onRemove}>
+            <Icon name="trash" size={13} />
+          </button>
+        </div>
+      ) : (
+        <FieldRow field={item} onChange={onChange} onRemove={onRemove} />
+      )}
+
+      <div className="row" style={{ gap: 10 }}>
+        <input
+          className="input"
+          style={{ flex: 1 }}
+          value={item.help}
+          placeholder="A note for whoever has to find it"
+          aria-label="Note"
+          onChange={(e) => onChange({ help: e.target.value })}
+        />
+        {group && (
+          <label className="row" style={{ gap: 6, fontSize: 12.5, flexShrink: 0 }}>
+            <input type="checkbox" checked={item.required} onChange={(e) => onChange({ required: e.target.checked })} />
+            Required
+          </label>
+        )}
+        <label className="row" style={{ gap: 6, fontSize: 12.5, flexShrink: 0 }}>
+          <input
+            type="checkbox"
+            checked={item.repeatable}
+            onChange={(e) => onChange({ repeatable: e.target.checked })}
+          />
+          Repeatable
+        </label>
+      </div>
+
+      {item.repeatable && (
+        <TextField
+          label="Each one is a"
+          value={item.each}
+          onChange={(v) => onChange({ each: v })}
+          placeholder="associé"
+          hint="singular"
+        />
+      )}
+
+      {group && (
+        <div className="field">
+          <label>{item.repeatable && item.each ? `Asked for each ${item.each.toLowerCase()}` : 'The fields it holds'}</label>
+          <div className="rows" style={{ marginTop: 6 }}>
+            {item.fields.map((field) => (
+              <div className="rowcard card-pad" key={field.id}>
+                <FieldRow
+                  field={field}
+                  onChange={(partial) => setField(field.id, partial)}
+                  onRemove={
+                    item.fields.length > 1
+                      ? () => onChange({ fields: item.fields.filter((f) => f.id !== field.id) })
+                      : undefined
+                  }
+                  /* With one field, its own Required could not mean anything
+                     different from the group's: an entry exists because
+                     something was typed in it, or it does not exist. */
+                  requiredShown={item.fields.length > 1}
+                />
+              </div>
+            ))}
+          </div>
+          {/* "to each associé" rather than "to this group": it changes the
+              shape, it does not add one more associé. That sentence is where
+              the whole idea is either understood or not. */}
+          <button
+            className="btn sm"
+            style={{ alignSelf: 'flex-start', marginTop: 8 }}
+            onClick={() => onChange({ fields: [...item.fields, blank()] })}
+          >
+            <Icon name="plus" size={13} />{' '}
+            {item.repeatable && item.each ? `Add a field to each ${item.each.toLowerCase()}` : 'Add a field to it'}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

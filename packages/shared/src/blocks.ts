@@ -844,6 +844,114 @@ export const selectionConfigSchema = z.object({
  * item by item with a population that is known, and the tracking is the
  * subject.
  */
+/* ------------------------------------------------------------------ */
+/* What a due diligence asks for                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * One thing asked of a startup — which may be several fields, and may occur
+ * several times.
+ *
+ * Two properties, deliberately independent, because they answer different
+ * questions:
+ *
+ *   `kind: 'group'`  — what counts as ONE. A RIB, the bank's name and an IBAN
+ *     are one deliverable in three fields. Left as three items, a file missing
+ *     only the IBAN reads 2/5, and the number stops measuring what it claims
+ *     to measure. Grouped, it reads "bank details · incomplete", which is the
+ *     true sentence. The rule for whoever sets it up: group what you would
+ *     accept or send back together.
+ *
+ *   `repeatable`     — how many times it may occur. Five associés, three
+ *     target markets. The shape is defined once and instantiated by the
+ *     founder, so adding a field later reaches every entry already filled.
+ *
+ * The four combinations are all ordinary, and nothing here treats one as the
+ * special case of another.
+ */
+export const deliverableItemSchema = formFieldSchema.extend({
+  kind: z.enum(['field', 'group']).default('field'),
+  /** A group's own fields. Empty on a plain field. */
+  fields: z.array(formFieldSchema).default([]),
+  repeatable: z.boolean().default(false),
+  /**
+   * The singular word, asked for only once `repeatable` is on: "Associé", so
+   * the founder reads "Add an associé" rather than "Add an entry".
+   */
+  each: z.string().default(''),
+});
+
+export type DeliverableItem = z.infer<typeof deliverableItemSchema>;
+
+/** The fields one entry of this item is made of. A plain field is its own. */
+export function itemFields(item: DeliverableItem): FormField[] {
+  return item.kind === 'group' ? item.fields : [item];
+}
+
+const filled = (value: unknown): boolean =>
+  !(value === null || value === undefined || value === '' || (Array.isArray(value) && !value.length));
+
+/**
+ * Whether one entry is whole.
+ *
+ * A group entry answers for its own required fields; a plain repeated value
+ * answers for itself. An entry nobody has touched is not incomplete — it does
+ * not exist, which is what keeps a stray "add" from blocking a file.
+ */
+export function entryFilled(item: DeliverableItem, entry: unknown): boolean {
+  if (item.kind !== 'group') return filled(entry);
+  const values = (entry ?? {}) as Record<string, unknown>;
+  return item.fields.some((f) => filled(values[f.id]));
+}
+
+export function entryComplete(item: DeliverableItem, entry: unknown): boolean {
+  if (item.kind !== 'group') return filled(entry);
+  const values = (entry ?? {}) as Record<string, unknown>;
+  const need = item.fields.filter((f) => f.required);
+  // A group with nothing marked required is complete once anything is in it.
+  return need.length ? need.every((f) => filled(values[f.id])) : item.fields.some((f) => filled(values[f.id]));
+}
+
+/** The entries actually present — empty ones are ignored, never counted. */
+export function itemEntries(item: DeliverableItem, value: unknown): unknown[] {
+  if (!item.repeatable) return entryFilled(item, value) ? [value] : [];
+  return (Array.isArray(value) ? value : []).filter((entry) => entryFilled(item, entry));
+}
+
+/** Whether anything at all has been sent for this item. */
+export function itemGiven(item: DeliverableItem, value: unknown): boolean {
+  return itemEntries(item, value).length > 0;
+}
+
+/**
+ * Whether this item is in order as far as the startup is concerned.
+ *
+ * Something present and whole, and — for a repeatable one — nothing left half
+ * done beside it. Three associés of whom one has no CIN leaves the file
+ * incomplete, which is right, and the screen says so in words rather than by a
+ * count that would read as a tally of associés.
+ */
+export function itemComplete(item: DeliverableItem, value: unknown): boolean {
+  const entries = itemEntries(item, value);
+  return entries.length > 0 && entries.every((entry) => entryComplete(item, entry));
+}
+
+/** Entries that were begun and left unfinished — for saying so by name. */
+export function itemUnfinished(item: DeliverableItem, value: unknown): number {
+  return itemEntries(item, value).filter((entry) => !entryComplete(item, entry)).length;
+}
+
+/** Every upload id anywhere in an answer, however deeply it sits. */
+export function uploadIdsIn(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(uploadIdsIn);
+  if (value && typeof value === 'object') {
+    const asFile = value as { uploadId?: unknown };
+    if (typeof asFile.uploadId === 'string') return [asFile.uploadId];
+    return Object.values(value as Record<string, unknown>).flatMap(uploadIdsIn);
+  }
+  return [];
+}
+
 /**
  * The names a message may carry, and what each one stands for.
  *
@@ -903,7 +1011,7 @@ export const deliverableConfigSchema = z.object({
   ...brickWindowFields,
   /** What the startups are told when they open their list. */
   intro: z.string().default(''),
-  items: z.array(formFieldSchema).default([]),
+  items: z.array(deliverableItemSchema).default([]),
   /**
    * The two words this block hands downstream, so a Selection can read it the
    * way it reads a jury's. Renameable, because "complete" is a programme's own

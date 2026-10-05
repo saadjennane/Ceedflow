@@ -1,8 +1,8 @@
-import { type DeliverableConfig } from '@ceed/shared';
+import { itemUnfinished, type DeliverableConfig } from '@ceed/shared';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
-import { FormFieldInput } from '../../ui/FormField';
+import { DeliverableItemInput } from '../../ui/DeliverableItemInput';
 import { Icon } from '../../ui/Icon';
 import { useToast } from '../../ui/Overlays';
 
@@ -78,6 +78,11 @@ export function OwedList({
   // Accepted, not merely sent: what they want to know is whether they are
   // done, and a document waiting to be read is not done.
   const done = need.filter((i) => mineOf(i.id)?.state === 'accepted').length;
+  /* Said in words rather than left to the count: three associés of whom one
+     has no CIN is not "two associés", and a tally there would read as one. */
+  const unfinished = ask.config.items
+    .map((item) => ({ item, left: itemUnfinished(item, mineOf(item.id)?.value) }))
+    .filter((x) => x.left > 0);
   const back = ask.returns.filter((r) => r.state === 'rejected');
 
   return (
@@ -113,6 +118,21 @@ export function OwedList({
       {/* Said once at the top as well as on each item: somebody coming back to
           this page wants to know whether anything is waiting on them before
           reading the whole list. */}
+      {/* Said in words, because a count there would read as a tally of
+          associés rather than as one associé missing a field. */}
+      {unfinished.length > 0 && (
+        <div className="callout">
+          <Icon name="alert" size={15} />
+          <div>
+            <strong>Something is half filled in.</strong>{' '}
+            {unfinished
+              .map((x) => `${x.item.label} — ${x.left} ${x.left === 1 ? 'entry is' : 'entries are'} missing a field`)
+              .join(' · ')}
+            .
+          </div>
+        </div>
+      )}
+
       {back.length > 0 && (
         <div className="callout warn">
           <Icon name="alert" size={15} />
@@ -130,8 +150,8 @@ export function OwedList({
           const mine = mineOf(item.id);
           return (
             <div key={item.id}>
-              <FormFieldInput
-                field={item}
+              <DeliverableItemInput
+                item={item}
                 value={mine?.value ?? null}
                 readOnly={!ask.open}
                 onChange={(v) => onSave(item.id, v)}
