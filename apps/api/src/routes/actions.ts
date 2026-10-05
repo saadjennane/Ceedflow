@@ -14,6 +14,7 @@ import { committeeAudiences, committeeRoster, committeeValues } from '../service
 import { appLink } from '../services/deliverables.js';
 import { launchNotice, sendDueNotices } from '../services/notices.js';
 import { outreachView } from '../services/sourcing.js';
+import { sourcingAudiences, sourcingRoster, sourcingValues } from '../services/sourcingNotices.js';
 import { HttpError, notFound, parse } from './util.js';
 import { workspaceGuard } from './guard.js';
 
@@ -279,6 +280,76 @@ export async function actionRoutes(app: FastifyInstance) {
    * sent, to whom, and through which channel. The channel is the point: a
    * candidacy born of this mail comes back carrying it.
    */
+  /** Who the call would reach, read the same way as every other brick's. */
+  app.get('/api/blocks/:id/sourcing/audiences', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const block = await repo.getBlock(id);
+    if (!block || block.type !== 'sourcing') return notFound(reply, 'Sourcing block not found.');
+    return sourcingAudiences(id);
+  });
+
+  app.get('/api/blocks/:id/sourcing/roster', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const query = req.query as { kind?: string; candidateId?: string };
+    const block = await repo.getBlock(id);
+    if (!block || block.type !== 'sourcing') return notFound(reply, 'Sourcing block not found.');
+    const entries = await sourcingRoster(id, query.kind ?? '', query.candidateId);
+    const withValues = await Promise.all(
+      entries.map(async (e) => ({
+        candidate: { id: e.subjectId, orgName: e.orgName, email: e.email, contactName: e.toName },
+        blocked: e.blocked || 'none',
+        askedAt: null,
+        owes: false,
+        owed: '',
+        values: (await sourcingValues(id, e.subjectId)) ?? {},
+      })),
+    );
+    return { entries: withValues, link: await appLink(), closesAt: null, dateLabel: '' };
+  });
+
+  /**
+   * Writing the call out.
+   *
+   * The notice carries the delivery — who, and what became of each letter. The
+   * send row beside it carries the channel, which is what the counters read to
+   * say what this call brought in. Two records of one act, each answering a
+   * question the other cannot.
+   */
+  app.post('/api/blocks/:id/sourcing/notify', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const input = parse(
+      z.object({
+        kind: z.string().min(1),
+        scheduledFor: z.string().nullable().optional(),
+        body: z.string().min(1, 'Write what they are going to read.'),
+        candidateId: z.string().optional(),
+      }),
+      req.body,
+    );
+    const view = await outreachView(id);
+    if (!view) return notFound(reply, 'Sourcing block not found.');
+    if (!view.config.outreach.subject.trim()) {
+      throw new HttpError(422, 'Give the message a subject first.', { subject: 'A subject is required.' });
+    }
+
+    await launchNotice(id, {
+      kind: input.kind,
+      scheduledFor: input.scheduledFor ?? null,
+      body: input.body,
+      only: input.candidateId,
+      by: req.staff ? { id: req.staff.id, name: req.staff.email } : undefined,
+    });
+    if (!input.scheduledFor) await sendDueNotices();
+    await repo.recordSend(
+      id,
+      view.config.outreach.subject,
+      input.body,
+      view.audience.map((p) => p.email),
+      view.config.outreach.channelId,
+    );
+    return sourcingAudiences(id);
+  });
+
   app.post('/api/blocks/:id/outreach/send', async (req, reply) => {
     const { id } = req.params as { id: string };
     const view = await outreachView(id);

@@ -1,4 +1,5 @@
 import {
+  SOURCING_VARIABLES,
   ORG_ROLES,
   PERSON_ROLES,
   applyLink,
@@ -11,12 +12,13 @@ import {
   type TrackWithPhases,
 } from '@ceed/shared';
 import { useState } from 'react';
-import { ApiError, api } from '../../../lib/api';
+import { api } from '../../../lib/api';
 import { formatDate } from '../../../lib/format';
 import { useAsync } from '../../../lib/useAsync';
 import { SelectField, TextArea, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
-import { ConfirmDialog, useToast } from '../../../ui/Overlays';
+import { useToast } from '../../../ui/Overlays';
+import { TellThem } from '../../work/TellThem';
 
 /* ------------------------------------------------------------------ */
 /* Tabs                                                                */
@@ -67,8 +69,8 @@ function ChannelsTab({
   patch: (partial: Partial<SourcingConfig>) => void;
   track: TrackWithPhases;
 }) {
-  const [adding, setAdding] = useState('');
   const toast = useToast();
+  const [adding, setAdding] = useState('');
   const form = formOf(track, block.id);
   const token = form ? ((form.config as ApplicationConfig).publicToken ?? '') : '';
   const origin = typeof window === 'undefined' ? '' : window.location.origin;
@@ -404,27 +406,12 @@ interface OutreachView {
 
 export function SourcingOutreach({ block, dirty }: { block: Block; dirty: boolean }) {
   const view = useAsync(() => api.get<OutreachView>(`/api/blocks/${block.id}/outreach`), block.id);
-  const [confirm, setConfirm] = useState(false);
-  const [sending, setSending] = useState(false);
-  const toast = useToast();
 
   if (view.error) return <div className="empty">{view.error}</div>;
   if (!view.data) return <div className="empty">Loading…</div>;
 
   const { config, audience, unreachable, channels, sends, form } = view.data;
   const channel = config.channels.find((c) => c.id === config.outreach.channelId) ?? null;
-
-  const send = async () => {
-    setSending(true);
-    try {
-      view.set(await api.post<OutreachView>(`/api/blocks/${block.id}/outreach/send`));
-      toast(`Recorded for ${audience.length} recipient${audience.length === 1 ? '' : 's'}.`);
-    } catch (err) {
-      toast(err instanceof ApiError ? err.message : (err as Error).message, true);
-    } finally {
-      setSending(false);
-    }
-  };
 
   const totals = channels.reduce(
     (acc, c) => ({ applied: acc.applied + c.applied, retained: acc.retained + c.retained }),
@@ -485,33 +472,41 @@ export function SourcingOutreach({ block, dirty }: { block: Block; dirty: boolea
 
       {/* ---- the invitation ---- */}
       <h3 className="section-title">The invitation</h3>
-      <div className="callout">
-        <Icon name="alert" size={15} />
-        <div>
-          No mail routing is wired in yet, so sending <strong>records</strong> the message and its recipients rather
-          than delivering it. Everything else — the audience, the link, the counting — works now.
+
+      {!config.outreach.channelId && config.channels.length > 0 && (
+        <div className="callout warn">
+          <Icon name="alert" size={15} />
+          <div>
+            <strong>This call counts as no channel.</strong> The letter still goes, but a candidacy arriving three
+            weeks later cannot be traced back to it — which is the one question this block exists to answer.
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="card card-pad stack" style={{ gap: 10 }}>
         <div className="eyebrow">Ready to send{channel ? ` · as ${channel.label}` : ''}</div>
         <div style={{ fontWeight: 600 }}>{config.outreach.subject || <span className="faint">No subject yet</span>}</div>
-        <p className="muted" style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 13 }}>
-          {config.outreach.body || 'No message yet.'}
-        </p>
         <div className="row wrap">
           <span className="badge info num">{audience.length} recipients</span>
           {unreachable > 0 && <span className="badge warn num">{unreachable} without an email</span>}
-          <div className="spacer" />
-          <button
-            className="btn primary"
-            disabled={sending || dirty || !audience.length || !config.outreach.subject.trim()}
-            onClick={() => setConfirm(true)}
-          >
-            <Icon name="send" size={14} /> Send to {audience.length}
-          </button>
         </div>
+        {/* Unsaved edits first: the window writes from the saved block, so
+            sending now would send the message as it was, not as it reads. */}
+        {dirty && (
+          <p className="warnline" style={{ margin: 0, fontSize: 12.5 }}>
+            Save your changes first — the letter is written from the saved block.
+          </p>
+        )}
       </div>
+
+      {!dirty && (
+        <TellThem
+          block={block}
+          at="sourcing"
+          bodyOf={() => config.outreach.body}
+          variablesOf={() => SOURCING_VARIABLES}
+        />
+      )}
 
       <h3 className="section-title">Sent</h3>
       {!sends.length ? (
@@ -539,20 +534,6 @@ export function SourcingOutreach({ block, dirty }: { block: Block; dirty: boolea
         </div>
       )}
 
-      {confirm && (
-        <ConfirmDialog
-          title={`Send to ${audience.length} recipients?`}
-          body={`The message and its recipients are recorded against this block${
-            channel ? ` and counted as ${channel.label}` : ''
-          }. Nothing is delivered until a mail provider is connected.`}
-          confirmLabel="Record the send"
-          onClose={() => setConfirm(false)}
-          onConfirm={async () => {
-            setConfirm(false);
-            await send();
-          }}
-        />
-      )}
     </>
   );
 }

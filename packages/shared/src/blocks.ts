@@ -398,6 +398,14 @@ export const sourcingAudienceSchema = z.object({
 
 export type SourcingAudience = z.infer<typeof sourcingAudienceSchema>;
 
+/** What an invitation to apply may carry. */
+export const SOURCING_VARIABLES = [
+  { name: 'nom', label: 'Their name', what: 'The person or organisation written to' },
+  { name: 'lien', label: 'Apply link', what: 'The channel’s own link — what makes a candidacy traceable to this call' },
+  { name: 'canal', label: 'Channel', what: 'What this call is counted as' },
+  { name: 'cloture', label: 'Closing date', what: 'The day the form shuts, written out' },
+] as const;
+
 export const sourcingConfigSchema = z.object({
   channels: z.array(sourcingChannelSchema).default([]),
   audience: sourcingAudienceSchema.default({ roles: [], tags: [], recordIds: [] }),

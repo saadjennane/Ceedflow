@@ -18,6 +18,7 @@ import { post } from './mail.js';
 import { deliverableNotices } from './deliverables.js';
 import { selectionNotices } from './selectionNotices.js';
 import { committeeNotices } from './committeeNotices.js';
+import { sourcingNotices } from './sourcingNotices.js';
 
 /** One person a notice could name, and what stands in the way. */
 export interface NoticeTargetRow {
@@ -81,6 +82,7 @@ const SOURCES: Record<string, NoticeSource> = {
   deliverable: deliverableNotices,
   selection: selectionNotices,
   committee: committeeNotices,
+  sourcing: sourcingNotices,
 };
 
 /**

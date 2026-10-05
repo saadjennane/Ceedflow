@@ -50,7 +50,9 @@ interface Roster {
 
 /** Why somebody hears nothing, in the words the dialog uses. */
 const WHY: Record<Exclude<Blocked, 'none'>, string> = {
-  no_email: 'no address on the candidacy',
+  // Said of a person, not of a candidacy: this window also writes to jurors
+  // and to a directory nobody has applied from yet.
+  no_email: 'no address on file',
   no_account: 'no account to log into',
   suppressed: 'their address bounced for good',
 };

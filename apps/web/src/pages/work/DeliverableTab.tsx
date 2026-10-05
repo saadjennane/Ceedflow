@@ -69,7 +69,7 @@ interface View {
 /** Why a startup will hear nothing — the same words the launch dialog uses. */
 const WHY: Record<Row['blocked'], string> = {
   none: '',
-  no_email: 'No address on the candidacy — nothing to write to.',
+  no_email: 'No address on file — nothing to write to.',
   no_account: 'No account to log into, so a link would lead nowhere.',
   suppressed: 'Their address bounced for good; nothing is sent to it again.',
 };
