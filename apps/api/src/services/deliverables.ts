@@ -10,6 +10,7 @@ import {
   blockStatus,
   fillTemplate,
   firstNameOf,
+  ACCESS_SAMPLE,
   itemComplete,
   itemGiven,
   longDate,
@@ -21,6 +22,7 @@ import {
 import * as repo from '../db/repo.js';
 import { post, suppressedAmong } from './mail.js';
 import { publicOrigin } from './platform.js';
+import { accessFor } from './invitations.js';
 import { intakeFor, trackOf } from './selection.js';
 import type { NoticeSource } from './notices.js';
 
@@ -198,11 +200,10 @@ export async function deliverableView(blockId: string): Promise<DeliverableView 
           ? ('no_email' as const)
           : held.has(candidate.email.trim().toLowerCase())
             ? ('suppressed' as const)
-            : // A letter that says "go to your page" is worth nothing to
-              // somebody with no way in, and nothing here opens one for them.
-              !candidate.accountState
-              ? ('no_account' as const)
-              : ('none' as const),
+            : /* No longer blocked for want of an account: the letter carries
+                 the way in, so somebody who has none is written to and told
+                 how to get there in the same message. */
+              ('none' as const),
       };
     }),
   };
@@ -303,6 +304,9 @@ export async function rosterFor(blockId: string, kind: 'request' | 'reminder', o
     ...e,
     values: {
       prenom: firstNameOf(e.candidate.contactName, e.candidate.contactFirstName),
+      /* The one value the preview cannot be: a password is generated as the
+         letter is written. Everything else is the letter. */
+      acces: e.candidate.accountState === 'claimed' ? '' : ACCESS_SAMPLE(e.candidate.email),
       startup: e.candidate.orgName,
       pieces: e.owed,
       date,
@@ -390,6 +394,7 @@ export async function tellReturned(
     subject: `${block.name} — ${item?.label ?? 'une pièce'} à renvoyer`,
     body: fillTemplate(config.messages.rejected, {
       prenom: firstNameOf(candidate.contactName, candidate.contactFirstName),
+      acces: await accessFor(candidate.personId),
       startup: candidate.orgName,
       piece: item?.label ?? '',
       motif: reason,
@@ -505,6 +510,7 @@ export const deliverableNotices: NoticeSource = {
       subject: `${block.name} — ${row.candidate.orgName}`,
       body: fillTemplate(body, {
         prenom: firstNameOf(row.candidate.contactName, row.candidate.contactFirstName),
+        acces: await accessFor(row.candidate.personId),
         startup: row.candidate.orgName,
         pieces: owedLines(view, candidateId),
         date: longDate(config.closesAt),

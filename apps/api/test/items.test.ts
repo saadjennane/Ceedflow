@@ -17,6 +17,7 @@ import {
   DELIVERABLE_RETURN_VARIABLES,
   DELIVERABLE_VARIABLES,
   SELECTION_VARIABLES,
+  SOURCING_VARIABLES,
   applicationConfigSchema,
   committeeConfigSchema,
   deliverableConfigSchema,
@@ -135,6 +136,30 @@ describe('the files inside all that', () => {
   it('finds none where there are none', () => {
     assert.deepEqual(uploadIdsIn({ a: 'x', b: [1, 2] }), []);
   });
+});
+
+describe('every variable carries its own sample', () => {
+  /* Three times running, a new variable was added to the lists and forgotten
+     in one preview's example map — and the preview then showed "{{prenom}}"
+     while the letter filled it, which is the one thing a preview must never
+     do. The sample now travels with the variable, so the panels only override
+     what is particular to their own block and nothing can be left out. */
+  const lists: [string, readonly { name: string; example?: string }[]][] = [
+    ['deliverable', DELIVERABLE_VARIABLES],
+    ['deliverable · returned', DELIVERABLE_RETURN_VARIABLES],
+    ['selection', SELECTION_VARIABLES],
+    ['committee · jury', COMMITTEE_JURY_VARIABLES],
+    ['committee · startup', COMMITTEE_STARTUP_VARIABLES],
+    ['sourcing', SOURCING_VARIABLES],
+    ['application', APPLICATION_VARIABLES],
+  ];
+  for (const [what, variables] of lists) {
+    it(what, () => {
+      for (const v of variables) {
+        assert.ok(v.example, `{{${v.name}}} has no sample, so a preview would show it unfilled`);
+      }
+    });
+  }
 });
 
 describe('every default letter only names variables it is offered', () => {

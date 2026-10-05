@@ -11,7 +11,7 @@ import { after, before, describe, it } from 'node:test';
 import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
-import { createAccount } from '../src/services/auth.js';
+import { accountOfRecord, createAccount } from '../src/services/auth.js';
 import {
   COMMITTEE_KINDS,
   committeeAudiences,
@@ -144,16 +144,41 @@ describe('convening a committee', { skip: skipWithoutServer }, () => {
     assert.equal((await letters({ email: record!.email! })).length, 1);
   });
 
-  it('leaves out a juror with no account — a grid they cannot open', async () => {
+  it('opens an account for a juror who has none, inside the convocation itself', async () => {
+    /* It used to leave them out — a grid they could not open. But a password
+       arriving on its own, an hour before or after the convocation, reads as
+       two systems talking past each other. So the letter carries it. */
+    const stamp = Date.now();
+    const email = `sans.${stamp}@example.test`;
     const { panel } = await setUp();
     const stray = await dir.createRecord({
-      kind: 'person', name: `Sans compte ${Date.now()}`, email: `sans.${Date.now()}@example.test`, origin: 'manual',
+      kind: 'person', name: `Sans compte ${stamp}`, email, origin: 'manual',
     });
     const sitting = (await repo.listSessions(panel.id))[0]!;
     await repo.updateSession(sitting.id, { jury: [...sitting.jury, stray.id] });
 
     const roster = await committeeRoster(panel.id, COMMITTEE_KINDS.jury);
-    assert.equal(roster.find((r) => r.subjectId === stray.id)?.blocked, 'no_account');
+    assert.equal(roster.find((r) => r.subjectId === stray.id)?.blocked, '', 'written to, not left out');
+
+    await launchNotice(panel.id, { kind: COMMITTEE_KINDS.jury, body: `${BODY_JURY}\n{{acces}}` });
+    await sendDueNotices();
+    const [letter] = await letters({ email });
+    assert.match(letter!.body, /première connexion/, 'and told how to get in');
+    assert.match(letter!.body, new RegExp(email));
+  });
+
+  it('asks for a preview without opening anything', async () => {
+    /* A preview that created accounts would make looking at a letter a side
+       effect of sending it. */
+    const stamp = Date.now();
+    const email = `apercu.${stamp}@example.test`;
+    const { panel } = await setUp();
+    const stray = await dir.createRecord({ kind: 'person', name: `Aperçu ${stamp}`, email, origin: 'manual' });
+    const sitting = (await repo.listSessions(panel.id))[0]!;
+    await repo.updateSession(sitting.id, { jury: [...sitting.jury, stray.id] });
+
+    await committeeValues(panel.id, COMMITTEE_KINDS.jury, stray.id, true);
+    assert.equal(await accountOfRecord(stray.id), null, 'nothing was opened');
   });
 
   it('waits rather than writing a convocation with no date', async () => {

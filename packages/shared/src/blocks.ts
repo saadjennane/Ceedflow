@@ -400,11 +400,12 @@ export type SourcingAudience = z.infer<typeof sourcingAudienceSchema>;
 
 /** What an invitation to apply may carry. */
 export const SOURCING_VARIABLES = [
-  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to' },
-  { name: 'nom', label: 'Their name', what: 'The person or organisation written to' },
-  { name: 'lien', label: 'Apply link', what: 'The channel’s own link — what makes a candidacy traceable to this call' },
-  { name: 'canal', label: 'Channel', what: 'What this call is counted as' },
-  { name: 'cloture', label: 'Closing date', what: 'The day the form shuts, written out' },
+  { name: 'acces', label: 'Their way in', what: 'A first password, only for somebody who has no account yet — empty for everybody else', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
+  { name: 'nom', label: 'Their name', what: 'The person or organisation written to', example: 'Karim Benali' },
+  { name: 'lien', label: 'Apply link', what: 'The channel’s own link — what makes a candidacy traceable to this call', example: 'https://www.ceedflow.com/me?tab=Programs' },
+  { name: 'canal', label: 'Channel', what: 'What this call is counted as', example: 'Réseau CEED' },
+  { name: 'cloture', label: 'Closing date', what: 'The day the form shuts, written out', example: '15 novembre 2026' },
 ] as const;
 
 export const sourcingConfigSchema = z.object({
@@ -440,11 +441,12 @@ export type Eligibility = z.infer<typeof eligibilitySchema>;
 
 /** What an acknowledgment of a submitted application may carry. */
 export const APPLICATION_VARIABLES = [
-  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to' },
-  { name: 'startup', label: 'Startup', what: 'The organisation that applied' },
-  { name: 'programme', label: 'Programme', what: 'The edition they applied to' },
-  { name: 'appel', label: 'Call', what: 'The name of this application block' },
-  { name: 'lien', label: 'Link', what: 'Their own space, where they follow it' },
+  { name: 'acces', label: 'Their way in', what: 'A first password, only for somebody who has no account yet — empty for everybody else', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
+  { name: 'startup', label: 'Startup', what: 'The organisation that applied', example: 'Rafid Tech' },
+  { name: 'programme', label: 'Programme', what: 'The edition they applied to', example: 'The Builders — Cohorte 1' },
+  { name: 'appel', label: 'Call', what: 'The name of this application block', example: 'Appel à candidatures' },
+  { name: 'lien', label: 'Link', what: 'Their own space, where they follow it', example: 'https://www.ceedflow.com/me?tab=Programs' },
 ] as const;
 
 /* A receipt, and nothing more. The one thing it has to do is stop somebody
@@ -454,6 +456,8 @@ const APPLICATION_RECEIVED = `Bonjour {{prenom}},
 Nous avons bien reçu la candidature de {{startup}} à {{programme}}.
 
 Vous pouvez la relire à tout moment depuis votre espace : {{lien}}
+
+{{acces}}
 
 Nous revenons vers vous à l'issue de l'instruction.
 
@@ -733,25 +737,27 @@ export type CommitteeFormat = (typeof COMMITTEE_FORMATS)[number];
  */
 /** What a letter to a juror may carry. */
 export const COMMITTEE_JURY_VARIABLES = [
-  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to' },
-  { name: 'jure', label: 'Juror', what: 'Their own name' },
-  { name: 'panel', label: 'Sitting', what: 'The name of the sitting they sit on' },
-  { name: 'date', label: 'Date', what: 'The day it is held, written out' },
-  { name: 'heures', label: 'Hours', what: 'When it starts and ends' },
-  { name: 'lieu', label: 'Where', what: 'The location, when one is set' },
-  { name: 'startups', label: 'Who they see', what: 'The startups on their panel, one per line' },
-  { name: 'lien', label: 'Link', what: 'Their own space, where they mark' },
+  { name: 'acces', label: 'Their way in', what: 'A first password, only for somebody who has no account yet — empty for everybody else', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
+  { name: 'jure', label: 'Juror', what: 'Their own name', example: 'Nawal Benjelloun' },
+  { name: 'panel', label: 'Sitting', what: 'The name of the sitting they sit on', example: 'Séance 1' },
+  { name: 'date', label: 'Date', what: 'The day it is held, written out', example: '15 novembre 2026' },
+  { name: 'heures', label: 'Hours', what: 'When it starts and ends', example: '09:00 à 12:00' },
+  { name: 'lieu', label: 'Where', what: 'The location, when one is set', example: ', à la Villa des Arts' },
+  { name: 'startups', label: 'Who they see', what: 'The startups on their panel, one per line', example: '  · Rafid Tech\\n  · Nakhla Bio' },
+  { name: 'lien', label: 'Link', what: 'Their own space, where they mark', example: 'https://www.ceedflow.com/me?tab=Programs' },
 ] as const;
 
 /** What a letter to a startup being convened may carry. */
 export const COMMITTEE_STARTUP_VARIABLES = [
-  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to' },
-  { name: 'startup', label: 'Startup', what: 'The organisation’s name' },
-  { name: 'panel', label: 'Sitting', what: 'The name of the sitting' },
-  { name: 'date', label: 'Date', what: 'The day, written out' },
-  { name: 'heure', label: 'Their slot', what: 'The time they are expected, when one is set' },
-  { name: 'lieu', label: 'Where', what: 'The location, when one is set' },
-  { name: 'lien', label: 'Link', what: 'Their own space on this platform' },
+  { name: 'acces', label: 'Their way in', what: 'A first password, only for somebody who has no account yet — empty for everybody else', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
+  { name: 'startup', label: 'Startup', what: 'The organisation’s name', example: 'Rafid Tech' },
+  { name: 'panel', label: 'Sitting', what: 'The name of the sitting', example: 'Séance 1' },
+  { name: 'date', label: 'Date', what: 'The day, written out', example: '15 novembre 2026' },
+  { name: 'heure', label: 'Their slot', what: 'The time they are expected, when one is set', example: ' à 09:20' },
+  { name: 'lieu', label: 'Where', what: 'The location, when one is set', example: ', à la Villa des Arts' },
+  { name: 'lien', label: 'Link', what: 'Their own space on this platform', example: 'https://www.ceedflow.com/me?tab=Programs' },
 ] as const;
 
 const COMMITTEE_JURY = `Bonjour {{jure}},
@@ -764,6 +770,8 @@ Les startups que vous verrez :
 
 Votre grille d'évaluation vous attend ici : {{lien}}
 
+{{acces}}
+
 Merci de votre temps.
 
 L'équipe CEED`;
@@ -773,6 +781,8 @@ const COMMITTEE_STARTUP = `Bonjour {{prenom}},
 Votre passage devant le jury est fixé au {{date}}{{heure}}{{lieu}}.
 
 Merci d'arriver dix minutes en avance. Tout le détail est dans votre espace : {{lien}}
+
+{{acces}}
 
 À très bientôt,
 
@@ -910,11 +920,12 @@ export type CommitteeAssignment = z.infer<typeof committeeAssignmentSchema>;
  */
 /** The names a selection's letters may carry. */
 export const SELECTION_VARIABLES = [
-  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to' },
-  { name: 'startup', label: 'Startup', what: 'The organisation’s name' },
-  { name: 'decision', label: 'Decision', what: 'What this selection called them — your own label' },
-  { name: 'phase', label: 'Step', what: 'The name of this selection block' },
-  { name: 'lien', label: 'Link', what: 'Their own space on this platform' },
+  { name: 'acces', label: 'Their way in', what: 'A first password, only for somebody who has no account yet — empty for everybody else', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
+  { name: 'startup', label: 'Startup', what: 'The organisation’s name', example: 'Rafid Tech' },
+  { name: 'decision', label: 'Decision', what: 'What this selection called them — your own label', example: 'Retenue' },
+  { name: 'phase', label: 'Step', what: 'The name of this selection block', example: 'Comité de sélection' },
+  { name: 'lien', label: 'Link', what: 'Their own space on this platform', example: 'https://www.ceedflow.com/me?tab=Programs' },
 ] as const;
 
 /* Whole letters by default, in the language the founders are written to. A
@@ -925,6 +936,8 @@ const SELECTION_PASS = `Bonjour {{prenom}},
 Nous avons le plaisir de vous annoncer que {{startup}} est retenue à l'issue de {{phase}}.
 
 Nous revenons vers vous très vite avec la suite. Vous pouvez suivre votre dossier ici : {{lien}}
+
+{{acces}}
 
 L'équipe CEED`;
 
@@ -1108,20 +1121,30 @@ export function uploadIdsIn(value: unknown): string[] {
  * three and not the others is a letter that goes out saying `{{lien}}`.
  */
 export const DELIVERABLE_VARIABLES = [
-  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to' },
-  { name: 'startup', label: 'Startup', what: 'The organisation’s name' },
-  { name: 'pieces', label: 'What is missing', what: 'The items this one still owes, one per line' },
-  { name: 'date', label: 'Closing date', what: 'The day this list shuts, written out' },
-  { name: 'lien', label: 'Link', what: 'Their own space on this platform, where this list is' },
+  { name: 'acces', label: 'Their way in', what: 'A first password, only for somebody who has no account yet — empty for everybody else', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
+  { name: 'startup', label: 'Startup', what: 'The organisation’s name', example: 'Rafid Tech' },
+  {
+    name: 'pieces',
+    label: 'What is missing',
+    what: 'The items this one still owes, one per line',
+    /* A shape, not a document: this one is always overridden with the block's
+       own items, and a plausible-looking sample here would read as something
+       somebody had configured. */
+    example: '  · (the items this startup still owes)',
+  },
+  { name: 'date', label: 'Closing date', what: 'The day this list shuts, written out', example: '15 novembre 2026' },
+  { name: 'lien', label: 'Link', what: 'Their own space on this platform, where this list is', example: 'https://www.ceedflow.com/me?tab=Programs' },
 ] as const;
 
 /** Only in a letter about one item sent back. */
 export const DELIVERABLE_RETURN_VARIABLES = [
-  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to' },
-  { name: 'startup', label: 'Startup', what: 'The organisation’s name' },
-  { name: 'piece', label: 'The item', what: 'What was sent back' },
-  { name: 'motif', label: 'Reason', what: 'What you wrote when you sent it back' },
-  { name: 'lien', label: 'Link', what: 'Their own space on this platform, where this list is' },
+  { name: 'acces', label: 'Their way in', what: 'A first password, only for somebody who has no account yet — empty for everybody else', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
+  { name: 'startup', label: 'Startup', what: 'The organisation’s name', example: 'Rafid Tech' },
+  { name: 'piece', label: 'The item', what: 'What was sent back', example: 'Registre de commerce' },
+  { name: 'motif', label: 'Reason', what: 'What you wrote when you sent it back', example: 'Le registre date de 2024 — il nous en faut un de moins de trois mois.' },
+  { name: 'lien', label: 'Link', what: 'Their own space on this platform, where this list is', example: 'https://www.ceedflow.com/me?tab=Programs' },
 ] as const;
 
 /* The defaults are whole letters, in the language the founders are written to.
@@ -1135,6 +1158,8 @@ Votre dossier passe en revue administrative. Merci de nous transmettre les élé
 
 Tout se dépose depuis votre espace : {{lien}}
 
+{{acces}}
+
 L'équipe CEED`;
 
 const DELIVERABLE_REMINDER = `Bonjour {{prenom}},
@@ -1145,6 +1170,8 @@ Il manque encore des éléments à votre dossier, à transmettre avant le {{date
 
 Depuis votre espace : {{lien}}
 
+{{acces}}
+
 L'équipe CEED`;
 
 const DELIVERABLE_REJECTED = `Bonjour {{prenom}},
@@ -1154,6 +1181,8 @@ Nous devons vous redemander un élément de votre dossier : {{piece}}.
 {{motif}}
 
 Merci de le déposer à nouveau depuis votre espace : {{lien}}
+
+{{acces}}
 
 L'équipe CEED`;
 
@@ -1182,6 +1211,30 @@ export const deliverableConfigSchema = z.object({
     })
     .default({}),
 });
+
+/**
+ * La première connexion, quand la personne n'en a pas encore.
+ *
+ * Composed in one place so the preview and the sender write the same
+ * paragraph. It travels inside the letter that gives it a reason to exist: a
+ * password arriving on its own, an hour before or after the message it is for,
+ * reads as two systems talking past each other — and the recipient opens the
+ * wrong one first.
+ */
+export function accessBlock(email: string, password: string): string {
+  return [`Votre première connexion :`, `    ${email}`, `    ${password}`, `Il vous sera demandé de le remplacer.`].join(
+    '\n',
+  );
+}
+
+/**
+ * What the preview shows in its place.
+ *
+ * Everything is the letter except these characters, which cannot exist before
+ * the letter does — a password is generated as it is written. Shown as dots so
+ * nobody mistakes the sample for the real one.
+ */
+export const ACCESS_SAMPLE = (email: string) => accessBlock(email || 'leur@adresse', '••••-••••-••••');
 
 /**
  * `{{startup}}` and the rest, replaced.

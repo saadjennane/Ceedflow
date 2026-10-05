@@ -12,10 +12,18 @@ import cookie from '@fastify/cookie';
 import { db, migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import { directoryRoutes } from '../src/routes/directory.js';
-import { SESSION_COOKIE, createAccount, createSession, setStaffRole, verifyPassword, findAccount } from '../src/services/auth.js';
+import {
+  SESSION_COOKIE,
+  accountOfRecord,
+  createAccount,
+  createSession,
+  findAccount,
+  setStaffRole,
+  verifyPassword,
+} from '../src/services/auth.js';
 import { letters } from '../src/services/mail.js';
 // Renamed: this file already has a local `invite` that goes through the route.
-import { invite as inviteDirect, inviteMany } from '../src/services/invitations.js';
+import { accessFor, invite as inviteDirect, inviteMany } from '../src/services/invitations.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
 before(migrate);
@@ -171,5 +179,69 @@ describe('inviting somebody into an account', { skip: skipWithoutServer }, () =>
     const { record } = await somebody('Amine');
     const out = (await invite(record.id)).json() as { emailed: boolean };
     assert.equal(out.emailed, false);
+  });
+});
+
+/**
+ * Que la lettre porte elle-même la première connexion.
+ *
+ * A password arriving on its own, an hour before or after the message it is
+ * for, reads as two systems talking past each other — and the recipient opens
+ * the wrong one first. So it travels inside the letter that gives it a reason
+ * to exist, and that letter opens the account as it is written.
+ */
+describe('the way in, carried by the letter', { skip: skipWithoutServer }, () => {
+  const somebody = async (name: string, withAccount: 'none' | 'unclaimed' | 'claimed') => {
+    const email = `${name.toLowerCase()}.${Date.now()}.${Math.random().toString(36).slice(2, 6)}@example.test`;
+    const record = await dir.createRecord({ kind: 'person', name: `${name} ${Date.now()}`, email, origin: 'manual' });
+    if (withAccount !== 'none') {
+      await createAccount({
+        email,
+        password: 'given-by-ceed',
+        recordId: record.id,
+        mustChangePassword: withAccount === 'unclaimed',
+      });
+    }
+    return { record, email };
+  };
+
+  it('opens an account and hands over the password, in the message itself', async () => {
+    const { record, email } = await somebody('Neuf', 'none');
+    const block = await accessFor(record.id);
+    assert.match(block, new RegExp(email), 'the address they sign in with');
+    assert.match(block, /remplacer/, 'and that it is provisional');
+
+    const account = await findAccount(email);
+    const password = block.split('\n')[2]!.trim();
+    assert.equal(await verifyPassword(password, account!.passwordHash), true, 'the one written is the one that opens it');
+  });
+
+  it('says nothing to somebody who chose their own password', async () => {
+    /* Handing them a new one inside a letter about something else would be a
+       password reset nobody asked for. */
+    const { record } = await somebody('Déjà', 'claimed');
+    assert.equal(await accessFor(record.id), '');
+  });
+
+  it('gives a fresh one to somebody who never came, and retires the old', async () => {
+    const { record, email } = await somebody('Jamais', 'unclaimed');
+    const block = await accessFor(record.id);
+    assert.notEqual(block, '');
+
+    const account = await findAccount(email);
+    assert.equal(await verifyPassword('given-by-ceed', account!.passwordHash), false, 'the old one is dead');
+    assert.equal(await verifyPassword(block.split('\n')[2]!.trim(), account!.passwordHash), true);
+  });
+
+  it('counts them as invited, since being told how to get in is being invited', async () => {
+    const { record } = await somebody('Prévenu', 'none');
+    await accessFor(record.id);
+    assert.equal((await accountOfRecord(record.id))?.state, 'invited');
+  });
+
+  it('says nothing where there is no address to write to', async () => {
+    const stray = await dir.createRecord({ kind: 'person', name: `Muet ${Date.now()}`, origin: 'manual' });
+    assert.equal(await accessFor(stray.id), '');
+    assert.equal(await accountOfRecord(stray.id), null, 'and opens nothing');
   });
 });

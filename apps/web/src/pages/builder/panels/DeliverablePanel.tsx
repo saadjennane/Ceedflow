@@ -492,12 +492,17 @@ function MessagesTab({
     : '  (nothing is being asked for yet — add it under “What you ask for”)';
 
   const link = useAsync(() => api.get<{ link: string }>('/api/app-link'), 'app-link');
+  /* Only what this block knows; every variable brings its own sample. */
   const example = {
-    prenom: 'Karim',
-    startup: 'Rafid Tech',
+    /* Always this block's own, even when it is empty: falling back to the
+       variable's generic sample would put back the invented documents a
+       preview must never show. */
     pieces,
+    /* Same rule as the pieces: what this block decides is always said by this
+       block. A date borrowed from a sample would show a closing day nobody
+       set, which is the sort of thing somebody reads and believes. */
     date: longDate(config.closesAt) || '(no closing date set)',
-    lien: link.data?.link || '(this platform has no public address set)',
+    lien: link.data?.link || undefined,
   };
 
   return (

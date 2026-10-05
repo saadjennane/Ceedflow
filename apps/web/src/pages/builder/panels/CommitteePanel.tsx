@@ -923,16 +923,7 @@ function MessagesTab({
         value={config.messages.jury}
         onChange={(v) => set('jury', v)}
         variables={COMMITTEE_JURY_VARIABLES}
-        example={{
-          prenom: 'Nawal',
-          jure: 'Nawal Benjelloun',
-          panel: 'Séance 1',
-          date: '20 octobre 2026',
-          heures: '09:00 à 12:00',
-          lieu: ', à la Villa des Arts',
-          startups: '  · Rafid Tech\n  · Nakhla Bio',
-          lien: where,
-        }}
+        example={{ panel: 'Séance 1', lien: where }}
       />
 
       {config.format === 'event' && (
@@ -942,15 +933,7 @@ function MessagesTab({
           value={config.messages.startup}
           onChange={(v) => set('startup', v)}
           variables={COMMITTEE_STARTUP_VARIABLES}
-          example={{
-            prenom: 'Karim',
-            startup: 'Rafid Tech',
-            panel: 'Séance 1',
-            date: '20 octobre 2026',
-            heure: ' à 09:20',
-            lieu: ', à la Villa des Arts',
-            lien: where,
-          }}
+          example={{ panel: 'Séance 1', lien: where }}
         />
       )}
     </>

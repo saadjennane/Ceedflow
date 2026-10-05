@@ -20,10 +20,10 @@ import {
   type CommitteeConfig,
 } from '@ceed/shared';
 import * as dir from '../db/directory.js';
-import { accountStatesByRecord } from './auth.js';
 import * as repo from '../db/repo.js';
 import { committeeView, type SessionView } from './committee.js';
 import { appLink } from './deliverables.js';
+import { accessFor } from './invitations.js';
 import { suppressedAmong } from './mail.js';
 import type { Gate, NoticeSource, NoticeTargetRow } from './notices.js';
 
@@ -65,7 +65,6 @@ async function juryRows(blockId: string): Promise<NoticeTargetRow[]> {
   if (!ids.length) return [];
   const records = await dir.recordsByIds(ids);
   const held = await suppressedAmong(records.map((r) => r.email ?? ''));
-  const accounts = await accountStatesByRecord();
 
   return records.map((person) => ({
     subjectId: person.id,
@@ -77,11 +76,9 @@ async function juryRows(blockId: string): Promise<NoticeTargetRow[]> {
       ? 'no_email'
       : held.has(person.email.trim().toLowerCase())
         ? 'suppressed'
-        : /* A juror with no account has no grid to open, and the letter's whole
-             point is to send them to it. */
-          !accounts.has(person.id)
-          ? 'no_account'
-          : '',
+        : /* An account is no longer a condition: the letter opens one and
+             carries the way in. */
+          '',
   }));
 }
 
@@ -161,6 +158,8 @@ export async function committeeValues(
   blockId: string,
   kind: string,
   subjectId: string,
+  /** A preview asks for the words only: it must never open an account. */
+  preview = false,
 ): Promise<Record<string, string> | null> {
   const who = audienceOfKind(kind);
   const view = await everyone(blockId);
@@ -174,6 +173,7 @@ export async function committeeValues(
     const record = await dir.getRecord(subjectId);
     return {
       prenom: firstNameOf(person.name, record?.firstName),
+      acces: preview ? '' : await accessFor(subjectId),
       jure: person.name,
       panel: sitting.session.name,
       date: longDate(sitting.session.heldOn),
@@ -189,6 +189,7 @@ export async function committeeValues(
   const seat = sitting.assignments.find((a) => a.candidate.id === subjectId)!;
   return {
     prenom: firstNameOf(seat.candidate.contactName, seat.candidate.contactFirstName),
+    acces: preview ? '' : await accessFor(seat.candidate.personId),
     startup: seat.candidate.orgName,
     panel: sitting.session.name,
     date: longDate(sitting.session.heldOn),

@@ -1,4 +1,5 @@
 import {
+  ACCESS_SAMPLE,
   blockStatus,
   firstNameOf,
   type SelectionConfig,
@@ -722,6 +723,7 @@ export async function funnelRoutes(app: FastifyInstance) {
         owed: '',
         values: {
           prenom: firstNameOf(e.toName),
+          acces: ACCESS_SAMPLE(e.email),
           startup: e.orgName,
           decision,
           phase: block.name,

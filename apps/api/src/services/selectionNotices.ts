@@ -13,6 +13,7 @@
 import { type SelectionConfig, fillTemplate, firstNameOf } from '@ceed/shared';
 import * as repo from '../db/repo.js';
 import { appLink } from './deliverables.js';
+import { accessFor } from './invitations.js';
 import { suppressedAmong } from './mail.js';
 import { selectionView, type SelectionCall } from './selection.js';
 import type { Gate, NoticeSource, NoticeTargetRow } from './notices.js';
@@ -222,6 +223,7 @@ export const selectionNotices: NoticeSource = {
       subject: `${block.name} — ${candidate.orgName}`,
       body: fillTemplate(body, {
         prenom: firstNameOf(candidate.contactName, candidate.contactFirstName),
+        acces: await accessFor(candidate.personId),
         startup: candidate.orgName,
         decision: labelOf(config, call),
         phase: block.name,

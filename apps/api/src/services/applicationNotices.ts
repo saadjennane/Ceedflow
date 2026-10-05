@@ -15,6 +15,7 @@
 import { APPLICATION_VARIABLES, fillTemplate, firstNameOf, type ApplicationConfig } from '@ceed/shared';
 import * as repo from '../db/repo.js';
 import { appLink } from './deliverables.js';
+import { accessFor } from './invitations.js';
 import { post } from './mail.js';
 
 export { APPLICATION_VARIABLES };
@@ -28,6 +29,8 @@ export async function acknowledge(blockId: string, candidateId: string): Promise
   const edition = await repo.getEditionDetail(context.editionId);
   const values = {
     prenom: firstNameOf(candidate.contactName, candidate.contactFirstName),
+    // They are signed in to have applied, so this is all but always empty.
+    acces: await accessFor(candidate.personId),
     startup: candidate.orgName,
     /* The programme, then the edition: "The Builders — Cohorte 1" is what an
        applicant recognises. The edition's name alone means nothing outside. */

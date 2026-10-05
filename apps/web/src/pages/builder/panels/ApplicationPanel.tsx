@@ -641,13 +641,7 @@ function SettingsTab({
           value={config.receivedMessage}
           onChange={(v: string) => patch({ receivedMessage: v })}
           variables={APPLICATION_VARIABLES}
-          example={{
-            prenom: 'Karim',
-            startup: 'Rafid Tech',
-            programme: 'The Builders — Cohorte 1',
-            appel: block.name,
-            lien: 'https://www.ceedflow.com/me?tab=Programs',
-          }}
+          example={{ appel: block.name }}
         />
       )}
 

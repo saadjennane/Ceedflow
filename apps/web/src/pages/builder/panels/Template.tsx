@@ -24,8 +24,10 @@ export function Template({
   help: string;
   value: string;
   onChange: (next: string) => void;
-  variables: readonly { name: string; label: string; what: string }[];
-  example: Record<string, string>;
+  variables: readonly { name: string; label: string; what: string; example?: string }[];
+  /** Only what this block knows — its own name, its own labels. The rest comes
+      from the variables themselves, so a new one can never be forgotten here. */
+  example?: Record<string, string | undefined>;
 }) {
   const box = useRef<HTMLTextAreaElement>(null);
   const [show, setShow] = useState(false);
@@ -83,7 +85,16 @@ export function Template({
           will go out written like that.
         </p>
       )}
-      {show && <pre className="letter" style={{ marginTop: 6 }}>{fillTemplate(value, example)}</pre>}
+      {show && (
+        <pre className="letter" style={{ marginTop: 6 }}>
+          {fillTemplate(value, {
+            ...Object.fromEntries(variables.map((v) => [v.name, v.example ?? ''])),
+            // Undefined means "this block has nothing of its own to say here",
+            // so the variable's own sample stands.
+            ...Object.fromEntries(Object.entries(example ?? {}).filter(([, v]) => v !== undefined)),
+          } as Record<string, string>)}
+        </pre>
+      )}
     </div>
   );
 }

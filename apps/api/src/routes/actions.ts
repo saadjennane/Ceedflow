@@ -1,4 +1,5 @@
 import {
+  ACCESS_SAMPLE,
   blockStatus,
   editionIsVisible,
   editionTakesInput,
@@ -69,7 +70,9 @@ export async function actionRoutes(app: FastifyInstance) {
         askedAt: null,
         owes: false,
         owed: '',
-        values: (await committeeValues(id, kind, e.subjectId)) ?? {},
+        /* The preview never opens an account: `acces` is replaced by its
+           sample here, because asking for the real one would create it. */
+        values: { ...((await committeeValues(id, kind, e.subjectId, true)) ?? {}), acces: ACCESS_SAMPLE(e.email) },
       })),
     );
     return { entries: withValues, link: await appLink(), closesAt: null, dateLabel: '' };
@@ -301,7 +304,7 @@ export async function actionRoutes(app: FastifyInstance) {
         askedAt: null,
         owes: false,
         owed: '',
-        values: (await sourcingValues(id, e.subjectId)) ?? {},
+        values: { ...((await sourcingValues(id, e.subjectId, true)) ?? {}), acces: ACCESS_SAMPLE(e.email) },
       })),
     );
     return { entries: withValues, link: await appLink(), closesAt: null, dateLabel: '' };

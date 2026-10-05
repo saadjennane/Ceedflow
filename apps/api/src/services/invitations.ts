@@ -7,7 +7,7 @@
  * saying "you have an account somewhere" — the person then writes back to ask
  * how to get in, which is the opposite of what inviting them was for.
  */
-import { suggestPassword } from '@ceed/shared';
+import { accessBlock, suggestPassword } from '@ceed/shared';
 import * as dir from '../db/directory.js';
 import {
   accountOfRecord,
@@ -89,6 +89,39 @@ export async function invite(recordId: string, sendAfter: Date | null = null): P
   });
 
   return { recordId, name: record.name, blocked: '', password, emailed: sendingIsLive() && Boolean(letter) };
+}
+
+/**
+ * The way in, for somebody who has none — composed as the letter is written.
+ *
+ * Empty for anybody who has chosen their own password: they know it, and
+ * handing them a new one inside a letter about something else would be a
+ * password reset nobody asked for.
+ *
+ * For everybody else the account is opened or its provisional password
+ * re-issued, and the new one travels in this letter. That does retire whatever
+ * was sent before — which is the right way round: the letter in front of them
+ * is the one that works.
+ */
+export async function accessFor(recordId: string | null | undefined): Promise<string> {
+  if (!recordId) return '';
+  const record = await dir.getRecord(recordId);
+  const email = record?.email?.trim();
+  if (!email) return '';
+
+  const account = await accountOfRecord(recordId);
+  if (account?.state === 'claimed' || account?.state === 'disabled') return '';
+
+  const password = suggestPassword();
+  if (account) await reissueProvisionalPassword(account.id, password);
+  else await createAccount({ email, password, recordId, mustChangePassword: true });
+  // Marked invited here too: being told how to get in is being invited, and a
+  // screen that said "never invited" about somebody holding their password
+  // would be saying something untrue.
+  const opened = account ?? (await accountOfRecord(recordId));
+  if (opened) await markInvited(opened.id);
+
+  return accessBlock(email, password);
 }
 
 /**

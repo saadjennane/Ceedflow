@@ -10,6 +10,7 @@
 import { applyLink, fillTemplate, firstNameOf, longDate, type SourcingConfig } from '@ceed/shared';
 import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
+import { accessFor } from './invitations.js';
 import { suppressedAmong } from './mail.js';
 import { publicOrigin } from './platform.js';
 import { outreachView, resolveAudience } from './sourcing.js';
@@ -87,7 +88,12 @@ export async function sourcingAudiences(blockId: string): Promise<{
 }
 
 /** What this person's letter will actually say, filled in. */
-export async function sourcingValues(blockId: string, subjectId: string): Promise<Record<string, string> | null> {
+export async function sourcingValues(
+  blockId: string,
+  subjectId: string,
+  /** A preview asks for the words only: it must never open an account. */
+  preview = false,
+): Promise<Record<string, string> | null> {
   const view = await outreachView(blockId);
   if (!view) return null;
   const person = view.audience.find((p) => p.id === subjectId);
@@ -111,6 +117,7 @@ export async function sourcingValues(blockId: string, subjectId: string): Promis
   const record = await dir.getRecord(subjectId);
   return {
     prenom: firstNameOf(person.name, record?.firstName),
+    acces: preview ? '' : await accessFor(subjectId),
     nom: person.name,
     lien: link,
     canal: channel?.label ?? '',

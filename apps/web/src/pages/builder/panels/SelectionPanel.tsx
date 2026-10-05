@@ -84,11 +84,9 @@ function MessagesTab({
     patch({ messages: { ...config.messages, [key]: next } });
 
   const example = (decision: string) => ({
-    prenom: 'Karim',
-    startup: 'Rafid Tech',
     decision,
     phase: block.name,
-    lien: link.data?.link || '(this platform has no public address set)',
+    lien: link.data?.link || undefined,
   });
 
   const holds = config.waitOutcomeIds.length > 0;
