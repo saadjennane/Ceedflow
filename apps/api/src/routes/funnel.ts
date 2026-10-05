@@ -1,5 +1,6 @@
 import {
   blockStatus,
+  type SelectionConfig,
   brickClosedOn,
   newId,
   canApplyFor,
@@ -25,6 +26,7 @@ import { SESSION_COOKIE, accountForToken } from '../services/auth.js';
 import { committeeForEvaluation, committeeView } from '../services/committee.js';
 import { letters } from '../services/mail.js';
 import { launchNotice, sendDueNotices } from '../services/notices.js';
+import { callOfKind, labelOf, selectionAudiences, selectionRoster } from '../services/selectionNotices.js';
 import {
   appLink,
   deliverableView,
@@ -677,6 +679,81 @@ export async function funnelRoutes(app: FastifyInstance) {
   app.get('/api/blocks/:id/selection', async (req, reply) => {
     const { id } = req.params as { id: string };
     return (await selectionView(id)) ?? notFound(reply, 'Selection block not found.');
+  });
+
+  /**
+   * Who each outcome's letter would name, and what has already been said.
+   *
+   * One shape per audience, because they are sent one at a time: a waiting
+   * list exists because the decision is not closed, and telling a startup it
+   * is refused when it may be fished out next week is worse than the leak that
+   * sending everybody together would avoid.
+   */
+  app.get('/api/blocks/:id/selection/audiences', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const block = await repo.getBlock(id);
+    if (!block || block.type !== 'selection') return notFound(reply, 'Selection block not found.');
+    return selectionAudiences(id);
+  });
+
+  app.get('/api/blocks/:id/selection/roster', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const query = req.query as { kind?: string; candidateId?: string };
+    const block = await repo.getBlock(id);
+    if (!block || block.type !== 'selection') return notFound(reply, 'Selection block not found.');
+    const kind = query.kind ?? '';
+    const entries = await selectionRoster(id, kind, query.candidateId);
+    const link = await appLink();
+    const config = block.config as SelectionConfig;
+    const call = callOfKind(kind);
+    const decision = call ? labelOf(config, call) : '';
+    return {
+      entries: entries.map((e) => ({
+        candidate: { id: e.candidateId, orgName: e.orgName, email: e.email, contactName: e.toName },
+        blocked: e.blocked || 'none',
+        askedAt: null,
+        owes: false,
+        owed: '',
+        values: { startup: e.orgName, decision, phase: block.name, lien: link },
+      })),
+      link,
+      closesAt: null,
+      dateLabel: '',
+    };
+  });
+
+  /**
+   * Telling one audience what was decided of it.
+   *
+   * One kind at a time, deliberately: sending all three together is what a
+   * waiting list exists to avoid.
+   */
+  app.post('/api/blocks/:id/selection/notify', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const input = parse(
+      z.object({
+        kind: z.string().min(1),
+        scheduledFor: z.string().nullable().optional(),
+        body: z.string().min(1, 'Write what they are going to read.'),
+        candidateId: z.string().optional(),
+      }),
+      req.body,
+    );
+    const block = await repo.getBlock(id);
+    if (!block || block.type !== 'selection') return notFound(reply, 'Selection block not found.');
+    if (!(block.config as { publishedAt?: string | null }).publishedAt) {
+      throw new HttpError(422, 'Announce the decision first — otherwise this tells them something nothing records.');
+    }
+
+    await launchNotice(id, {
+      kind: input.kind,
+      scheduledFor: input.scheduledFor ?? null,
+      body: input.body,
+      only: input.candidateId,
+      by: req.staff ? { id: req.staff.id, name: req.staff.email } : undefined,
+    });
+    if (!input.scheduledFor) await sendDueNotices();
+    return selectionAudiences(id);
   });
 
   app.post('/api/blocks/:id/selection/publish', async (req, reply) => {

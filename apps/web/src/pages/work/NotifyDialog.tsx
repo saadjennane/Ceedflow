@@ -35,6 +35,8 @@ interface Entry {
   askedAt: string | null;
   blocked: Blocked;
   owed: string;
+  /** The substitutions the sender will make for this one, composed server-side. */
+  values: Record<string, string>;
 }
 
 interface Roster {
@@ -53,7 +55,7 @@ const WHY: Record<Exclude<Blocked, 'none'>, string> = {
   suppressed: 'their address bounced for good',
 };
 
-const KNOWN: ReadonlySet<string> = new Set<string>(DELIVERABLE_VARIABLES.map((v) => v.name));
+
 
 /** One letter already written to this startup, and what became of it. */
 interface Letter {
@@ -79,24 +81,37 @@ export function NotifyDialog({
   kind,
   status,
   only,
+  rosterPath,
+  notifyPath,
+  title: given,
+  body: template,
+  variables = DELIVERABLE_VARIABLES,
   onDone,
   onClose,
 }: {
   block: Block;
-  kind: 'request' | 'reminder';
+  kind: string;
   status: BrickStatus;
   /** One startup, named from its own row — rather than whoever the list says. */
   only?: { id: string; name: string };
+  /* Where the list comes from and where the act goes. Defaulted to the
+     deliverables pair rather than made compulsory, because every brick that
+     writes to startups uses this same window and only these two differ. */
+  rosterPath?: string;
+  notifyPath?: string;
+  title?: string;
+  /** The template for this kind. Defaults to the deliverables block's own. */
+  body?: string;
+  variables?: readonly { name: string; label: string; what: string }[];
   onDone: (view: unknown) => void;
   onClose: () => void;
 }) {
   const config = block.config as DeliverableConfig;
+  const from = rosterPath ?? `/api/blocks/${block.id}/deliverables/roster`;
+  const to = notifyPath ?? `/api/blocks/${block.id}/deliverables/notify`;
   const roster = useAsync(
-    () =>
-      api.get<Roster>(
-        `/api/blocks/${block.id}/deliverables/roster?kind=${kind}${only ? `&candidateId=${only.id}` : ''}`,
-      ),
-    `${block.id}:${kind}:${only?.id ?? ''}`,
+    () => api.get<Roster>(`${from}?kind=${kind}${only ? `&candidateId=${only.id}` : ''}`),
+    `${from}:${kind}:${only?.id ?? ''}`,
   );
   /* What has already gone to this one, read before writing again: "we told
      them" and "it reached them" are different answers, and the second is the
@@ -108,7 +123,9 @@ export function NotifyDialog({
         : Promise.resolve([] as Letter[]),
     `${block.id}:${only?.id ?? ''}`,
   );
-  const [body, setBody] = useState(kind === 'request' ? config.messages.request : config.messages.reminder);
+  const [body, setBody] = useState(
+    template ?? (kind === 'request' ? config.messages.request : config.messages.reminder),
+  );
   const [when, setWhen] = useState<'now' | 'later'>('now');
   const [day, setDay] = useState<string | null>(null);
   const [at, setAt] = useState(0);
@@ -124,21 +141,18 @@ export function NotifyDialog({
 
   /** A name nobody will replace. Left visible rather than emptied, and said. */
   const unknown = useMemo(() => {
+    const known = new Set<string>(variables.map((v) => v.name));
     const found = new Set<string>();
-    for (const [, name] of body.matchAll(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g)) if (!KNOWN.has(name)) found.add(name);
+    for (const [, name] of body.matchAll(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g)) if (!known.has(name)) found.add(name);
     return [...found];
-  }, [body]);
+  }, [body, variables]);
 
   const needsLink = body.includes('{{lien}}') && !roster.data?.link;
   const shown = willHear[Math.min(at, Math.max(willHear.length - 1, 0))];
-  const letter = shown
-    ? fillTemplate(body, {
-        startup: shown.candidate.orgName,
-        pieces: shown.owed,
-        date: roster.data?.dateLabel ?? '',
-        lien: roster.data?.link ?? '',
-      })
-    : '';
+  /* Filled with what the server says it will fill — never with a map this
+     screen assembles. The preview's whole job is to be the letter, and a
+     second map is a second chance to show one nobody receives. */
+  const letter = shown ? fillTemplate(body, shown.values) : '';
 
   /** Dropped where the cursor is, so the text stays text somebody rearranges. */
   const insert = (name: string) => {
@@ -158,7 +172,7 @@ export function NotifyDialog({
     setBusy(true);
     try {
       onDone(
-        await api.post(`/api/blocks/${block.id}/deliverables/notify`, {
+        await api.post(to, {
           kind,
           scheduledFor: when === 'later' ? day : null,
           body,
@@ -178,11 +192,7 @@ export function NotifyDialog({
     }
   };
 
-  const title = only
-    ? `Write to ${only.name}`
-    : kind === 'request'
-      ? 'Ask for the documents'
-      : 'Chase the files still short';
+  const title = only ? `Write to ${only.name}` : (given ?? (kind === 'request' ? 'Ask for the documents' : 'Chase the files still short'));
   const blocking = !willHear.length || needsLink || (when === 'later' && !day);
 
   return (
@@ -323,7 +333,7 @@ export function NotifyDialog({
                 />
               </div>
               <div className="row wrap" style={{ gap: 5 }}>
-                {DELIVERABLE_VARIABLES.map((v) => (
+                {variables.map((v) => (
                   <button key={v.name} className="btn ghost sm" title={v.what} onClick={() => insert(v.name)}>
                     <Icon name="plus" size={11} /> {v.label}
                   </button>

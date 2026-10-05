@@ -7,11 +7,15 @@ import {
   type BlockOutcome,
   type DeliverableConfig,
   type EvaluationConfig,
+  SELECTION_VARIABLES,
   type SelectionConfig,
   type TrackWithPhases,
 } from '@ceed/shared';
 import { SelectField, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
+import { Template } from './Template';
+import { api } from '../../../lib/api';
+import { useAsync } from '../../../lib/useAsync';
 
 /* ------------------------------------------------------------------ */
 /* Setup                                                               */
@@ -52,17 +56,111 @@ function StatusPick({
   );
 }
 
+/* Two sides to set up, so two tabs: the rule that decides, and the words each
+   audience reads. A dozen lines of letter under the rule made both hard to
+   find. */
+export const SELECTION_TABS = ['Overview', 'Messages'] as const;
+export type SelectionTab = (typeof SELECTION_TABS)[number];
+
+/**
+ * What each audience reads.
+ *
+ * One template per outcome, and the outcomes are named two fields away in the
+ * same config — which is why these live with the block rather than in a
+ * settings page: the list of letters is generated from this block's own
+ * vocabulary.
+ */
+function MessagesTab({
+  config,
+  patch,
+  block,
+}: {
+  config: SelectionConfig;
+  patch: (partial: Partial<SelectionConfig>) => void;
+  block: Block;
+}) {
+  const link = useAsync(() => api.get<{ link: string }>('/api/app-link'), 'app-link');
+  const set = (key: keyof SelectionConfig['messages'], next: string) =>
+    patch({ messages: { ...config.messages, [key]: next } });
+
+  const example = (decision: string) => ({
+    startup: 'Rafid Tech',
+    decision,
+    phase: block.name,
+    lien: link.data?.link || '(this platform has no public address set)',
+  });
+
+  const holds = config.waitOutcomeIds.length > 0;
+
+  return (
+    <>
+      <div className="callout">
+        <Icon name="send" size={15} />
+        <div>
+          Written once here, sent from <strong>Review</strong> — one audience at a time, where you see who each letter
+          names before it goes.
+        </div>
+      </div>
+
+      {link.data && !link.data.link && (
+        <div className="callout warn">
+          <Icon name="alert" size={15} />
+          <div>
+            <strong>We don’t know this platform’s own web address yet.</strong> A message using <strong>Link</strong>{' '}
+            would have nowhere to send anybody. Reload this page; if it persists, whoever hosts this needs to look.
+          </div>
+        </div>
+      )}
+
+      <Template
+        label={`To those you keep — “${config.passLabel}”`}
+        help="The one they remember. It goes once to each startup the decision passed."
+        value={config.messages.pass}
+        onChange={(v) => set('pass', v)}
+        variables={SELECTION_VARIABLES}
+        example={example(config.passLabel)}
+      />
+
+      {/* Offered only where somebody is actually held: a letter for an audience
+          that does not exist is a letter nobody will ever read, taking up the
+          room of the two that matter. */}
+      {holds && (
+        <Template
+          label={`To those you hold — “${config.waitLabel}”`}
+          help="Say what waiting means and what happens next — the absence of that is what makes a waiting list feel like a refusal."
+          value={config.messages.wait}
+          onChange={(v) => set('wait', v)}
+          variables={SELECTION_VARIABLES}
+          example={example(config.waitLabel)}
+        />
+      )}
+
+      <Template
+        label={`To those you do not — “${config.failLabel}”`}
+        help="Sent as its own act, and usually not the same day: a startup still on the waiting list must not learn its fate from this one."
+        value={config.messages.fail}
+        onChange={(v) => set('fail', v)}
+        variables={SELECTION_VARIABLES}
+        example={example(config.failLabel)}
+      />
+    </>
+  );
+}
+
 export function SelectionSetup({
   block,
   config,
   patch,
   track,
+  tab = 'Overview',
 }: {
   block: Block;
   config: SelectionConfig;
   patch: (partial: Partial<SelectionConfig>) => void;
   track: TrackWithPhases;
+  tab?: SelectionTab;
 }) {
+  if (tab === 'Messages') return <MessagesTab config={config} patch={patch} block={block} />;
   const ordered = orderedBlocks(track);
   const index = ordered.findIndex((b) => b.id === block.id);
   /** Only a block that hands out statuses can feed a funnel — an evaluation's

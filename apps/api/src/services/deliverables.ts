@@ -229,6 +229,15 @@ export interface RosterEntry {
    * would be a preview that shows a letter nobody receives.
    */
   owed: string;
+  /**
+   * The exact substitutions the sender will make for this one.
+   *
+   * Sent rather than assembled on the screen, because the preview's whole job
+   * is to be the letter: a screen that built its own map showed `{{phase}}`
+   * unfilled while the sender filled it, which is a preview of a letter nobody
+   * receives.
+   */
+  values: Record<string, string>;
 }
 
 /** Everything the composing screen needs beside the list itself. */
@@ -279,6 +288,7 @@ export async function noticeRoster(
       askedAt: row.askedAt,
       blocked: row.blocked,
       owed: owedLines(view, row.candidate.id),
+      values: {},
     }));
 }
 
@@ -286,12 +296,13 @@ export async function noticeRoster(
 export async function rosterFor(blockId: string, kind: 'request' | 'reminder', only?: string): Promise<Roster> {
   const block = await repo.getBlock(blockId);
   const config = block?.config as DeliverableConfig | undefined;
-  return {
-    entries: await noticeRoster(blockId, kind, only),
-    link: await appLink(),
-    closesAt: config?.closesAt ?? null,
-    dateLabel: longDate(config?.closesAt),
-  };
+  const link = await appLink();
+  const date = longDate(config?.closesAt);
+  const entries = (await noticeRoster(blockId, kind, only)).map((e) => ({
+    ...e,
+    values: { startup: e.candidate.orgName, pieces: e.owed, date, lien: link },
+  }));
+  return { entries, link, closesAt: config?.closesAt ?? null, dateLabel: date };
 }
 
 /**

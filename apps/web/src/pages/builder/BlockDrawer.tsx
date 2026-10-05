@@ -22,7 +22,7 @@ import { APPLICATION_TABS, ApplicationSetup, type ApplicationTab } from './panel
 import { EVALUATION_TABS, EvaluationSetup, type EvaluationTab } from './panels/EvaluationPanel';
 import { CommitteeSetup, committeeTabs, type CommitteeTab } from './panels/CommitteePanel';
 import { DELIVERABLE_TABS, DeliverableSetup, type DeliverableTab } from './panels/DeliverablePanel';
-import { SelectionSetup } from './panels/SelectionPanel';
+import { SELECTION_TABS, SelectionSetup, type SelectionTab } from './panels/SelectionPanel';
 import { SOURCING_TABS, SourcingSetup, type SourcingTab } from './panels/SourcingPanel';
 
 /**
@@ -77,6 +77,7 @@ export function BlockDrawer({
   const [delivTab, setDelivTab] = useState<DeliverableTab>(
     currentTab === 'deliverables' ? 'What you ask for' : 'Overview',
   );
+  const [selTab, setSelTab] = useState<SelectionTab>('Overview');
   // Opening a committee's setup from the Committees tab is nearly always about
   // its panels, so that is where it lands.
   const [commTab, setCommTab] = useState<CommitteeTab>(currentTab === 'committees' ? 'Panels' : 'Overview');
@@ -194,6 +195,12 @@ export function BlockDrawer({
                       {t}
                     </button>
                   ))
+                : block.type === 'selection'
+                ? SELECTION_TABS.map((t) => (
+                    <button key={t} role="tab" className={t === selTab ? 'tab on' : 'tab'} onClick={() => setSelTab(t)}>
+                      {t}
+                    </button>
+                  ))
                 : block.type === 'committee'
                 ? commTabs.map((t) => (
                     <button
@@ -268,7 +275,13 @@ export function BlockDrawer({
           <CommitteeSetup block={block} config={draft as unknown as CommitteeConfig} patch={patch} tab={committeeTab} />
         )}
         {block.type === 'selection' && (
-          <SelectionSetup block={block} config={draft as unknown as SelectionConfig} patch={patch} track={track} />
+          <SelectionSetup
+            block={block}
+            config={draft as unknown as SelectionConfig}
+            patch={patch}
+            track={track}
+            tab={selTab}
+          />
         )}
         {block.type === 'deliverable' && (
           <DeliverableSetup

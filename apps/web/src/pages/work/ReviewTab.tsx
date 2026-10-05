@@ -22,6 +22,7 @@ import { api } from '../../lib/api';
 import { formatDate, shortNames } from '../../lib/format';
 import { download, toWorkbook, type Cell } from '../../lib/xlsx';
 import { useAsync } from '../../lib/useAsync';
+import { TellThem } from './TellThem';
 import { Icon } from '../../ui/Icon';
 import { ConfirmDialog, Modal, useToast } from '../../ui/Overlays';
 import { ScoreEditor } from '../builder/panels/shared';
@@ -646,6 +647,12 @@ function Moment({
             </div>
           </div>
         ))}
+
+      {/* Telling them, one audience at a time. Never all three at once: a
+          waiting list exists because the decision is not closed, and a refusal
+          sent to somebody who may be fished out next week is worse than the
+          leak that sending everybody together would avoid. */}
+      {selection && decision?.published && <TellThem block={selection} />}
 
       {decision?.published && outOfLine > 0 && (
         <div className="callout warn">
