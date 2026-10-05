@@ -14,7 +14,8 @@
  */
 import { newId } from '@ceed/shared';
 import * as repo from '../db/repo.js';
-import { post } from './mail.js';
+import { fillTemplate } from '@ceed/shared';
+import { post, sendingIsLive } from './mail.js';
 import { deliverableNotices } from './deliverables.js';
 import { selectionNotices } from './selectionNotices.js';
 import { committeeNotices } from './committeeNotices.js';
@@ -63,6 +64,15 @@ export interface NoticeSource {
    * ordinary mistake, and going out early is worse than going out late.
    */
   gate(blockId: string, kind: string): Promise<Gate>;
+  /**
+   * The substitutions one letter would make, with nothing changed by asking.
+   *
+   * One place per brick, read by three: the list the window shows, the preview
+   * that steps through recipients, and the test send. A value assembled a
+   * second time is a preview of a letter nobody receives — which is the one
+   * thing this window exists to prevent.
+   */
+  preview(blockId: string, kind: string, subjectId: string): Promise<Record<string, string>>;
   /**
    * The letter for one startup: the envelope and what goes in it.
    *
@@ -154,6 +164,34 @@ export async function launchNotice(
  * Every non-send carries a reason a human reads. Nothing goes out silently and
  * nothing is abandoned silently.
  */
+/**
+ * Une lettre d'essai, à une adresse qu'on choisit.
+ *
+ * Composed by the server from the same substitutions the preview shows, so
+ * what arrives is what would arrive — and it changes nothing: no target is
+ * claimed, nobody is recorded as told, and no account is opened. A test that
+ * had side effects would be a send with a different name.
+ */
+export async function sendTest(
+  blockId: string,
+  input: { kind: string; body: string; subjectId: string; to: string },
+): Promise<{ written: boolean; live: boolean }> {
+  const block = await repo.getBlock(blockId);
+  const source = block && SOURCES[block.type];
+  if (!source) return { written: false, live: false };
+
+  const values = await source.preview(blockId, input.kind, input.subjectId);
+  const letter = await post({
+    kind: `test_${input.kind}`,
+    to: input.to,
+    // Marked in the subject so nobody mistakes it for the real thing, in an
+    // inbox or in the outbox three weeks later.
+    subject: `[Essai] ${block.name}`,
+    body: fillTemplate(input.body, values),
+  });
+  return { written: Boolean(letter), live: sendingIsLive() };
+}
+
 export async function sendDueNotices(): Promise<{ sent: number; held: number }> {
   let sent = 0;
   let held = 0;

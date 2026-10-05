@@ -1,5 +1,4 @@
 import {
-  ACCESS_SAMPLE,
   blockStatus,
   editionIsVisible,
   editionTakesInput,
@@ -11,11 +10,11 @@ import { z } from 'zod';
 import { markAsJury } from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { committeeView, seatOnFreeSlots } from '../services/committee.js';
-import { committeeAudiences, committeeRoster, committeeValues } from '../services/committeeNotices.js';
+import { committeeAudiences, committeeNotices, committeeRoster } from '../services/committeeNotices.js';
 import { appLink } from '../services/deliverables.js';
 import { launchNotice, sendDueNotices } from '../services/notices.js';
 import { outreachView } from '../services/sourcing.js';
-import { sourcingAudiences, sourcingRoster, sourcingValues } from '../services/sourcingNotices.js';
+import { SOURCING_KIND, sourcingAudiences, sourcingNotices, sourcingRoster } from '../services/sourcingNotices.js';
 import { HttpError, notFound, parse } from './util.js';
 import { workspaceGuard } from './guard.js';
 
@@ -70,9 +69,7 @@ export async function actionRoutes(app: FastifyInstance) {
         askedAt: null,
         owes: false,
         owed: '',
-        /* The preview never opens an account: `acces` is replaced by its
-           sample here, because asking for the real one would create it. */
-        values: { ...((await committeeValues(id, kind, e.subjectId, true)) ?? {}), acces: ACCESS_SAMPLE(e.email) },
+        values: await committeeNotices.preview(id, kind, e.subjectId),
       })),
     );
     return { entries: withValues, link: await appLink(), closesAt: null, dateLabel: '' };
@@ -304,7 +301,7 @@ export async function actionRoutes(app: FastifyInstance) {
         askedAt: null,
         owes: false,
         owed: '',
-        values: { ...((await sourcingValues(id, e.subjectId, true)) ?? {}), acces: ACCESS_SAMPLE(e.email) },
+        values: await sourcingNotices.preview(id, SOURCING_KIND, e.subjectId),
       })),
     );
     return { entries: withValues, link: await appLink(), closesAt: null, dateLabel: '' };

@@ -10,7 +10,7 @@
  * this second: a score arriving after the announcement does not change what has
  * already left somebody's inbox.
  */
-import { type SelectionConfig, fillTemplate, firstNameOf } from '@ceed/shared';
+import { ACCESS_SAMPLE, type SelectionConfig, fillTemplate, firstNameOf } from '@ceed/shared';
 import * as repo from '../db/repo.js';
 import { appLink } from './deliverables.js';
 import { accessFor } from './invitations.js';
@@ -178,6 +178,22 @@ export async function selectionAudiences(blockId: string): Promise<{
 }
 
 export const selectionNotices: NoticeSource = {
+  async preview(blockId, kind, subjectId): Promise<Record<string, string>> {
+    const call = callOfKind(kind);
+    const block = await repo.getBlock(blockId);
+    const candidate = await repo.getCandidate(subjectId);
+    if (!call || !block || !candidate) return {};
+    const config = block.config as SelectionConfig;
+    return {
+      prenom: firstNameOf(candidate.contactName, candidate.contactFirstName),
+      acces: candidate.accountState === 'claimed' ? '' : ACCESS_SAMPLE(candidate.email),
+      startup: candidate.orgName,
+      decision: labelOf(config, call),
+      phase: block.name,
+      lien: await appLink(),
+    };
+  },
+
   roster: selectionRoster,
 
   /**

@@ -128,6 +128,14 @@ export function NotifyDialog({
   const [body, setBody] = useState(
     template ?? (kind === 'request' ? config.messages.request : config.messages.reminder),
   );
+  /* Reading, not writing, is what this window is for: the wording was settled
+     in the block's Messages tab, and what you came here to check is who gets
+     it and what it says to them. So the letter opens full width and the editor
+     is one press away — rather than half a window of textarea you did not ask
+     for. */
+  const [writing, setWriting] = useState(false);
+  const [trying, setTrying] = useState(false);
+  const [tryAt, setTryAt] = useState('');
   const [when, setWhen] = useState<'now' | 'later'>('now');
   const [day, setDay] = useState<string | null>(null);
   const [at, setAt] = useState(0);
@@ -172,6 +180,28 @@ export function NotifyDialog({
       el.focus();
       el.setSelectionRange(from + token.length, from + token.length);
     });
+  };
+
+  const tryIt = async () => {
+    if (!shown) return;
+    setBusy(true);
+    try {
+      const out = await api.post<{ written: boolean; live: boolean }>(`/api/blocks/${block.id}/notices/test`, {
+        kind,
+        body,
+        subjectId: shown.candidate.id,
+        to: tryAt.trim(),
+      });
+      // Said rather than assumed: outside production nothing leaves, and a
+      // toast that claimed otherwise would send somebody to check an inbox
+      // that will stay empty.
+      toast(out.live ? `Sent to ${tryAt.trim()}.` : 'Written and held — nothing leaves outside production.');
+      setTrying(false);
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const launch = async () => {
@@ -323,9 +353,11 @@ export function NotifyDialog({
             </div>
           )}
 
-          <div className="compose-split">
+          {/* The letter, and the way to step through them. */}
+          <div className={writing ? 'compose-split' : undefined}>
             {/* Composing on the left, the letter itself on the right: the two
                 things you move between while getting the wording right. */}
+            {writing && (
             <div className="stack" style={{ gap: 8 }}>
               <div className="field">
                 <label htmlFor="notify-body">What they read</label>
@@ -349,6 +381,7 @@ export function NotifyDialog({
                 Edited here, this goes out once as written — the block’s own template is untouched.
               </p>
             </div>
+            )}
 
             <div className="stack" style={{ gap: 8 }}>
               <div className="row" style={{ gap: 6 }}>
@@ -384,11 +417,45 @@ export function NotifyDialog({
               )}
               {/* The letter, filled in. This is the only place the per-recipient
                   variable is visible as the thing that differs. */}
-              <pre className="letter">{letter || 'Nothing to preview.'}</pre>
+              <pre className="letter" style={writing ? undefined : { maxHeight: 420 }}>
+                {letter || 'Nothing to preview.'}
+              </pre>
               {shown && !shown.owed && body.includes('{{pieces}}') && (
                 <p className="warnline" style={{ margin: 0, fontSize: 12 }}>
                   This one owes nothing — the list in the middle of its letter is empty.
                 </p>
+              )}
+
+              <div className="row wrap" style={{ gap: 7 }}>
+                <button className="btn ghost sm" onClick={() => setWriting(!writing)}>
+                  <Icon name="edit" size={13} /> {writing ? 'Done editing' : 'Edit the message'}
+                </button>
+                {/* Trying it on yourself before twenty-five people read it.
+                    It changes nothing: nobody is recorded as told, and no
+                    account is opened by looking. */}
+                <button className="btn ghost sm" onClick={() => setTrying(!trying)} disabled={!shown}>
+                  <Icon name="send" size={13} /> Send a test
+                </button>
+              </div>
+
+              {trying && (
+                <div className="row wrap" style={{ gap: 7 }}>
+                  <input
+                    className="input"
+                    type="email"
+                    style={{ flex: 1, minWidth: 180 }}
+                    placeholder="your@address.test"
+                    aria-label="Where to send the test"
+                    value={tryAt}
+                    onChange={(e) => setTryAt(e.target.value)}
+                  />
+                  <button className="btn sm" disabled={!tryAt.trim() || busy} onClick={() => void tryIt()}>
+                    Send it
+                  </button>
+                  <span className="faint" style={{ fontSize: 12, flexBasis: '100%' }}>
+                    {shown ? `The letter as ${shown.candidate.orgName} would read it. Nothing is recorded.` : ''}
+                  </span>
+                </div>
               )}
             </div>
           </div>

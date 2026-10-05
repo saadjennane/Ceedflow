@@ -19,8 +19,8 @@ import {
   rosterFor,
   tellReturned,
 } from '../src/services/deliverables.js';
-import { launchNotice, sendDueNotices } from '../src/services/notices.js';
-import { createAccount } from '../src/services/auth.js';
+import { launchNotice, sendDueNotices, sendTest } from '../src/services/notices.js';
+import { accountOfRecord, createAccount } from '../src/services/auth.js';
 import { letters } from '../src/services/mail.js';
 import { outcomesByCandidate, outcomesOf, setOutcomeByHand } from '../src/services/scoring.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
@@ -596,5 +596,79 @@ describe('telling the startups', { skip: skipWithoutServer }, () => {
   it('fills a letter with what that startup owes, and leaves an unknown name alone', async () => {
     assert.equal(fillTemplate('Bonjour {{startup}}', { startup: 'Rafid Tech' }), 'Bonjour Rafid Tech');
     assert.equal(fillTemplate('Bonjour {{inconnu}}', {}), 'Bonjour {{inconnu}}', 'visible rather than silently empty');
+  });
+});
+
+/**
+ * Une lettre d'essai.
+ *
+ * Trying it on yourself before twenty-five people read it. The whole value of
+ * it rests on changing nothing: a test that marked somebody as told, or opened
+ * their account, would be a send under another name — and the screen would
+ * then say twenty-four where it meant twenty-five.
+ */
+describe('sending a test', { skip: skipWithoutServer }, () => {
+  const setUp = async () => {
+    const stamp = `${Date.now()}.${Math.random().toString(36).slice(2, 6)}`;
+    const program = await repo.createProgram({ name: 'The Builders' });
+    const edition = await repo.createEdition(program.id, { name: 'Cohorte 1' });
+    const detail = await repo.getEditionDetail(edition.id);
+    const track = detail!.tracks[0];
+    const due = await repo.createBlock(track.phases[0].id, 'deliverable', 'Due diligence');
+    await repo.updateBlock(due.id, { config: { visibility: 'open', closesAt: '2026-11-15', items: ITEMS } });
+
+    const org = await dir.createRecord({ kind: 'org', name: `Rafid Tech ${stamp}`, origin: 'manual' });
+    const person = await dir.createRecord({
+      kind: 'person', name: `Karim ${stamp}`, email: `karim.${stamp}@example.test`, origin: 'manual',
+    });
+    const candidate = await repo.createCandidate({
+      editionId: edition.id, trackId: track.id, orgId: org.id, personId: person.id,
+    });
+    return { due, candidate, person, stamp };
+  };
+
+  it('writes the letter as that startup would read it, to the address given', async () => {
+    const { due, candidate, stamp } = await setUp();
+    const to = `moi.${stamp}@ceed.test`;
+    await sendTest(due.id, {
+      kind: 'request',
+      body: 'Bonjour {{prenom}}, avant le {{date}} :\n{{pieces}}',
+      subjectId: candidate.id,
+      to,
+    });
+
+    const [letter] = await letters({ email: to });
+    assert.match(letter!.body, /Bonjour Karim,/);
+    assert.match(letter!.body, /15 novembre 2026/);
+    assert.match(letter!.body, /Registre de commerce/, 'what this one actually owes');
+    assert.match(letter!.subject, /^\[Essai\]/, 'and marked, so nobody mistakes it');
+  });
+
+  it('records nobody as told', async () => {
+    const { due, candidate, stamp } = await setUp();
+    await sendTest(due.id, { kind: 'request', body: 'x', subjectId: candidate.id, to: `a.${stamp}@ceed.test` });
+    assert.equal((await repo.listNotices(due.id)).length, 0, 'no notice');
+    assert.equal((await noticeRoster(due.id, 'request')).length, 1, 'still on the list to ask');
+  });
+
+  it('opens no account by being looked at', async () => {
+    /* `{{acces}}` is the one value a preview cannot be, so the test shows the
+       sample rather than creating the real thing. */
+    const { due, candidate, person, stamp } = await setUp();
+    await sendTest(due.id, {
+      kind: 'request',
+      body: '{{acces}}',
+      subjectId: candidate.id,
+      to: `b.${stamp}@ceed.test`,
+    });
+    assert.equal(await accountOfRecord(person.id), null);
+    const [letter] = await letters({ email: `b.${stamp}@ceed.test` });
+    assert.match(letter!.body, /••/, 'dots, not a password that works');
+  });
+
+  it('writes nothing to the startup itself', async () => {
+    const { due, candidate, stamp } = await setUp();
+    await sendTest(due.id, { kind: 'request', body: 'x', subjectId: candidate.id, to: `c.${stamp}@ceed.test` });
+    assert.equal((await letters({ candidateId: candidate.id })).length, 0);
   });
 });

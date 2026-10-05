@@ -1,8 +1,5 @@
 import {
-  ACCESS_SAMPLE,
   blockStatus,
-  firstNameOf,
-  type SelectionConfig,
   brickClosedOn,
   newId,
   canApplyFor,
@@ -28,8 +25,8 @@ import { SESSION_COOKIE, accountForToken } from '../services/auth.js';
 import { committeeForEvaluation, committeeView } from '../services/committee.js';
 import { acknowledge } from '../services/applicationNotices.js';
 import { letters } from '../services/mail.js';
-import { launchNotice, sendDueNotices } from '../services/notices.js';
-import { callOfKind, labelOf, selectionAudiences, selectionRoster } from '../services/selectionNotices.js';
+import { launchNotice, sendDueNotices, sendTest } from '../services/notices.js';
+import { selectionAudiences, selectionNotices, selectionRoster } from '../services/selectionNotices.js';
 import {
   appLink,
   deliverableView,
@@ -726,31 +723,17 @@ export async function funnelRoutes(app: FastifyInstance) {
     const block = await repo.getBlock(id);
     if (!block || block.type !== 'selection') return notFound(reply, 'Selection block not found.');
     const kind = query.kind ?? '';
-    const entries = await selectionRoster(id, kind, query.candidateId);
-    const link = await appLink();
-    const config = block.config as SelectionConfig;
-    const call = callOfKind(kind);
-    const decision = call ? labelOf(config, call) : '';
-    return {
-      entries: entries.map((e) => ({
+    const entries = await Promise.all(
+      (await selectionRoster(id, kind, query.candidateId)).map(async (e) => ({
         candidate: { id: e.subjectId, orgName: e.orgName, email: e.email, contactName: e.toName },
         blocked: e.blocked || 'none',
         askedAt: null,
         owes: false,
         owed: '',
-        values: {
-          prenom: firstNameOf(e.toName),
-          acces: ACCESS_SAMPLE(e.email),
-          startup: e.orgName,
-          decision,
-          phase: block.name,
-          lien: link,
-        },
+        values: await selectionNotices.preview(id, kind, e.subjectId),
       })),
-      link,
-      closesAt: null,
-      dateLabel: '',
-    };
+    );
+    return { entries, link: await appLink(), closesAt: null, dateLabel: '' };
   });
 
   /**
@@ -759,6 +742,28 @@ export async function funnelRoutes(app: FastifyInstance) {
    * One kind at a time, deliberately: sending all three together is what a
    * waiting list exists to avoid.
    */
+  /**
+   * Une lettre d'essai, à une adresse qu'on choisit.
+   *
+   * Composed by the server from the same substitutions the preview shows, and
+   * changing nothing: no target claimed, nobody recorded as told, no account
+   * opened. A test with side effects would be a send under another name.
+   */
+  app.post('/api/blocks/:id/notices/test', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const input = parse(
+      z.object({
+        kind: z.string().min(1),
+        body: z.string().min(1, 'Write what they are going to read.'),
+        subjectId: z.string().min(1),
+        to: z.string().email('Enter an address to try it on.'),
+      }),
+      req.body,
+    );
+    if (!(await repo.getBlock(id))) return notFound(reply, 'Block not found.');
+    return sendTest(id, input);
+  });
+
   app.post('/api/blocks/:id/selection/notify', async (req, reply) => {
     const { id } = req.params as { id: string };
     const input = parse(

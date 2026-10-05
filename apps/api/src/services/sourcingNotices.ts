@@ -7,7 +7,7 @@
  * sending through the wrong channel, or through none, quietly loses the only
  * question this brick exists to answer.
  */
-import { applyLink, fillTemplate, firstNameOf, longDate, type SourcingConfig } from '@ceed/shared';
+import { ACCESS_SAMPLE, applyLink, fillTemplate, firstNameOf, longDate, type SourcingConfig } from '@ceed/shared';
 import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { accessFor } from './invitations.js';
@@ -126,6 +126,12 @@ export async function sourcingValues(
 }
 
 export const sourcingNotices: NoticeSource = {
+  async preview(blockId, _kind, subjectId): Promise<Record<string, string>> {
+    const values = await sourcingValues(blockId, subjectId, true);
+    const rows = await sourcingRoster(blockId, SOURCING_KIND, subjectId);
+    return { ...(values ?? {}), acces: ACCESS_SAMPLE(rows[0]?.email ?? '') };
+  },
+
   roster: sourcingRoster,
 
   async filter(blockId, _kind, subjectIds) {

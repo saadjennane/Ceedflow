@@ -300,19 +300,12 @@ export async function rosterFor(blockId: string, kind: 'request' | 'reminder', o
   const config = block?.config as DeliverableConfig | undefined;
   const link = await appLink();
   const date = longDate(config?.closesAt);
-  const entries = (await noticeRoster(blockId, kind, only)).map((e) => ({
-    ...e,
-    values: {
-      prenom: firstNameOf(e.candidate.contactName, e.candidate.contactFirstName),
-      /* The one value the preview cannot be: a password is generated as the
-         letter is written. Everything else is the letter. */
-      acces: e.candidate.accountState === 'claimed' ? '' : ACCESS_SAMPLE(e.candidate.email),
-      startup: e.candidate.orgName,
-      pieces: e.owed,
-      date,
-      lien: link,
-    },
-  }));
+  const entries = await Promise.all(
+    (await noticeRoster(blockId, kind, only)).map(async (e) => ({
+      ...e,
+      values: await deliverableNotices.preview(blockId, kind, e.candidate.id),
+    })),
+  );
   return { entries, link, closesAt: config?.closesAt ?? null, dateLabel: date };
 }
 
@@ -445,6 +438,24 @@ function owedLines(view: DeliverableView, candidateId: string): string {
  * Three answers, and the generic machinery in notices.ts does the rest.
  */
 export const deliverableNotices: NoticeSource = {
+  async preview(blockId, _kind, subjectId): Promise<Record<string, string>> {
+    const view = await deliverableView(blockId);
+    const row = view?.rows.find((r) => r.candidate.id === subjectId);
+    const block = await repo.getBlock(blockId);
+    const config = block?.config as DeliverableConfig | undefined;
+    if (!view || !row) return {};
+    return {
+      prenom: firstNameOf(row.candidate.contactName, row.candidate.contactFirstName),
+      /* The one value a preview cannot be: a password is generated as the
+         letter is written, and asking for the real one would open an account. */
+      acces: row.candidate.accountState === 'claimed' ? '' : ACCESS_SAMPLE(row.candidate.email),
+      startup: row.candidate.orgName,
+      pieces: owedLines(view, subjectId),
+      date: longDate(config?.closesAt),
+      lien: await appLink(),
+    };
+  },
+
   async roster(blockId, kind, only) {
     const entries = await noticeRoster(blockId, kind as 'request' | 'reminder', only);
     return entries.map((e) => ({

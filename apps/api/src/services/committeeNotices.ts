@@ -12,6 +12,7 @@
  * letter, not in the act.
  */
 import {
+  ACCESS_SAMPLE,
   COMMITTEE_JURY_VARIABLES,
   COMMITTEE_STARTUP_VARIABLES,
   fillTemplate,
@@ -206,6 +207,12 @@ export const COMMITTEE_VARIABLES = {
 };
 
 export const committeeNotices: NoticeSource = {
+  async preview(blockId, kind, subjectId): Promise<Record<string, string>> {
+    const values = await committeeValues(blockId, kind, subjectId, true);
+    const rows = await committeeRoster(blockId, kind, subjectId);
+    return { ...(values ?? {}), acces: ACCESS_SAMPLE(rows[0]?.email ?? '') };
+  },
+
   roster: committeeRoster,
 
   async filter(blockId, kind, subjectIds) {
