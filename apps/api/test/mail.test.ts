@@ -10,7 +10,7 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import { db, migrate } from '../src/db/client.js';
-import { letters, post, sendingIsLive, suppress, suppressed } from '../src/services/mail.js';
+import { letters, post, replyTo, sendingIsLive, suppress, suppressed } from '../src/services/mail.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
 before(migrate);
@@ -85,6 +85,23 @@ describe('the outbox', { skip: skipWithoutServer }, () => {
       await post({ kind: 'password_reset', to: 'karim@example.test', subject: 'Hello', body: 'Body' });
     });
     assert.equal((await letters({ email: 'karim@example.test' }))[0]!.state, 'queued');
+  });
+
+  it('treats a blank reply address as none at all', () => {
+    /* Vidée dans une console d'hébergeur, la variable garde souvent un espace
+       — et « reply_to: " " » fait refuser toutes les lettres, pas une. */
+    const before = process.env.MAIL_REPLY_TO;
+    try {
+      process.env.MAIL_REPLY_TO = '   ';
+      assert.equal(replyTo(), '', 'a space is not an address');
+      delete process.env.MAIL_REPLY_TO;
+      assert.equal(replyTo(), '', 'and neither is nothing');
+      process.env.MAIL_REPLY_TO = '  contact@ceedflow.com ';
+      assert.equal(replyTo(), 'contact@ceedflow.com', 'a real one survives, tidied');
+    } finally {
+      if (before === undefined) delete process.env.MAIL_REPLY_TO;
+      else process.env.MAIL_REPLY_TO = before;
+    }
   });
 
   it('holds anything addressed to somebody who bounced for good', async () => {

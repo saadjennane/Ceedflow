@@ -56,7 +56,15 @@ export const sendingIsLive = () => process.env.NODE_ENV === 'production' && Bool
 
 /** Where a message says it comes from, and where a reply lands. */
 const from = () => process.env.MAIL_FROM ?? 'CEED <no-reply@mail.ceedflow.com>';
-const replyTo = () => process.env.MAIL_REPLY_TO ?? '';
+
+/**
+ * L'adresse de réponse, et rien quand il n'y en a pas.
+ *
+ * Trimmed, because blank has to mean absent: a variable emptied in a hosting
+ * console keeps a space behind more often than not, and ` ` is not an address
+ * — the provider refuses the letter, and it refuses every single one of them.
+ */
+export const replyTo = () => (process.env.MAIL_REPLY_TO ?? '').trim();
 
 /** An address that came back for good is never written to again. */
 export async function suppressed(email: string): Promise<boolean> {
