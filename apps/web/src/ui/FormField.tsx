@@ -1,5 +1,6 @@
 import { MAX_UPLOAD_BYTES, type FormField } from '@ceed/shared';
 import { useState } from 'react';
+import { useLang } from '../lib/lang';
 import { Icon } from './Icon';
 
 /* ------------------------------------------------------------------ */
@@ -32,6 +33,8 @@ export function FormFieldInput({
    */
   readOnly?: boolean;
 }) {
+  const { t } = useLang();
+
   const label = (
     <label>
       {field.label}
@@ -67,7 +70,7 @@ export function FormFieldInput({
           value={String(value ?? '')}
           onChange={(e) => onChange(e.target.value)}
         >
-          <option value="">Choose one</option>
+          <option value="">{t('field.choose')}</option>
           {field.options.map((o) => (
             <option key={o} value={o}>
               {o}
@@ -153,6 +156,7 @@ function FileField({
 }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
+  const { t } = useLang();
   const current = value as { uploadId: string; filename: string; size?: number } | undefined;
 
   const upload = async (file: File) => {
@@ -196,11 +200,11 @@ function FileField({
             goes. */}
         {readOnly ? (
           <a className="btn ghost sm" href={`/api/uploads/${current.uploadId}`} target="_blank" rel="noreferrer">
-            Open
+            {t('file.open')}
           </a>
         ) : (
           <button className="btn ghost sm" onClick={() => onChange(undefined)}>
-            Replace
+            {t('file.replace')}
           </button>
         )}
       </div>
@@ -216,7 +220,7 @@ function FileField({
       <label className="dropzone">
         <input type="file" disabled={busy} onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
         <Icon name="file" size={16} />
-        <span>{busy ? 'Sending…' : 'Choose a file — 10 MB at most'}</span>
+        <span>{busy ? t('file.sending') : t('file.choose')}</span>
       </label>
       {problem && <div style={{ color: 'var(--stop)', fontSize: 12 }}>{problem}</div>}
     </>

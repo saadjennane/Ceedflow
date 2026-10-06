@@ -22,6 +22,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
+import { agendaFor } from '../services/agenda.js';
 import { deliverablesFor } from '../services/deliverables.js';
 import { panelFor, reviewsFor, whyNoPanel } from '../services/reviews.js';
 import {
@@ -375,6 +376,23 @@ export async function authRoutes(app: FastifyInstance) {
       return notFound(reply, 'Candidacy not found.');
     }
     return deliverablesFor(candidate.editionId, candidate);
+  });
+
+  /**
+   * Ce qui vient, pour une de leurs candidatures.
+   *
+   * Scoped the same way as the documents: a date is as much theirs as the list
+   * of pieces, and neither is anybody else's to read.
+   */
+  app.get('/api/me/agenda/:candidateId', async (req, reply) => {
+    const account = await require(req);
+    const { candidateId } = req.params as { candidateId: string };
+    const candidate = await repo.getCandidate(candidateId);
+    if (!candidate) return notFound(reply, 'Candidacy not found.');
+    if (!(await dir.orgIdsOf(account.recordId)).has(candidate.orgId)) {
+      return notFound(reply, 'Candidacy not found.');
+    }
+    return agendaFor(candidateId);
   });
 
   /** Handing one item in. The brick has to be open, the same as a form does. */

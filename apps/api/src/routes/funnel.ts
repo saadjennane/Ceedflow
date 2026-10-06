@@ -20,6 +20,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import * as dir from '../db/directory.js';
 import { accountOfRecord } from '../services/auth.js';
+import { agendaFor } from '../services/agenda.js';
 import { peopleByIds } from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { SESSION_COOKIE, accountForToken } from '../services/auth.js';
@@ -837,6 +838,7 @@ export async function funnelRoutes(app: FastifyInstance) {
       programs: candidate.personId ? await programsFor(candidate.personId) : [],
       panels: candidate.personId ? await reviewsFor(candidate.personId) : [],
       owed: await deliverablesFor(candidate.editionId, candidate),
+      agenda: await agendaFor(candidate.id),
     };
   });
 

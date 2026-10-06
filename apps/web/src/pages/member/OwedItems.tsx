@@ -1,5 +1,6 @@
 import { itemComplete, itemUnfinished, longDate, type DeliverableConfig } from '@ceed/shared';
 import { useState } from 'react';
+import { useLang } from '../../lib/lang';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
@@ -33,12 +34,16 @@ export function OwedItems({
   orgName,
   given,
   readOnly = false,
+  startOpen = false,
 }: {
   candidateId: string;
   orgName: string;
   /** Already fetched — how CEED looks at somebody else's page without being them. */
   given?: Owed[];
   readOnly?: boolean;
+  /* Déplié d'emblée là où la liste est la page : sur l'onglet « À faire » d'un
+     programme, le pli serait un clic pour arriver là où l'on est déjà. */
+  startOpen?: boolean;
 }) {
   const owed = useAsync(
     async () => given ?? api.get<Owed[]>(`/api/me/deliverables/${candidateId}`),
@@ -65,6 +70,7 @@ export function OwedItems({
           ask={ask}
           orgName={orgName}
           readOnly={readOnly}
+          startOpen={startOpen}
           onSave={(itemId, value) => void save(ask.block.id, itemId, value)}
         />
       ))}
@@ -96,6 +102,7 @@ export function OwedList({
   readOnly?: boolean;
 }) {
   const [showing, setShowing] = useState(startOpen);
+  const { t } = useLang();
   const need = ask.config.items.filter((i) => i.required);
   const mineOf = (id: string) => ask.returns.find((r) => r.itemId === id);
   /* What they have sent, over what is asked. That is the only number they can
@@ -131,15 +138,17 @@ export function OwedList({
         <div style={{ flex: 1, minWidth: 0 }}>
           <h3 style={{ fontSize: 15, margin: 0 }}>
             {back.length > 0
-              ? 'Un élément est à renvoyer'
+              ? t('owed.back')
               : left > 0
-                ? 'Veuillez remplir ces informations'
+                ? t('owed.fill')
                 : read === need.length
-                  ? 'Tout est transmis'
-                  : 'Tout est transmis — CEED en prend connaissance'}
+                  ? t('owed.done')
+                  : t('owed.reading')}
           </h3>
           <p className="faint" style={{ margin: '2px 0 0', fontSize: 12.5 }}>
-            {[ask.block.name, left > 0 && closing ? `avant le ${closing}` : null].filter(Boolean).join(' · ')}
+            {[ask.block.name, left > 0 && closing ? `${t('owed.before')} ${closing}` : null]
+              .filter(Boolean)
+              .join(' · ')}
           </p>
         </div>
         <span
@@ -164,7 +173,7 @@ export function OwedList({
       {!ask.open && (
         <div className="callout">
           <Icon name="file" size={15} />
-          <div>This list is closed. What you sent is below — talk to CEED if something still has to change.</div>
+          <div>{t('owed.closed')}</div>
         </div>
       )}
 
@@ -198,7 +207,7 @@ export function OwedList({
           <Icon name="alert" size={15} />
           <div>
             <strong>
-              {back.length === 1 ? 'One thing has to be sent again.' : `${back.length} things have to be sent again.`}
+              {t('owed.oneBack')}
             </strong>{' '}
             What to fix is written under each one.
           </div>
@@ -222,16 +231,16 @@ export function OwedList({
                 <div className="callout warn" style={{ marginTop: 5 }}>
                   <Icon name="alert" size={14} />
                   <div style={{ fontSize: 12.5 }}>
-                    <strong>To send again.</strong> {mine.reason}
+                    <strong>{t('owed.again')}</strong> {mine.reason}
                   </div>
                 </div>
               ) : mine?.state === 'accepted' ? (
                 <div style={{ fontSize: 12, marginTop: 3, color: 'var(--ok)' }}>
-                  <Icon name="check" size={12} /> Accepted
+                  <Icon name="check" size={12} /> {t('owed.accepted')}
                 </div>
               ) : mine?.returnedAt ? (
                 <div className="faint" style={{ fontSize: 12, marginTop: 3 }}>
-                  Sent {formatDate(mine.returnedAt.slice(0, 10))} — waiting to be read
+                  {t('owed.waiting')} {formatDate(mine.returnedAt.slice(0, 10))} {t('owed.unread')}
                 </div>
               ) : null}
             </div>
@@ -241,7 +250,7 @@ export function OwedList({
 
       {ask.open && !readOnly && (
         <p className="faint" style={{ margin: 0, fontSize: 12 }}>
-          Each answer is kept as you give it — there is nothing to send at the end.
+          {t('owed.kept')}
         </p>
       )}
         </>

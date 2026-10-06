@@ -18,6 +18,7 @@ interface AsMember {
   programs: MemberPreview['programs'];
   panels: MemberPreview['panels'];
   owed: Owed[];
+  agenda: MemberPreview['agenda'][string];
 }
 
 export function AsStartupPage() {
@@ -27,10 +28,17 @@ export function AsStartupPage() {
   if (seen.error) return <div className="member-shell"><div className="empty">{seen.error}</div></div>;
   if (!seen.data) return <div className="member-shell" />;
 
-  const { candidate, who, programs, panels, owed } = seen.data;
+  const { candidate, who, programs, panels, owed, agenda } = seen.data;
   return (
     <MemberPage
-      preview={{ who, orgName: candidate.orgName, programs, panels, owed: { [candidate.id]: owed } }}
+      preview={{
+        who,
+        orgName: candidate.orgName,
+        programs,
+        panels,
+        owed: { [candidate.id]: owed },
+        agenda: { [candidate.id]: agenda },
+      }}
     />
   );
 }

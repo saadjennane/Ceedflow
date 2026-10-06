@@ -13,6 +13,9 @@ import '../../ui/builder.css';
 import '../../ui/directory.css';
 import { initials } from '../directory/DirectoryPage';
 import { OwedItems, type Owed } from './OwedItems';
+import { Agenda, type AgendaEntry } from './Agenda';
+import { MemberHome, type CandidacyState } from './MemberHome';
+import { LangProvider, useLang } from '../../lib/lang';
 import { TeamModal } from './TeamPanel';
 
 /**
@@ -21,7 +24,11 @@ import { TeamModal } from './TeamPanel';
  * whole product already points at.
  */
 /** The four places a member has. Jury only exists for somebody on a panel. */
-const MEMBER_TABS = ['Profile', 'Programs', 'Jury', 'Settings'] as const;
+const MEMBER_TABS = ['Home', 'Programs', 'Jury', 'Profile', 'Settings'] as const;
+/** The word each tab wears, in the language the member reads. */
+const TAB_WORD = {
+  Home: 'tab.home', Programs: 'tab.programs', Jury: 'tab.jury', Profile: 'tab.profile', Settings: 'tab.settings',
+} as const;
 type MemberTab = (typeof MEMBER_TABS)[number];
 
 /**
@@ -37,10 +44,22 @@ export interface MemberPreview {
   programs: MyProgram[];
   panels: ReviewPanel[];
   owed: Record<string, Owed[]>;
+  agenda: Record<string, AgendaEntry[]>;
 }
 
 export function MemberPage({ preview }: { preview?: MemberPreview } = {}) {
+  /* Le français par défaut, l'anglais offert : c'est l'espace des fondatrices
+     et des jurés, et l'espace CEED, lui, reste en anglais. */
+  return (
+    <LangProvider>
+      <MemberSpace preview={preview} />
+    </LangProvider>
+  );
+}
+
+function MemberSpace({ preview }: { preview?: MemberPreview }) {
   const { me, loading, reload } = useAccount();
+  const { lang, setLang, t } = useLang();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   /* Kept in the URL so coming back, refreshing or following a link lands where
@@ -62,14 +81,52 @@ export function MemberPage({ preview }: { preview?: MemberPreview } = {}) {
      Nobody signs in to read their own profile: a founder comes to see what is
      still asked of them, a juror to see what is left to mark. Profile is where
      you end up when neither is true. */
-  const landing: MemberTab = (programs.data?.length ?? 0) > 0 ? 'Programs' : isJuror ? 'Jury' : 'Profile';
+  const landing: MemberTab = (programs.data?.length ?? 0) > 0 ? 'Home' : isJuror ? 'Jury' : 'Profile';
   const tab: MemberTab = asked && tabs.includes(asked) ? asked : landing;
   const setTab = (next: MemberTab) =>
     setParams((p) => {
       const q = new URLSearchParams(p);
       q.set('tab', next);
+      q.delete('prog');
       return q;
     });
+  /* Quel programme on regarde, dans l'adresse comme l'onglet : revenir, ou
+     recharger, doit ramener là où l'on était. */
+  const openEdition = params.get('prog') ?? '';
+  const setEdition = (editionId: string) =>
+    setParams((p) => {
+      const q = new URLSearchParams(p);
+      q.set('tab', 'Programs');
+      if (editionId) q.set('prog', editionId);
+      else q.delete('prog');
+      return q;
+    });
+
+  /* Ce que chaque candidature doit et ce qui l'attend, rassemblé une fois pour
+     la page d'accueil comme pour celle d'un programme. */
+  const mine = (programs.data ?? []).flatMap((p) => p.mine.map((c) => ({ ...c, programme: p })));
+  const key = mine.map((c) => c.id).join(',');
+  const states = useAsync<CandidacyState[]>(
+    async () =>
+      preview
+        ? mine.map((c) => ({
+            candidateId: c.id,
+            orgName: c.orgName,
+            programme: c.programme,
+            owed: preview.owed[c.id] ?? [],
+            agenda: preview.agenda[c.id] ?? [],
+          }))
+        : Promise.all(
+            mine.map(async (c) => ({
+              candidateId: c.id,
+              orgName: c.orgName,
+              programme: c.programme,
+              owed: await api.get<Owed[]>(`/api/me/deliverables/${c.id}`),
+              agenda: await api.get<AgendaEntry[]>(`/api/me/agenda/${c.id}`),
+            })),
+          ),
+    `${key}:${preview ? 'preview' : 'mine'}`,
+  );
 
   useEffect(() => {
     if (!preview && !loading && !me) navigate('/login', { replace: true });
@@ -117,9 +174,15 @@ export function MemberPage({ preview }: { preview?: MemberPreview } = {}) {
         </span>
         {/* Somebody at CEED has two places to be, and this page is the smaller
             one. Without this, the way back is a URL they have to know. */}
+        {/* Deux langues, offertes depuis la page : CEED écrit en français à
+            des fondatrices marocaines, et un jury ne l'est pas toujours. */}
+        <div className="seg" role="group" aria-label={t('bar.lang')}>
+          <button className={lang === 'fr' ? 'on' : ''} onClick={() => setLang('fr')}>FR</button>
+          <button className={lang === 'en' ? 'on' : ''} onClick={() => setLang('en')}>EN</button>
+        </div>
         {!preview && me!.account.staffRole && (
           <Link className="btn sm" to="/">
-            <Icon name="grid" size={13} /> CEED workspace
+            <Icon name="grid" size={13} /> {t('bar.workspace')}
           </Link>
         )}
         {!preview && (
@@ -130,15 +193,15 @@ export function MemberPage({ preview }: { preview?: MemberPreview } = {}) {
               navigate('/login');
             }}
           >
-            Sign out
+            {t('bar.signOut')}
           </button>
         )}
       </div>
 
-      <nav className="tabbar" role="tablist" aria-label="Your space">
-        {tabs.map((t) => (
-          <button key={t} role="tab" className={t === tab ? 'tab on' : 'tab'} onClick={() => setTab(t)}>
-            {t}
+      <nav className="tabbar" role="tablist" aria-label={lang === 'fr' ? 'Votre espace' : 'Your space'}>
+        {tabs.map((name) => (
+          <button key={name} role="tab" className={name === tab ? 'tab on' : 'tab'} onClick={() => setTab(name)}>
+            {t(TAB_WORD[name])}
           </button>
         ))}
       </nav>
@@ -159,9 +222,17 @@ export function MemberPage({ preview }: { preview?: MemberPreview } = {}) {
             <Involvement panels={panels.data ?? []} programs={programs.data ?? []} onGo={setTab} />
           </>
         )}
-        {tab === 'Programs' && (
-          <Programs programs={programs} owedFor={preview?.owed} readOnly={Boolean(preview)} />
-        )}
+        {tab === 'Home' && <MemberHome states={states.data ?? []} onOpen={setEdition} />}
+        {tab === 'Programs' &&
+          (openEdition ? (
+            <ProgramPage
+              state={(states.data ?? []).find((x) => x.programme.editionId === openEdition) ?? null}
+              readOnly={Boolean(preview)}
+              onBack={() => setEdition('')}
+            />
+          ) : (
+            <Programs programs={programs} owedFor={preview?.owed} readOnly={Boolean(preview)} onOpen={setEdition} />
+          ))}
         {tab === 'Jury' && <Jury panels={panels.data ?? []} />}
         {tab === 'Settings' && !preview && <Settings me={me!} />}
       </div>
@@ -391,6 +462,73 @@ function Settings({ me }: { me: Me }) {
 }
 
 /** One published edition, as the server hands it to a member. */
+/**
+ * Un programme, du côté de la startup.
+ *
+ * Two tabs, because there are two kinds of thing: what is asked of them, and
+ * what is coming. The wall will be the third, and it will not disturb either —
+ * which is the reason for tabs rather than one long page.
+ */
+function ProgramPage({
+  state,
+  readOnly,
+  onBack,
+}: {
+  state: CandidacyState | null;
+  readOnly: boolean;
+  onBack: () => void;
+}) {
+  const { t } = useLang();
+  const [side, setSide] = useState<'todo' | 'agenda'>('todo');
+
+  if (!state) return <div className="empty">{t('prog.none')}</div>;
+
+  return (
+    <div className="stack" style={{ gap: 14 }}>
+      <div className="row">
+        <button className="btn ghost sm" onClick={onBack}>
+          <Icon name="chevronLeft" size={13} /> {t('prog.back')}
+        </button>
+      </div>
+
+      <div>
+        <h2 style={{ fontSize: 17, margin: 0 }}>{state.programme.programName}</h2>
+        <p className="faint" style={{ margin: '2px 0 0', fontSize: 12.5 }}>
+          {[state.programme.editionName, state.orgName].filter(Boolean).join(' · ')}
+        </p>
+      </div>
+
+      <nav className="drawer-tabs" style={{ padding: 0 }} role="tablist">
+        <button role="tab" className={side === 'todo' ? 'tab on' : 'tab'} onClick={() => setSide('todo')}>
+          {t('prog.todo')}
+        </button>
+        <button role="tab" className={side === 'agenda' ? 'tab on' : 'tab'} onClick={() => setSide('agenda')}>
+          {t('prog.agenda')}
+          {state.agenda.length > 0 && <span className="badge num" style={{ marginLeft: 6 }}>{state.agenda.length}</span>}
+        </button>
+      </nav>
+
+      {side === 'todo' ? (
+        state.owed.length ? (
+          <OwedItems
+            candidateId={state.candidateId}
+            orgName={state.orgName}
+            given={state.owed}
+            readOnly={readOnly}
+            startOpen
+          />
+        ) : (
+          <section className="card card-pad">
+            <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{t('prog.noTodo')}</p>
+          </section>
+        )
+      ) : (
+        <Agenda entries={state.agenda} />
+      )}
+    </div>
+  );
+}
+
 export interface MyProgram {
   programId: string;
   programName: string;
@@ -424,21 +562,25 @@ export function Programs({
   programs,
   owedFor,
   readOnly = false,
+  onOpen,
 }: {
   programs: AsyncState<MyProgram[]>;
   /** Already fetched, when CEED is looking at somebody else's page. */
   owedFor?: Record<string, Owed[]>;
   readOnly?: boolean;
+  /** Where a programme opens, when the list is a way in rather than the page. */
+  onOpen?: (editionId: string) => void;
 }) {
   const list = programs.data ?? [];
+  const { t: says } = useLang();
 
   if (programs.error) return <div className="empty">{programs.error}</div>;
   if (!programs.data) return <div className="empty">Loading…</div>;
   if (!list.length) {
     return (
       <div className="empty">
-        <h3>Nothing open yet</h3>
-        <p>CEED&apos;s programmes appear here as soon as they are published.</p>
+        <h3>{says('prog.none')}</h3>
+        <p>{says('prog.noneMore')}</p>
       </div>
     );
   }
@@ -459,35 +601,37 @@ export function Programs({
               <span className={state.tone}>{state.label}</span>
             </div>
 
-            {/* Their own side of it, when they have one. */}
-            {p.mine.length > 0 && (
-              <div className="rows">
-                {p.mine.map((c) => (
-                  <div className="rowcard link-row" key={c.id}>
-                    <Icon name="check" size={13} />
-                    <span style={{ flex: 1, fontSize: 13 }}>
-                      <strong>{c.orgName}</strong> applied
-                    </span>
-                  </div>
-                ))}
+            {p.mine.map((c) => (
+              <div className="rowcard link-row" key={c.id}>
+                <Icon name="check" size={13} />
+                <span style={{ flex: 1, fontSize: 13 }}>
+                  <strong>{c.orgName}</strong> {says('prog.applied')}
+                </span>
               </div>
+            ))}
+
+            {/* La liste est une entrée, pas la page : ce qu'on y demande se lit
+                dans le programme, qui a de la place pour le dire. */}
+            {onOpen && p.mine.length > 0 && (
+              <button className="btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => onOpen(p.editionId)}>
+                {says('home.open')} <Icon name="chevronRight" size={13} />
+              </button>
             )}
 
-            {/* Anything CEED is still waiting on, under the programme asking
-                for it. It draws nothing when nothing is owed. */}
-            {p.mine.map((c) => (
-              <OwedItems
-                key={`owed-${c.id}`}
-                candidateId={c.id}
-                orgName={c.orgName}
-                given={owedFor?.[c.id]}
-                readOnly={readOnly}
-              />
-            ))}
+            {!onOpen &&
+              p.mine.map((c) => (
+                <OwedItems
+                  key={`owed-${c.id}`}
+                  candidateId={c.id}
+                  orgName={c.orgName}
+                  given={owedFor?.[c.id]}
+                  readOnly={readOnly}
+                />
+              ))}
 
             {p.applyUrl && !p.mine.length && !readOnly && (
               <a className="btn primary sm" style={{ alignSelf: 'flex-start' }} href={p.applyUrl}>
-                <Icon name="form" size={13} /> Apply
+                <Icon name="form" size={13} /> {says('prog.apply')}
               </a>
             )}
           </section>

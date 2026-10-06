@@ -17,19 +17,21 @@
  */
 import { itemFields, type DeliverableItem, type FormField } from '@ceed/shared';
 import { useState } from 'react';
+import { useLang } from '../lib/lang';
 import { FormFieldInput } from './FormField';
 import { Icon } from './Icon';
 
 /**
- * What the add button says.
+ * Ce que dit le bouton d'ajout.
  *
- * "Another" rather than an article, and it is not a dodge: the first entry is
- * always on screen already, so this button only ever adds a further one. It
- * also sidesteps guessing an English article for a word the programme typed in
- * its own language — "Add a associé" was what that cost.
+ * In English the word is repeated — "Add another associé" — because it reads
+ * naturally and tells you what you are adding. In French it is not: "ajouter"
+ * wants an article, and the article wants a gender nobody can guess from a
+ * word CEED typed in. The cards above are headed "ASSOCIÉ 1", so the word is
+ * already on screen; the button only has to say the act.
  */
-const addLabel = (item: DeliverableItem) =>
-  item.each ? `Add another ${item.each.toLowerCase()}` : 'Add another';
+const addLabel = (item: DeliverableItem, lang: string, add: string) =>
+  lang === 'fr' ? add : item.each ? `${add} ${item.each.toLowerCase()}` : add;
 
 /** A fresh, empty entry of this item's shape. */
 const emptyEntry = (item: DeliverableItem): unknown => (item.kind === 'group' ? {} : null);
@@ -84,6 +86,8 @@ export function DeliverableItemInput({
   onChange: (next: unknown) => void;
   readOnly?: boolean;
 }) {
+  const { t, lang } = useLang();
+
   /* A plain field is exactly what it always was. Everything below is for the
      three shapes that are not. */
   if (!item.repeatable && item.kind !== 'group') {
@@ -101,7 +105,9 @@ export function DeliverableItemInput({
           {/* « 1 associé minimum » plutôt que « at least one associé » : le mot
               est tapé en français par CEED, et la tournure évite d'avoir à
               deviner son genre. */}
-          1 {item.each ? item.each.toLowerCase() : 'élément'} minimum
+          {lang === 'fr'
+            ? `1 ${item.each ? item.each.toLowerCase() : 'élément'} minimum`
+            : `at least one${item.each ? ` ${item.each.toLowerCase()}` : ''}`}
         </span>
       )}
     </div>
@@ -202,7 +208,7 @@ export function DeliverableItemInput({
           style={{ alignSelf: 'flex-start', marginTop: 8 }}
           onClick={() => setBlanks((n) => n + 1)}
         >
-          <Icon name="plus" size={13} /> {addLabel(item)}
+          <Icon name="plus" size={13} /> {addLabel(item, lang, t('item.add'))}
         </button>
       )}
     </div>
