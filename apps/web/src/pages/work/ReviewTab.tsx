@@ -26,6 +26,7 @@ import { useAsync } from '../../lib/useAsync';
 import { useAnnouncing } from './TellThem';
 import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Overlays';
+import { ExportDialog } from './ExportDialog';
 import { ScoreEditor } from '../builder/panels/shared';
 
 /* ------------------------------------------------------------------ */
@@ -279,6 +280,8 @@ function Moment({
      header picks another, and clicking it again turns it round. */
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'score', dir: -1 });
   const [busy, setBusy] = useState(false);
+  /* Export asks what, now that there are two of them. */
+  const [exporting, setExporting] = useState(false);
 
   /* Telling them, one audience at a time. Never all three at once: a waiting
      list exists because the decision is not closed, and a refusal sent to
@@ -738,7 +741,7 @@ function Moment({
         )}
         <div className="spacer" />
         {scoring && sections.length > 0 && (
-          <button className="btn sm" onClick={exportSheets} title="Every juror's sheet, as a spreadsheet">
+          <button className="btn sm" onClick={() => setExporting(true)} title="A spreadsheet, or one sheet per juror">
             <Icon name="file" size={13} /> Export
           </button>
         )}
@@ -1099,6 +1102,23 @@ function Moment({
       )}
 
       {announcing.windows}
+
+      {exporting && scoring && (
+        <ExportDialog
+          blockName={evaluation?.name ?? ''}
+          criteria={scoring.criteria}
+          scale={scoring.scale}
+          markedOutOf={scoring.markedOutOf}
+          /* Every juror of every sitting: a sheet is one person's paper, and
+             which morning they sat on is not a reason to leave them out. */
+          evaluators={[...new Map(sections.flatMap((x) => x.evaluators).map((e) => [e.id, e])).values()]}
+          rows={lines
+            .filter((l) => l.scoring)
+            .map((l) => ({ id: l.candidate.id, orgName: l.candidate.orgName, scores: l.scoring!.scores }))}
+          onSpreadsheet={exportSheets}
+          onClose={() => setExporting(false)}
+        />
+      )}
 
       <p className="faint" style={{ margin: 0, fontSize: 12 }}>
         A status follows from the score on its own; choose another and it sticks. A decision can always be changed by
