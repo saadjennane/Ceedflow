@@ -30,9 +30,11 @@ import { callOfKind, selectionAudiences, selectionNotices, selectionRoster } fro
 import {
   appLink,
   deliverableView,
+  deliverablesFor,
   rosterFor,
   tellReturned,
 } from '../services/deliverables.js';
+import { programsFor } from './auth.js';
 import { reviewsFor } from '../services/reviews.js';
 import { outcomesByCandidate, outcomesOf, scoresByCandidate, setOutcomeByHand } from '../services/scoring.js';
 import {
@@ -803,6 +805,34 @@ export async function funnelRoutes(app: FastifyInstance) {
 
 
   /** Put startups on the list the funnel did not send: by name, or by status. */
+  /**
+   * La page d'une startup, telle qu'elle la voit — et rien de plus.
+   *
+   * Read-only on purpose. What CEED needs is to check that twenty-four
+   * founders will read the right thing before they read it; being able to
+   * deposit a document in somebody's file to find that out would be a cure
+   * worse than the doubt. So this answers with what they would see and offers
+   * no way to act on it.
+   *
+   * It runs the member's own code rather than a second rendering of the same
+   * idea: a preview written twice drifts, and one that drifts is worse than
+   * none — it is checked, it looks right, and the founder sees something else.
+   */
+  app.get('/api/candidates/:id/as-member', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const candidate = await repo.getCandidate(id);
+    if (!candidate) return notFound(reply, 'Candidacy not found.');
+    /* Through the person on the candidacy, because that is whose page it is.
+       A candidacy with nobody attached has no page to look at — which is
+       itself worth seeing before writing to them. */
+    return {
+      candidate: { id: candidate.id, orgName: candidate.orgName, contactName: candidate.contactName, email: candidate.email },
+      personId: candidate.personId,
+      programs: candidate.personId ? await programsFor(candidate.personId) : [],
+      owed: await deliverablesFor(candidate.editionId, candidate),
+    };
+  });
+
   app.post('/api/blocks/:id/selection/outcome', async (req, reply) => {
     const { id } = req.params as { id: string };
     const input = parse(setOutcomeInput, req.body);

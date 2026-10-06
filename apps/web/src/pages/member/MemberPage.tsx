@@ -12,7 +12,7 @@ import { Modal, useToast } from '../../ui/Overlays';
 import '../../ui/builder.css';
 import '../../ui/directory.css';
 import { initials } from '../directory/DirectoryPage';
-import { OwedItems } from './OwedItems';
+import { OwedItems, type Owed } from './OwedItems';
 import { TeamModal } from './TeamPanel';
 
 /**
@@ -341,7 +341,7 @@ function Settings({ me }: { me: Me }) {
 }
 
 /** One published edition, as the server hands it to a member. */
-interface MyProgram {
+export interface MyProgram {
   programId: string;
   programName: string;
   editionId: string;
@@ -370,7 +370,16 @@ function applicationLine(p: MyProgram): { label: string; tone: string } {
   return { label: 'No form', tone: 'badge' };
 }
 
-function Programs({ programs }: { programs: AsyncState<MyProgram[]> }) {
+export function Programs({
+  programs,
+  owedFor,
+  readOnly = false,
+}: {
+  programs: AsyncState<MyProgram[]>;
+  /** Already fetched, when CEED is looking at somebody else's page. */
+  owedFor?: Record<string, Owed[]>;
+  readOnly?: boolean;
+}) {
   const list = programs.data ?? [];
 
   if (programs.error) return <div className="empty">{programs.error}</div>;
@@ -417,10 +426,16 @@ function Programs({ programs }: { programs: AsyncState<MyProgram[]> }) {
             {/* Anything CEED is still waiting on, under the programme asking
                 for it. It draws nothing when nothing is owed. */}
             {p.mine.map((c) => (
-              <OwedItems key={`owed-${c.id}`} candidateId={c.id} orgName={c.orgName} />
+              <OwedItems
+                key={`owed-${c.id}`}
+                candidateId={c.id}
+                orgName={c.orgName}
+                given={owedFor?.[c.id]}
+                readOnly={readOnly}
+              />
             ))}
 
-            {p.applyUrl && !p.mine.length && (
+            {p.applyUrl && !p.mine.length && !readOnly && (
               <a className="btn primary sm" style={{ alignSelf: 'flex-start' }} href={p.applyUrl}>
                 <Icon name="form" size={13} /> Apply
               </a>

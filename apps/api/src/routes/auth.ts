@@ -107,6 +107,57 @@ async function meFor(account: {
   };
 }
 
+/**
+ * Les programmes d'un membre, vus de sa place.
+ *
+ * Lifted out of its route so that the preview CEED opens of a startup's page
+ * runs this and not a second rendering of the same idea. A preview written
+ * twice is a preview that drifts, and one that drifts is worse than none: it
+ * is checked, it looks right, and the founder sees something else.
+ */
+export async function programsFor(recordId: string): Promise<MyProgram[]> {
+  const record = await dir.getRecord(recordId);
+  const mine = new Set(record ? (await dir.linksOf(record)).map((l) => l.record.id) : []);
+  const programs = await repo.listPrograms();
+  const out: MyProgram[] = [];
+
+  for (const program of programs) {
+    for (const edition of program.editions) {
+      if (edition.status === 'Draft') continue;
+      const detail = await repo.getEditionDetail(edition.id);
+      if (!detail) continue;
+
+      const forms = detail.tracks.flatMap((t) => orderedBlocks(t)).filter((b) => b.type === 'application');
+      const state = forms.length
+        ? forms.map((b) => blockStatus(b)).sort((a, b) => RANK[a] - RANK[b])[0]
+        : null;
+      const opensAt = forms.map((b) => (b.config as { opensAt?: string | null }).opensAt).find(Boolean) ?? null;
+
+      // A candidacy of one of their own organisations, which is the only part
+      // of this screen that is about them rather than about the programme.
+      const candidacies = (await repo.listCandidates(edition.id))
+        .filter((c) => mine.has(c.orgId))
+        .map((c) => ({ id: c.id, orgName: c.orgName }));
+
+      out.push({
+        programId: program.id,
+        programName: program.name,
+        editionId: edition.id,
+        editionName: edition.name,
+        editionStatus: edition.status,
+        city: edition.city,
+        startsOn: edition.startsOn,
+        endsOn: edition.endsOn,
+        applications: edition.status === 'Completed' ? 'closed' : state,
+        opensAt,
+        applyUrl: state === 'live' && forms[0] ? `/apply/${forms[0].id}` : null,
+        mine: candidacies,
+      });
+    }
+  }
+  return out;
+}
+
 export async function authRoutes(app: FastifyInstance) {
   /**
    * Reads the signed-in account, or refuses. A provisional password is refused
@@ -303,48 +354,7 @@ export async function authRoutes(app: FastifyInstance) {
    */
   app.get('/api/me/programs', async (req) => {
     const account = await require(req);
-    const record = await dir.getRecord(account.recordId);
-    const mine = new Set(
-      record ? (await dir.linksOf(record)).map((l) => l.record.id) : [],
-    );
-    const programs = await repo.listPrograms();
-    const out: MyProgram[] = [];
-
-    for (const program of programs) {
-      for (const edition of program.editions) {
-        if (edition.status === 'Draft') continue;
-        const detail = await repo.getEditionDetail(edition.id);
-        if (!detail) continue;
-
-        const forms = detail.tracks.flatMap((t) => orderedBlocks(t)).filter((b) => b.type === 'application');
-        const state = forms.length
-          ? forms.map((b) => blockStatus(b)).sort((a, b) => RANK[a] - RANK[b])[0]
-          : null;
-        const opensAt = forms.map((b) => (b.config as { opensAt?: string | null }).opensAt).find(Boolean) ?? null;
-
-        // A candidacy of one of their own organisations, which is the only part
-        // of this screen that is about them rather than about the programme.
-        const candidacies = (await repo.listCandidates(edition.id))
-          .filter((c) => mine.has(c.orgId))
-          .map((c) => ({ id: c.id, orgName: c.orgName }));
-
-        out.push({
-          programId: program.id,
-          programName: program.name,
-          editionId: edition.id,
-          editionName: edition.name,
-          editionStatus: edition.status,
-          city: edition.city,
-          startsOn: edition.startsOn,
-          endsOn: edition.endsOn,
-          applications: edition.status === 'Completed' ? 'closed' : state,
-          opensAt,
-          applyUrl: state === 'live' && forms[0] ? `/apply/${forms[0].id}` : null,
-          mine: candidacies,
-        });
-      }
-    }
-    return out;
+    return programsFor(account.recordId);
   });
 
   /* ---- What a startup still owes ---- */

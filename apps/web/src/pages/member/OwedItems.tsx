@@ -28,8 +28,22 @@ export interface Owed {
  * morning, a figure asked of an accountant next week — and a form that only
  * counts when it is whole would have everybody waiting on their slowest piece.
  */
-export function OwedItems({ candidateId, orgName }: { candidateId: string; orgName: string }) {
-  const owed = useAsync(() => api.get<Owed[]>(`/api/me/deliverables/${candidateId}`), candidateId);
+export function OwedItems({
+  candidateId,
+  orgName,
+  given,
+  readOnly = false,
+}: {
+  candidateId: string;
+  orgName: string;
+  /** Already fetched — how CEED looks at somebody else's page without being them. */
+  given?: Owed[];
+  readOnly?: boolean;
+}) {
+  const owed = useAsync(
+    async () => given ?? api.get<Owed[]>(`/api/me/deliverables/${candidateId}`),
+    `${candidateId}:${given ? 'given' : 'mine'}`,
+  );
   const toast = useToast();
 
   if (!owed.data?.length) return null;
@@ -50,6 +64,7 @@ export function OwedItems({ candidateId, orgName }: { candidateId: string; orgNa
           key={ask.block.id}
           ask={ask}
           orgName={orgName}
+          readOnly={readOnly}
           onSave={(itemId, value) => void save(ask.block.id, itemId, value)}
         />
       ))}
@@ -70,12 +85,15 @@ export function OwedList({
   orgName,
   onSave,
   startOpen = false,
+  readOnly = false,
 }: {
   ask: Owed;
   orgName: string;
   onSave: (itemId: string, value: unknown) => void;
   /** Open from the start, for the preview that exists to show the form. */
   startOpen?: boolean;
+  /** Looked at rather than filled in: CEED reading somebody else's page. */
+  readOnly?: boolean;
 }) {
   const [showing, setShowing] = useState(startOpen);
   const need = ask.config.items.filter((i) => i.required);
@@ -195,7 +213,7 @@ export function OwedList({
               <DeliverableItemInput
                 item={item}
                 value={mine?.value ?? null}
-                readOnly={!ask.open}
+                readOnly={readOnly || !ask.open}
                 onChange={(v) => onSave(item.id, v)}
               />
               {/* Said back, because the thing people want to know after sending
@@ -221,7 +239,7 @@ export function OwedList({
         })}
       </div>
 
-      {ask.open && (
+      {ask.open && !readOnly && (
         <p className="faint" style={{ margin: 0, fontSize: 12 }}>
           Each answer is kept as you give it — there is nothing to send at the end.
         </p>
