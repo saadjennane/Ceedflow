@@ -485,28 +485,35 @@ function ProgramPage({
 
   return (
     <div className="stack" style={{ gap: 14 }}>
-      <div className="row">
-        <button className="btn ghost sm" onClick={onBack}>
-          <Icon name="chevronLeft" size={13} /> {t('prog.back')}
-        </button>
-      </div>
+      {/* Le nom et les onglets restent pendant qu'on descend la liste : sur dix
+          pièces, savoir où l'on est ne doit pas demander de remonter. */}
+      <div className="member-progbar stack" style={{ gap: 10 }}>
+        <div className="row" style={{ gap: 9 }}>
+          <button className="btn ghost icon sm" onClick={onBack} aria-label={t('prog.back')}>
+            <Icon name="chevronLeft" size={14} />
+          </button>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <strong style={{ fontFamily: 'var(--display)', fontSize: 15.5 }}>
+              {state.programme.programName}
+            </strong>
+            <span className="faint" style={{ display: 'block', fontSize: 12 }}>
+              {[state.programme.editionName, state.orgName].filter(Boolean).join(' · ')}
+            </span>
+          </div>
+        </div>
 
-      <div>
-        <h2 style={{ fontSize: 17, margin: 0 }}>{state.programme.programName}</h2>
-        <p className="faint" style={{ margin: '2px 0 0', fontSize: 12.5 }}>
-          {[state.programme.editionName, state.orgName].filter(Boolean).join(' · ')}
-        </p>
+        <nav className="drawer-tabs" role="tablist">
+          <button role="tab" className={side === 'todo' ? 'tab on' : 'tab'} onClick={() => setSide('todo')}>
+            {t('prog.todo')}
+          </button>
+          <button role="tab" className={side === 'agenda' ? 'tab on' : 'tab'} onClick={() => setSide('agenda')}>
+            {t('prog.agenda')}
+            {state.agenda.length > 0 && (
+              <span className="badge num" style={{ marginLeft: 6 }}>{state.agenda.length}</span>
+            )}
+          </button>
+        </nav>
       </div>
-
-      <nav className="drawer-tabs" style={{ padding: 0 }} role="tablist">
-        <button role="tab" className={side === 'todo' ? 'tab on' : 'tab'} onClick={() => setSide('todo')}>
-          {t('prog.todo')}
-        </button>
-        <button role="tab" className={side === 'agenda' ? 'tab on' : 'tab'} onClick={() => setSide('agenda')}>
-          {t('prog.agenda')}
-          {state.agenda.length > 0 && <span className="badge num" style={{ marginLeft: 6 }}>{state.agenda.length}</span>}
-        </button>
-      </nav>
 
       {side === 'todo' ? (
         state.owed.length ? (
@@ -515,7 +522,6 @@ function ProgramPage({
             orgName={state.orgName}
             given={state.owed}
             readOnly={readOnly}
-            startOpen
           />
         ) : (
           <section className="card card-pad">

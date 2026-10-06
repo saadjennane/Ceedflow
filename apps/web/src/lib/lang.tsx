@@ -77,8 +77,8 @@ const WORDS = {
   'owed.unread': { fr: '— en attente de lecture', en: '— waiting to be read' },
   'owed.again': { fr: 'À renvoyer.', en: 'To send again.' },
   'owed.oneBack': {
-    fr: 'Un élément est à renvoyer. Ce qu’il faut corriger est écrit sous chacun.',
-    en: 'One thing has to be sent again. What to fix is written under each one.',
+    fr: 'Un élément est à renvoyer — ce qu’il faut corriger est écrit sous chacun.',
+    en: 'One thing has to be sent again — what to fix is written under each one.',
   },
 
   /* ---- a list of things, and files ---- */

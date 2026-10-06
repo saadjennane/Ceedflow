@@ -134,7 +134,15 @@ export function OwedList({
         aria-expanded={showing}
         onClick={() => setShowing((x) => !x)}
       >
-        <Icon name={showing ? 'chevronDown' : 'chevronRight'} size={15} />
+        {/* Coché quand tout est parti : c'est ce qu'une fondatrice cherche
+            en revenant, et un intitulé ne le dit pas aussi vite qu'un signe. */}
+        {left === 0 && need.length > 0 && back.length === 0 ? (
+          <span className="done-mark" aria-hidden="true">
+            <Icon name="check" size={13} />
+          </span>
+        ) : (
+          <Icon name={showing ? 'chevronDown' : 'chevronRight'} size={15} />
+        )}
         <div style={{ flex: 1, minWidth: 0 }}>
           <h3 style={{ fontSize: 15, margin: 0 }}>
             {back.length > 0
@@ -205,12 +213,7 @@ export function OwedList({
       {back.length > 0 && (
         <div className="callout warn">
           <Icon name="alert" size={15} />
-          <div>
-            <strong>
-              {t('owed.oneBack')}
-            </strong>{' '}
-            What to fix is written under each one.
-          </div>
+          <div>{t('owed.oneBack')}</div>
         </div>
       )}
 

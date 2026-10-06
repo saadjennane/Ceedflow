@@ -110,6 +110,13 @@
   min-height: 100vh;
   background: var(--canvas);
 }
+/* La hauteur de son propre bandeau, pour que ce qui colle dessous sache où.
+   Elle était empruntée à l'en-tête de l'espace CEED, qui est plus haut : les
+   onglets flottaient quinze pixels trop bas et laissaient passer la page. */
+.member-shell {
+  --member-bar-h: 45px;
+  --member-tabs-h: 42px;
+}
 .member-bar {
   display: flex;
   align-items: center;
@@ -119,7 +126,27 @@
   border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
+  z-index: 7;
+}
+.member-shell .tabbar {
+  top: var(--member-bar-h);
+  z-index: 6;
+}
+
+/* Le nom du programme et ses onglets, qui restent pendant qu'on descend : sur
+   une liste de dix pièces, savoir où l'on est ne doit pas demander de remonter. */
+.member-progbar {
+  position: sticky;
+  top: calc(var(--member-bar-h) + var(--member-tabs-h));
   z-index: 5;
+  background: var(--canvas);
+  padding: 14px 0 0;
+  margin: -22px 0 0;
+  border-bottom: 1px solid var(--line);
+}
+.member-progbar .drawer-tabs {
+  padding: 0;
+  margin-bottom: -1px;
 }
 .member-body {
   max-width: 760px;
@@ -307,4 +334,17 @@
 
 @media (max-width: 620px) {
   .profile-head { flex-direction: column; gap: 12px; }
+}
+
+/* Ce qui est fait, d'un coup d'œil. */
+.done-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: var(--ok);
+  color: #fff;
+  flex: none;
 }
