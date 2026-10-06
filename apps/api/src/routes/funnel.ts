@@ -19,6 +19,7 @@ import {
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import * as dir from '../db/directory.js';
+import { accountOfRecord } from '../services/auth.js';
 import { peopleByIds } from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { SESSION_COOKIE, accountForToken } from '../services/auth.js';
@@ -825,10 +826,16 @@ export async function funnelRoutes(app: FastifyInstance) {
     /* Through the person on the candidacy, because that is whose page it is.
        A candidacy with nobody attached has no page to look at — which is
        itself worth seeing before writing to them. */
+    const person = candidate.personId ? await dir.getRecord(candidate.personId) : null;
+    const account = candidate.personId ? await accountOfRecord(candidate.personId) : null;
     return {
       candidate: { id: candidate.id, orgName: candidate.orgName, contactName: candidate.contactName, email: candidate.email },
       personId: candidate.personId,
+      who: person
+        ? { name: person.name, email: person.email, account: account?.state ?? null }
+        : null,
       programs: candidate.personId ? await programsFor(candidate.personId) : [],
+      panels: candidate.personId ? await reviewsFor(candidate.personId) : [],
       owed: await deliverablesFor(candidate.editionId, candidate),
     };
   });

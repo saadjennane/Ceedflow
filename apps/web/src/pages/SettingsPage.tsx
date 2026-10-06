@@ -15,8 +15,6 @@ import { ApiError, api } from '../lib/api';
 import { formatDate } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
 import { initials } from './directory/DirectoryPage';
-import { Programs, type MyProgram } from './member/MemberPage';
-import { type Owed } from './member/OwedItems';
 import { Icon } from '../ui/Icon';
 import { Modal, useToast } from '../ui/Overlays';
 import '../ui/builder.css';
@@ -117,34 +115,22 @@ function Trash({ mayManage }: { mayManage: boolean }) {
   );
 }
 
-interface AsMember {
-  candidate: { id: string; orgName: string; contactName: string; email: string };
-  personId: string | null;
-  programs: MyProgram[];
-  owed: Owed[];
-}
-
 /**
  * Voir ce qu'une startup voit, sans devenir elle.
  *
  * Twenty-four founders are about to read a page CEED has only ever seen from
- * the other side. This opens that page — the programme, where their file
- * stands, what is still asked of them and what they have already sent — and
- * offers no way to act on it: being able to deposit a document in somebody's
- * file to find out whether the page reads right would be a cure worse than the
- * doubt.
+ * the other side. This opens that page — in its own window, because what is
+ * being checked is a whole page: its tabs, where it opens, what is above the
+ * fold. Seen through a porthole it would be a different page.
  *
- * It renders their own components against their own data rather than drawing
- * the page again, because a preview drawn twice drifts — and one that drifts
- * is checked, looks right, and the founder sees something else.
+ * Read-only, and that is the point: being able to deposit a document in
+ * somebody's file to find out whether their page reads right would be a cure
+ * worse than the doubt.
  */
 function AsStartup() {
   const programs = useAsync(() => api.get<ProgramWithEditions[]>('/api/programs'), 'programs');
   const [editionId, setEditionId] = useState('');
   const [candidateId, setCandidateId] = useState('');
-  const [open, setOpen] = useState<AsMember | null>(null);
-  const [busy, setBusy] = useState(false);
-  const toast = useToast();
 
   const editions = (programs.data ?? []).flatMap((p) =>
     p.editions.map((e) => ({ id: e.id, label: `${p.name} — ${e.name}` })),
@@ -154,24 +140,13 @@ function AsStartup() {
     editionId,
   );
 
-  const look = async () => {
-    setBusy(true);
-    try {
-      setOpen(await api.get<AsMember>(`/api/candidates/${candidateId}/as-member`));
-    } catch (err) {
-      toast((err as Error).message, true);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <section className="card card-pad stack" style={{ maxWidth: 880, gap: 12, marginTop: 14 }}>
       <div>
         <h2 style={{ fontSize: 16, margin: 0 }}>Open as a startup</h2>
         <p className="faint" style={{ margin: '2px 0 0', fontSize: 12.5, lineHeight: 1.5 }}>
-          Their own page, as they see it — what is asked of them, what they have sent, where their file stands.
-          Read-only: nothing here can be filled in on their behalf.
+          Their own page, in its own window, exactly as they see it — where it opens, what is asked of them, what they
+          have already sent. Read-only: nothing there can be filled in on their behalf.
         </p>
       </div>
 
@@ -210,44 +185,19 @@ function AsStartup() {
           ))}
         </select>
 
-        <button className="btn primary" disabled={!candidateId || busy} onClick={() => void look()}>
-          <Icon name="eye" size={14} /> Open
-        </button>
-      </div>
-
-      {open && (
-        <Modal
-          title={open.candidate.orgName}
-          subtitle={`What ${open.candidate.contactName || 'they'} sees when they sign in`}
-          wide
-          onClose={() => setOpen(null)}
+        {/* Un lien, pas un bouton : on l'ouvre où l'on veut, et le navigateur
+            ne le prend pas pour une fenêtre surgie de nulle part. */}
+        <a
+          className="btn primary"
+          href={candidateId ? `/as/${candidateId}` : undefined}
+          target="_blank"
+          rel="noreferrer"
+          aria-disabled={!candidateId}
+          style={candidateId ? undefined : { opacity: 0.45, pointerEvents: 'none' }}
         >
-          <div className="stack" style={{ gap: 12 }}>
-            <div className="callout">
-              <Icon name="eye" size={15} />
-              <div>
-                {open.personId ? (
-                  <>
-                    <strong>Read-only.</strong> This is their page, drawn by the same code they load. Nothing here
-                    writes to their file.
-                  </>
-                ) : (
-                  <>
-                    <strong>Nobody is attached to this candidacy.</strong> There is no page to see, and no account to
-                    open — which is worth knowing before writing to them.
-                  </>
-                )}
-              </div>
-            </div>
-
-            <Programs
-              programs={{ data: open.programs, error: '', loading: false, reload: () => {}, set: () => {} }}
-              owedFor={{ [open.candidate.id]: open.owed }}
-              readOnly
-            />
-          </div>
-        </Modal>
-      )}
+          <Icon name="eye" size={14} /> Open their page
+        </a>
+      </div>
     </section>
   );
 }

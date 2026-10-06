@@ -24,16 +24,39 @@ import { TeamModal } from './TeamPanel';
 const MEMBER_TABS = ['Profile', 'Programs', 'Jury', 'Settings'] as const;
 type MemberTab = (typeof MEMBER_TABS)[number];
 
-export function MemberPage() {
+/**
+ * Ce que CEED regarde quand il ouvre la page de quelqu'un d'autre.
+ *
+ * The same page, their data, and nothing that writes: the point is to read
+ * what twenty-four founders will read before they read it, not to answer for
+ * them.
+ */
+export interface MemberPreview {
+  who: { name: string; email: string } | null;
+  orgName: string;
+  programs: MyProgram[];
+  panels: ReviewPanel[];
+  owed: Record<string, Owed[]>;
+}
+
+export function MemberPage({ preview }: { preview?: MemberPreview } = {}) {
   const { me, loading, reload } = useAccount();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   /* Kept in the URL so coming back, refreshing or following a link lands where
      you were rather than at the top of the pile. */
-  const panels = useAsync(() => api.get<ReviewPanel[]>('/api/me/reviews'), 'reviews');
-  const programs = useAsync(() => api.get<MyProgram[]>('/api/me/programs'), 'programs');
+  const panels = useAsync(
+    async () => preview?.panels ?? api.get<ReviewPanel[]>('/api/me/reviews'),
+    preview ? 'preview-panels' : 'reviews',
+  );
+  const programs = useAsync(
+    async () => preview?.programs ?? api.get<MyProgram[]>('/api/me/programs'),
+    preview ? 'preview-programs' : 'programs',
+  );
   const isJuror = (panels.data?.length ?? 0) > 0;
-  const tabs = MEMBER_TABS.filter((t) => t !== 'Jury' || isJuror);
+  /* Settings holds a password and a way out of the account — neither means
+     anything about somebody else's page. */
+  const tabs = MEMBER_TABS.filter((t) => (t !== 'Jury' || isJuror) && (t !== 'Settings' || !preview));
   const asked = params.get('tab') as MemberTab | null;
   /* On ouvre là où il y a quelque chose à faire.
      Nobody signs in to read their own profile: a founder comes to see what is
@@ -49,50 +72,67 @@ export function MemberPage() {
     });
 
   useEffect(() => {
-    if (!loading && !me) navigate('/login', { replace: true });
-  }, [loading, me, navigate]);
+    if (!preview && !loading && !me) navigate('/login', { replace: true });
+  }, [preview, loading, me, navigate]);
 
-  if (loading) return <div className="member-shell" />;
-  if (!me) return null;
+  if (!preview) {
+    if (loading) return <div className="member-shell" />;
+    if (!me) return null;
+  }
   // A password CEED chose is not yet this person's account. Nothing else opens
   // until they have replaced it — the server refuses it anyway.
-  if (me.account.mustChangePassword) {
+  if (!preview && me!.account.mustChangePassword) {
     return (
       <ChoosePassword
-        me={me}
+        me={me!}
         // Having replaced it, somebody at CEED belongs in the workspace rather
         // than on their own profile page.
-        onDone={() => (me.account.staffRole ? navigate('/', { replace: true }) : reload())}
+        onDone={() => (me!.account.staffRole ? navigate('/', { replace: true }) : reload())}
       />
     );
   }
 
+  const name = preview ? (preview.who?.name ?? preview.orgName) : me!.record.name;
+  const email = preview ? (preview.who?.email ?? '') : me!.account.email;
+
   return (
     <div className="member-shell">
+      {preview && (
+        <div className="callout" style={{ margin: '10px 14px 0' }}>
+          <Icon name="eye" size={15} />
+          <div>
+            <strong>{preview.orgName} — read-only.</strong> This is their page, drawn by the same code they load.
+            Nothing here writes to their file.
+          </div>
+        </div>
+      )}
+
       <div className="member-bar">
-        <span className="rec-mark">{initials(me.record.name)}</span>
+        <span className="rec-mark">{initials(name)}</span>
         <span style={{ flex: 1, minWidth: 0 }}>
-          <strong style={{ fontSize: 13 }}>{me.record.name}</strong>
+          <strong style={{ fontSize: 13 }}>{name}</strong>
           <span className="faint" style={{ display: 'block', fontSize: 12 }}>
-            {me.account.email}
+            {email}
           </span>
         </span>
         {/* Somebody at CEED has two places to be, and this page is the smaller
             one. Without this, the way back is a URL they have to know. */}
-        {me.account.staffRole && (
+        {!preview && me!.account.staffRole && (
           <Link className="btn sm" to="/">
             <Icon name="grid" size={13} /> CEED workspace
           </Link>
         )}
-        <button
-          className="btn sm"
-          onClick={async () => {
-            await api.post('/api/auth/logout');
-            navigate('/login');
-          }}
-        >
-          Sign out
-        </button>
+        {!preview && (
+          <button
+            className="btn sm"
+            onClick={async () => {
+              await api.post('/api/auth/logout');
+              navigate('/login');
+            }}
+          >
+            Sign out
+          </button>
+        )}
       </div>
 
       <nav className="tabbar" role="tablist" aria-label="Your space">
@@ -104,16 +144,26 @@ export function MemberPage() {
       </nav>
 
       <div className="member-body stack" style={{ gap: 16 }}>
-        {tab === 'Profile' && (
+        {tab === 'Profile' && preview && (
+          <section className="card card-pad stack" style={{ gap: 6 }}>
+            <h2 style={{ fontSize: 16, margin: 0 }}>{name}</h2>
+            <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+              {[email, preview.who ? null : 'nobody is attached to this candidacy'].filter(Boolean).join(' · ')}
+            </p>
+          </section>
+        )}
+        {tab === 'Profile' && !preview && (
           <>
-            <Profile me={me} onSaved={reload} />
-            <Organisations me={me} onChanged={reload} />
+            <Profile me={me!} onSaved={reload} />
+            <Organisations me={me!} onChanged={reload} />
             <Involvement panels={panels.data ?? []} programs={programs.data ?? []} onGo={setTab} />
           </>
         )}
-        {tab === 'Programs' && <Programs programs={programs} />}
+        {tab === 'Programs' && (
+          <Programs programs={programs} owedFor={preview?.owed} readOnly={Boolean(preview)} />
+        )}
         {tab === 'Jury' && <Jury panels={panels.data ?? []} />}
-        {tab === 'Settings' && <Settings me={me} />}
+        {tab === 'Settings' && !preview && <Settings me={me!} />}
       </div>
     </div>
   );

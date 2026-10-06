@@ -6,6 +6,7 @@ import { ApplyPage } from './pages/ApplyPage';
 import { BookingPage } from './pages/BookingPage';
 import { EditionPage } from './pages/EditionPage';
 import { AuthPage } from './pages/member/AuthPage';
+import { AsStartupPage } from './pages/member/AsStartupPage';
 import { MemberPage } from './pages/member/MemberPage';
 import { ReviewPage } from './pages/member/ReviewPage';
 import { DirectoryPage } from './pages/directory/DirectoryPage';
@@ -23,6 +24,8 @@ const router = createBrowserRouter([
   { path: '/signup', element: <AuthPage mode="signup" /> },
   { path: '/join', element: <Navigate to="/signup" replace /> },
   { path: '/me', element: <MemberPage /> },
+  /* Ouverte par CEED dans un onglet à part : on y lit ce que la startup lira. */
+  { path: '/as/:candidateId', element: <AsStartupPage /> },
   { path: '/review/:sessionId', element: <ReviewPage /> },
   {
     path: '/',
