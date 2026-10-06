@@ -1,5 +1,7 @@
 import {
+  fullName,
   orderedBlocks,
+  splitName,
   type ApplicationConfig,
   type Block,
   type BlockOutcome,
@@ -385,7 +387,11 @@ function CandidateDrawer({
      editing it writes there, and creates the person when the candidacy never
      had one. Imported and hand-typed candidacies both arrive that way. */
   const [who, setWho] = useState({
-    contactName: candidate.contactName,
+    /* Les deux moitiés, pas le nom entier : le contact d'une candidature est
+       une personne de l'annuaire, et c'est là qu'elles sont rangées. Le nom
+       affiché se recompose, il ne se saisit pas deux fois. */
+    firstName: candidate.contactFirstName || splitName(candidate.contactName).firstName,
+    lastName: candidate.contactLastName || splitName(candidate.contactName).lastName,
     email: candidate.email,
     phone: candidate.phone,
     source: candidate.source,
@@ -395,17 +401,22 @@ function CandidateDrawer({
     setBusy(true);
     try {
       let personId = candidate.personId;
-      if (who.contactName.trim()) {
+      const named = fullName(who.firstName, who.lastName);
+      if (named) {
         if (personId) {
           await api.patch(`/api/records/${personId}`, {
-            name: who.contactName.trim(),
+            name: named,
+            firstName: who.firstName.trim(),
+            lastName: who.lastName.trim(),
             email: who.email.trim(),
             phone: who.phone.trim(),
           });
         } else {
           const person = await api.post<{ id: string }>('/api/records', {
             kind: 'person',
-            name: who.contactName.trim(),
+            name: named,
+            firstName: who.firstName.trim(),
+            lastName: who.lastName.trim(),
             email: who.email.trim(),
             phone: who.phone.trim(),
             origin: 'manual',
@@ -573,7 +584,18 @@ function CandidateDrawer({
         </div>
         {editing ? (
           <>
-            <TextField label="Contact" value={who.contactName} onChange={(v) => setWho((w) => ({ ...w, contactName: v }))} />
+            <div className="grid-2">
+              <TextField
+                label="First name"
+                value={who.firstName}
+                onChange={(v) => setWho((w) => ({ ...w, firstName: v }))}
+              />
+              <TextField
+                label="Last name"
+                value={who.lastName}
+                onChange={(v) => setWho((w) => ({ ...w, lastName: v }))}
+              />
+            </div>
             <div className="grid-2">
               <TextField label="Email" type="email" value={who.email} onChange={(v) => setWho((w) => ({ ...w, email: v }))} />
               <TextField label="Phone" value={who.phone} onChange={(v) => setWho((w) => ({ ...w, phone: v }))} />
@@ -592,8 +614,10 @@ function CandidateDrawer({
           </>
         ) : (
           <dl className="answers">
-            <dt>Contact</dt>
-            <dd>{candidate.contactName || '—'}</dd>
+            <dt>First name</dt>
+            <dd>{candidate.contactFirstName || splitName(candidate.contactName).firstName || '—'}</dd>
+            <dt>Last name</dt>
+            <dd>{candidate.contactLastName || splitName(candidate.contactName).lastName || '—'}</dd>
             <dt>Email</dt>
             <dd>{candidate.email || '—'}</dd>
             <dt>Phone</dt>
@@ -624,7 +648,8 @@ function CandidateDrawer({
                 onClick={() => {
                   setEdits(candidate.answers);
                   setWho({
-                    contactName: candidate.contactName,
+                    firstName: candidate.contactFirstName || splitName(candidate.contactName).firstName,
+                    lastName: candidate.contactLastName || splitName(candidate.contactName).lastName,
                     email: candidate.email,
                     phone: candidate.phone,
                     source: candidate.source,

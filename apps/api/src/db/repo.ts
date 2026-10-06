@@ -54,6 +54,7 @@ const CANDIDATE_SELECT = `select c.id, c.edition_id as "editionId", c.track_id a
   o.name as "orgName",
   coalesce(p.name, '') as "contactName",
   coalesce(p.first_name, '') as "contactFirstName",
+  coalesce(p.last_name, '') as "contactLastName",
   coalesce(nullif(p.email, ''), o.email, '') as "email",
   coalesce(nullif(p.phone, ''), o.phone, '') as "phone",
   c.source, c.status, c.mentor, c.cohort_status as "cohortStatus", c.answers,

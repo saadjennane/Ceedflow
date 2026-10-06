@@ -50,6 +50,7 @@ export const candidateSchema = z.object({
       on the wrong half of somebody's name is worse than one that opens on all
       of it. */
   contactFirstName: z.string().default(''),
+  contactLastName: z.string().default(''),
   email: z.string().default(''),
   phone: z.string().default(''),
   source: z.string().default(''),
