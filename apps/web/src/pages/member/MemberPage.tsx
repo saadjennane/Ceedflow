@@ -35,7 +35,12 @@ export function MemberPage() {
   const isJuror = (panels.data?.length ?? 0) > 0;
   const tabs = MEMBER_TABS.filter((t) => t !== 'Jury' || isJuror);
   const asked = params.get('tab') as MemberTab | null;
-  const tab: MemberTab = asked && tabs.includes(asked) ? asked : 'Profile';
+  /* On ouvre là où il y a quelque chose à faire.
+     Nobody signs in to read their own profile: a founder comes to see what is
+     still asked of them, a juror to see what is left to mark. Profile is where
+     you end up when neither is true. */
+  const landing: MemberTab = (programs.data?.length ?? 0) > 0 ? 'Programs' : isJuror ? 'Jury' : 'Profile';
+  const tab: MemberTab = asked && tabs.includes(asked) ? asked : landing;
   const setTab = (next: MemberTab) =>
     setParams((p) => {
       const q = new URLSearchParams(p);

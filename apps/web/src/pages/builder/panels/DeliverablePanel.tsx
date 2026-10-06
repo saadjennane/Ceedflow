@@ -453,6 +453,7 @@ function FounderPreview({ config }: { config: DeliverableConfig }) {
           }
         >
           <OwedList
+            startOpen
             ask={{ block: { id: 'preview', name: 'Due diligence' }, config, open: true, returns: [] }}
             orgName="Rafid Tech"
             onSave={() => {}}
