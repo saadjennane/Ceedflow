@@ -1,4 +1,11 @@
-import { ORG_ACCESS_LABEL, ORG_ROLES, canEditOrg, type AffiliationView, type Me } from '@ceed/shared';
+import {
+  ORG_ROLES,
+  canEditOrg,
+  profileOf,
+  type AffiliationView,
+  type Me,
+  type OrgProfile,
+} from '@ceed/shared';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
@@ -17,6 +24,7 @@ import { Agenda, type AgendaEntry } from './Agenda';
 import { MemberHome, type CandidacyState } from './MemberHome';
 import { LangProvider, useLang } from '../../lib/lang';
 import { TeamModal } from './TeamPanel';
+import { ProfileBar, ProfileFacts, ProfileFields, type ProfileDraft } from '../../ui/OrgProfile';
 
 /**
  * The member space: your profile, and the organisation pages you look after.
@@ -45,6 +53,8 @@ export interface MemberPreview {
   panels: ReviewPanel[];
   owed: Record<string, Owed[]>;
   agenda: Record<string, AgendaEntry[]>;
+  /** La fiche de la startup, pour la lire comme elle la lit. */
+  profile: OrgProfile | null;
 }
 
 export function MemberPage({ preview }: { preview?: MemberPreview } = {}) {
@@ -208,12 +218,24 @@ function MemberSpace({ preview }: { preview?: MemberPreview }) {
 
       <div className="member-body stack" style={{ gap: 16 }}>
         {tab === 'Profile' && preview && (
-          <section className="card card-pad stack" style={{ gap: 6 }}>
-            <h2 style={{ fontSize: 16, margin: 0 }}>{name}</h2>
-            <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
-              {[email, preview.who ? null : 'nobody is attached to this candidacy'].filter(Boolean).join(' · ')}
-            </p>
-          </section>
+          <>
+            <section className="card card-pad stack" style={{ gap: 6 }}>
+              <h2 style={{ fontSize: 16, margin: 0 }}>{name}</h2>
+              <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+                {[email, preview.who ? null : 'nobody is attached to this candidacy'].filter(Boolean).join(' · ')}
+              </p>
+            </section>
+            {preview.profile && (
+              <section className="card card-pad stack" style={{ gap: 12 }}>
+                <div>
+                  <h2 style={{ fontSize: 16, margin: 0 }}>{t('prof.title')}</h2>
+                  <p className="faint" style={{ margin: '2px 0 0', fontSize: 12.5 }}>{t('prof.why')}</p>
+                </div>
+                <ProfileBar profile={preview.profile} />
+                <ProfileFacts profile={preview.profile} name={preview.orgName} />
+              </section>
+            )}
+          </>
         )}
         {tab === 'Profile' && !preview && (
           <>
@@ -222,7 +244,22 @@ function MemberSpace({ preview }: { preview?: MemberPreview }) {
             <Involvement panels={panels.data ?? []} programs={programs.data ?? []} onGo={setTab} />
           </>
         )}
-        {tab === 'Home' && <MemberHome states={states.data ?? []} onOpen={setEdition} />}
+        {tab === 'Home' && (
+          <MemberHome
+            states={states.data ?? []}
+            orgs={
+              preview
+                ? preview.profile
+                  ? [{ name: preview.orgName, profile: preview.profile }]
+                  : []
+                : me!.organisations
+                    .filter((l) => canEditOrg(l.affiliation.access))
+                    .map((l) => ({ name: l.record.name, profile: profileOf(l.record) }))
+            }
+            onOpen={setEdition}
+            onProfile={() => setTab('Profile')}
+          />
+        )}
         {tab === 'Programs' &&
           (openEdition ? (
             <ProgramPage
@@ -732,6 +769,7 @@ function splitName(record: { firstName: string; lastName: string; name: string }
  */
 function Profile({ me, onSaved }: { me: Me; onSaved: () => void }) {
   const [editing, setEditing] = useState(false);
+  const { t } = useLang();
   const place = [me.record.city, me.record.country].filter(Boolean).join(', ');
 
   return (
@@ -743,10 +781,10 @@ function Profile({ me, onSaved }: { me: Me; onSaved: () => void }) {
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="row" style={{ alignItems: 'flex-start' }}>
-            <h1 className="profile-name">{me.record.name || 'Your name'}</h1>
+            <h1 className="profile-name">{me.record.name || t('my.noName')}</h1>
             <div className="spacer" />
             <button className="btn sm" onClick={() => setEditing(true)}>
-              <Icon name="edit" size={13} /> Edit
+              <Icon name="edit" size={13} /> {t('my.edit')}
             </button>
           </div>
 
@@ -763,7 +801,7 @@ function Profile({ me, onSaved }: { me: Me; onSaved: () => void }) {
             <p className="profile-bio">{me.record.bio}</p>
           ) : (
             <button className="profile-bio-empty" onClick={() => setEditing(true)}>
-              Add a line about yourself — it is what a jury reads first.
+              {t('my.aboutEmpty')}
             </button>
           )}
         </div>
@@ -788,6 +826,7 @@ function ProfileModal({ me, onClose, onSaved }: { me: Me; onClose: () => void; o
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const toast = useToast();
+  const { t } = useLang();
   const set = (partial: Partial<typeof draft>) => setDraft((d) => ({ ...d, ...partial }));
 
   const save = async () => {
@@ -796,7 +835,7 @@ function ProfileModal({ me, onClose, onSaved }: { me: Me; onClose: () => void; o
     try {
       await api.patch('/api/me', draft);
       onSaved();
-      toast('Profile saved.');
+      toast(t('my.saved'));
       onClose();
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrors(err.fields);
@@ -808,16 +847,16 @@ function ProfileModal({ me, onClose, onSaved }: { me: Me; onClose: () => void; o
 
   return (
     <Modal
-      title="Your profile"
+      title={t('my.title')}
       onClose={onClose}
       footer={
         <>
           <button className="btn ghost" onClick={onClose}>
-            Cancel
+            {t('do.cancel')}
           </button>
           <div className="spacer" />
           <button className="btn primary" disabled={saving} onClick={save}>
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? t('do.saving') : t('do.save')}
           </button>
         </>
       }
@@ -826,26 +865,26 @@ function ProfileModal({ me, onClose, onSaved }: { me: Me; onClose: () => void; o
         {/* The line a jury reads comes first here too, so the two screens
             agree about what matters. */}
         <div className="field">
-          <label>About you</label>
+          <label>{t('my.about')}</label>
           <textarea
             className="textarea"
             rows={3}
             value={draft.bio}
-            placeholder="What a jury would gain from knowing about you."
+            placeholder={t('my.aboutHelp')}
             onChange={(e) => set({ bio: e.target.value })}
           />
         </div>
         <div className="grid-2">
-          <Text label="First name" value={draft.firstName} error={errors.firstName} onChange={(v) => set({ firstName: v })} />
-          <Text label="Last name" value={draft.lastName} error={errors.lastName} onChange={(v) => set({ lastName: v })} />
+          <Text label={t('my.firstName')} value={draft.firstName} error={errors.firstName} onChange={(v) => set({ firstName: v })} />
+          <Text label={t('my.lastName')} value={draft.lastName} error={errors.lastName} onChange={(v) => set({ lastName: v })} />
         </div>
         <div className="grid-2">
-          <Text label="Phone" value={draft.phone} onChange={(v) => set({ phone: v })} placeholder="+212 6 …" />
-          <Text label="City" value={draft.city} onChange={(v) => set({ city: v })} placeholder="Casablanca" />
+          <Text label={t('my.phone')} value={draft.phone} onChange={(v) => set({ phone: v })} placeholder="+212 6 …" />
+          <Text label={t('prof.city')} value={draft.city} onChange={(v) => set({ city: v })} placeholder="Casablanca" />
         </div>
-        <Text label="Country" value={draft.country} onChange={(v) => set({ country: v })} />
+        <Text label={t('org.country')} value={draft.country} onChange={(v) => set({ country: v })} />
         <p className="faint" style={{ margin: 0, fontSize: 12 }}>
-          Your email is what you sign in with, so it is changed from the account rather than here.
+          {t('my.emailFixed')}
         </p>
       </div>
     </Modal>
@@ -868,6 +907,7 @@ function Involvement({
   programs: MyProgram[];
   onGo: (tab: MemberTab) => void;
 }) {
+  const { t } = useLang();
   const applied = programs.filter((p) => p.mine.length > 0);
   const juries = [...new Map(panels.map((p) => [`${p.programName}|${p.editionName}`, p])).values()];
   if (!applied.length && !juries.length) return null;
@@ -875,7 +915,7 @@ function Involvement({
   return (
     <section className="card">
       <div className="rowcard-head" style={{ padding: '13px 16px' }}>
-        <h2 style={{ fontSize: 16, flex: 1 }}>Where you are involved</h2>
+        <h2 style={{ fontSize: 16, flex: 1 }}>{t('my.where')}</h2>
       </div>
       <div className="rows" style={{ padding: 12 }}>
         {juries.map((head) => {
@@ -887,8 +927,8 @@ function Involvement({
               <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
                 <span style={{ fontWeight: 600, fontSize: 13 }}>{head.programName}</span>
                 <span className="faint" style={{ display: 'block', fontSize: 12 }}>
-                  On the jury · {mine.length} panel{mine.length === 1 ? '' : 's'}
-                  {waiting > 0 && ` · ${waiting} still waiting on you`}
+                  {t('my.onJury')} · {mine.length} {mine.length === 1 ? t('my.panel') : t('my.panels')}
+                  {waiting > 0 && ` · ${waiting} ${t('my.waitingOnYou')}`}
                 </span>
               </span>
               <Icon name="chevronRight" size={14} />
@@ -902,7 +942,7 @@ function Involvement({
             <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
               <span style={{ fontWeight: 600, fontSize: 13 }}>{program.programName}</span>
               <span className="faint" style={{ display: 'block', fontSize: 12 }}>
-                {program.mine.map((c) => c.orgName).join(', ')} applied
+                {program.mine.map((c) => c.orgName).join(', ')} {t('prog.applied')}
               </span>
             </span>
             <Icon name="chevronRight" size={14} />
@@ -916,6 +956,7 @@ function Involvement({
 /* ------------------------------------------------------------------ */
 
 function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
+  const { t } = useLang();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<AffiliationView | null>(null);
   const [team, setTeam] = useState<AffiliationView | null>(null);
@@ -924,13 +965,11 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
     <section className="card">
       <div className="rowcard-head" style={{ padding: '13px 16px' }}>
         <div style={{ flex: 1 }}>
-          <h2 style={{ fontSize: 16 }}>Your organisations</h2>
-          <p className="faint" style={{ margin: '2px 0 0', fontSize: 12.5 }}>
-            The pages you look after. You can hold several, or none at all.
-          </p>
+          <h2 style={{ fontSize: 16 }}>{t('org.yours')}</h2>
+          <p className="faint" style={{ margin: '2px 0 0', fontSize: 12.5 }}>{t('org.yoursMore')}</p>
         </div>
         <button className="btn primary sm" onClick={() => setCreating(true)}>
-          <Icon name="plus" size={13} /> Create a page
+          <Icon name="plus" size={13} /> {t('org.create')}
         </button>
       </div>
 
@@ -940,24 +979,24 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
               a juror, somebody CEED simply knows. The empty box used to offer
               one thing to do and so read as a condition of entry. */}
           <p style={{ margin: 0 }}>
-            <strong>You do not need one.</strong> Nothing on this page waits for it.
+            <strong>{t('org.noneTitle')}</strong> {t('org.noneHead')}
           </p>
           <p className="faint" style={{ margin: '6px 0 0', fontSize: 12.5, lineHeight: 1.6 }}>
-            A page is what you apply to a programme with, and what a jury reads about your company. Create one when
-            you have something to put on it.
+            {t('org.noneMore')}
           </p>
         </div>
       ) : (
         <div className="rows" style={{ padding: 12 }}>
           {me.organisations.map((link) => (
-            <div className="rowcard link-row" key={link.affiliation.id}>
+            <div className="rowcard stack" key={link.affiliation.id} style={{ gap: 10 }}>
+              <div className="row" style={{ gap: 10 }}>
               <span className="rec-mark">{initials(link.record.name)}</span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ fontWeight: 600, fontSize: 13 }}>{link.record.name}</span>
                 <span className="faint" style={{ display: 'block', fontSize: 12 }}>
                   {[
                     link.affiliation.role,
-                    ORG_ACCESS_LABEL[link.affiliation.access],
+                    t(`access.${link.affiliation.access}` as const),
                     link.record.city,
                   ]
                     .filter(Boolean)
@@ -965,12 +1004,18 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
                 </span>
               </span>
               <button className="btn sm" onClick={() => setTeam(link)}>
-                <Icon name="users" size={13} /> Team
+                <Icon name="users" size={13} /> {t('org.team')}
               </button>
               {canEditOrg(link.affiliation.access) && (
                 <button className="btn sm" onClick={() => setEditing(link)}>
-                  <Icon name="edit" size={13} /> Edit
+                  <Icon name="edit" size={13} /> {t('my.edit')}
                 </button>
+              )}
+              </div>
+              {/* Sous chaque page, où en est sa fiche — et la barre elle-même
+                  ouvre le formulaire, pour qu'il n'y ait pas à chercher où. */}
+              {canEditOrg(link.affiliation.access) && (
+                <ProfileBar profile={profileOf(link.record)} onFill={() => setEditing(link)} />
               )}
             </div>
           ))}
@@ -1023,10 +1068,18 @@ function OrgModal({
     website: link?.record.website ?? '',
     bio: link?.record.bio ?? '',
     myRole: link?.affiliation.role ?? 'Founder',
+    logoUploadId: link?.record.logoUploadId ?? null,
+    pitch: link?.record.pitch ?? '',
+    sector: link?.record.sector ?? '',
+    stage: link?.record.stage ?? '',
+    foundedYear: link?.record.foundedYear ?? null,
+    teamSize: link?.record.teamSize ?? null,
+    linkedin: link?.record.linkedin ?? '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const toast = useToast();
+  const { t } = useLang();
 
   const set = (partial: Partial<typeof draft>) => setDraft((d) => ({ ...d, ...partial }));
 
@@ -1036,10 +1089,10 @@ function OrgModal({
     try {
       if (editing) {
         await api.patch(`/api/me/organisations/${link!.record.id}`, draft);
-        toast('Saved.');
+        toast(t('org.saved'));
       } else {
         const { joined } = await api.post<{ joined: boolean }>('/api/me/organisations', draft);
-        toast(joined ? `CEED already knew ${draft.name} — you are attached to it.` : `${draft.name} created.`);
+        toast(joined ? t('org.joined') : t('org.created'));
       }
       onSaved();
     } catch (err) {
@@ -1052,24 +1105,29 @@ function OrgModal({
 
   return (
     <Modal
-      title={editing ? draft.name : 'Create an organisation page'}
-      subtitle={editing ? undefined : 'If CEED already knows it, you will be attached to that page rather than a second one.'}
+      title={editing ? draft.name : t('org.createTitle')}
+      subtitle={editing ? undefined : t('org.createMore')}
       onClose={onClose}
       footer={
         <>
           <button className="btn ghost" onClick={onClose}>
-            Cancel
+            {t('do.cancel')}
           </button>
           <button className="btn primary" disabled={saving || !draft.name.trim()} onClick={save}>
-            {saving ? 'Saving…' : editing ? 'Save' : 'Create'}
+            {saving ? t('do.saving') : editing ? t('do.save') : t('do.create')}
           </button>
         </>
       }
     >
-      <Text label="Name" value={draft.name} error={errors.name} onChange={(v) => set({ name: v })} placeholder="Nakhla Bio" />
+      {/* En haut, et vivante : chaque champ rempli la fait monter pendant qu'on
+          écrit, ce qui est la seule raison d'avoir une barre plutôt qu'une
+          liste de champs. */}
+      <ProfileBar profile={profileOf(draft)} />
+
+      <Text label={t('org.name')} value={draft.name} error={errors.name} onChange={(v) => set({ name: v })} placeholder="Nakhla Bio" />
 
       <div className="field">
-        <label>What it is</label>
+        <label>{t('org.what')}</label>
         <div className="work-pick">
           {ORG_ROLES.map((r) => (
             <button
@@ -1084,19 +1142,23 @@ function OrgModal({
         </div>
       </div>
 
-      <Text label="Your role there" value={draft.myRole} onChange={(v) => set({ myRole: v })} placeholder="Founder" />
+      <Text label={t('org.myRole')} value={draft.myRole} onChange={(v) => set({ myRole: v })} placeholder="Fondatrice" />
+
+      {/* Ce qu'un jury lit : le même formulaire, parce que c'est la même fiche.
+          Un second écran « profil » aurait fait deux endroits à tenir à jour. */}
+      <ProfileFields draft={draft as ProfileDraft} set={(partial) => set(partial)} name={draft.name} />
 
       <div className="grid-2">
-        <Text label="Email" value={draft.email} onChange={(v) => set({ email: v })} />
-        <Text label="Phone" value={draft.phone} onChange={(v) => set({ phone: v })} />
+        <Text label={t('org.email')} value={draft.email} onChange={(v) => set({ email: v })} />
+        <Text label={t('my.phone')} value={draft.phone} onChange={(v) => set({ phone: v })} />
       </div>
       <div className="grid-2">
-        <Text label="City" value={draft.city} onChange={(v) => set({ city: v })} />
-        <Text label="Country" value={draft.country} onChange={(v) => set({ country: v })} />
+        <Text label={t('org.city')} value={draft.city} onChange={(v) => set({ city: v })} />
+        <Text label={t('org.country')} value={draft.country} onChange={(v) => set({ country: v })} />
       </div>
-      <Text label="Website" value={draft.website} onChange={(v) => set({ website: v })} />
+      <Text label={t('org.website')} value={draft.website} onChange={(v) => set({ website: v })} />
       <div className="field">
-        <label>What it does</label>
+        <label>{t('prof.bio')}</label>
         <textarea className="textarea" rows={3} value={draft.bio} onChange={(e) => set({ bio: e.target.value })} />
       </div>
     </Modal>

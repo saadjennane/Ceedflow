@@ -9,6 +9,7 @@ import {
   setOutcomeInput,
   submitApplicationInput,
   formPages,
+  profileOf,
   proposedOutcome,
   type ApplicationConfig,
   type Candidate,
@@ -427,11 +428,17 @@ export async function funnelRoutes(app: FastifyInstance) {
     if (!account.staffRole) {
       const ownOrgs = await dir.orgIdsOf(account.recordId);
       const mine = Boolean(upload.orgId && ownOrgs.has(upload.orgId));
+      /* Exactement ce que leur écran montre, et rien d'autre : la pièce jointe
+         d'une candidature de leur liste, ou le logo affiché sur cette fiche. */
       const reviewing =
         !mine &&
-        Boolean(upload.candidateId) &&
+        Boolean(upload.candidateId || upload.orgId) &&
         (await reviewsFor(account.recordId)).some((panel) =>
-          panel.items.some((item) => item.candidate.id === upload.candidateId),
+          panel.items.some(
+            (item) =>
+              (upload.candidateId && item.candidate.id === upload.candidateId) ||
+              (item.profile?.logoUploadId && item.profile.logoUploadId === id),
+          ),
         );
       // The same answer as a missing file: whoever asked has no business
       // knowing that this one exists.
@@ -829,6 +836,8 @@ export async function funnelRoutes(app: FastifyInstance) {
        itself worth seeing before writing to them. */
     const person = candidate.personId ? await dir.getRecord(candidate.personId) : null;
     const account = candidate.personId ? await accountOfRecord(candidate.personId) : null;
+    /* La fiche de la startup, pour que CEED voie aussi ce qu'il en manque. */
+    const org = candidate.orgId ? await dir.getRecord(candidate.orgId) : null;
     return {
       candidate: { id: candidate.id, orgName: candidate.orgName, contactName: candidate.contactName, email: candidate.email },
       personId: candidate.personId,
@@ -839,6 +848,7 @@ export async function funnelRoutes(app: FastifyInstance) {
       panels: candidate.personId ? await reviewsFor(candidate.personId) : [],
       owed: await deliverablesFor(candidate.editionId, candidate),
       agenda: await agendaFor(candidate.id),
+      profile: org ? profileOf(org) : null,
     };
   });
 

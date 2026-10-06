@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { ApiError, api } from '../../lib/api';
 import { TagField, TextArea, TextField } from '../../ui/Field';
 import { Modal, useToast } from '../../ui/Overlays';
+import { ProfileFields } from '../../ui/OrgProfile';
 
 /** Typed by the team — one of the two ways a record gets into the directory. */
 export function RecordModal({
@@ -40,6 +41,13 @@ export function RecordModal({
     website: record?.website ?? '',
     bio: record?.bio ?? '',
     tags: record?.tags ?? [],
+    logoUploadId: record?.logoUploadId ?? null,
+    pitch: record?.pitch ?? '',
+    sector: record?.sector ?? '',
+    stage: record?.stage ?? '',
+    foundedYear: record?.foundedYear ?? null,
+    teamSize: record?.teamSize ?? null,
+    linkedin: record?.linkedin ?? '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -177,6 +185,15 @@ export function RecordModal({
         rows={3}
       />
       <TagField label="Tags" values={draft.tags} onChange={(v) => set({ tags: v })} placeholder="Add a tag" />
+
+      {/* La même fiche que le fondateur remplit, modifiable ici : CEED saisit
+          souvent pour une startup qui a envoyé ça par mail. */}
+      {isOrg && (
+        <>
+          <div className="eyebrow" style={{ marginTop: 4 }}>Profile the jury reads</div>
+          <ProfileFields draft={draft} set={(partial) => set(partial)} name={draft.name} lang="en" />
+        </>
+      )}
     </Modal>
   );
 }

@@ -17,6 +17,8 @@ import { db } from './client.js';
 
 const COLS = `id, kind, name, first_name as "firstName", last_name as "lastName", roles, origin,
   job_title as "jobTitle", department,
+  logo_upload_id as "logoUploadId", pitch, sector, stage,
+  founded_year as "foundedYear", team_size as "teamSize", linkedin,
   email, phone, city, country, website, bio, tags, created_at::text as "createdAt"`;
 
 const AFF_COLS = `id, person_id as "personId", org_id as "orgId", role, access, since`;
@@ -105,6 +107,12 @@ export async function createRecord(input: {
   website?: string;
   bio?: string;
   tags?: string[];
+  pitch?: string;
+  sector?: string;
+  stage?: string;
+  foundedYear?: number | null;
+  teamSize?: number | null;
+  linkedin?: string;
 }): Promise<DirectoryRecord> {
   const id = idOf.record();
   /* Coupé ici, une fois pour toutes.
@@ -115,8 +123,10 @@ export async function createRecord(input: {
   const cut = input.kind === 'person' ? splitName(input.name) : { firstName: '', lastName: '' };
   await (await db()).query(
     `insert into records (id, kind, name, first_name, last_name, roles, origin, email, phone, city,
-       country, website, bio, tags, job_title, department)
-     values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16)`,
+       country, website, bio, tags, job_title, department,
+       pitch, sector, stage, founded_year, team_size, linkedin)
+     values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,
+       $17,$18,$19,$20,$21,$22)`,
     [
       id,
       input.kind,
@@ -134,6 +144,12 @@ export async function createRecord(input: {
       input.tags ?? [],
       input.jobTitle ?? '',
       input.department ?? '',
+      input.pitch ?? '',
+      input.sector ?? '',
+      input.stage ?? '',
+      input.foundedYear ?? null,
+      input.teamSize ?? null,
+      input.linkedin ?? '',
     ],
   );
   return (await getRecord(id))!;
@@ -151,6 +167,13 @@ const FIELDS: Record<string, string> = {
   bio: 'bio',
   jobTitle: 'job_title',
   department: 'department',
+  logoUploadId: 'logo_upload_id',
+  pitch: 'pitch',
+  sector: 'sector',
+  stage: 'stage',
+  foundedYear: 'founded_year',
+  teamSize: 'team_size',
+  linkedin: 'linkedin',
 };
 
 export async function updateRecord(id: string, patch: Record<string, unknown>): Promise<DirectoryRecord | null> {

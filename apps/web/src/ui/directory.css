@@ -348,3 +348,54 @@
   color: #fff;
   flex: none;
 }
+
+/* ------------------------------------------------------------------ */
+/* La fiche d'une startup : la barre, les faits                        */
+/* ------------------------------------------------------------------ */
+
+.prof-bar {
+  gap: 7px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  font: inherit;
+  color: inherit;
+}
+button.prof-bar { cursor: pointer; }
+button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash); }
+
+.prof-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--wash);
+  overflow: hidden;
+}
+/* Bleu tant que ça monte, vert quand c'est fait : la couleur dit la même chose
+   que le chiffre, pour qui lit la page de loin. */
+.prof-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--blue);
+  transition: width 0.25s ease;
+}
+.prof-fill.full { background: var(--ok); }
+
+.prof-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 16px;
+}
+@media (max-width: 620px) {
+  .prof-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Un logo carré, quelle que soit la forme du fichier déposé. */
+.prof-logo {
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  object-fit: contain;
+  flex: none;
+}

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ORG_STAGES } from './profile.js';
 
 /**
  * One internal directory, two natures. Organisations and people are the same
@@ -64,6 +65,14 @@ export const recordSchema = z.object({
       organisation, which has no job and no department. */
   jobTitle: z.string().default(''),
   department: z.string().default(''),
+  /* ---- Ce qu'une organisation est, et qu'un jury lit ---- */
+  logoUploadId: z.string().nullable().default(null),
+  pitch: z.string().default(''),
+  sector: z.string().default(''),
+  stage: z.string().default(''),
+  foundedYear: z.number().nullable().default(null),
+  teamSize: z.number().nullable().default(null),
+  linkedin: z.string().default(''),
   origin: z.enum(RECORD_ORIGINS).default('manual'),
   email: z.string().default(''),
   phone: z.string().default(''),
@@ -217,6 +226,13 @@ export const createRecordInput = z.object({
   roles: z.array(z.string()).default([]),
   jobTitle: z.string().default(''),
   department: z.string().default(''),
+  logoUploadId: z.string().nullable().default(null),
+  pitch: z.string().default(''),
+  sector: z.string().default(''),
+  stage: z.string().default(''),
+  foundedYear: z.number().nullable().default(null),
+  teamSize: z.number().nullable().default(null),
+  linkedin: z.string().default(''),
   email: z.string().default(''),
   phone: z.string().default(''),
   city: z.string().default(''),
@@ -433,9 +449,17 @@ export const myOrgInput = z.object({
   country: z.string().default('Morocco'),
   website: z.string().default(''),
   bio: z.string().default(''),
+  logoUploadId: z.string().nullable().default(null),
+  pitch: z.string().max(160, 'One sentence — 160 characters at most.').default(''),
+  sector: z.string().default(''),
+  stage: z.enum(['', ...ORG_STAGES]).default(''),
+  foundedYear: z.number().int().min(1900).max(2100).nullable().default(null),
+  teamSize: z.number().int().min(0).max(100000).nullable().default(null),
+  linkedin: z.string().default(''),
   /** What the member does there. */
   myRole: z.string().default('Founder'),
 });
+
 
 /**
  * Words rather than characters: a provisional password is spoken on the phone or

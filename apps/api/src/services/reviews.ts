@@ -15,6 +15,9 @@ import {
   type EvaluationMethod,
   type EvaluationScale,
   type FormField,
+  profileOf,
+  profileStarted,
+  type OrgProfile,
 } from '@ceed/shared';
 import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
@@ -39,6 +42,17 @@ export interface ReviewItem {
   candidate: ReviewSubject;
   /** The application, with its questions labelled. */
   answers: { label: string; value: unknown; type: string }[];
+  /**
+   * La fiche de la startup, quand elle existe.
+   *
+   * What is true of the company whichever call it answered: the sector, the
+   * stage, the size of the team. Null when the candidacy has no organisation
+   * attached, or when nobody has filled anything in — ten dashes in front of a
+   * juror would read as a fault of the startup's.
+   *
+   * Still no email and no phone. A juror reads a company, not a contact list.
+   */
+  profile: OrgProfile | null;
   /** Only ever this reviewer's own marks. Nobody sees anybody else's. */
   mine: { marks: Record<string, number>; verdict: string; comment: string; submittedAt: string | null } | null;
   score: number | null;
@@ -114,6 +128,17 @@ export async function reviewsFor(recordId: string): Promise<ReviewPanel[]> {
   const programs = await repo.listPrograms();
   // Read once for the whole walk rather than per candidacy.
   const ownOrgs = await dir.orgIdsOf(recordId);
+  /* Une fiche lue une fois : la même startup revient sur plusieurs séances. */
+  const profiles = new Map<string, OrgProfile | null>();
+  const profileOfOrg = async (orgId: string | null): Promise<OrgProfile | null> => {
+    if (!orgId) return null;
+    if (!profiles.has(orgId)) {
+      const record = await dir.getRecord(orgId);
+      const profile = record ? profileOf(record) : null;
+      profiles.set(orgId, profile && profileStarted(profile) ? profile : null);
+    }
+    return profiles.get(orgId) ?? null;
+  };
 
   for (const program of programs) {
     for (const edition of program.editions) {
@@ -153,10 +178,11 @@ export async function reviewsFor(recordId: string): Promise<ReviewPanel[]> {
                 : view.pool.map((p) => p.candidate)
             ).filter((c) => !conflicted(c, recordId, ownOrgs));
 
-            const items: ReviewItem[] = candidates.map((candidate) => {
+            const items: ReviewItem[] = await Promise.all(candidates.map(async (candidate) => {
               const own = scores.find((s) => s.candidateId === candidate.id && s.evaluatorId === recordId) ?? null;
               return {
                 candidate: subjectOf(candidate),
+                profile: await profileOfOrg(candidate.orgId),
                 answers: questions
                   .filter((q) => candidate.answers[q.id] !== undefined && candidate.answers[q.id] !== '')
                   .map((q) => ({ label: q.label, value: candidate.answers[q.id], type: q.type })),
@@ -165,7 +191,7 @@ export async function reviewsFor(recordId: string): Promise<ReviewPanel[]> {
                   : null,
                 score: own ? normalisedScore(own.marks, leaves) : null,
               };
-            });
+            }));
 
             panels.push({
               sessionId: session.session.id,

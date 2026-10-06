@@ -5,6 +5,7 @@ import {
   type EvaluationCriterion,
   type EvaluationMethod,
   type EvaluationScale,
+  type OrgProfile,
 } from '@ceed/shared';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -14,6 +15,7 @@ import { useAsync } from '../../lib/useAsync';
 import { GridMarks } from '../../ui/GridMarks';
 import { Icon } from '../../ui/Icon';
 import { Linked } from '../../ui/Linked';
+import { ProfileFacts } from '../../ui/OrgProfile';
 import { useToast } from '../../ui/Overlays';
 import '../../ui/builder.css';
 import '../../ui/directory.css';
@@ -31,6 +33,14 @@ export interface ReviewSubject {
 
 export interface ReviewItem {
   candidate: ReviewSubject;
+  /**
+   * La fiche de la startup, quand elle existe et qu'elle n'est pas vide.
+   *
+   * What is true of the company whichever call it answered. It comes from the
+   * organisation's own page, so a startup that applies twice is read the same
+   * way twice — and the answers below stay what that year's form asked.
+   */
+  profile: OrgProfile | null;
   answers: { label: string; value: unknown; type: string }[];
   mine: { marks: Record<string, number>; verdict: string; comment: string; submittedAt: string | null } | null;
   score: number | null;
@@ -290,6 +300,17 @@ function ReviewOne({
           ) : null}
         </button>
       </nav>
+
+      {side === 'Overview' && item.profile && (
+        /* Au-dessus des réponses : la société d'abord, le formulaire ensuite.
+           Un juré ouvre une fiche pour savoir à qui il a affaire, et ce que le
+           formulaire demandait cette année-là est la deuxième question. */
+        <section className="card card-pad stack" style={{ gap: 12 }}>
+          {/* En anglais, comme le reste de ce volet : un panneau à moitié
+              traduit se lit plus mal qu'un panneau dans une seule langue. */}
+          <ProfileFacts profile={item.profile} name={item.candidate.orgName} lang="en" />
+        </section>
+      )}
 
       {side === 'Overview' && (
       <section className="card card-pad stack" style={{ gap: 10 }}>

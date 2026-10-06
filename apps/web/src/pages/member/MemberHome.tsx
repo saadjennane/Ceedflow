@@ -9,12 +9,20 @@
  * Underneath, the programmes themselves, because that is where the work is
  * done once you know there is some.
  */
-import { itemComplete, longDate, type DeliverableItem } from '@ceed/shared';
+import {
+  itemComplete,
+  longDate,
+  profileDone,
+  profileMissing,
+  type DeliverableItem,
+  type OrgProfile,
+} from '@ceed/shared';
 import { useLang } from '../../lib/lang';
 import { Icon } from '../../ui/Icon';
 import { type AgendaEntry } from './Agenda';
 import { type MyProgram } from './MemberPage';
 import { type Owed } from './OwedItems';
+import { ASK_WORD } from '../../ui/OrgProfile';
 
 export interface CandidacyState {
   candidateId: string;
@@ -53,16 +61,41 @@ const soon = (on: string | null): boolean => {
 
 export function MemberHome({
   states,
+  orgs,
   onOpen,
+  onProfile,
 }: {
   states: CandidacyState[];
+  /** The pages they look after, so an unfinished one can be said out loud. */
+  orgs: { name: string; profile: OrgProfile }[];
   onOpen: (editionId: string) => void;
+  onProfile: () => void;
 }) {
   const { t, lang } = useLang();
 
   /* Une ligne par chose à faire, pas une par programme : ce qui compte est le
      geste, et le programme n'est que l'endroit où il se fait. */
-  const todo: { key: string; title: string; detail: string; editionId: string }[] = [];
+  const todo: { key: string; title: string; detail: string; go: () => void }[] = [];
+
+  /* La fiche d'abord : c'est ce qu'un jury lit avant de rencontrer, et la seule
+     chose de cette liste qui serve à tous les programmes à la fois. */
+  for (const org of orgs) {
+    const missing = profileMissing(org.profile);
+    if (!missing.length) continue;
+    todo.push({
+      key: `profile-${org.name}`,
+      title: t('prof.title'),
+      /* Ce qui manque, nommé : « il reste 4 » n'envoie personne nulle part, et
+         la ligne doit tenir sur un téléphone — d'où les trois premiers. */
+      detail: [
+        org.name,
+        `${profileDone(org.profile)} %`,
+        missing.slice(0, 3).map((ask) => t(ASK_WORD[ask])).join(', ') + (missing.length > 3 ? '…' : ''),
+      ].join(' · '),
+      go: onProfile,
+    });
+  }
+
   for (const state of states) {
     const owed = owedLine(state.owed);
     if (owed && (owed.left > 0 || owed.back)) {
@@ -76,7 +109,7 @@ export function MemberHome({
         ]
           .filter(Boolean)
           .join(' · '),
-        editionId: state.programme.editionId,
+        go: () => onOpen(state.programme.editionId),
       });
     }
     for (const entry of state.agenda.filter((a) => soon(a.on))) {
@@ -91,7 +124,7 @@ export function MemberHome({
         ]
           .filter(Boolean)
           .join(' · '),
-        editionId: state.programme.editionId,
+        go: () => onOpen(state.programme.editionId),
       });
     }
   }
@@ -112,7 +145,7 @@ export function MemberHome({
                 className="rowcard row"
                 key={item.key}
                 style={{ padding: '11px 13px', gap: 11, width: '100%', textAlign: 'left' }}
-                onClick={() => onOpen(item.editionId)}
+                onClick={item.go}
               >
                 <Icon name="check" size={15} />
                 <span style={{ flex: 1, minWidth: 0 }}>

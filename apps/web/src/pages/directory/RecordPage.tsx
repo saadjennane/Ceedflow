@@ -1,5 +1,7 @@
 import {
   ORIGIN_LABEL,
+  profileOf,
+  profileStarted,
   type Affiliation,
   type DirectoryRecord,
   type RecordDetail,
@@ -19,6 +21,7 @@ import '../../ui/directory.css';
 import { AccountCard } from './AccountCard';
 import { initials } from './DirectoryPage';
 import { RecordModal } from './RecordModal';
+import { ProfileBar, ProfileFacts, Logo } from '../../ui/OrgProfile';
 
 export function RecordPage() {
   const { recordId = '' } = useParams();
@@ -53,7 +56,11 @@ export function RecordPage() {
       <div className="page rec-layout">
         <div className="stack" style={{ gap: 14 }}>
           <div className="card card-pad rec-head">
-            <div className="rec-mark big">{initials(record.name)}</div>
+            {record.logoUploadId ? (
+              <Logo uploadId={record.logoUploadId} name={record.name} size={46} />
+            ) : (
+              <div className="rec-mark big">{initials(record.name)}</div>
+            )}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="row wrap" style={{ gap: 6 }}>
                 {record.roles.length ? (
@@ -77,12 +84,20 @@ export function RecordPage() {
                   <span className="faint">{record.department}</span>
                 </p>
               )}
-              {record.bio && <p style={{ margin: '8px 0 0', fontSize: 13 }}>{record.bio}</p>}
+              {/* Pour une organisation, la description et l'adresse sont sur la
+                  fiche juste en dessous : les écrire deux fois sur le même
+                  écran donne deux endroits à corriger pour une faute. */}
+              {record.bio && !isOrg && <p style={{ margin: '8px 0 0', fontSize: 13 }}>{record.bio}</p>}
+              {/* Pour une organisation, la phrase d'accroche : c'est ce qu'on
+                  lit en premier d'une société, et l'en-tête n'avait plus rien. */}
+              {isOrg && record.pitch && (
+                <p style={{ margin: '8px 0 0', fontSize: 14, fontWeight: 600 }}>{record.pitch}</p>
+              )}
               <div className="row wrap faint" style={{ gap: 14, marginTop: 8, fontSize: 12.5 }}>
                 {record.email && <span>{record.email}</span>}
                 {record.phone && <span className="num">{record.phone}</span>}
-                {record.city && <span>{[record.city, record.country].filter(Boolean).join(', ')}</span>}
-                {record.website && <span>{record.website}</span>}
+                {!isOrg && record.city && <span>{[record.city, record.country].filter(Boolean).join(', ')}</span>}
+                {!isOrg && record.website && <span>{record.website}</span>}
               </div>
               {record.tags.length > 0 && (
                 <div className="row wrap" style={{ gap: 5, marginTop: 8 }}>
@@ -95,6 +110,25 @@ export function RecordPage() {
               )}
             </div>
           </div>
+
+          {/* La fiche que le jury lit, et ce qu'il y manque : c'est ici qu'on
+              s'en aperçoit avant une séance, et la barre nomme quoi relancer. */}
+          {isOrg && (
+            <div className="card card-pad stack" style={{ gap: 12 }}>
+              <div className="row">
+                <strong style={{ flex: 1, fontFamily: 'var(--display)', fontSize: 13.5 }}>
+                  Profile the jury reads
+                </strong>
+                <button className="btn sm" onClick={() => setEditing(true)}>
+                  <Icon name="edit" size={13} /> {profileStarted(profileOf(record)) ? 'Edit' : 'Fill it in'}
+                </button>
+              </div>
+              <ProfileBar profile={profileOf(record)} lang="en" />
+              {profileStarted(profileOf(record)) && (
+                <ProfileFacts profile={profileOf(record)} name={record.name} lang="en" lead={false} />
+              )}
+            </div>
+          )}
 
           <div className="card">
             <div className="rowcard-head" style={{ padding: '11px 14px' }}>

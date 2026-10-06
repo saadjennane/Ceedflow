@@ -1543,11 +1543,19 @@ export async function claimUploads(candidateId: string, answers: Record<string, 
 }
 
 export async function getUpload(id: string) {
-  // The candidacy travels with the file: an attachment is somebody's business
-  // plan, and who may open it follows from whose application it belongs to.
+  /* The candidacy travels with the file: an attachment is somebody's business
+     plan, and who may open it follows from whose application it belongs to.
+
+     A logo belongs to nobody's application — it is on the organisation's own
+     page — so the join finds its owner the other way round. Without that, a
+     founder could not re-open the logo they had just put up: the rule above
+     reads the org off the candidacy, and there is no candidacy. */
   return one<{ filename: string; mime: string; bytes: Buffer; candidateId: string | null; orgId: string | null }>(
-    `select u.filename, u.mime, u.bytes, u.candidate_id as "candidateId", c.org_id as "orgId"
-       from uploads u left join candidates c on c.id = u.candidate_id
+    `select u.filename, u.mime, u.bytes, u.candidate_id as "candidateId",
+            coalesce(c.org_id, r.id) as "orgId"
+       from uploads u
+       left join candidates c on c.id = u.candidate_id
+       left join records r on r.logo_upload_id = u.id
       where u.id = $1`,
     [id],
   );
