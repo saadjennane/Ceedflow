@@ -18,7 +18,7 @@ import {
   type SelectionConfig,
   type TrackWithPhases,
 } from '@ceed/shared';
-import { Fragment, useRef, useState } from 'react';
+import { Fragment, useState } from 'react';
 import { api } from '../../lib/api';
 import { formatDate, shortNames } from '../../lib/format';
 import { download, toWorkbook, type Cell } from '../../lib/xlsx';
@@ -71,7 +71,6 @@ interface DecisionRow {
   outcome: 'pass' | 'wait' | 'fail';
   overridden: boolean;
   stale: boolean;
-  pending: boolean;
 }
 
 interface DecisionPayload {
@@ -280,8 +279,6 @@ function Moment({
      header picks another, and clicking it again turns it round. */
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'score', dir: -1 });
   const [confirmPublish, setConfirmPublish] = useState(false);
-  /** Les lettres, pour y mener une fois qu'elles sont ouvertes. */
-  const letters = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
 
@@ -624,18 +621,18 @@ function Moment({
     try {
       await api.post(`/api/blocks/${selection.id}/selection/publish`);
       reload();
-      toast('Announced. The letters are ready to go out.');
-      /* The thing it just opened is above the button that opened it, which is
-         the one place somebody will not look. */
-      setTimeout(() => letters.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 400);
+      toast('Decision recorded.');
     } finally {
       setBusy(false);
     }
   };
 
-  // What publishing again would change: rows the rule has moved past, and rows
-  // that joined the list after the last publication.
-  const outOfLine = (decision?.rows ?? []).filter((r) => r.stale || r.pending).length;
+  /* Ce qui a été dit, puis démenti.
+     Not "never told": an audience you have not written to yet is the ordinary
+     state of this screen for days at a time, and counting it as a discrepancy
+     would put a warning on the wall permanently. Who is still owed a letter is
+     a question the sending panel answers, audience by audience, with names. */
+  const outOfLine = (decision?.rows ?? []).filter((r) => r.stale).length;
 
   const cfg = decision?.config;
   // The rule in the words the jury used, rather than a number nobody set here.
@@ -699,33 +696,22 @@ function Moment({
         </div>
       )}
 
-      {decision &&
-        (decision.published ? (
-          <div className="callout ok">
-            <Icon name="check" size={15} />
-            <div style={{ flex: 1 }}>
-              <strong>Announced {cfg?.publishedAt ? `on ${formatDate(cfg.publishedAt)}` : ''}.</strong> The blocks
-              downstream follow the rule as it stands, not this snapshot — announcing again records where things have
-              got to, and writes each candidate's status afresh.
-            </div>
+      {decision?.published && cfg?.publishedAt && (
+        <div className="callout ok">
+          <Icon name="check" size={15} />
+          <div style={{ flex: 1 }}>
+            <strong>First told on {formatDate(cfg.publishedAt)}.</strong> Each audience is settled as you write to it;
+            the blocks downstream follow the rule as it stands, not what was said that day.
           </div>
-        ) : (
-          <div className="callout">
-            <Icon name="alert" size={15} />
-            <div>
-              <strong>Nothing announced yet.</strong> The blocks downstream already work from the rule below, which is
-              why the funnel looks settled — but each startup's own status still says what it said before, and no
-              letter can go out. Announcing is what closes both.
-            </div>
-          </div>
-        ))}
+        </div>
+      )}
 
       {/* Telling them, one audience at a time. Never all three at once: a
           waiting list exists because the decision is not closed, and a refusal
           sent to somebody who may be fished out next week is worse than the
           leak that sending everybody together would avoid. */}
       {selection && decision && (
-        <div ref={letters}>
+        <div>
           <TellThem
             block={selection}
             at="selection"
@@ -734,18 +720,9 @@ function Moment({
               return kind === 'selection_pass' ? c.messages.pass : kind === 'selection_wait' ? c.messages.wait : c.messages.fail;
             }}
             variablesOf={() => SELECTION_VARIABLES}
-            /* Éteint plutôt que caché : c'est ici qu'on se demande à quoi sert
-               le bouton d'à côté, et un panneau qui n'apparaît qu'une fois
-               utilisable ne répond jamais à cette question-là. */
-            locked={
-              decision.published ? undefined : (
-                <>
-                  <strong>Announce first.</strong> A letter would tell a startup something this platform does not yet
-                  show it — its own page would still read as before. Announcing records the decision, writes every
-                  status, and opens these three sends.
-                </>
-              )
-            }
+            /* Writing to an audience settles it: the funnel, the statuses and
+               the badges all move, and the screen has to say so. */
+            onSent={reload}
           />
         </div>
       )}
@@ -755,10 +732,10 @@ function Moment({
           <Icon name="alert" size={15} />
           <div>
             <strong>
-              {outOfLine} row{outOfLine === 1 ? '' : 's'} moved since you announced.
+              {outOfLine} row{outOfLine === 1 ? '' : 's'} moved since they were told.
             </strong>{' '}
-            A late score, or a startup added since. The blocks downstream already follow the new reading — announce
-            again to bring the record and the candidates' own statuses up to date.
+            A late score, or a startup added since. The blocks downstream already follow the new reading, and writing
+            to an audience again settles it — or record the decision below to bring every status up to date at once.
           </div>
         </div>
       )}
@@ -776,16 +753,19 @@ function Moment({
             <Icon name="file" size={13} /> Export
           </button>
         )}
-        {/* Nothing to press in the steady state: publishing is for the first
-            announcement, and for catching up when the rule has moved since. */}
-        {decision && (!decision.published || outOfLine > 0) && (
+        {/* Second rank, and rightly so: telling an audience is what announces
+            it, and that button is in the panel above. This one is for the cut
+            nobody is written to — an internal shortlist that only feeds the
+            next phase — and for catching every status up in one go. */}
+        {decision && (
           <button
-            className="btn primary"
+            className="btn"
             disabled={busy || !lines.length}
+            title="Writes every startup's own status from the decision as it stands. No letter goes out."
             onClick={() => setConfirmPublish(true)}
           >
             <Icon name="check" size={14} />
-            {decision.published ? `Announce again (${outOfLine})` : 'Announce'}
+            Record the decision{outOfLine > 0 ? ` (${outOfLine})` : ''}
           </button>
         )}
       </div>
@@ -948,15 +928,6 @@ function Moment({
                             {line.decision?.stale && (
                               <span className="badge warn" style={{ marginLeft: 7 }} title="The rule now says otherwise">
                                 Rule moved on
-                              </span>
-                            )}
-                            {line.decision?.pending && (
-                              <span
-                                className="badge warn"
-                                style={{ marginLeft: 7 }}
-                                title="Joined the list after the last publication"
-                              >
-                                Not announced
                               </span>
                             )}
                           </td>
@@ -1155,24 +1126,16 @@ function Moment({
       <p className="faint" style={{ margin: 0, fontSize: 12 }}>
         A status follows from the score on its own; choose another and it sticks. A decision can always be changed by
         hand, whatever the rule says — every block downstream follows immediately, with no second step. The startup's
-        own status follows too, once the decision has been announced.
+        own status follows when you write to the audience it belongs to.
       </p>
 
       {confirmPublish && cfg && (
         <ConfirmDialog
-          title={
-            decision?.published
-              ? 'Announce again?'
-              : cfg.outputKind === 'cohort'
-                ? 'Announce the cohort?'
-                : 'Announce the shortlist?'
-          }
+          title={decision?.published ? 'Record it again?' : 'Record the decision?'}
           body={
-            /* Said here because this is the moment somebody expects the
-               letters to leave: announcing settles the decision, and writing
-               to each audience stays a separate act — which is what lets you
-               tell the retained today and hold the refusals until the
-               deliberation is closed. */
+            /* Said plainly, because the act people reach for is the send: this
+               one only writes down where things stand, for a cut nobody is
+               written to, or to catch every status up at once. */
             (decision?.published
               ? `${outOfLine} row${outOfLine === 1 ? '' : 's'} take what the rule says now; the ones you changed by hand keep your call. Every candidate's status is rewritten.`
               : decision && decision.passCount === 0
@@ -1180,10 +1143,10 @@ function Moment({
               : `${decision?.passCount} marked ${passLabel.toLowerCase()}${
                   decision?.waitCount ? `, ${decision.waitCount} ${waitLabel.toLowerCase()}` : ''
                 }, ${decision?.failCount} marked ${failLabel.toLowerCase()}. Each candidate's status is updated, and the blocks after this one start from the ones who passed.`) +
-            ' Nothing is sent: the letters go out audience by audience, from the panel above, once this is done.'
+            ' Nothing is sent — writing to an audience is its own act, in the panel above, and it settles that audience on its own.'
           }
           destructive={decision?.passCount === 0}
-          confirmLabel={decision?.published ? 'Announce again' : 'Announce'}
+          confirmLabel={decision?.published ? 'Record again' : 'Record it'}
           onClose={() => setConfirmPublish(false)}
           onConfirm={publish}
         />

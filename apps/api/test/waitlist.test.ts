@@ -12,7 +12,14 @@ import { after, before, describe, it } from 'node:test';
 import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
-import { callFor, intakeFor, overrideOutcome, publishSelection, selectionView } from '../src/services/selection.js';
+import {
+  announceAudience,
+  callFor,
+  intakeFor,
+  overrideOutcome,
+  publishSelection,
+  selectionView,
+} from '../src/services/selection.js';
 import { setOutcomeByHand } from '../src/services/scoring.js';
 import { launchNotice, sendDueNotices } from '../src/services/notices.js';
 import { SELECTION_KINDS, selectionAudiences, selectionRoster } from '../src/services/selectionNotices.js';
@@ -203,24 +210,27 @@ describe('telling each audience what was decided', { skip: skipWithoutServer }, 
 
   const BODY = 'Bonjour {{startup}}, {{decision}} à l’issue de {{phase}}.';
 
-  it('refuses to write about a decision nobody announced', async () => {
-    /* Announcing is what records it. A letter about a decision the platform
-       cannot show them is a letter they cannot check. */
-    const { pick, kept } = await setUp();
+  it('settles exactly the audience it writes to, and leaves the rest alone', async () => {
+    /* Écrire, c'est annoncer. There is no realer announcement afterwards — and
+       the refusals must stay unsettled on the morning the retained are told,
+       which is the whole reason the sends are separate. */
+    const { pick, kept, held, out } = await setUp();
+    await announceAudience(pick.id, 'pass');
     await launchNotice(pick.id, { kind: SELECTION_KINDS.pass, body: BODY });
     await sendDueNotices();
-    assert.equal(await lettersFor(kept.id), 0);
-    // This block's own notice, not the tick's total: the sender is global.
-    assert.equal(
-      (await repo.listNotices(pick.id))[0]!.state,
-      'planned',
-      'waited rather than abandoned — announcing later is an ordinary order',
-    );
+    assert.equal(await lettersFor(kept.id), 1, 'the letter went with no announcement beforehand');
+
+    const statusOf = async (id: string) => (await repo.getCandidate(id))?.status;
+    assert.equal(await statusOf(kept.id), 'Shortlisted', 'the audience written to takes the word');
+    assert.notEqual(await statusOf(held.id), 'Waitlisted', 'the ones still waiting are untouched');
+    assert.notEqual(await statusOf(out.id), 'Not selected', 'and so are the refusals');
+
+    const view = await selectionView(pick.id);
+    assert.ok(view!.published, 'the first letter is what made this a decision');
   });
 
   it('writes to one audience and leaves the others untouched', async () => {
     const { pick, kept, held, out } = await setUp();
-    await publishSelection(pick.id);
     await launchNotice(pick.id, { kind: SELECTION_KINDS.pass, body: BODY });
     await sendDueNotices();
 
@@ -231,7 +241,6 @@ describe('telling each audience what was decided', { skip: skipWithoutServer }, 
 
   it('fills the letter with this block’s own words', async () => {
     const { pick, kept } = await setUp();
-    await publishSelection(pick.id);
     await launchNotice(pick.id, { kind: SELECTION_KINDS.pass, body: BODY });
     await sendDueNotices();
     const [letter] = await letters({ candidateId: kept.id });
@@ -243,7 +252,6 @@ describe('telling each audience what was decided', { skip: skipWithoutServer }, 
 
   it('says it again to nobody, however many times the button is pressed', async () => {
     const { pick, kept } = await setUp();
-    await publishSelection(pick.id);
     for (let i = 0; i < 3; i++) {
       await launchNotice(pick.id, { kind: SELECTION_KINDS.pass, body: BODY });
       await sendDueNotices();
@@ -253,7 +261,6 @@ describe('telling each audience what was decided', { skip: skipWithoutServer }, 
 
   it('counts what is left to say, per audience', async () => {
     const { pick } = await setUp();
-    await publishSelection(pick.id);
     await launchNotice(pick.id, { kind: SELECTION_KINDS.pass, body: BODY });
     await sendDueNotices();
 

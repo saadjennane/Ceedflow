@@ -222,14 +222,9 @@ export const selectionNotices: NoticeSource = {
   async gate(blockId): Promise<Gate> {
     const block = await repo.getBlock(blockId);
     if (!block || block.type !== 'selection') return { go: false, wait: false, why: 'The block no longer exists.' };
-    /* Announcing is what records the decision. Writing to startups about a
-       decision nobody has recorded would tell them something the platform
-       cannot show them — so it waits for the announcement rather than
-       abandoning, because scheduling the letters before announcing is an
-       ordinary order to do things in. */
-    if (!(block.config as SelectionConfig).publishedAt) {
-      return { go: false, wait: true, why: 'The decision was never announced.' };
-    }
+    /* Nothing else to wait for. Launching the send is what announced this
+       audience — the decision was written down before the first letter was
+       composed, so there is no state left for the letter to get ahead of. */
     return { go: true };
   },
 

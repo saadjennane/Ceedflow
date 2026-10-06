@@ -28,7 +28,6 @@ export interface SelectionRow {
    */
   stale: boolean;
   /** On the list since the last publication, so nothing has been announced for it. */
-  pending: boolean;
 }
 
 export interface SelectionView {
@@ -171,9 +170,8 @@ export async function selectionView(blockId: string): Promise<SelectionView | nu
       computed,
       outcome,
       overridden: saved?.overridden ?? false,
-      // Announced one thing, the rule now says another.
+      // Told one thing, the rule now says another.
       stale: Boolean(saved) && !saved?.overridden && saved?.outcome !== computed,
-      pending: Boolean(config.publishedAt) && !saved,
     };
   });
 
@@ -213,10 +211,44 @@ async function writeStatuses(blockId: string): Promise<void> {
 }
 
 /**
- * Publishing applies the rule as it stands, keeps the calls made by hand, writes
- * each candidate's status and opens the gate downstream. Run it again whenever a
- * late score or a new arrival has left the announced decision out of line — it
- * is one explicit act rather than a state to toggle off and on.
+ * Annoncer une audience, parce que lui écrire, c'est l'annoncer.
+ *
+ * Sending the letter is the announcement — there is no second, realer one, and
+ * a button pressed beforehand to say "I mean it" only looked like work. So the
+ * send settles exactly the people it names: their decision is written down as
+ * it stood when it left, their own status takes the word, and the rest of the
+ * list is untouched. Which is the whole point of telling one audience at a
+ * time: nothing about the refusals is settled on the morning you write to the
+ * ones you kept.
+ */
+export async function announceAudience(blockId: string, call: SelectionCall): Promise<void> {
+  const view = await selectionView(blockId);
+  if (!view) return;
+  const mine = view.rows.filter((row) => row.outcome === call);
+  if (!mine.length) return;
+
+  for (const row of mine) await repo.setOutcome(blockId, row.candidate.id, call, row.overridden);
+  await repo.setCandidateStatuses(
+    mine
+      // A startup that withdrew keeps that word, whatever a committee decided.
+      .filter((r) => r.candidate.status !== 'Withdrawn')
+      .map((r) => ({ id: r.candidate.id, status: statusFor(view.config, call) })),
+  );
+  /* The first letter out is the moment this selection stopped being a draft.
+     What reads it: the committee naming its intake, the sourcing counting what
+     a channel brought in, and the badge saying a row joined since. */
+  if (!view.config.publishedAt) {
+    await repo.updateBlock(blockId, { config: { publishedAt: new Date().toISOString() } });
+  }
+}
+
+/**
+ * Settling the whole list at once, for a selection nobody is written to.
+ *
+ * An internal cut — a shortlist that only feeds the next phase — has no letter
+ * to carry it, and its startups would otherwise never take the word. Run it
+ * again whenever a late score or a new arrival has left the recorded decision
+ * out of line.
  */
 export async function publishSelection(blockId: string): Promise<SelectionView | null> {
   const view = await selectionView(blockId);

@@ -26,7 +26,7 @@ import { committeeForEvaluation, committeeView } from '../services/committee.js'
 import { acknowledge } from '../services/applicationNotices.js';
 import { letters } from '../services/mail.js';
 import { launchNotice, sendDueNotices, sendTest } from '../services/notices.js';
-import { selectionAudiences, selectionNotices, selectionRoster } from '../services/selectionNotices.js';
+import { callOfKind, selectionAudiences, selectionNotices, selectionRoster } from '../services/selectionNotices.js';
 import {
   appLink,
   deliverableView,
@@ -36,6 +36,7 @@ import {
 import { reviewsFor } from '../services/reviews.js';
 import { outcomesByCandidate, outcomesOf, scoresByCandidate, setOutcomeByHand } from '../services/scoring.js';
 import {
+  announceAudience,
   funnelFor,
   intakeFor,
   overrideOutcome,
@@ -777,9 +778,11 @@ export async function funnelRoutes(app: FastifyInstance) {
     );
     const block = await repo.getBlock(id);
     if (!block || block.type !== 'selection') return notFound(reply, 'Selection block not found.');
-    if (!(block.config as { publishedAt?: string | null }).publishedAt) {
-      throw new HttpError(422, 'Announce the decision first — otherwise this tells them something nothing records.');
-    }
+
+    /* Écrire à une audience, c'est l'annoncer. Fait avant de composer les
+       lettres, pour qu'aucune ne parte en disant ce que rien n'enregistre. */
+    const call = callOfKind(input.kind);
+    if (call) await announceAudience(id, call);
 
     await launchNotice(id, {
       kind: input.kind,
