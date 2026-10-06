@@ -114,6 +114,24 @@ describe('an evaluation sheet', () => {
     assert.match(row, /\(4 \/ 5\) Tj/, 'with the figure written out beside them');
   });
 
+  it('dates the sheet by the sitting, and leaves it blank when there is none', () => {
+    /* Un juré qui saisit sa grille le lendemain dans le train n'a pas évalué
+       dans le train : la fiche porte le jour où la startup est passée. */
+    const held = texts(
+      sheetPages(grid, [
+        { juror: 'Ghita', startup: 'Rafid', on: '2026-09-28', marks: { cible: 4 }, overall: 80 },
+      ], measure).join('\n'),
+    );
+    assert.ok(held.includes('28 septembre 2026'), 'the day of the sitting');
+
+    const undated = texts(
+      sheetPages(grid, [
+        { juror: 'Ghita', startup: 'Rafid', on: '', marks: { cible: 4 }, overall: 80 },
+      ], measure).join('\n'),
+    );
+    assert.ok(!undated.some((t) => /\d{4}/.test(t) && /septembre|octobre/.test(t)), 'no date invented');
+  });
+
   it('leaves a dash where nobody marked, rather than a nought', () => {
     /* Zéro est une note. Rien n'en est pas une, et les deux ne se lisent pas
        pareil sur une fiche qu'on classe. */

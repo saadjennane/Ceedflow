@@ -1112,9 +1112,21 @@ function Moment({
           /* Every juror of every sitting: a sheet is one person's paper, and
              which morning they sat on is not a reason to leave them out. */
           evaluators={[...new Map(sections.flatMap((x) => x.evaluators).map((e) => [e.id, e])).values()]}
-          rows={lines
-            .filter((l) => l.scoring)
-            .map((l) => ({ id: l.candidate.id, orgName: l.candidate.orgName, scores: l.scoring!.scores }))}
+          /* Par séance, parce qu'une fiche porte le jour où la startup est
+             passée — et que ce jour-là n'est connu que de la séance. Le
+             classement unifié est écarté : il reprend tout le monde. */
+          rows={sections
+            .filter((x) => !x.ranking && x.key !== 'unscored')
+            .flatMap((x) =>
+              x.lines
+                .filter((l) => l.scoring)
+                .map((l) => ({
+                  id: l.candidate.id,
+                  orgName: l.candidate.orgName,
+                  heldOn: x.heldOn,
+                  scores: l.scoring!.scores,
+                })),
+            )}
           onSpreadsheet={exportSheets}
           onClose={() => setExporting(false)}
         />

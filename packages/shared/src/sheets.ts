@@ -20,7 +20,13 @@ export interface SheetSubject {
   /** The juror, as the panel names them. */
   juror: string;
   startup: string;
-  /** The day they filed it, not the day it was exported. */
+  /**
+   * Le jour de la séance, pas celui de la saisie.
+   *
+   * A juror who files their sheet on the train home the next morning did not
+   * evaluate on the train. Empty when the sitting has no date — which leaves
+   * the box blank, and a blank box on a form is a question somebody asks.
+   */
   on: string;
   marks: Record<string, number>;
   /** Their own score out of a hundred, as every screen already shows it. */

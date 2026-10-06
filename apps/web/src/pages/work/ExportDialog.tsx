@@ -22,6 +22,8 @@ import { Modal } from '../../ui/Overlays';
 export interface Markable {
   id: string;
   orgName: string;
+  /** The day the sitting was held — which is the day of the evaluation. */
+  heldOn: string | null;
   scores: {
     evaluatorId: string;
     evaluatorName: string;
@@ -124,7 +126,11 @@ export function ExportDialog({
         .map((s) => ({
           juror: s.evaluatorName || evaluators.find((e) => e.id === s.evaluatorId)?.name || '',
           startup: row.orgName,
-          on: s.submittedAt ?? '',
+          /* La date de la séance, pas celle de la saisie.
+             A juror who files their sheet on the train home the next morning
+             did not evaluate on the train: what the sheet records is the day
+             the startup pitched, and that is the day CEED files it under. */
+          on: row.heldOn ?? '',
           marks: s.marks,
           overall: s.normalised,
         })),
