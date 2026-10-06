@@ -55,6 +55,7 @@ function useEscape(onClose: () => void) {
 export function Modal({
   title,
   subtitle,
+  onBack,
   onClose,
   children,
   footer,
@@ -63,6 +64,8 @@ export function Modal({
 }: {
   title: string;
   subtitle?: string;
+  /** A step back inside the same window, where there was a step before. */
+  onBack?: () => void;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
@@ -80,6 +83,11 @@ export function Modal({
         aria-label={title}
       >
         <div className="modal-head">
+          {onBack && (
+            <button className="btn ghost icon sm" onClick={onBack} aria-label="Back" style={{ marginRight: 2 }}>
+              <Icon name="chevronLeft" />
+            </button>
+          )}
           <div style={{ flex: 1 }}>
             <h2>{title}</h2>
             {subtitle && <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>{subtitle}</p>}

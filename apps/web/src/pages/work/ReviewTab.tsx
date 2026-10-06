@@ -23,7 +23,7 @@ import { api } from '../../lib/api';
 import { formatDate, shortNames } from '../../lib/format';
 import { download, toWorkbook, type Cell } from '../../lib/xlsx';
 import { useAsync } from '../../lib/useAsync';
-import { TellThem } from './TellThem';
+import { useAnnouncing } from './TellThem';
 import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Overlays';
 import { ScoreEditor } from '../builder/panels/shared';
@@ -279,6 +279,27 @@ function Moment({
      header picks another, and clicking it again turns it round. */
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'score', dir: -1 });
   const [busy, setBusy] = useState(false);
+
+  /* Telling them, one audience at a time. Never all three at once: a waiting
+     list exists because the decision is not closed, and a refusal sent to
+     somebody who may be fished out next week is worse than the leak that
+     sending everybody together would avoid. */
+  const announcing = useAnnouncing({
+    block: selection ?? ({ id: '', config: {} } as Block),
+    at: 'selection',
+    label: 'Announce',
+    bodyOf: (kind) => {
+      const c = (selection?.config ?? {}) as SelectionConfig;
+      return kind === 'selection_pass' ? c.messages.pass : kind === 'selection_wait' ? c.messages.wait : c.messages.fail;
+    },
+    variablesOf: () => SELECTION_VARIABLES,
+    /* Writing to an audience settles it: the funnel, the statuses and the
+       badges all move, and the screen has to say so. */
+    onSent: () => {
+      view.reload();
+      onChanged();
+    },
+  });
 
   if (view.error) return <div className="empty">{view.error}</div>;
   if (!view.data) return <div className="empty">Loading…</div>;
@@ -693,26 +714,7 @@ function Moment({
         </div>
       )}
 
-      {/* Telling them, one audience at a time. Never all three at once: a
-          waiting list exists because the decision is not closed, and a refusal
-          sent to somebody who may be fished out next week is worse than the
-          leak that sending everybody together would avoid. */}
-      {selection && decision && (
-        <div>
-          <TellThem
-            block={selection}
-            at="selection"
-            bodyOf={(kind) => {
-              const c = selection.config as SelectionConfig;
-              return kind === 'selection_pass' ? c.messages.pass : kind === 'selection_wait' ? c.messages.wait : c.messages.fail;
-            }}
-            variablesOf={() => SELECTION_VARIABLES}
-            /* Writing to an audience settles it: the funnel, the statuses and
-               the badges all move, and the screen has to say so. */
-            onSent={reload}
-          />
-        </div>
-      )}
+      {announcing.warning}
 
       {decision?.published && outOfLine > 0 && (
         <div className="callout warn">
@@ -740,6 +742,7 @@ function Moment({
             <Icon name="file" size={13} /> Export
           </button>
         )}
+        {announcing.button}
       </div>
 
       {noPanel ? (
@@ -1094,6 +1097,8 @@ function Moment({
         })}
         </>
       )}
+
+      {announcing.windows}
 
       <p className="faint" style={{ margin: 0, fontSize: 12 }}>
         A status follows from the score on its own; choose another and it sticks. A decision can always be changed by

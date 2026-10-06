@@ -15,7 +15,7 @@ import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
-import { TellThem } from './TellThem';
+import { useAnnouncing } from './TellThem';
 import { Modal, useToast } from '../../ui/Overlays';
 
 interface AssignmentView {
@@ -71,6 +71,20 @@ export function CommitteeWorkspace({
   const [over, setOver] = useState<string | null>(null);
   const drag = useRef<Dragged | null>(null);
   const toast = useToast();
+
+  /* Convening them: the jury, and the startups. Two acts, because a juror is
+     told who they will see and a startup when it is expected, and neither
+     sentence belongs in the other's letter. */
+  const announcing = useAnnouncing({
+    block,
+    at: 'committee',
+    label: 'Inform',
+    bodyOf: (kind) => {
+      const c = block.config as CommitteeConfig;
+      return kind === 'committee_jury' ? c.messages.jury : c.messages.startup;
+    },
+    variablesOf: (kind) => (kind === 'committee_jury' ? COMMITTEE_JURY_VARIABLES : COMMITTEE_STARTUP_VARIABLES),
+  });
 
   if (view.error) return <div className="empty">{view.error}</div>;
   if (!view.data) return <div className="empty">Loading…</div>;
@@ -247,7 +261,12 @@ export function CommitteeWorkspace({
             </button>
           ))}
         </div>
+        <div className="spacer" />
+        {announcing.button}
       </div>
+
+      {announcing.warning}
+      {announcing.windows}
 
       {!current ? (
         <div className="empty">
@@ -262,18 +281,6 @@ export function CommitteeWorkspace({
         </div>
       ) : (
         <>
-          {/* Convening them: the jury, and the startups. Two acts, because a
-              juror is told who they will see and a startup when it is
-              expected, and neither sentence belongs in the other's letter. */}
-          <TellThem
-            block={block}
-            at="committee"
-            bodyOf={(kind) => (kind === 'committee_jury' ? config.messages.jury : config.messages.startup)}
-            variablesOf={(kind) =>
-              kind === 'committee_jury' ? COMMITTEE_JURY_VARIABLES : COMMITTEE_STARTUP_VARIABLES
-            }
-          />
-
           {/* ---- the jury, above ---- */}
           <section className="card jury-strip">
             {/* The count beside the word, because twelve chips wrap over two

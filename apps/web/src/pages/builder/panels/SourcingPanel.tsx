@@ -18,7 +18,7 @@ import { useAsync } from '../../../lib/useAsync';
 import { SelectField, TextArea, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
 import { useToast } from '../../../ui/Overlays';
-import { TellThem } from '../../work/TellThem';
+import { useAnnouncing } from '../../work/TellThem';
 import { AccessTemplate } from './Template';
 
 /* ------------------------------------------------------------------ */
@@ -409,6 +409,15 @@ interface OutreachView {
 
 export function SourcingOutreach({ block, dirty }: { block: Block; dirty: boolean }) {
   const view = useAsync(() => api.get<OutreachView>(`/api/blocks/${block.id}/outreach`), block.id);
+  /* One audience, so the button opens the letter itself — a window listing a
+     list of one would be a click to get past. */
+  const announcing = useAnnouncing({
+    block,
+    at: 'sourcing',
+    label: 'Send the call',
+    bodyOf: () => (block.config as SourcingConfig).outreach.body,
+    variablesOf: () => SOURCING_VARIABLES,
+  });
 
   if (view.error) return <div className="empty">{view.error}</div>;
   if (!view.data) return <div className="empty">Loading…</div>;
@@ -492,9 +501,11 @@ export function SourcingOutreach({ block, dirty }: { block: Block; dirty: boolea
         <div className="row wrap">
           <span className="badge info num">{audience.length} recipients</span>
           {unreachable > 0 && <span className="badge warn num">{unreachable} without an email</span>}
+          <div className="spacer" />
+          {/* Unsaved edits first: the window writes from the saved block, so
+              sending now would send the message as it was, not as it reads. */}
+          {!dirty && announcing.button}
         </div>
-        {/* Unsaved edits first: the window writes from the saved block, so
-            sending now would send the message as it was, not as it reads. */}
         {dirty && (
           <p className="warnline" style={{ margin: 0, fontSize: 12.5 }}>
             Save your changes first — the letter is written from the saved block.
@@ -502,14 +513,8 @@ export function SourcingOutreach({ block, dirty }: { block: Block; dirty: boolea
         )}
       </div>
 
-      {!dirty && (
-        <TellThem
-          block={block}
-          at="sourcing"
-          bodyOf={() => config.outreach.body}
-          variablesOf={() => SOURCING_VARIABLES}
-        />
-      )}
+      {announcing.warning}
+      {announcing.windows}
 
       <h3 className="section-title">Sent</h3>
       {!sends.length ? (

@@ -86,6 +86,7 @@ export function NotifyDialog({
   rosterPath,
   notifyPath,
   title: given,
+  onBack,
   body: template,
   variables = DELIVERABLE_VARIABLES,
   onDone,
@@ -102,6 +103,8 @@ export function NotifyDialog({
   rosterPath?: string;
   notifyPath?: string;
   title?: string;
+  /** A step back to the audience it was chosen from, where there was one. */
+  onBack?: () => void;
   /** The template for this kind. Defaults to the deliverables block's own. */
   body?: string;
   variables?: readonly { name: string; label: string; what: string }[];
@@ -257,6 +260,7 @@ export function NotifyDialog({
       }
       wide
       full={writing}
+      onBack={onBack}
       onClose={onClose}
       footer={
         <>
