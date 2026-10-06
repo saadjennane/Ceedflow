@@ -1,44 +1,36 @@
 /**
- * La fiche d'évaluation, remise au navigateur.
+ * La fiche d'évaluation, mesurée puis récupérée.
  *
- * The document itself is built in `@ceed/shared` — it is the grid on paper,
- * and the grid is domain vocabulary. What is left here is the one thing only a
- * browser can do, which is turn it into a PDF.
+ * The document is built in `@ceed/shared` — it is the grid on paper, and the
+ * grid is domain vocabulary. Two things only a browser can do are left here:
+ * say how wide a sentence runs, which is what a layout needs before it can
+ * break a line, and hand the finished file to somebody.
  */
+import { sheetsPdf, type Measure, type SheetGrid, type SheetSubject } from '@ceed/shared';
+import { download } from './xlsx';
+
 /**
- * Hands it to the browser, which is what turns it into a PDF.
+ * Helvetica, measured by whatever is about to draw it.
  *
- * An iframe rather than a new window: a popup blocker stops the second, and a
- * blocked export looks exactly like a broken one. It is taken off the page
- * once the dialog closes — printing is synchronous, so afterwards is safe.
+ * A canvas measured at `size` pixels gives the advance of the same text at
+ * `size` points: a font's widths are proportional to its em, whatever the unit
+ * is called. And on a machine with no Helvetica, Arial stands in — which was
+ * drawn to the same widths, so the layout does not move.
  */
-export function printSheets(html: string): void {
-  const frame = document.createElement('iframe');
-  frame.setAttribute('aria-hidden', 'true');
-  /* Hors écran plutôt que de taille nulle : un cadre de 0 × 0 n'est pas mis
-     en page, et ce qui n'est pas mis en page s'imprime parfois vide. */
-  frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;height:1123px;border:0';
-  document.body.appendChild(frame);
+const measure: Measure = (() => {
+  const canvas = document.createElement('canvas');
+  const pen = canvas.getContext('2d');
+  return (text, size, bold) => {
+    if (!pen) return text.length * size * 0.5;
+    pen.font = `${bold ? 'bold ' : ''}${size}px Helvetica, Arial, sans-serif`;
+    return pen.measureText(text).width;
+  };
+})();
 
-  const win = frame.contentWindow;
-  const doc = frame.contentDocument;
-  if (!win || !doc) {
-    frame.remove();
-    return;
-  }
-  doc.open();
-  doc.write(html);
-  doc.close();
-
-  /* Pas d'attente de `load`.
-     A document written in one go is parsed by the time `close()` returns, and
-     its load event may well have fired already — hanging the print on it is
-     how a button does nothing at all, on some browsers and not others. One
-     frame is enough for layout, and layout is the only thing printing waits
-     for: without it the dialog gets a first page and nothing after it. */
-  requestAnimationFrame(() => {
-    win.focus();
-    win.print();
-    setTimeout(() => frame.remove(), 2000);
-  });
+/** Writes the file and gives it to them. */
+export function downloadSheets(grid: SheetGrid, subjects: SheetSubject[]): void {
+  const bytes = sheetsPdf(grid, subjects, measure);
+  const blob = new Blob([bytes.slice().buffer as ArrayBuffer], { type: 'application/pdf' });
+  const name = `${grid.name || 'Fiches'} — fiches d'évaluation.pdf`.replace(/[/\\:*?"<>|]/g, '-');
+  download(blob, name);
 }

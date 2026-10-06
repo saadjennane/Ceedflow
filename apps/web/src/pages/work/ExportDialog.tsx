@@ -12,9 +12,9 @@
  * twenty-four startups is three hundred and thirty-six pages — and that figure
  * cannot exist until both halves are chosen.
  */
-import { sheetsDocument, type EvaluationCriterion, type EvaluationScale, type PersonRef, type SheetSubject } from '@ceed/shared';
+import { type EvaluationCriterion, type EvaluationScale, type PersonRef, type SheetSubject } from '@ceed/shared';
 import { useState } from 'react';
-import { printSheets } from '../../lib/evalSheet';
+import { downloadSheets } from '../../lib/evalSheet';
 import { Icon } from '../../ui/Icon';
 import { Modal } from '../../ui/Overlays';
 
@@ -133,7 +133,7 @@ export function ExportDialog({
   const possible = startups.size * jurors.size;
 
   const run = () => {
-    printSheets(sheetsDocument({ name: blockName, criteria, scale, markedOutOf }, subjects));
+    downloadSheets({ name: blockName, criteria, scale, markedOutOf }, subjects);
     onClose();
   };
 
@@ -167,7 +167,7 @@ export function ExportDialog({
             <span style={{ flex: 1 }}>
               <strong style={{ fontSize: 13 }}>Evaluation sheets</strong>
               <div className="faint" style={{ fontSize: 12 }}>
-                One page per startup and juror, as the grid they filled in — to print or to keep as a PDF.
+                One page per startup and juror, as the grid they filled in. A PDF, to file or to print.
               </div>
             </span>
           </button>
