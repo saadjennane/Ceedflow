@@ -204,7 +204,12 @@ export function NotifyDialog({
          letter that was refused — and a refusal names the address or the
          domain that refused it, which is the only way to tell "my gmail works
          but my colleague's does not" from a product fault. */
-      if (!out.live) {
+      if (out.state === 'held' && out.error) {
+        /* Held by us, not refused by anybody: there is nothing to look for in
+           the provider's dashboard, because it was never handed over. Said
+           before the sandbox message, because it is true in both. */
+        toast(`Nothing was handed over — ${out.error}`, true);
+      } else if (!out.live) {
         toast('Written and held — nothing leaves outside production.');
       } else if (out.state === 'sent') {
         toast(`Sent to ${tryAt.trim()}.`);

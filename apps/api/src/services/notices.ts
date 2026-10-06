@@ -15,7 +15,7 @@
 import { newId } from '@ceed/shared';
 import * as repo from '../db/repo.js';
 import { fillTemplate } from '@ceed/shared';
-import { flushOne, post, sendingIsLive } from './mail.js';
+import { flushOne, post, sendingIsLive, suppressed } from './mail.js';
 import { deliverableNotices } from './deliverables.js';
 import { selectionNotices } from './selectionNotices.js';
 import { committeeNotices } from './committeeNotices.js';
@@ -193,7 +193,20 @@ export async function sendTest(
      front of the screen, and a button that says "sent" twenty seconds before
      the provider refuses it is worse than no button. */
   const out = letter ? await flushOne(letter) : { state: 'failed' as const, error: 'It could not be written down.' };
-  return { written: Boolean(letter), live: sendingIsLive(), state: out.state, error: out.error };
+  /* Tenue, mais par qui ?
+     A letter is held outside production, which is the ordinary case and says
+     nothing about the address. It is also held when that address bounced for
+     good once, and the platform has stopped writing to it — which says
+     everything, and is the more useful of the two whenever it is true.
+     Reporting them the same way sends somebody hunting through a provider's
+     dashboard for a message that was never handed over. */
+  const held = out.state === 'held' && (await suppressed(input.to.trim().toLowerCase()));
+  return {
+    written: Boolean(letter),
+    live: sendingIsLive(),
+    state: out.state,
+    error: held ? 'this address bounced for good once, so nothing is written to it any more.' : out.error,
+  };
 }
 
 export async function sendDueNotices(): Promise<{ sent: number; held: number }> {

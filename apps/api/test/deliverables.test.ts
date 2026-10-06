@@ -22,7 +22,7 @@ import {
 import { launchNotice, sendDueNotices, sendTest } from '../src/services/notices.js';
 import { deliverableNotices } from '../src/services/deliverables.js';
 import { accountOfRecord, createAccount } from '../src/services/auth.js';
-import { letters } from '../src/services/mail.js';
+import { letters, suppress } from '../src/services/mail.js';
 import { outcomesByCandidate, outcomesOf, setOutcomeByHand } from '../src/services/scoring.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
@@ -703,6 +703,18 @@ describe('sending a test', { skip: skipWithoutServer }, () => {
     assert.equal(out.live, false);
     assert.equal(out.written, true, 'written down all the same');
     assert.equal(out.state, 'held', 'and said to be held, not sent');
+  });
+
+  it('names the address when it is the address that holds it back', async () => {
+    /* En production, « tenue » ne veut pas dire la même chose : la lettre n'a
+       pas été remise au fournisseur, et chercher le message dans son tableau
+       de bord est une heure perdue. */
+    const { due, candidate, stamp } = await setUp();
+    const gone = `gone.${stamp}@ceed.test`;
+    await suppress(gone, 'hard bounce');
+    const out = await sendTest(due.id, { kind: 'request', body: 'x', subjectId: candidate.id, to: gone });
+    assert.equal(out.state, 'held');
+    assert.match(out.error, /bounced for good/, 'and says which of the two holds it');
   });
 
   it('hands over the password in this block\'s own words', async () => {
