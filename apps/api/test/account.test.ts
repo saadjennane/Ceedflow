@@ -8,7 +8,7 @@
  */
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { accountStateOf, suggestPassword } from '@ceed/shared';
+import { accountStateOf, fullName, splitName, suggestPassword } from '@ceed/shared';
 import { db, migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import {
@@ -132,5 +132,24 @@ describe('closing an account', { skip: skipWithoutServer }, () => {
       [account.id],
     );
     assert.equal(Number(rows[0]!.n), 1, 'closing is not deleting');
+  });
+});
+
+describe('a name cut in two', () => {
+  it('cuts at the first space, and leaves the rest whole', () => {
+    assert.deepEqual(splitName('Sarah Benali'), { firstName: 'Sarah', lastName: 'Benali' });
+    /* Faux pour un prénom composé, et volontairement : quatre cent soixante-neuf
+       noms ne se relisent pas un par un, et une coupe qu'on voit et qu'on
+       corrige vaut mieux qu'un champ vide que personne ne remarque. */
+    assert.deepEqual(splitName('Mohamed Amine Beniouri'), { firstName: 'Mohamed', lastName: 'Amine Beniouri' });
+    assert.deepEqual(splitName('Cher'), { firstName: 'Cher', lastName: '' });
+    assert.deepEqual(splitName('  Saad   Jennane  '), { firstName: 'Saad', lastName: 'Jennane' });
+    assert.deepEqual(splitName(''), { firstName: '', lastName: '' });
+  });
+
+  it('goes back to the one name every screen shows', () => {
+    const { firstName, lastName } = splitName('Mohamed Amine Beniouri');
+    assert.equal(fullName(firstName, lastName), 'Mohamed Amine Beniouri', 'nothing lost on the round trip');
+    assert.equal(fullName('Cher', ''), 'Cher', 'and no trailing space where there is no last name');
   });
 });

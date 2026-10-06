@@ -1,6 +1,7 @@
 import {
   idOf,
   matchKey,
+  splitName,
   type Affiliation,
   type AffiliationView,
   type DirectoryRecord,
@@ -102,6 +103,12 @@ export async function createRecord(input: {
   tags?: string[];
 }): Promise<DirectoryRecord> {
   const id = idOf.record();
+  /* Coupé ici, une fois pour toutes.
+     Half the people in this directory arrive from a form or an import that
+     knows one Name and nothing else — so the two halves are derived at the one
+     point every path goes through, rather than left empty for a template to
+     guess at later. Whatever the caller gives wins: it knows better. */
+  const cut = input.kind === 'person' ? splitName(input.name) : { firstName: '', lastName: '' };
   await (await db()).query(
     `insert into records (id, kind, name, first_name, last_name, roles, origin, email, phone, city,
        country, website, bio, tags)
@@ -110,8 +117,8 @@ export async function createRecord(input: {
       id,
       input.kind,
       input.name.trim(),
-      input.firstName ?? '',
-      input.lastName ?? '',
+      (input.firstName ?? '').trim() || cut.firstName,
+      (input.lastName ?? '').trim() || cut.lastName,
       input.roles ?? [],
       input.origin ?? 'manual',
       input.email ?? '',

@@ -23,11 +23,13 @@ describe('saving a profile', { skip: skipWithoutServer }, () => {
   before(migrate);
   after(closeDb);
 
-  it('keeps the name of somebody who has no first and last name on file', async () => {
+  it('keeps the name of somebody who saves without touching it', async () => {
     const person = await dir.createRecord({
       kind: 'person', name: 'Salma Berrada Souni', origin: 'manual',
     });
-    assert.equal(person.firstName, '');
+    // Coupé au premier espace sur le chemin de l'écriture, et le reste tient.
+    assert.equal(person.firstName, 'Salma');
+    assert.equal(person.lastName, 'Berrada Souni');
 
     // They change their phone and save. Nothing about the name was touched.
     await dir.updateRecord(person.id, { phone: '+212 6 11 22 33 44', ...nameAfterSave('', '') });

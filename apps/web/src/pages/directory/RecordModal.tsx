@@ -1,4 +1,4 @@
-import { rolesFor, type DirectoryRecord, type RecordKind } from '@ceed/shared';
+import { fullName, rolesFor, splitName, type DirectoryRecord, type RecordKind } from '@ceed/shared';
 import { useState } from 'react';
 import { ApiError, api } from '../../lib/api';
 import { TagField, TextArea, TextField } from '../../ui/Field';
@@ -22,8 +22,14 @@ export function RecordModal({
 }) {
   const isOrg = kind === 'org';
   const editing = Boolean(record);
+  /* Une personne a deux champs, une organisation un seul. The split is the
+     first space until somebody corrects it, and correcting it is the whole
+     reason the two fields are here rather than one. */
+  const parts = splitName(record?.name ?? initialName ?? '');
   const [draft, setDraft] = useState({
     name: record?.name ?? initialName ?? '',
+    firstName: record?.firstName || (isOrg ? '' : parts.firstName),
+    lastName: record?.lastName || (isOrg ? '' : parts.lastName),
     roles: record?.roles ?? (isOrg ? ['Startup'] : []),
     email: record?.email ?? '',
     phone: record?.phone ?? '',
@@ -45,9 +51,13 @@ export function RecordModal({
     setSaving(true);
     setErrors({});
     try {
+      /* The name every screen shows follows from the two fields rather than
+         living beside them: two sources for one string is how a directory ends
+         up listing somebody under a name their own page does not use. */
+      const body = isOrg ? draft : { ...draft, name: fullName(draft.firstName, draft.lastName) };
       const saved = editing
-        ? await api.patch<DirectoryRecord>(`/api/records/${record!.id}`, draft)
-        : await api.post<DirectoryRecord>('/api/records', { kind, origin: 'manual', ...draft });
+        ? await api.patch<DirectoryRecord>(`/api/records/${record!.id}`, body)
+        : await api.post<DirectoryRecord>('/api/records', { kind, origin: 'manual', ...body });
       toast(editing ? 'Saved.' : `${saved.name} added to the directory.`);
       onSaved(saved);
     } catch (err) {
@@ -68,19 +78,45 @@ export function RecordModal({
           <button className="btn ghost" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn primary" disabled={saving || !draft.name.trim()} onClick={save}>
+          <button
+            className="btn primary"
+            disabled={saving || !(isOrg ? draft.name.trim() : draft.firstName.trim())}
+            onClick={save}
+          >
             {saving ? 'Saving…' : editing ? 'Save' : 'Add'}
           </button>
         </>
       }
     >
-      <TextField
-        label={isOrg ? 'Organisation' : 'Full name'}
-        value={draft.name}
-        onChange={(v) => set({ name: v })}
-        error={errors.name}
-        placeholder={isOrg ? 'Nakhla Bio' : 'Sarah Benali'}
-      />
+      {isOrg ? (
+        <TextField
+          label="Organisation"
+          value={draft.name}
+          onChange={(v) => set({ name: v })}
+          error={errors.name}
+          placeholder="Nakhla Bio"
+        />
+      ) : (
+        <div className="row" style={{ gap: 10, alignItems: 'flex-start' }}>
+          <div style={{ flex: 1 }}>
+            <TextField
+              label="First name"
+              value={draft.firstName}
+              onChange={(v) => set({ firstName: v })}
+              error={errors.name}
+              placeholder="Sarah"
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <TextField
+              label="Last name"
+              value={draft.lastName}
+              onChange={(v) => set({ lastName: v })}
+              placeholder="Benali"
+            />
+          </div>
+        </div>
+      )}
 
       <div className="field">
         <label>Roles</label>

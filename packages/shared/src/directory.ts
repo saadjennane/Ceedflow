@@ -137,6 +137,22 @@ export interface AffiliationView {
  * Empty when there is no name at all, so a template can fall back to a plain
  * greeting rather than to "Bonjour ,".
  */
+/**
+ * Un nom complet coupé en prénom et nom, au premier espace.
+ *
+ * The rule is wrong for a compound given name — "Mohamed Amine Beniouri"
+ * becomes Mohamed, then Amine Beniouri — and it is wrong on purpose: four
+ * hundred and sixty-nine names cannot be read one by one, and a split
+ * somebody can see and correct beats a field left empty that nobody notices.
+ * Which is why the two parts are editable wherever a person is edited.
+ */
+export function splitName(full: string): { firstName: string; lastName: string } {
+  const clean = (full ?? '').trim().replace(/\s+/g, ' ');
+  const space = clean.indexOf(' ');
+  if (space === -1) return { firstName: clean, lastName: '' };
+  return { firstName: clean.slice(0, space), lastName: clean.slice(space + 1) };
+}
+
 export function firstNameOf(full: string, first?: string | null): string {
   const given = (first ?? '').trim();
   if (given) return given;
