@@ -10,7 +10,7 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import { db, migrate } from '../src/db/client.js';
-import { letters, post, replyTo, sendingIsLive, suppress, suppressed } from '../src/services/mail.js';
+import { letters, post, replyFor, replyTo, sendingIsLive, suppress, suppressed } from '../src/services/mail.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
 before(migrate);
@@ -85,6 +85,26 @@ describe('the outbox', { skip: skipWithoutServer }, () => {
       await post({ kind: 'password_reset', to: 'karim@example.test', subject: 'Hello', body: 'Body' });
     });
     assert.equal((await letters({ email: 'karim@example.test' }))[0]!.state, 'queued');
+  });
+
+  it('never offers a reply address at the recipient’s own domain', () => {
+    /* C'est ce qui a coûté à CEED ses propres lettres : tout passait SPF et
+       DKIM, Resend les disait remises, et pas une n'arrivait — parce que
+       l'adresse de réponse était chez eux, et eux aussi. */
+    const before = process.env.MAIL_REPLY_TO;
+    try {
+      process.env.MAIL_REPLY_TO = 'rrzig@ceed-morocco.org';
+      assert.equal(replyFor('karim@rafid.ma'), 'rrzig@ceed-morocco.org', 'a founder keeps the way back');
+      assert.equal(replyFor('gfaklani@ceed-morocco.org'), '', 'somebody in the house does not');
+      assert.equal(replyFor('GFAKLANI@Ceed-Morocco.ORG'), '', 'however it is written');
+
+      process.env.MAIL_REPLY_TO = 'CEED <contact@ceedflow.com>';
+      assert.equal(replyFor('karim@rafid.ma'), 'CEED <contact@ceedflow.com>', 'a named address travels whole');
+      assert.equal(replyFor('someone@ceedflow.com'), '', 'and is still dropped at home');
+    } finally {
+      if (before === undefined) delete process.env.MAIL_REPLY_TO;
+      else process.env.MAIL_REPLY_TO = before;
+    }
   });
 
   it('treats a blank reply address as none at all', () => {

@@ -66,6 +66,30 @@ const from = () => process.env.MAIL_FROM ?? 'CEED <no-reply@mail.ceedflow.com>';
  */
 export const replyTo = () => (process.env.MAIL_REPLY_TO ?? '').trim();
 
+/** The part after the @, from a bare address or a `Name <a@b>` one. */
+const domainOf = (address: string): string => {
+  const bare = address.match(/<([^>]+)>/)?.[1] ?? address;
+  return bare.split('@').pop()?.trim().toLowerCase() ?? '';
+};
+
+/**
+ * Jamais une adresse de réponse chez le destinataire lui-même.
+ *
+ * An outside server writing to a domain while showing a reply address at that
+ * same domain is the textbook impersonation signal, and corporate gateways
+ * quarantine it on sight. It cost CEED its own letters: everything passed SPF
+ * and DKIM, Resend reported them delivered, and not one reached the team —
+ * because the reply address was at ceed-morocco.org and so were they.
+ *
+ * So the reply path is kept for everybody it is meant for — founders, jurors,
+ * mentors — and dropped for the one audience that does not need it, the people
+ * in the house the letter was written from.
+ */
+export const replyFor = (to: string): string => {
+  const address = replyTo();
+  return address && domainOf(address) !== domainOf(to) ? address : '';
+};
+
 /** An address that came back for good is never written to again. */
 export async function suppressed(email: string): Promise<boolean> {
   const rows = await (await db()).query<{ email: string }>(
@@ -159,7 +183,7 @@ async function handOver(row: OutboxRow): Promise<{ ok: true; id: string } | { ok
       to: [row.toName ? `${row.toName} <${row.to}>` : row.to],
       subject: row.subject,
       text: row.body,
-      ...(replyTo() ? { reply_to: replyTo() } : {}),
+      ...(replyFor(row.to) ? { reply_to: replyFor(row.to) } : {}),
     }),
   });
   const body = (await res.json().catch(() => ({}))) as Sent;
