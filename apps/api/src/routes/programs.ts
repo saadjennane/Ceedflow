@@ -33,7 +33,7 @@ export async function programRoutes(app: FastifyInstance) {
   });
 
   app.delete('/api/programs/:id', async (req, reply) => {
-    await repo.deleteProgram((req.params as { id: string }).id);
+    await repo.deleteProgram((req.params as { id: string }).id, req.staff?.email ?? '');
     reply.code(204);
   });
 
@@ -57,7 +57,7 @@ export async function programRoutes(app: FastifyInstance) {
   });
 
   app.delete('/api/editions/:id', async (req, reply) => {
-    await repo.deleteEdition((req.params as { id: string }).id);
+    await repo.deleteEdition((req.params as { id: string }).id, req.staff?.email ?? '');
     reply.code(204);
   });
 

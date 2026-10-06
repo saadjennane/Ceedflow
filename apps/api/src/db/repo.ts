@@ -80,16 +80,16 @@ function hydrateBlock(row: Block): Block {
 /* ------------------------------------------------------------------ */
 
 export async function listPrograms(): Promise<ProgramWithEditions[]> {
-  const programs = await all<Program>(`select ${PROGRAM_COLS} from programs order by created_at`);
-  const editions = await all<Edition>(`select ${EDITION_COLS} from editions order by position, created_at`);
+  const programs = await all<Program>(`select ${PROGRAM_COLS} from programs where deleted_at is null order by created_at`);
+  const editions = await all<Edition>(`select ${EDITION_COLS} from editions where deleted_at is null order by position, created_at`);
   return programs.map((p) => ({ ...p, editions: editions.filter((e) => e.programId === p.id) }));
 }
 
 export async function getProgram(id: string): Promise<ProgramWithEditions | null> {
-  const program = await one<Program>(`select ${PROGRAM_COLS} from programs where id = $1`, [id]);
+  const program = await one<Program>(`select ${PROGRAM_COLS} from programs where id = $1 and deleted_at is null`, [id]);
   if (!program) return null;
   const editions = await all<Edition>(
-    `select ${EDITION_COLS} from editions where program_id = $1 order by position, created_at`,
+    `select ${EDITION_COLS} from editions where program_id = $1 and deleted_at is null order by position, created_at`,
     [id],
   );
   return { ...program, editions };
@@ -150,8 +150,22 @@ export async function updateProgram(id: string, patch: Record<string, unknown>):
   return getProgram(id);
 }
 
-export async function deleteProgram(id: string): Promise<void> {
-  await (await db()).query('delete from programs where id = $1', [id]);
+export async function deleteProgram(id: string, by = ''): Promise<string> {
+  const batch = newId('bin');
+  const conn = await db();
+  /* Les éditions partent avec le programme, et sous le même lot : restaurer
+     un programme sans ses éditions rendrait un intitulé et rien dedans. */
+  await conn.query(
+    `update editions set deleted_at = now(), deleted_batch = $2, deleted_by = $3
+      where program_id = $1 and deleted_at is null`,
+    [id, batch, by],
+  );
+  await conn.query(
+    `update programs set deleted_at = now(), deleted_batch = $2, deleted_by = $3
+      where id = $1 and deleted_at is null`,
+    [id, batch, by],
+  );
+  return batch;
 }
 
 /* ------------------------------------------------------------------ */
@@ -283,7 +297,7 @@ export async function createEdition(programId: string, input: Parameters<typeof 
   const conn = await db();
   return conn.tx(async () => {
     const id = await insertEdition(programId, input);
-    return (await one<Edition>(`select ${EDITION_COLS} from editions where id = $1`, [id]))!;
+    return (await one<Edition>(`select ${EDITION_COLS} from editions where id = $1 and deleted_at is null`, [id]))!;
   });
 }
 
@@ -298,17 +312,23 @@ export async function updateEdition(id: string, patch: Record<string, unknown>):
     endsOn: 'ends_on',
     city: 'city',
   });
-  return one<Edition>(`select ${EDITION_COLS} from editions where id = $1`, [id]);
+  return one<Edition>(`select ${EDITION_COLS} from editions where id = $1 and deleted_at is null`, [id]);
 }
 
-export async function deleteEdition(id: string): Promise<void> {
-  await (await db()).query('delete from editions where id = $1', [id]);
+export async function deleteEdition(id: string, by = ''): Promise<string> {
+  const batch = newId('bin');
+  await (await db()).query(
+    `update editions set deleted_at = now(), deleted_batch = $2, deleted_by = $3
+      where id = $1 and deleted_at is null`,
+    [id, batch, by],
+  );
+  return batch;
 }
 
 export async function getEditionDetail(id: string): Promise<EditionDetail | null> {
-  const edition = await one<Edition>(`select ${EDITION_COLS} from editions where id = $1`, [id]);
+  const edition = await one<Edition>(`select ${EDITION_COLS} from editions where id = $1 and deleted_at is null`, [id]);
   if (!edition) return null;
-  const program = await one<Program>(`select ${PROGRAM_COLS} from programs where id = $1`, [edition.programId]);
+  const program = await one<Program>(`select ${PROGRAM_COLS} from programs where id = $1 and deleted_at is null`, [edition.programId]);
   if (!program) return null;
 
   const tracks = await all<Track>(`select ${TRACK_COLS} from tracks where edition_id = $1 order by position`, [id]);
@@ -571,10 +591,10 @@ export async function blockContext(
 export async function listCandidates(editionId: string, trackId?: string): Promise<Candidate[]> {
   return trackId
     ? all<Candidate>(
-        `${CANDIDATE_SELECT} where c.edition_id = $1 and c.track_id = $2 order by c.submitted_at`,
+        `${CANDIDATE_SELECT} where c.deleted_at is null and c.edition_id = $1 and c.track_id = $2 order by c.submitted_at`,
         [editionId, trackId],
       )
-    : all<Candidate>(`${CANDIDATE_SELECT} where c.edition_id = $1 order by c.submitted_at`, [
+    : all<Candidate>(`${CANDIDATE_SELECT} where c.deleted_at is null and c.edition_id = $1 order by c.submitted_at`, [
         editionId,
       ]);
 }
@@ -608,7 +628,7 @@ export async function createCandidate(input: {
       input.submittedAt ?? null,
     ],
   );
-  return (await one<Candidate>(`${CANDIDATE_SELECT} where c.id = $1`, [id]))!;
+  return (await one<Candidate>(`${CANDIDATE_SELECT} where c.deleted_at is null and c.id = $1`, [id]))!;
 }
 
 /**
@@ -628,7 +648,7 @@ export async function releaseSlots(candidateId: string): Promise<void> {
 
 /** One candidacy by id, hydrated the way the lists hydrate theirs. */
 export async function getCandidate(id: string): Promise<Candidate | null> {
-  const rows = await all<Candidate>(`${CANDIDATE_SELECT} where c.id = $1`, [id]);
+  const rows = await all<Candidate>(`${CANDIDATE_SELECT} where c.deleted_at is null and c.id = $1`, [id]);
   return rows[0] ?? null;
 }
 
@@ -651,11 +671,18 @@ export async function updateCandidate(id: string, patch: Record<string, unknown>
       patch.answers,
     ]);
   }
-  return one<Candidate>(`${CANDIDATE_SELECT} where c.id = $1`, [id]);
+  return one<Candidate>(`${CANDIDATE_SELECT} where c.deleted_at is null and c.id = $1`, [id]);
 }
 
-export async function deleteCandidate(id: string): Promise<void> {
-  await (await db()).query('delete from candidates where id = $1', [id]);
+/** La corbeille, pas la poubelle : marquée, invisible, et réversible. */
+export async function deleteCandidate(id: string, by = ''): Promise<string> {
+  const batch = newId('bin');
+  await (await db()).query(
+    `update candidates set deleted_at = now(), deleted_batch = $2, deleted_by = $3
+      where id = $1 and deleted_at is null`,
+    [id, batch, by],
+  );
+  return batch;
 }
 
 /** Looks up a published application form by its public token. */
@@ -669,9 +696,9 @@ export async function findPublicForm(token: string) {
   if (!row) return null;
   const block = await getBlock(row.blockId);
   if (!block) return null;
-  const edition = await one<Edition>(`select ${EDITION_COLS} from editions where id = $1`, [row.editionId]);
+  const edition = await one<Edition>(`select ${EDITION_COLS} from editions where id = $1 and deleted_at is null`, [row.editionId]);
   const program = edition
-    ? await one<Program>(`select ${PROGRAM_COLS} from programs where id = $1`, [edition.programId])
+    ? await one<Program>(`select ${PROGRAM_COLS} from programs where id = $1 and deleted_at is null`, [edition.programId])
     : null;
 
   // Where the call is running, so the form can ask which one brought them in.
@@ -1367,7 +1394,7 @@ export async function findAssignmentByToken(token: string) {
   const session = await one<CommitteeSession>(`select ${SESSION_COLS} from committee_sessions where id = $1`, [
     assignment.sessionId,
   ]);
-  const candidate = await one<Candidate>(`${CANDIDATE_SELECT} where c.id = $1`, [
+  const candidate = await one<Candidate>(`${CANDIDATE_SELECT} where c.deleted_at is null and c.id = $1`, [
     assignment.candidateId,
   ]);
   if (!session || !candidate) return null;

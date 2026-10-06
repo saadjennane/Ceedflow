@@ -32,6 +32,16 @@ export interface RecordFilter {
   q?: string;
 }
 
+/**
+ * Ce qui est à la corbeille n'est dans aucune liste.
+ *
+ * Added to every read rather than filtered by the callers, because a reader
+ * that forgets is a deleted founder reappearing in a jury's panel — and there
+ * are two dozen readers. One fragment, named, so a new query says out loud
+ * whether it means live rows or all of them.
+ */
+const LIVE = 'deleted_at is null';
+
 export async function listRecords(filter: RecordFilter = {}): Promise<DirectoryRecord[]> {
   const where: string[] = [];
   const params: unknown[] = [];
@@ -48,17 +58,19 @@ export async function listRecords(filter: RecordFilter = {}): Promise<DirectoryR
     where.push(`(lower(name) like $${params.length} or lower(email) like $${params.length}
       or lower(city) like $${params.length} or lower(tags::text) like $${params.length})`);
   }
+  where.push(LIVE);
   return all<DirectoryRecord>(
-    `select ${COLS} from records ${where.length ? 'where ' + where.join(' and ') : ''} order by name`,
+    `select ${COLS} from records where ${where.join(' and ')} order by name`,
     params,
   );
 }
 
-export const getRecord = (id: string) => one<DirectoryRecord>(`select ${COLS} from records where id = $1`, [id]);
+export const getRecord = (id: string) =>
+  one<DirectoryRecord>(`select ${COLS} from records where id = $1 and ${LIVE}`, [id]);
 
 /** Matches on the name once punctuation and accents are set aside. */
 export async function findByName(kind: RecordKind, name: string): Promise<DirectoryRecord | null> {
-  const rows = await all<DirectoryRecord>(`select ${COLS} from records where kind = $1`, [kind]);
+  const rows = await all<DirectoryRecord>(`select ${COLS} from records where kind = $1 and ${LIVE}`, [kind]);
   const key = matchKey(name);
   return rows.find((r) => matchKey(r.name) === key) ?? null;
 }
@@ -71,7 +83,7 @@ export async function findByName(kind: RecordKind, name: string): Promise<Direct
 export async function findByEmail(kind: RecordKind, email: string): Promise<DirectoryRecord | null> {
   const wanted = email.trim().toLowerCase();
   if (!wanted) return null;
-  return one<DirectoryRecord>(`select ${COLS} from records where kind = $1 and lower(email) = $2`, [kind, wanted]);
+  return one<DirectoryRecord>(`select ${COLS} from records where kind = $1 and lower(email) = $2 and ${LIVE}`, [kind, wanted]);
 }
 
 export async function createRecord(input: {
@@ -143,10 +155,6 @@ export async function updateRecord(id: string, patch: Record<string, unknown>): 
   return getRecord(id);
 }
 
-export async function deleteRecord(id: string): Promise<void> {
-  await (await db()).query('delete from records where id = $1', [id]);
-}
-
 /* ------------------------------------------------------------------ */
 /* Affiliations                                                        */
 /* ------------------------------------------------------------------ */
@@ -171,6 +179,21 @@ export async function linkRecords(input: {
   ))!;
 }
 
+/**
+ * Attache une personne à une page si elle ne l'est pas déjà.
+ *
+ * Deliberately not `linkRecords`, which upserts: a founder already on the page
+ * as an administrator must not be demoted to whatever this caller happens to
+ * think they are. Nothing is said when the link exists.
+ */
+export async function linkIfNew(personId: string, orgId: string, role = 'Founder'): Promise<void> {
+  await (await db()).query(
+    `insert into affiliations (id, person_id, org_id, role, access, since) values ($1,$2,$3,$4,'admin','')
+     on conflict (person_id, org_id) do nothing`,
+    [idOf.affiliation(), personId, orgId, role],
+  );
+}
+
 export async function unlinkRecords(id: string): Promise<void> {
   await (await db()).query('delete from affiliations where id = $1', [id]);
 }
@@ -184,7 +207,7 @@ export async function linksOf(record: DirectoryRecord): Promise<AffiliationView[
     [record.id],
   );
   if (!rows.length) return [];
-  const others = await all<DirectoryRecord>(`select ${COLS} from records where id = any($1::text[])`, [
+  const others = await all<DirectoryRecord>(`select ${COLS} from records where id = any($1::text[]) and ${LIVE}`, [
     rows.map((r) => r.otherId),
   ]);
 
@@ -242,7 +265,7 @@ export async function adminCountOf(orgId: string): Promise<number> {
 export async function teamOf(orgId: string): Promise<TeamMember[]> {
   const rows = await all<Affiliation>(`select ${AFF_COLS} from affiliations where org_id = $1`, [orgId]);
   if (!rows.length) return [];
-  const people = await all<DirectoryRecord>(`select ${COLS} from records where id = any($1::text[])`, [
+  const people = await all<DirectoryRecord>(`select ${COLS} from records where id = any($1::text[]) and ${LIVE}`, [
     rows.map((r) => r.personId),
   ]);
   const accounts = await accountStatesByRecord();
@@ -278,13 +301,13 @@ export async function orgIdsOf(personId: string): Promise<Set<string>> {
 /** Whole records for a set of ids, for screens that need more than a name. */
 export async function recordsByIds(ids: string[]): Promise<DirectoryRecord[]> {
   if (!ids.length) return [];
-  return all<DirectoryRecord>(`select ${COLS} from records where id = any($1::text[])`, [ids]);
+  return all<DirectoryRecord>(`select ${COLS} from records where id = any($1::text[]) and ${LIVE}`, [ids]);
 }
 
 /** Resolves ids to what a screen needs to show, in the order they were given. */
 export async function peopleByIds(ids: string[]): Promise<PersonRef[]> {
   if (!ids.length) return [];
-  const rows = await all<PersonRef>(`select id, name from records where id = any($1::text[])`, [ids]);
+  const rows = await all<PersonRef>(`select id, name from records where id = any($1::text[]) and ${LIVE}`, [ids]);
   return ids.map((id) => rows.find((r) => r.id === id)).filter((r): r is PersonRef => Boolean(r));
 }
 
@@ -335,7 +358,7 @@ export async function removalPlan(id: string): Promise<RemovalPlan | null> {
   const candidacies = await all<{ id: string; orgName: string }>(
     `select c.id, coalesce(r.name, '') as "orgName"
        from candidates c left join records r on r.id = c.org_id
-      where c.person_id = $1 order by r.name`,
+      where c.person_id = $1 and c.deleted_at is null order by r.name`,
     [id],
   );
 
@@ -381,25 +404,40 @@ export async function removalPlan(id: string): Promise<RemovalPlan | null> {
 }
 
 /**
- * Carries the plan out. Order matters: a candidacy holds its organisation by a
- * `restrict` foreign key, so the applications go before the pages they point at,
- * and the record goes last because the account hangs off it.
+ * Carries the plan out — en marquant, jamais en effaçant.
+ *
+ * Everything the plan names takes one batch id, and that is what makes putting
+ * it back a single act: a founder comes back with the page and the application
+ * that left with them, rather than as a name in a list with nothing behind it.
+ *
+ * Two things are not marked, and go for good. A juror is lifted off the
+ * sittings they sat on and off the blocks they scored, because the sitting is
+ * not theirs to take away; restoring gives back the person, not the seat. And
+ * the marks they filed stay where they are — `evaluator_name` sits beside them
+ * for exactly this moment, and a published ranking must not move because
+ * somebody left the directory.
  */
-export async function removeRecord(id: string, plan: RemovalPlan): Promise<void> {
+export async function removeRecord(id: string, plan: RemovalPlan, by = ''): Promise<string> {
   const client = await db();
+  const batch = idOf.record().replace(/^rec/, 'bin');
 
-  for (const candidacy of plan.candidacies) {
-    await client.query('delete from candidates where id = $1', [candidacy.id]);
-  }
+  const mark = async (table: string, where: string, params: unknown[]) => {
+    await client.query(
+      `update ${table} set deleted_at = now(), deleted_batch = $${params.length + 1}, deleted_by = $${params.length + 2}
+        where ${where} and deleted_at is null`,
+      [...params, batch, by],
+    );
+  };
+
+  for (const candidacy of plan.candidacies) await mark('candidates', 'id = $1', [candidacy.id]);
 
   for (const org of plan.organisations) {
     // A page can carry applications somebody else filed; they go with the page.
-    await client.query('delete from candidates where org_id = $1', [org.id]);
-    await client.query('delete from records where id = $1', [org.id]);
+    await mark('candidates', 'org_id = $1', [org.id]);
+    await mark('records', 'id = $1', [org.id]);
   }
 
-  // Lifted off the sittings, which stay. The marks already filed stay too —
-  // `evaluator_name` is stored beside them for exactly this moment.
+  // Lifted off the sittings, which stay — and this one does not come back.
   await client.query(
     `update committee_sessions set jury = jury - $2 where jury @> $1::jsonb`,
     [[id], id],
@@ -411,7 +449,18 @@ export async function removeRecord(id: string, plan: RemovalPlan): Promise<void>
     [[id], id],
   );
 
-  await client.query('delete from records where id = $1', [id]);
+  /* Suspendu, pas détruit. Restoring a person without their way back in would
+     be giving back a file rather than a colleague — and the batch is stamped
+     so that waking them again never wakes an account somebody disabled
+     yesterday for a reason of their own. */
+  await client.query(
+    `update accounts set disabled_at = now(), deleted_batch = $2
+      where record_id = $1 and disabled_at is null`,
+    [id, batch],
+  );
+
+  await mark('records', 'id = $1', [id]);
+  return batch;
 }
 
 /** Where a person is used, so deleting them cannot punch a hole in a ranking. */

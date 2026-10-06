@@ -11,6 +11,8 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAccount } from '../lib/account';
 import { ApiError, api } from '../lib/api';
+import { formatDate } from '../lib/format';
+import { useAsync } from '../lib/useAsync';
 import { initials } from './directory/DirectoryPage';
 import { Icon } from '../ui/Icon';
 import { Modal, useToast } from '../ui/Overlays';
@@ -20,6 +22,96 @@ import '../ui/directory.css';
 interface Invite {
   email: string;
   password: string;
+}
+
+interface Binned {
+  batch: string;
+  at: string;
+  by: string;
+  daysLeft: number;
+  items: { what: string; label: string }[];
+}
+
+/** How a deletion reads back: what went, in the order somebody would say it. */
+const WHAT: Record<string, string> = {
+  person: 'person',
+  organisation: 'page',
+  candidacy: 'application',
+  programme: 'programme',
+  edition: 'edition',
+};
+
+/**
+ * La corbeille, et ce qu'on en ressort.
+ *
+ * Here rather than beside each list, because a deletion takes several things
+ * at once — a founder leaves with their page and their application — and the
+ * only screen where that act can be read back whole is one that holds all of
+ * them. Putting it back is one button for the same reason.
+ */
+function Trash({ mayManage }: { mayManage: boolean }) {
+  const bin = useAsync(() => api.get<Binned[]>('/api/trash'), 'trash');
+  const [busy, setBusy] = useState('');
+  const toast = useToast();
+
+  if (!mayManage) return null;
+  const rows = bin.data ?? [];
+
+  const put = async (batch: string) => {
+    setBusy(batch);
+    try {
+      await api.post(`/api/trash/${batch}/restore`, {});
+      bin.reload();
+      toast('Put back.');
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  return (
+    <section className="card card-pad stack" style={{ maxWidth: 880, gap: 12, marginTop: 14 }}>
+      <div>
+        <h2 style={{ fontSize: 16, margin: 0 }}>Trash</h2>
+        <p className="faint" style={{ margin: '2px 0 0', fontSize: 12.5, lineHeight: 1.5 }}>
+          Nothing deleted leaves for thirty days. What went together comes back together — a founder returns with the
+          page and the application that left with them, and with their way in. A juror's seat on a sitting does not:
+          the sitting is not theirs to take away.
+        </p>
+      </div>
+
+      {!rows.length ? (
+        <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>Nothing has been deleted.</p>
+      ) : (
+        <div className="rows">
+          {rows.map((row) => (
+            <div className="rowcard row" key={row.batch} style={{ padding: '9px 12px', gap: 10 }}>
+              <span style={{ flex: 1, fontSize: 13 }}>
+                <strong>{row.items[0]?.label}</strong>
+                {row.items.length > 1 && (
+                  <span className="faint">
+                    {' '}
+                    · with {row.items.length - 1} more ({row.items.slice(1).map((i) => WHAT[i.what] ?? i.what).join(', ')})
+                  </span>
+                )}
+              </span>
+              <span className="faint" style={{ fontSize: 12.5 }}>
+                {formatDate(row.at.slice(0, 10))}
+                {row.by ? ` · ${row.by}` : ''}
+              </span>
+              <span className={row.daysLeft <= 3 ? 'badge warn num' : 'badge num'} title="Days before it is gone for good">
+                {row.daysLeft}d
+              </span>
+              <button className="btn sm" disabled={busy === row.batch} onClick={() => void put(row.batch)}>
+                <Icon name="check" size={13} /> Put back
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
 
 /**
@@ -216,6 +308,8 @@ export function SettingsPage() {
             your password to end all of them at once.
           </p>
         </section>
+
+        <Trash mayManage={mayManage} />
       </div>
 
       {adding && (

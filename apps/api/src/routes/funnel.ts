@@ -187,6 +187,13 @@ export async function funnelRoutes(app: FastifyInstance) {
       }
     }
 
+    /* Le contact d'une candidature tient la page de son organisation.
+       Said here as well as in the branch above, because a caller that already
+       knows the person — an import, a candidacy typed in from an existing
+       record — went straight past it. A page nobody holds is a page that stays
+       behind when its founder is deleted. */
+    if (personId) await dir.linkIfNew(personId, orgId);
+
     for (const mate of input.team) {
       const person = await personFor(mate.name, mate.email, '', 'team');
       if (person) await dir.linkRecords({ personId: person.id, orgId, role: mate.role, access: 'member' });
@@ -226,7 +233,7 @@ export async function funnelRoutes(app: FastifyInstance) {
   });
 
   app.delete('/api/candidates/:id', async (req, reply) => {
-    await repo.deleteCandidate((req.params as { id: string }).id);
+    await repo.deleteCandidate((req.params as { id: string }).id, req.staff?.email ?? '');
     reply.code(204);
   });
 

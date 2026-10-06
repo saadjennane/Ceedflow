@@ -125,7 +125,7 @@ export async function directoryRoutes(app: FastifyInstance) {
     // Almost nothing refuses any more: removing somebody means something
     // different depending on what they were, and the plan says which.
     if (plan.blocked.length) throw new HttpError(422, plan.blocked.join(' '));
-    await dir.removeRecord(id, plan);
+    await dir.removeRecord(id, plan, req.staff?.email ?? '');
     reply.code(204);
   });
 

@@ -19,6 +19,7 @@ import { staffRoutes } from './routes/staff.js';
 import { bootstrapAdmin } from './services/bootstrap.js';
 import { noteOrigin } from './services/platform.js';
 import { sendDueNotices } from './services/notices.js';
+import { KEPT_DAYS, purgeExpired } from './services/trash.js';
 import { flush, sendingIsLive } from './services/mail.js';
 import { HttpError } from './routes/util.js';
 
@@ -167,6 +168,27 @@ if (sendingIsLive()) {
       if (sent || failed) app.log.info({ sent, failed }, 'outbox');
     } catch (err) {
       app.log.error(err, 'outbox');
+    }
+  };
+  setInterval(() => void tick(), EVERY).unref();
+  void tick();
+}
+
+/*
+ * Le trentième jour, pour de bon.
+ *
+ * Hourly rather than daily, because "daily" on a process that restarts twice a
+ * day is a sweep that never runs at all. It only ever finds rows older than
+ * thirty days, so running it sixty times over costs sixty empty queries.
+ */
+{
+  const EVERY = 3_600_000;
+  const tick = async () => {
+    try {
+      const dropped = await purgeExpired();
+      if (dropped) app.log.info({ dropped, days: KEPT_DAYS }, 'trash purged');
+    } catch (err) {
+      app.log.error(err, 'trash');
     }
   };
   setInterval(() => void tick(), EVERY).unref();

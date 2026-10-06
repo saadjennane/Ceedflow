@@ -15,6 +15,7 @@ import {
   reissueProvisionalPassword,
   setStaffRole,
 } from '../services/auth.js';
+import { binned, restore } from '../services/trash.js';
 import { requireWorkspaceAdmin, workspaceGuard } from './guard.js';
 import { HttpError, notFound, parse } from './util.js';
 
@@ -25,6 +26,27 @@ import { HttpError, notFound, parse } from './util.js';
  */
 export async function staffRoutes(app: FastifyInstance) {
   app.addHook('preHandler', workspaceGuard());
+
+  /**
+   * La corbeille, et ce qu'on en ressort.
+   *
+   * With the team, because the role that may empty it is the one that may add
+   * somebody to it — and because a deletion taken back is a right, not a piece
+   * of programme work.
+   */
+  app.get('/api/trash', async (req) => {
+    requireWorkspaceAdmin(req);
+    return binned();
+  });
+
+  app.post('/api/trash/:batch/restore', async (req, reply) => {
+    requireWorkspaceAdmin(req);
+    const { batch } = req.params as { batch: string };
+    const back = await restore(batch);
+    if (!back) return notFound(reply, 'That deletion is no longer in the trash.');
+    return { restored: back };
+  });
+
 
   const resolve = async (): Promise<StaffMember[]> => {
     const rows = await listStaff();
