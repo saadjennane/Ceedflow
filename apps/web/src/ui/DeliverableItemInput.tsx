@@ -98,7 +98,10 @@ export function DeliverableItemInput({
       </label>
       {item.repeatable && item.required && (
         <span className="faint" style={{ fontSize: 12 }}>
-          at least one{item.each ? ` ${item.each.toLowerCase()}` : ''}
+          {/* « 1 associé minimum » plutôt que « at least one associé » : le mot
+              est tapé en français par CEED, et la tournure évite d'avoir à
+              deviner son genre. */}
+          1 {item.each ? item.each.toLowerCase() : 'élément'} minimum
         </span>
       )}
     </div>
@@ -150,7 +153,7 @@ export function DeliverableItemInput({
       {item.help && <div className="help">{item.help}</div>}
 
       {readOnly && !entries.length && (
-        <p className="faint" style={{ margin: '6px 0 0', fontSize: 12.5 }}>Nothing was sent.</p>
+        <p className="faint" style={{ margin: '6px 0 0', fontSize: 13 }}>—</p>
       )}
 
       <div className="stack" style={{ gap: item.kind === 'group' ? 10 : 6, marginTop: 6 }}>

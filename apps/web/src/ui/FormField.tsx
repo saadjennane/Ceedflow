@@ -44,7 +44,15 @@ export function FormFieldInput({
       {label}
       {field.help && <div className="hint" style={{ marginTop: -2, marginBottom: 5 }}>{field.help}</div>}
 
-      {field.type === 'long_text' ? (
+      {/* Lu, pas rempli.
+          A read-only field drawn as an input is a box that invites typing and
+          refuses it, and on a list of ten nothing-sent lines it is also ten
+          empty boxes. So what was answered is shown as what it is — a value —
+          and what was not is one mark. A file keeps its own rendering: it has
+          a name and a link, which are worth more than its text. */}
+      {readOnly && field.type !== 'file' ? (
+        <ReadValue field={field} value={value} />
+      ) : field.type === 'long_text' ? (
         <textarea
           className="textarea"
           rows={4}
@@ -113,6 +121,25 @@ export function FormFieldInput({
 }
 
 /** An attachment is sent as soon as it is chosen; submitting claims it. */
+/**
+ * Ce qui a été répondu, tel quel.
+ *
+ * One dash where nothing was: a sentence repeated down a page says less than a
+ * column of dashes, because the eye reads the shape rather than the words.
+ */
+function ReadValue({ field, value }: { field: FormField; value: unknown }) {
+  const text = Array.isArray(value)
+    ? value.filter(Boolean).join(', ')
+    : value === null || value === undefined
+      ? ''
+      : String(value);
+
+  if (!text.trim()) return <div className="faint" style={{ fontSize: 13 }}>—</div>;
+  return (
+    <div style={{ fontSize: 13, whiteSpace: field.type === 'long_text' ? 'pre-wrap' : undefined }}>{text}</div>
+  );
+}
+
 function FileField({
   field,
   value,
@@ -180,9 +207,9 @@ function FileField({
     );
   }
 
-  // Nothing sent and nothing to be done about it: say so rather than offer a
-  // drop zone that would refuse the file.
-  if (readOnly) return <div className="faint" style={{ fontSize: 12.5 }}>Nothing was sent.</div>;
+  // Nothing sent and nothing to be done about it. Said with the same mark as
+  // every other empty answer: ten sentences down a page read as a fault.
+  if (readOnly) return <div className="faint" style={{ fontSize: 13 }}>—</div>;
 
   return (
     <>
