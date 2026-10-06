@@ -16,6 +16,7 @@ import { accountOfRecord, accountStatesByRecord } from '../services/auth.js';
 import { db } from './client.js';
 
 const COLS = `id, kind, name, first_name as "firstName", last_name as "lastName", roles, origin,
+  job_title as "jobTitle", department,
   email, phone, city, country, website, bio, tags, created_at::text as "createdAt"`;
 
 const AFF_COLS = `id, person_id as "personId", org_id as "orgId", role, access, since`;
@@ -57,7 +58,8 @@ export async function listRecords(filter: RecordFilter = {}): Promise<DirectoryR
   if (filter.q?.trim()) {
     params.push(`%${filter.q.trim().toLowerCase()}%`);
     where.push(`(lower(name) like $${params.length} or lower(email) like $${params.length}
-      or lower(city) like $${params.length} or lower(tags::text) like $${params.length})`);
+      or lower(city) like $${params.length} or lower(tags::text) like $${params.length}
+      or lower(job_title) like $${params.length} or lower(department) like $${params.length})`);
   }
   where.push(LIVE);
   return all<DirectoryRecord>(
@@ -93,6 +95,8 @@ export async function createRecord(input: {
   firstName?: string;
   lastName?: string;
   roles?: string[];
+  jobTitle?: string;
+  department?: string;
   origin?: string;
   email?: string;
   phone?: string;
@@ -111,8 +115,8 @@ export async function createRecord(input: {
   const cut = input.kind === 'person' ? splitName(input.name) : { firstName: '', lastName: '' };
   await (await db()).query(
     `insert into records (id, kind, name, first_name, last_name, roles, origin, email, phone, city,
-       country, website, bio, tags)
-     values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14::jsonb)`,
+       country, website, bio, tags, job_title, department)
+     values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16)`,
     [
       id,
       input.kind,
@@ -128,6 +132,8 @@ export async function createRecord(input: {
       input.website ?? '',
       input.bio ?? '',
       input.tags ?? [],
+      input.jobTitle ?? '',
+      input.department ?? '',
     ],
   );
   return (await getRecord(id))!;
@@ -143,6 +149,8 @@ const FIELDS: Record<string, string> = {
   country: 'country',
   website: 'website',
   bio: 'bio',
+  jobTitle: 'job_title',
+  department: 'department',
 };
 
 export async function updateRecord(id: string, patch: Record<string, unknown>): Promise<DirectoryRecord | null> {

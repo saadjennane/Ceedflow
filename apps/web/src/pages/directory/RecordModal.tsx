@@ -30,6 +30,8 @@ export function RecordModal({
     name: record?.name ?? initialName ?? '',
     firstName: record?.firstName || (isOrg ? '' : parts.firstName),
     lastName: record?.lastName || (isOrg ? '' : parts.lastName),
+    jobTitle: record?.jobTitle ?? '',
+    department: record?.department ?? '',
     roles: record?.roles ?? (isOrg ? ['Startup'] : []),
     email: record?.email ?? '',
     phone: record?.phone ?? '',
@@ -115,6 +117,26 @@ export function RecordModal({
               placeholder="Benali"
             />
           </div>
+        </div>
+      )}
+
+      {/* Ce qu'ils font là où ils travaillent — pas ce qu'ils sont pour CEED,
+          qui est la rangée de rôles juste en dessous. Un jury se convoque
+          depuis ce fichier, et c'est la fonction qui distingue deux Nadia. */}
+      {!isOrg && (
+        <div className="grid-2">
+          <TextField
+            label="Fonction"
+            value={draft.jobTitle}
+            onChange={(v) => set({ jobTitle: v })}
+            placeholder="Directrice de l'innovation"
+          />
+          <TextField
+            label="Direction"
+            value={draft.department}
+            onChange={(v) => set({ department: v })}
+            placeholder="Direction des engagements"
+          />
         </div>
       )}
 

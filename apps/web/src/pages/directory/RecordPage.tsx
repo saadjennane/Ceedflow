@@ -67,6 +67,15 @@ export function RecordPage() {
                   </span>
                 )}
               </div>
+              {/* Au-dessus du reste : c'est ce qu'on lit en premier d'un juré
+                  qu'on envisage d'asseoir sur une séance. */}
+              {(record.jobTitle || record.department) && (
+                <p style={{ margin: '6px 0 0', fontSize: 13 }}>
+                  {record.jobTitle}
+                  {record.jobTitle && record.department ? ' · ' : ''}
+                  <span className="faint">{record.department}</span>
+                </p>
+              )}
               {record.bio && <p style={{ margin: '8px 0 0', fontSize: 13 }}>{record.bio}</p>}
               <div className="row wrap faint" style={{ gap: 14, marginTop: 8, fontSize: 12.5 }}>
                 {record.email && <span>{record.email}</span>}

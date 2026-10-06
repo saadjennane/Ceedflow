@@ -60,6 +60,10 @@ export const recordSchema = z.object({
   firstName: z.string().default(''),
   lastName: z.string().default(''),
   roles: z.array(z.string()).default([]),
+  /** What they do where they work, and in which part of it. Empty for an
+      organisation, which has no job and no department. */
+  jobTitle: z.string().default(''),
+  department: z.string().default(''),
   origin: z.enum(RECORD_ORIGINS).default('manual'),
   email: z.string().default(''),
   phone: z.string().default(''),
@@ -211,6 +215,8 @@ export const createRecordInput = z.object({
   firstName: z.string().default(''),
   lastName: z.string().default(''),
   roles: z.array(z.string()).default([]),
+  jobTitle: z.string().default(''),
+  department: z.string().default(''),
   email: z.string().default(''),
   phone: z.string().default(''),
   city: z.string().default(''),
