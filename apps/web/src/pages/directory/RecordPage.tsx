@@ -1,5 +1,6 @@
 import {
   ORIGIN_LABEL,
+  type Affiliation,
   type DirectoryRecord,
   type RecordDetail,
   type RecordKind,
@@ -125,13 +126,18 @@ export function RecordPage() {
                       <span className="rec-mark">{initials(other.name)}</span>
                       <span>
                         <span style={{ fontWeight: 600, fontSize: 13 }}>{other.name}</span>
-                        <span className="faint" style={{ display: 'block', fontSize: 12 }}>
-                          {[affiliation.role, affiliation.since && `since ${affiliation.since}`]
-                            .filter(Boolean)
-                            .join(' · ') || '—'}
-                        </span>
+                        {affiliation.since && (
+                          <span className="faint" style={{ display: 'block', fontSize: 12 }}>
+                            since {affiliation.since}
+                          </span>
+                        )}
                       </span>
                     </Link>
+                    {/* Ce qu'ils sont ici, et pas leur métier : celui-là vit
+                        sur leur propre fiche. Modifiable sur place, parce
+                        qu'un mot faux y restait jusqu'à ce qu'on défasse le
+                        lien pour le refaire. */}
+                    <LinkRole affiliation={affiliation} onSaved={detail.reload} />
                     <button
                       className="btn ghost icon sm"
                       aria-label="Unlink"
@@ -320,6 +326,53 @@ function Fact({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 /** Attaches an existing record, or creates the other side on the spot. */
+/**
+ * Le rôle dans cette organisation, corrigé sur place.
+ *
+ * Saved when the field is left rather than behind a button: it is one word on
+ * a row somebody is reading, and a Save next to it would weigh more than what
+ * it saves.
+ */
+function LinkRole({
+  affiliation,
+  onSaved,
+}: {
+  affiliation: Affiliation;
+  onSaved: () => void;
+}) {
+  const [role, setRole] = useState(affiliation.role);
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+
+  const save = async () => {
+    if (role.trim() === affiliation.role) return;
+    setBusy(true);
+    try {
+      await api.patch(`/api/affiliations/${affiliation.id}`, { role: role.trim() });
+      onSaved();
+    } catch (err) {
+      setRole(affiliation.role);
+      toast((err as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <input
+      className="input sm"
+      style={{ width: 190, fontSize: 12.5 }}
+      value={role}
+      disabled={busy}
+      placeholder="Their role here"
+      aria-label="Their role in this organisation"
+      onChange={(e) => setRole(e.target.value)}
+      onBlur={() => void save()}
+      onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+    />
+  );
+}
+
 function LinkModal({
   record,
   taken,

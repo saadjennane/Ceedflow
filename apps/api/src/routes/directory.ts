@@ -1,4 +1,5 @@
 import {
+  ORG_ACCESS,
   affiliationInput,
   createRecordInput,
   fullName,
@@ -319,6 +320,24 @@ export async function directoryRoutes(app: FastifyInstance) {
     if (!org || org.kind !== 'org') throw new HttpError(422, 'That is not an organisation.');
     reply.code(201);
     return dir.linkRecords(input);
+  });
+
+  /**
+   * Ce que quelqu'un est dans cette organisation-là.
+   *
+   * Not the same thing as their job, which lives on their own record: a person
+   * can be a founder in one place and a mentor in another, and the two lines
+   * read side by side on the same screen. What was missing is that this one
+   * could not be corrected at all — a wrong word stayed there until somebody
+   * unlinked the two and started again.
+   */
+  app.patch('/api/affiliations/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const input = parse(z.object({ role: z.string().optional(), access: z.enum(ORG_ACCESS).optional() }), req.body);
+    const found = await dir.affiliationById(id);
+    if (!found) return notFound(reply, 'That link no longer exists.');
+    await dir.setAffiliation(id, input);
+    return dir.affiliationById(id);
   });
 
   app.delete('/api/affiliations/:id', async (req, reply) => {

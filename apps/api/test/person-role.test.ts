@@ -42,4 +42,24 @@ describe('what somebody does where they work', { skip: skipWithoutServer }, () =
     assert.equal(after?.jobTitle, 'Responsable RSE');
     assert.equal(after?.department, 'Direction générale');
   });
+
+  it('is its own word, and can be corrected without undoing the link', async () => {
+    /* La fonction vit sur la fiche de la personne ; le rôle vit sur le lien.
+       Une banquière peut être « Directrice de l'innovation » et n'être, chez
+       Attijariwafa, ni fondatrice ni PDG. */
+    const mark = `${Date.now()}.${Math.random().toString(36).slice(2, 6)}`;
+    const person = await dir.createRecord({
+      kind: 'person', name: `Nadia ${mark}`, origin: 'manual',
+      jobTitle: 'Directrice de l’innovation', department: 'Direction des engagements',
+    });
+    const org = await dir.createRecord({ kind: 'org', name: `Attijariwafa ${mark}`, origin: 'manual' });
+    const link = await dir.linkRecords({ personId: person.id, orgId: org.id, role: 'Founder & CEO' });
+
+    await dir.setAffiliation(link.id, { role: 'Membre du comité' });
+    const after = await dir.affiliationById(link.id);
+    assert.equal(after?.role, 'Membre du comité', 'the link says what she is here');
+
+    const still = await dir.getRecord(person.id);
+    assert.equal(still?.jobTitle, 'Directrice de l’innovation', 'and her own job is untouched');
+  });
 });
