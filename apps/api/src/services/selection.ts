@@ -199,17 +199,6 @@ function statusFor(config: SelectionConfig, call: SelectionCall): CandidateStatu
   return config.outputKind === 'cohort' ? 'Selected' : 'Shortlisted';
 }
 
-/** Pushes the published decision onto every candidate's own status. */
-async function writeStatuses(blockId: string): Promise<void> {
-  const view = await selectionView(blockId);
-  if (!view) return;
-  await repo.setCandidateStatuses(
-    view.rows
-      .filter((r) => r.candidate.status !== 'Withdrawn')
-      .map((r) => ({ id: r.candidate.id, status: statusFor(view.config, r.outcome) })),
-  );
-}
-
 /**
  * Annoncer une audience, parce que lui écrire, c'est l'annoncer.
  *
@@ -240,29 +229,6 @@ export async function announceAudience(blockId: string, call: SelectionCall): Pr
   if (!view.config.publishedAt) {
     await repo.updateBlock(blockId, { config: { publishedAt: new Date().toISOString() } });
   }
-}
-
-/**
- * Settling the whole list at once, for a selection nobody is written to.
- *
- * An internal cut — a shortlist that only feeds the next phase — has no letter
- * to carry it, and its startups would otherwise never take the word. Run it
- * again whenever a late score or a new arrival has left the recorded decision
- * out of line.
- */
-export async function publishSelection(blockId: string): Promise<SelectionView | null> {
-  const view = await selectionView(blockId);
-  if (!view) return null;
-
-  for (const row of view.rows) {
-    // A hand-made call is kept; everything else takes what the rule says now.
-    const outcome = row.overridden ? row.outcome : row.computed;
-    await repo.setOutcome(blockId, row.candidate.id, outcome, row.overridden);
-  }
-
-  await writeStatuses(blockId);
-  await repo.updateBlock(blockId, { config: { publishedAt: new Date().toISOString() } });
-  return selectionView(blockId);
 }
 
 /** A single reversible decision — a withdrawal, a repêchage. */

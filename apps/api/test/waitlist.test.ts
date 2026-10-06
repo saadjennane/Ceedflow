@@ -17,9 +17,13 @@ import {
   callFor,
   intakeFor,
   overrideOutcome,
-  publishSelection,
   selectionView,
 } from '../src/services/selection.js';
+
+/** Les trois audiences prévenues, ce qui est la seule façon de tout acter. */
+const settle = async (blockId: string) => {
+  for (const call of ['pass', 'wait', 'fail'] as const) await announceAudience(blockId, call);
+};
 import { setOutcomeByHand } from '../src/services/scoring.js';
 import { launchNotice, sendDueNotices } from '../src/services/notices.js';
 import { SELECTION_KINDS, selectionAudiences, selectionRoster } from '../src/services/selectionNotices.js';
@@ -107,14 +111,14 @@ describe('a selection that holds some startups', { skip: skipWithoutServer }, ()
 
   it('gives a held startup its own word, not silence and not a refusal', async () => {
     const { pick, held, out } = await setUp();
-    await publishSelection(pick.id);
+    await settle(pick.id);
     assert.equal((await repo.getCandidate(held.id))?.status, 'Waitlisted');
     assert.equal((await repo.getCandidate(out.id))?.status, 'Not selected');
   });
 
   it('keeps the door shut on it — waiting is not passing', async () => {
     const { edition, track, pick, next, kept, held } = await setUp();
-    await publishSelection(pick.id);
+    await settle(pick.id);
     const detail = await repo.getEditionDetail(edition.id);
     const fresh = detail!.tracks.find((t) => t.id === track.id)!;
     const everyone = await repo.listCandidates(edition.id, track.id);
@@ -127,7 +131,7 @@ describe('a selection that holds some startups', { skip: skipWithoutServer }, ()
 
   it('lets a repêchage move one off the list by hand, and says so downstream', async () => {
     const { edition, track, pick, next, held } = await setUp();
-    await publishSelection(pick.id);
+    await settle(pick.id);
     await overrideOutcome(pick.id, held.id, 'pass');
 
     assert.equal((await repo.getCandidate(held.id))?.status, 'Shortlisted');
@@ -140,7 +144,7 @@ describe('a selection that holds some startups', { skip: skipWithoutServer }, ()
 
   it('lets a call made by hand put one back on the list', async () => {
     const { pick, kept } = await setUp();
-    await publishSelection(pick.id);
+    await settle(pick.id);
     await overrideOutcome(pick.id, kept.id, 'wait');
     assert.equal((await repo.getCandidate(kept.id))?.status, 'Waitlisted');
     const view = (await selectionView(pick.id))!;
@@ -287,7 +291,7 @@ describe('telling each audience what was decided', { skip: skipWithoutServer }, 
     assert.ok(row, 'on the list to write to');
     assert.equal(row!.blocked, '', 'and nothing stands in the way');
 
-    await publishSelection(pick.id);
+    await settle(pick.id);
     await launchNotice(pick.id, { kind: SELECTION_KINDS.pass, body: 'Bonjour\n\n{{acces}}' });
     await sendDueNotices();
     assert.equal(await lettersFor(fresh.id), 1, 'the letter went');
@@ -299,7 +303,7 @@ describe('telling each audience what was decided', { skip: skipWithoutServer }, 
     /* The one mistake this whole mechanism exists to prevent: telling somebody
        they are refused the morning after they were fished out. */
     const { pick, out } = await setUp();
-    await publishSelection(pick.id);
+    await settle(pick.id);
     await launchNotice(pick.id, { kind: SELECTION_KINDS.fail, scheduledFor: '2020-01-01', body: BODY });
     await overrideOutcome(pick.id, out.id, 'pass');
     await sendDueNotices();
@@ -308,7 +312,7 @@ describe('telling each audience what was decided', { skip: skipWithoutServer }, 
 
   it('names a startup told one thing whose decision has moved since', async () => {
     const { pick, out } = await setUp();
-    await publishSelection(pick.id);
+    await settle(pick.id);
     await launchNotice(pick.id, { kind: SELECTION_KINDS.fail, body: BODY });
     await sendDueNotices();
     assert.equal(await lettersFor(out.id), 1);
@@ -323,7 +327,7 @@ describe('telling each audience what was decided', { skip: skipWithoutServer }, 
 
   it('finds one by name even once it has been written to', async () => {
     const { pick, kept } = await setUp();
-    await publishSelection(pick.id);
+    await settle(pick.id);
     await launchNotice(pick.id, { kind: SELECTION_KINDS.pass, body: BODY });
     await sendDueNotices();
     assert.equal((await selectionRoster(pick.id, SELECTION_KINDS.pass)).length, 0, 'the list has nobody left');

@@ -607,8 +607,8 @@ async function main() {
   }
 
   /* ---- The shortlist. Statuses follow from the scores on their own ---- */
-  const { publishSelection } = await import('../services/selection.js');
-  await publishSelection(shortlisting.id);
+  const { announceAudience } = await import('../services/selection.js');
+  for (const call of ['pass', 'wait', 'fail'] as const) await announceAudience(shortlisting.id, call);
 
   /* ---- Two sittings, filled from the screening statuses ---- */
   // A sitting runs the whole day, with the lunch break cut out of it.
@@ -706,7 +706,7 @@ async function main() {
   // them. That call is kept through every republication.
   const wildcard = cut.rows.filter((r) => r.outcome === 'fail' && r.score !== null)[0];
   if (wildcard) await overrideOutcome(finalSelection.id, wildcard.candidate.id, 'pass');
-  await publishSelection(finalSelection.id);
+  for (const call of ['pass', 'wait', 'fail'] as const) await announceAudience(finalSelection.id, call);
 
   /* ---- The cohort is under way: mentors assigned, one already off track ---- */
   const cohort = (await repo.listCandidates(editionId)).filter((c) => c.status === 'Selected');

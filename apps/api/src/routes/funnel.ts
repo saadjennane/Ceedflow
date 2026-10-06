@@ -41,7 +41,6 @@ import {
   intakeFor,
   overrideOutcome,
   populationsFor,
-  publishSelection,
   rosterAt,
   selectionView,
 } from '../services/selection.js';
@@ -795,10 +794,6 @@ export async function funnelRoutes(app: FastifyInstance) {
     return selectionAudiences(id);
   });
 
-  app.post('/api/blocks/:id/selection/publish', async (req, reply) => {
-    const { id } = req.params as { id: string };
-    return (await publishSelection(id)) ?? notFound(reply, 'Selection block not found.');
-  });
 
   /** Put startups on the list the funnel did not send: by name, or by status. */
   app.post('/api/blocks/:id/selection/outcome', async (req, reply) => {

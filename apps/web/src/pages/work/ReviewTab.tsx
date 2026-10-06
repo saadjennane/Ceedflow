@@ -25,7 +25,7 @@ import { download, toWorkbook, type Cell } from '../../lib/xlsx';
 import { useAsync } from '../../lib/useAsync';
 import { TellThem } from './TellThem';
 import { Icon } from '../../ui/Icon';
-import { ConfirmDialog, Modal, useToast } from '../../ui/Overlays';
+import { Modal } from '../../ui/Overlays';
 import { ScoreEditor } from '../builder/panels/shared';
 
 /* ------------------------------------------------------------------ */
@@ -278,9 +278,7 @@ function Moment({
   /* Best first, because that is the question this screen answers. Clicking a
      header picks another, and clicking it again turns it round. */
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'score', dir: -1 });
-  const [confirmPublish, setConfirmPublish] = useState(false);
   const [busy, setBusy] = useState(false);
-  const toast = useToast();
 
   if (view.error) return <div className="empty">{view.error}</div>;
   if (!view.data) return <div className="empty">Loading…</div>;
@@ -615,17 +613,6 @@ function Moment({
     }
   };
 
-  const publish = async () => {
-    if (!selection) return;
-    setBusy(true);
-    try {
-      await api.post(`/api/blocks/${selection.id}/selection/publish`);
-      reload();
-      toast('Decision recorded.');
-    } finally {
-      setBusy(false);
-    }
-  };
 
   /* Ce qui a été dit, puis démenti.
      Not "never told": an audience you have not written to yet is the ordinary
@@ -734,8 +721,8 @@ function Moment({
             <strong>
               {outOfLine} row{outOfLine === 1 ? '' : 's'} moved since they were told.
             </strong>{' '}
-            A late score, or a startup added since. The blocks downstream already follow the new reading, and writing
-            to an audience again settles it — or record the decision below to bring every status up to date at once.
+            A late score, or a startup added since. The blocks downstream already follow the new reading; writing to
+            that audience again is what brings the record and their own statuses back in line with it.
           </div>
         </div>
       )}
@@ -751,21 +738,6 @@ function Moment({
         {scoring && sections.length > 0 && (
           <button className="btn sm" onClick={exportSheets} title="Every juror's sheet, as a spreadsheet">
             <Icon name="file" size={13} /> Export
-          </button>
-        )}
-        {/* Second rank, and rightly so: telling an audience is what announces
-            it, and that button is in the panel above. This one is for the cut
-            nobody is written to — an internal shortlist that only feeds the
-            next phase — and for catching every status up in one go. */}
-        {decision && (
-          <button
-            className="btn"
-            disabled={busy || !lines.length}
-            title="Writes every startup's own status from the decision as it stands. No letter goes out."
-            onClick={() => setConfirmPublish(true)}
-          >
-            <Icon name="check" size={14} />
-            Record the decision{outOfLine > 0 ? ` (${outOfLine})` : ''}
           </button>
         )}
       </div>
@@ -1129,28 +1101,6 @@ function Moment({
         own status follows when you write to the audience it belongs to.
       </p>
 
-      {confirmPublish && cfg && (
-        <ConfirmDialog
-          title={decision?.published ? 'Record it again?' : 'Record the decision?'}
-          body={
-            /* Said plainly, because the act people reach for is the send: this
-               one only writes down where things stand, for a cut nobody is
-               written to, or to catch every status up at once. */
-            (decision?.published
-              ? `${outOfLine} row${outOfLine === 1 ? '' : 's'} take what the rule says now; the ones you changed by hand keep your call. Every candidate's status is rewritten.`
-              : decision && decision.passCount === 0
-              ? `This rejects all ${decision.failCount} of them — nobody passes. Every candidate's status is set to ${failLabel.toLowerCase()}.`
-              : `${decision?.passCount} marked ${passLabel.toLowerCase()}${
-                  decision?.waitCount ? `, ${decision.waitCount} ${waitLabel.toLowerCase()}` : ''
-                }, ${decision?.failCount} marked ${failLabel.toLowerCase()}. Each candidate's status is updated, and the blocks after this one start from the ones who passed.`) +
-            ' Nothing is sent — writing to an audience is its own act, in the panel above, and it settles that audience on its own.'
-          }
-          destructive={decision?.passCount === 0}
-          confirmLabel={decision?.published ? 'Record again' : 'Record it'}
-          onClose={() => setConfirmPublish(false)}
-          onConfirm={publish}
-        />
-      )}
     </>
   );
 }
