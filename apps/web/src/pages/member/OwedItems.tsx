@@ -134,7 +134,7 @@ export function OwedList({
         aria-expanded={showing}
         onClick={() => setShowing((x) => !x)}
       >
-        {/* Coché quand tout est parti : c'est ce qu'une fondatrice cherche
+        {/* Coché quand tout est parti : c'est ce qu'un fondateur cherche
             en revenant, et un intitulé ne le dit pas aussi vite qu'un signe. */}
         {left === 0 && need.length > 0 && back.length === 0 ? (
           <span className="done-mark" aria-hidden="true">

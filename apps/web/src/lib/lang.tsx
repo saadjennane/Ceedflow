@@ -17,7 +17,14 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 
 export type Lang = 'fr' | 'en';
 
-/** Every word the member space says, in both. */
+/**
+ * Every word the member space says, in both.
+ *
+ * Écrit sans accord de genre. Les promotions mêlent hommes et femmes, et une
+ * phrase comme « vous serez prévenue » désigne la moitié de la salle. La
+ * parade n'est pas de choisir l'autre moitié : c'est de tourner la phrase
+ * autrement — « vous recevrez un mail » ne demande d'accord à personne.
+ */
 const WORDS = {
   /* ---- the shell ---- */
   'tab.home': { fr: 'Accueil', en: 'Home' },
@@ -33,7 +40,7 @@ const WORDS = {
   'home.todo': { fr: 'À faire', en: 'To do' },
   'home.nothing': { fr: 'Rien à faire pour le moment.', en: 'Nothing to do right now.' },
   'home.nothingMore': {
-    fr: 'Vous serez prévenue par mail dès qu’il y aura quelque chose.',
+    fr: 'Vous recevrez un mail dès qu’il y aura quelque chose.',
     en: 'You will hear by email as soon as there is something.',
   },
   'home.programmes': { fr: 'Vos programmes', en: 'Your programmes' },
@@ -153,7 +160,7 @@ const WORDS = {
     en: 'Your email is what you sign in with, so it is changed from the account rather than here.',
   },
   'my.saved': { fr: 'Profil enregistré.', en: 'Profile saved.' },
-  'my.where': { fr: 'Là où vous êtes engagée', en: 'Where you are involved' },
+  'my.where': { fr: 'Là où vous intervenez', en: 'Where you are involved' },
   'my.onJury': { fr: 'Dans le jury', en: 'On the jury' },
   'my.panels': { fr: 'séances', en: 'panels' },
   'my.panel': { fr: 'séance', en: 'panel' },
@@ -168,7 +175,7 @@ const WORDS = {
   'org.create': { fr: 'Créer une page', en: 'Create a page' },
   'org.createTitle': { fr: 'Créer la page d’une organisation', en: 'Create an organisation page' },
   'org.createMore': {
-    fr: 'Si CEED la connaît déjà, vous serez rattachée à cette page plutôt qu’à une seconde.',
+    fr: 'Si CEED la connaît déjà, vous rejoindrez cette page plutôt qu’une seconde.',
     en: 'If CEED already knows it, you will be attached to that page rather than a second one.',
   },
   'org.noneTitle': { fr: 'Vous n’en avez pas besoin.', en: 'You do not need one.' },
@@ -186,7 +193,7 @@ const WORDS = {
   'org.country': { fr: 'Pays', en: 'Country' },
   'org.website': { fr: 'Site web', en: 'Website' },
   'org.saved': { fr: 'Enregistré.', en: 'Saved.' },
-  'org.joined': { fr: 'CEED connaissait déjà cette organisation — vous y êtes rattachée.', en: 'CEED already knew it — you are attached to that page.' },
+  'org.joined': { fr: 'CEED connaissait déjà cette organisation : vous rejoignez sa page.', en: 'CEED already knew it — you are attached to that page.' },
   'org.created': { fr: 'Page créée.', en: 'Page created.' },
 
   /* ---- les boutons d'une fenêtre ---- */

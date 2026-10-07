@@ -58,7 +58,7 @@ export interface MemberPreview {
 }
 
 export function MemberPage({ preview }: { preview?: MemberPreview } = {}) {
-  /* Le français par défaut, l'anglais offert : c'est l'espace des fondatrices
+  /* Le français par défaut, l'anglais offert : c'est l'espace des fondateurs
      et des jurés, et l'espace CEED, lui, reste en anglais. */
   return (
     <LangProvider>
@@ -185,7 +185,7 @@ function MemberSpace({ preview }: { preview?: MemberPreview }) {
         {/* Somebody at CEED has two places to be, and this page is the smaller
             one. Without this, the way back is a URL they have to know. */}
         {/* Deux langues, offertes depuis la page : CEED écrit en français à
-            des fondatrices marocaines, et un jury ne l'est pas toujours. */}
+            des fondateurs marocains, et un jury ne l'est pas toujours. */}
         <div className="seg" role="group" aria-label={t('bar.lang')}>
           <button className={lang === 'fr' ? 'on' : ''} onClick={() => setLang('fr')}>FR</button>
           <button className={lang === 'en' ? 'on' : ''} onClick={() => setLang('en')}>EN</button>
@@ -1142,7 +1142,7 @@ function OrgModal({
         </div>
       </div>
 
-      <Text label={t('org.myRole')} value={draft.myRole} onChange={(v) => set({ myRole: v })} placeholder="Fondatrice" />
+      <Text label={t('org.myRole')} value={draft.myRole} onChange={(v) => set({ myRole: v })} placeholder="Fondateur" />
 
       {/* Ce qu'un jury lit : le même formulaire, parce que c'est la même fiche.
           Un second écran « profil » aurait fait deux endroits à tenir à jour. */}
