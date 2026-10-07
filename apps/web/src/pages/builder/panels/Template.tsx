@@ -70,10 +70,15 @@ export function Template({
         style={{ marginTop: 6 }}
         onChange={(e) => onChange(e.target.value)}
       />
+      {/* Le nom sur le bouton, parce que c'est le nom qu'on lit dans le texte.
+          Sans lui, « First login » et {{acces}} sont deux choses pour qui
+          regarde l'écran — et on cherche un bouton « accès » qui n'existe pas
+          pendant qu'il est le premier de la rangée. */}
       <div className="row wrap" style={{ gap: 5, marginTop: 6 }}>
         {variables.map((v) => (
           <button key={v.name} className="btn ghost sm" title={v.what} onClick={() => insert(v.name)}>
             <Icon name="plus" size={11} /> {v.label}
+            <span className="faint" style={{ fontSize: 11, fontFamily: 'var(--mono)' }}>{`{{${v.name}}}`}</span>
           </button>
         ))}
       </div>

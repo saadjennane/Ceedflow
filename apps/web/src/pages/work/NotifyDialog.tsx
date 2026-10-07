@@ -409,9 +409,12 @@ export function NotifyDialog({
                 />
               </div>
               <div className="row wrap" style={{ gap: 5 }}>
+                {/* Le nom tel qu'il s'écrit dans le texte, sur le bouton qui
+                    l'y pose : c'est la même rangée que dans l'onglet Messages. */}
                 {variables.map((v) => (
                   <button key={v.name} className="btn ghost sm" title={v.what} onClick={() => insert(v.name)}>
                     <Icon name="plus" size={11} /> {v.label}
+                    <span className="faint" style={{ fontSize: 11, fontFamily: 'var(--mono)' }}>{`{{${v.name}}}`}</span>
                   </button>
                 ))}
               </div>
