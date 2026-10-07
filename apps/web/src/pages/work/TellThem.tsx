@@ -57,6 +57,7 @@ export function useAnnouncing({
   at,
   label,
   bodyOf,
+  subjectOf,
   variablesOf,
   onSent,
 }: {
@@ -67,6 +68,8 @@ export function useAnnouncing({
   label: string;
   /** The template for one audience, from this block's own config. */
   bodyOf: (kind: string) => string;
+  /** Its subject template, so the window shows what lands in an inbox. */
+  subjectOf?: (kind: string) => string;
   variablesOf: (kind: string) => readonly { name: string; label: string; what: string }[];
   onSent?: () => void;
 }): { button: ReactNode; warning: ReactNode; windows: ReactNode } {
@@ -212,6 +215,7 @@ export function useAnnouncing({
           notifyPath={`/api/blocks/${block.id}/${at}/notify`}
           title={telling.label}
           body={bodyOf(telling.kind)}
+          subject={subjectOf?.(telling.kind)}
           variables={variablesOf(telling.kind)}
           /* Only where there was a step before it: a single audience went
              straight here, and a back arrow would lead to a list of one. */

@@ -413,6 +413,25 @@ export const ACCESS_DEFAULT = `Votre première connexion :
 Il vous sera demandé de le remplacer.`;
 
 /** The two names that paragraph may carry, and nothing else. */
+/**
+ * L'objet d'une lettre, et pourquoi c'est un champ et non une constante.
+ *
+ * Ce que CEED écrit dans un corps de message lui appartient depuis le début ;
+ * l'objet, lui, était fabriqué dans le code — « Due diligence admin — Rafid
+ * Tech » — c'est-à-dire la seule ligne que le destinataire lit avant de
+ * décider s'il ouvre. Elle est maintenant un gabarit comme les autres, avec
+ * les mêmes variables, et ces valeurs ne sont que les défauts : exactement ce
+ * qui partait avant, pour que rien ne change tant que personne n'y touche.
+ */
+export const SUBJECT_DELIVERABLE_REQUEST = '{{phase}} — {{startup}}';
+export const SUBJECT_DELIVERABLE_REMINDER = '{{phase}} — {{startup}}';
+export const SUBJECT_DELIVERABLE_REJECTED = '{{phase}} — {{piece}} à renvoyer';
+export const SUBJECT_SELECTION = '{{phase}} — {{startup}}';
+export const SUBJECT_COMMITTEE_JURY = '{{phase}} — {{panel}}';
+export const SUBJECT_COMMITTEE_STARTUP = '{{phase}} — {{startup}}';
+export const SUBJECT_APPLICATION_RECEIVED = '{{programme}} — candidature de {{startup}}';
+export const SUBJECT_APPLICATION_SUBMITTED = '{{startup}} a candidaté — {{appel}}';
+
 export const ACCESS_VARIABLES = [
   { name: 'email', label: 'Their address', what: 'The address they sign in with', example: 'karim@rafid.ma' },
   { name: 'motdepasse', label: 'Password', what: 'The first one, generated as the letter is written', example: '••••-••••-••••' },
@@ -527,6 +546,18 @@ export const applicationConfigSchema = z.object({
   confirmationEmail: z.boolean().default(true),
   /** What that acknowledgment says. One message, so it sits with its switch. */
   receivedMessage: z.string().default(APPLICATION_RECEIVED),
+  /**
+   * Les objets des deux lettres qu'un dépôt déclenche : celle au candidat, et
+   * celle à l'équipe. La seconde n'a pas de corps réglable — c'est un relevé
+   * de quatre lignes — mais son objet, lui, atterrit dans une boîte CEED que
+   * quelqu'un trie.
+   */
+  subjects: z
+    .object({
+      received: z.string().default(SUBJECT_APPLICATION_RECEIVED),
+      submitted: z.string().default(SUBJECT_APPLICATION_SUBMITTED),
+    })
+    .default({}),
     /**
      * How this block hands somebody their first password.
      *
@@ -791,6 +822,7 @@ export type CommitteeFormat = (typeof COMMITTEE_FORMATS)[number];
  */
 /** What a letter to a juror may carry. */
 export const COMMITTEE_JURY_VARIABLES = [
+  { name: 'phase', label: 'Step', what: 'The name of this block, as you named it', example: 'Jury Day' },
   { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
   { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
   { name: 'jure', label: 'Juror', what: 'Their own name', example: 'Nawal Benjelloun' },
@@ -804,6 +836,7 @@ export const COMMITTEE_JURY_VARIABLES = [
 
 /** What a letter to a startup being convened may carry. */
 export const COMMITTEE_STARTUP_VARIABLES = [
+  { name: 'phase', label: 'Step', what: 'The name of this block, as you named it', example: 'Jury Day' },
   { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
   { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
   { name: 'startup', label: 'Startup', what: 'The organisation’s name', example: 'Rafid Tech' },
@@ -876,6 +909,13 @@ export const committeeConfigSchema = z.preprocess(
       .object({
         jury: z.string().default(COMMITTEE_JURY),
         startup: z.string().default(COMMITTEE_STARTUP),
+        /** Ce que chacune de ces deux lettres porte en objet. */
+        subjects: z
+          .object({
+            jury: z.string().default(SUBJECT_COMMITTEE_JURY),
+            startup: z.string().default(SUBJECT_COMMITTEE_STARTUP),
+          })
+          .default({}),
         /**
          * How this block hands somebody their first password.
          *
@@ -1051,6 +1091,14 @@ export const selectionConfigSchema = z.object({
       pass: z.string().default(SELECTION_PASS),
       wait: z.string().default(SELECTION_WAIT),
       fail: z.string().default(SELECTION_FAIL),
+      /** Ce que chaque audience lit avant d'ouvrir. */
+      subjects: z
+        .object({
+          pass: z.string().default(SUBJECT_SELECTION),
+          wait: z.string().default(SUBJECT_SELECTION),
+          fail: z.string().default(SUBJECT_SELECTION),
+        })
+        .default({}),
       /**
        * How this block hands somebody their first password.
        *
@@ -1195,6 +1243,7 @@ export function uploadIdsIn(value: unknown): string[] {
  * three and not the others is a letter that goes out saying `{{lien}}`.
  */
 export const DELIVERABLE_VARIABLES = [
+  { name: 'phase', label: 'Step', what: 'The name of this block, as you named it', example: 'Due diligence administrative' },
   { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
   { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
   { name: 'startup', label: 'Startup', what: 'The organisation’s name', example: 'Rafid Tech' },
@@ -1213,6 +1262,7 @@ export const DELIVERABLE_VARIABLES = [
 
 /** Only in a letter about one item sent back. */
 export const DELIVERABLE_RETURN_VARIABLES = [
+  { name: 'phase', label: 'Step', what: 'The name of this block, as you named it', example: 'Due diligence administrative' },
   { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
   { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
   { name: 'startup', label: 'Startup', what: 'The organisation’s name', example: 'Rafid Tech' },
@@ -1282,6 +1332,14 @@ export const deliverableConfigSchema = z.object({
       request: z.string().default(DELIVERABLE_REQUEST),
       reminder: z.string().default(DELIVERABLE_REMINDER),
       rejected: z.string().default(DELIVERABLE_REJECTED),
+      /** L'objet de chacune des trois. */
+      subjects: z
+        .object({
+          request: z.string().default(SUBJECT_DELIVERABLE_REQUEST),
+          reminder: z.string().default(SUBJECT_DELIVERABLE_REMINDER),
+          rejected: z.string().default(SUBJECT_DELIVERABLE_REJECTED),
+        })
+        .default({}),
       /**
        * How this block hands somebody their first password.
        *
@@ -1341,6 +1399,7 @@ export function longDate(day: string | null | undefined): string {
   if (!y || !m || !d) return '';
   return `${d} ${MOIS[m - 1]} ${y}`;
 }
+
 
 /** The ids of what a deliverables block hands out. Fixed; only the words move. */
 export const DELIVERABLE_PASS = 'dd_complete';

@@ -17,6 +17,8 @@ export function Template({
   help,
   value,
   onChange,
+  subject,
+  onSubject,
   variables,
   example,
 }: {
@@ -24,24 +26,41 @@ export function Template({
   help: string;
   value: string;
   onChange: (next: string) => void;
+  /**
+   * L'objet, quand la lettre en porte un.
+   *
+   * Avec le corps plutôt que dans un écran de réglages : c'est la première
+   * ligne du même message, elle prend les mêmes variables, et on ne juge
+   * « Due diligence — Rafid Tech » qu'en lisant ce qui vient après.
+   */
+  subject?: string;
+  onSubject?: (next: string) => void;
   variables: readonly { name: string; label: string; what: string; example?: string }[];
   /** Only what this block knows — its own name, its own labels. The rest comes
       from the variables themselves, so a new one can never be forgotten here. */
   example?: Record<string, string | undefined>;
 }) {
   const box = useRef<HTMLTextAreaElement>(null);
+  const line = useRef<HTMLInputElement>(null);
+  /* Où le bouton pose ce qu'il insère : dans le champ qu'on vient de quitter.
+     Sans ça, cliquer « + Startup » en ayant l'objet en main l'écrivait dans le
+     corps, deux cents mots plus bas. */
+  const [where, setWhere] = useState<'body' | 'subject'>('body');
   const [show, setShow] = useState(false);
 
   /* Dropped at the cursor, because the alternative — appended at the end, or
      typed from memory — is how {{startup}} ends up spelled {{Startup}} and
      goes out as four braces. */
   const insert = (name: string) => {
-    const el = box.current;
     const token = `{{${name}}}`;
-    if (!el) return onChange(value + token);
-    const from = el.selectionStart ?? value.length;
+    const onSubjectLine = where === 'subject' && onSubject !== undefined;
+    const el: HTMLTextAreaElement | HTMLInputElement | null = onSubjectLine ? line.current : box.current;
+    const text = onSubjectLine ? (subject ?? '') : value;
+    const write = onSubjectLine ? onSubject! : onChange;
+    if (!el) return write(text + token);
+    const from = el.selectionStart ?? text.length;
     const to = el.selectionEnd ?? from;
-    onChange(value.slice(0, from) + token + value.slice(to));
+    write(text.slice(0, from) + token + text.slice(to));
     requestAnimationFrame(() => {
       el.focus();
       el.setSelectionRange(from + token.length, from + token.length);
@@ -49,9 +68,18 @@ export function Template({
   };
 
   const known = new Set(variables.map((v) => v.name));
-  const unknown = [...new Set([...value.matchAll(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g)].map((m) => m[1]!))].filter(
-    (n) => !known.has(n),
-  );
+  const unknown = [
+    ...new Set(
+      [...`${value}\n${subject ?? ''}`.matchAll(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g)].map((m) => m[1]!),
+    ),
+  ].filter((n) => !known.has(n));
+
+  const filled = {
+    ...Object.fromEntries(variables.map((v) => [v.name, v.example ?? ''])),
+    // Undefined means "this block has nothing of its own to say here", so the
+    // variable's own sample stands.
+    ...Object.fromEntries(Object.entries(example ?? {}).filter(([, v]) => v !== undefined)),
+  } as Record<string, string>;
 
   return (
     <div className="field">
@@ -62,12 +90,30 @@ export function Template({
         </button>
       </div>
       <div className="help">{help}</div>
+      {/* Nommé, parce qu'une boîte d'une ligne au-dessus d'un message est
+          autrement un champ dont personne ne sait ce qu'il fait. */}
+      {onSubject && (
+        <div className="eyebrow" style={{ marginTop: 8 }}>Subject</div>
+      )}
+      {onSubject && (
+        <input
+          ref={line}
+          className="input"
+          value={subject ?? ''}
+          placeholder="Subject"
+          aria-label={`${label} — subject`}
+          style={{ marginTop: 3 }}
+          onFocus={() => setWhere('subject')}
+          onChange={(e) => onSubject(e.target.value)}
+        />
+      )}
       <textarea
         ref={box}
         className="textarea"
         rows={9}
         value={value}
         style={{ marginTop: 6 }}
+        onFocus={() => setWhere('body')}
         onChange={(e) => onChange(e.target.value)}
       />
       {/* Le nom sur le bouton, parce que c'est le nom qu'on lit dans le texte.
@@ -92,12 +138,13 @@ export function Template({
       )}
       {show && (
         <pre className="letter" style={{ marginTop: 6 }}>
-          {fillTemplate(value, {
-            ...Object.fromEntries(variables.map((v) => [v.name, v.example ?? ''])),
-            // Undefined means "this block has nothing of its own to say here",
-            // so the variable's own sample stands.
-            ...Object.fromEntries(Object.entries(example ?? {}).filter(([, v]) => v !== undefined)),
-          } as Record<string, string>)}
+          {/* L'objet au-dessus, comme dans une boîte mail. */}
+          {onSubject && (
+            <strong style={{ display: 'block', marginBottom: 8 }}>
+              {fillTemplate(subject ?? '', filled) || '(no subject)'}
+            </strong>
+          )}
+          {fillTemplate(value, filled)}
         </pre>
       )}
     </div>

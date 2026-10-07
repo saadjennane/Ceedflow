@@ -176,6 +176,7 @@ export async function committeeValues(
     const person = sitting.jury.find((j) => j.id === subjectId)!;
     const record = await dir.getRecord(subjectId);
     return {
+      phase: view.block.name,
       prenom: firstNameOf(person.name, record?.firstName),
       acces: preview ? '' : await accessFor(subjectId, letters(view).access),
       jure: person.name,
@@ -192,6 +193,7 @@ export async function committeeValues(
   if (!sitting) return null;
   const seat = sitting.assignments.find((a) => a.candidate.id === subjectId)!;
   return {
+    phase: view.block.name,
     prenom: firstNameOf(seat.candidate.contactName, seat.candidate.contactFirstName),
     acces: preview ? '' : await accessFor(seat.candidate.personId, letters(view).access),
     startup: seat.candidate.orgName,
@@ -248,12 +250,13 @@ export const committeeNotices: NoticeSource = {
     const rows = await audienceRows(blockId, kind);
     const row = rows.find((r) => r.subjectId === subjectId);
     if (!who || !view || !values || !row) return null;
-    void (view.block.config as CommitteeConfig);
+    const config = view.block.config as CommitteeConfig;
+    const written = who === 'jury' ? config.messages.subjects.jury : config.messages.subjects.startup;
     return {
       kind,
       to: row.email,
       toName: row.toName,
-      subject: who === 'jury' ? `${view.block.name} — ${values.panel}` : `${view.block.name} — ${row.orgName}`,
+      subject: fillTemplate(written, values).trim() || view.block.name,
       body: fillTemplate(body, values),
     };
   },

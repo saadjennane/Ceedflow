@@ -234,19 +234,24 @@ export const selectionNotices: NoticeSource = {
     const candidate = await repo.getCandidate(candidateId);
     if (!call || !block || !candidate) return null;
     const config = block.config as SelectionConfig;
+    const values = {
+      prenom: firstNameOf(candidate.contactName, candidate.contactFirstName),
+      acces: await accessFor(candidate.personId, config.messages.access),
+      startup: candidate.orgName,
+      decision: labelOf(config, call),
+      phase: block.name,
+      lien: await appLink(),
+    };
+    /* L'objet par audience : « retenue » et « non retenue » ne s'annoncent pas
+       de la même façon dans une boîte mail, et c'est la seule ligne qu'on lit
+       avant de décider d'ouvrir. */
+    const written = config.messages.subjects[call];
     return {
       kind,
       to: candidate.email,
       toName: candidate.contactName,
-      subject: `${block.name} — ${candidate.orgName}`,
-      body: fillTemplate(body, {
-        prenom: firstNameOf(candidate.contactName, candidate.contactFirstName),
-        acces: await accessFor(candidate.personId, config.messages.access),
-        startup: candidate.orgName,
-        decision: labelOf(config, call),
-        phase: block.name,
-        lien: await appLink(),
-      }),
+      subject: fillTemplate(written, values).trim() || block.name,
+      body: fillTemplate(body, values),
     };
   },
 };

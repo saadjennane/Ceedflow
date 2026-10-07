@@ -46,7 +46,7 @@ export async function acknowledge(blockId: string, candidateId: string): Promise
       toName: candidate.contactName,
       blockId,
       candidateId,
-      subject: `${values.programme} — candidature de ${candidate.orgName}`,
+      subject: fillTemplate(config.subjects.received, values).trim() || values.programme,
       body: fillTemplate(config.receivedMessage, values),
     });
   }
@@ -60,7 +60,7 @@ export async function acknowledge(blockId: string, candidateId: string): Promise
       to: address,
       blockId,
       candidateId,
-      subject: `${candidate.orgName} a candidaté — ${values.appel}`,
+      subject: fillTemplate(config.subjects.submitted, values).trim() || values.appel,
       body: [
         `${candidate.orgName} vient de déposer sa candidature à ${values.programme}.`,
         candidate.contactName ? `Contact : ${candidate.contactName}${candidate.email ? ` · ${candidate.email}` : ''}` : '',

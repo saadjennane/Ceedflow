@@ -821,6 +821,8 @@ export async function funnelRoutes(app: FastifyInstance) {
       z.object({
         kind: z.string().min(1),
         body: z.string().min(1, 'Write what they are going to read.'),
+        /** Le gabarit d'objet, pour que l'essai arrive avec le vrai. */
+        subject: z.string().default(''),
         subjectId: z.string().min(1),
         to: z.string().email('Enter an address to try it on.'),
       }),

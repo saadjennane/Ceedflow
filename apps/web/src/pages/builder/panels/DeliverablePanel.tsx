@@ -481,6 +481,9 @@ function MessagesTab({
 }) {
   const set = (key: keyof DeliverableConfig['messages'], next: string) =>
     patch({ messages: { ...config.messages, [key]: next } });
+  /** L'objet de la même lettre, rangé à côté d'elle. */
+  const setSubject = (key: keyof DeliverableConfig['messages']['subjects'], next: string) =>
+    patch({ messages: { ...config.messages, subjects: { ...config.messages.subjects, [key]: next } } });
 
   /* What this block actually asks for — never an invented document. A preview
      that filled {{pieces}} with two plausible examples read as configuration:
@@ -536,6 +539,8 @@ function MessagesTab({
         help="The first letter. It goes to each startup once."
         value={config.messages.request}
         onChange={(v) => set('request', v)}
+        subject={config.messages.subjects.request}
+        onSubject={(v) => setSubject('request', v)}
         variables={DELIVERABLE_VARIABLES}
         example={example}
       />
@@ -545,6 +550,8 @@ function MessagesTab({
         help="Sent to whoever still owes something they can act on — never to a file that is only waiting on CEED."
         value={config.messages.reminder}
         onChange={(v) => set('reminder', v)}
+        subject={config.messages.subjects.reminder}
+        onSubject={(v) => setSubject('reminder', v)}
         variables={DELIVERABLE_VARIABLES}
         example={example}
       />
@@ -554,6 +561,8 @@ function MessagesTab({
         help="Goes out the moment you send something back, carrying the reason you typed. Nothing to launch."
         value={config.messages.rejected}
         onChange={(v) => set('rejected', v)}
+        subject={config.messages.subjects.rejected}
+        onSubject={(v) => setSubject('rejected', v)}
         variables={DELIVERABLE_RETURN_VARIABLES}
         example={{
           ...example,

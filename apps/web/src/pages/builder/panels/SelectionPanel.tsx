@@ -80,6 +80,9 @@ function MessagesTab({
   const link = useAsync(() => api.get<{ link: string }>('/api/app-link'), 'app-link');
   const set = (key: keyof SelectionConfig['messages'], next: string) =>
     patch({ messages: { ...config.messages, [key]: next } });
+  /** L'objet de la même lettre, rangé à côté d'elle. */
+  const setSubject = (key: keyof SelectionConfig['messages']['subjects'], next: string) =>
+    patch({ messages: { ...config.messages, subjects: { ...config.messages.subjects, [key]: next } } });
 
   const example = (decision: string) => ({
     decision,
@@ -112,6 +115,8 @@ function MessagesTab({
         help="The one they remember. It goes once to each startup the decision passed."
         value={config.messages.pass}
         onChange={(v) => set('pass', v)}
+        subject={config.messages.subjects.pass}
+        onSubject={(v) => setSubject('pass', v)}
         variables={SELECTION_VARIABLES}
         example={example(config.passLabel)}
       />
@@ -124,6 +129,8 @@ function MessagesTab({
         help="Say what waiting means and what happens next — the absence of that is what makes a waiting list feel like a refusal."
         value={config.messages.wait}
         onChange={(v) => set('wait', v)}
+        subject={config.messages.subjects.wait}
+        onSubject={(v) => setSubject('wait', v)}
         variables={SELECTION_VARIABLES}
         example={example(config.waitLabel)}
       />
@@ -133,6 +140,8 @@ function MessagesTab({
         help="Sent as its own act, and usually not the same day: a startup still on the waiting list must not learn its fate from this one."
         value={config.messages.fail}
         onChange={(v) => set('fail', v)}
+        subject={config.messages.subjects.fail}
+        onSubject={(v) => setSubject('fail', v)}
         variables={SELECTION_VARIABLES}
         example={example(config.failLabel)}
       />

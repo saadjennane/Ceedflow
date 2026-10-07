@@ -83,6 +83,10 @@ export function CommitteeWorkspace({
       const c = block.config as CommitteeConfig;
       return kind === 'committee_jury' ? c.messages.jury : c.messages.startup;
     },
+    subjectOf: (kind) => {
+      const c = block.config as CommitteeConfig;
+      return kind === 'committee_jury' ? c.messages.subjects.jury : c.messages.subjects.startup;
+    },
     variablesOf: (kind) => (kind === 'committee_jury' ? COMMITTEE_JURY_VARIABLES : COMMITTEE_STARTUP_VARIABLES),
   });
 

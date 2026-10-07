@@ -378,21 +378,23 @@ export async function tellReturned(
 
   const config = block.config as DeliverableConfig;
   const item = config.items.find((i) => i.id === itemId);
+  const values = {
+    phase: block.name,
+    prenom: firstNameOf(candidate.contactName, candidate.contactFirstName),
+    acces: await accessFor(candidate.personId, config.messages.access),
+    startup: candidate.orgName,
+    piece: item?.label ?? 'une pièce',
+    motif: reason,
+    lien: await appLink(),
+  };
   await post({
     kind: 'deliverable_rejected',
     to: candidate.email,
     toName: candidate.contactName,
     blockId,
     candidateId,
-    subject: `${block.name} — ${item?.label ?? 'une pièce'} à renvoyer`,
-    body: fillTemplate(config.messages.rejected, {
-      prenom: firstNameOf(candidate.contactName, candidate.contactFirstName),
-      acces: await accessFor(candidate.personId, config.messages.access),
-      startup: candidate.orgName,
-      piece: item?.label ?? '',
-      motif: reason,
-      lien: await appLink(),
-    }),
+    subject: fillTemplate(config.messages.subjects.rejected, values).trim() || block.name,
+    body: fillTemplate(config.messages.rejected, values),
   });
 }
 
@@ -445,6 +447,9 @@ export const deliverableNotices: NoticeSource = {
     const config = block?.config as DeliverableConfig | undefined;
     if (!view || !row) return {};
     return {
+      /* Le nom de la brique en vaut une autre : l'objet s'en sert, et un
+         aperçu qui laisse « {{phase}} » tel quel ferait douter de l'envoi. */
+      phase: block?.name ?? '',
       prenom: firstNameOf(row.candidate.contactName, row.candidate.contactFirstName),
       /* The one value a preview cannot be: a password is generated as the
          letter is written, and asking for the real one would open an account. */
@@ -516,19 +521,27 @@ export const deliverableNotices: NoticeSource = {
     const row = view?.rows.find((r) => r.candidate.id === candidateId);
     if (!block || !view || !row) return null;
     const config = block.config as DeliverableConfig;
+    /* Les mêmes valeurs pour l'objet et pour le corps : une ligne d'objet qui
+       nomme la startup autrement que la lettre qu'elle annonce se lit comme
+       deux messages. */
+    const values = {
+      phase: block.name,
+      prenom: firstNameOf(row.candidate.contactName, row.candidate.contactFirstName),
+      acces: await accessFor(row.candidate.personId, config.messages.access),
+      startup: row.candidate.orgName,
+      pieces: owedLines(view, candidateId),
+      date: longDate(config.closesAt),
+      lien: await appLink(),
+    };
+    const written = kind === 'request' ? config.messages.subjects.request : config.messages.subjects.reminder;
     return {
       kind: kind === 'request' ? 'deliverable_request' : 'deliverable_reminder',
       to: row.candidate.email,
       toName: row.candidate.contactName,
-      subject: `${block.name} — ${row.candidate.orgName}`,
-      body: fillTemplate(body, {
-        prenom: firstNameOf(row.candidate.contactName, row.candidate.contactFirstName),
-        acces: await accessFor(row.candidate.personId, config.messages.access),
-        startup: row.candidate.orgName,
-        pieces: owedLines(view, candidateId),
-        date: longDate(config.closesAt),
-        lien: await appLink(),
-      }),
+      /* Vidé à la main, l'objet retombe sur le nom de la brique : un mail sans
+         objet se lit comme un spam, et personne n'a voulu ça en effaçant. */
+      subject: fillTemplate(written, values).trim() || block.name,
+      body: fillTemplate(body, values),
     };
   },
 };

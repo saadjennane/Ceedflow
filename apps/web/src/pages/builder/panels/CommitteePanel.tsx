@@ -905,6 +905,9 @@ function MessagesTab({
   const link = useAsync(() => api.get<{ link: string }>('/api/app-link'), 'app-link');
   const set = (key: keyof CommitteeConfig['messages'], next: string) =>
     patch({ messages: { ...config.messages, [key]: next } });
+  /** L'objet de la même lettre, rangé à côté d'elle. */
+  const setSubject = (key: keyof CommitteeConfig['messages']['subjects'], next: string) =>
+    patch({ messages: { ...config.messages, subjects: { ...config.messages.subjects, [key]: next } } });
   const where = link.data?.link || '(this platform has no public address set)';
 
   return (
@@ -922,6 +925,8 @@ function MessagesTab({
         help="Who they will see, when, and where their grid is. Each juror's letter carries their own panel."
         value={config.messages.jury}
         onChange={(v) => set('jury', v)}
+        subject={config.messages.subjects.jury}
+        onSubject={(v) => setSubject('jury', v)}
         variables={COMMITTEE_JURY_VARIABLES}
         example={{ panel: 'Séance 1', lien: where }}
       />
@@ -932,6 +937,8 @@ function MessagesTab({
           help="When they are expected. The slot appears only once you have given them one."
           value={config.messages.startup}
           onChange={(v) => set('startup', v)}
+          subject={config.messages.subjects.startup}
+          onSubject={(v) => setSubject('startup', v)}
           variables={COMMITTEE_STARTUP_VARIABLES}
           example={{ panel: 'Séance 1', lien: where }}
         />

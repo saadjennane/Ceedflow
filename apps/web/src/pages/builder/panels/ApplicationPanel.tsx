@@ -640,6 +640,8 @@ function SettingsTab({
           help="It answers one question — did you get it — asked the minute after submitting."
           value={config.receivedMessage}
           onChange={(v: string) => patch({ receivedMessage: v })}
+          subject={config.subjects.received}
+          onSubject={(v) => patch({ subjects: { ...config.subjects, received: v } })}
           variables={APPLICATION_VARIABLES}
           example={{ appel: block.name }}
         />
@@ -656,6 +658,38 @@ function SettingsTab({
         placeholder="name@ceed.ma"
         help="They get the organisation's name and a link to the file, not a copy of the applicant's receipt."
       />
+
+      {/* Un objet sans corps à régler : ce mot-là est un relevé de quatre
+          lignes qui n'a pas à être réécrit, mais il atterrit dans une boîte
+          CEED que quelqu'un trie, et c'est la ligne qui le fait trier. */}
+      {config.notifyOnSubmit.length > 0 && (
+        <div className="field">
+          <label htmlFor="submitted-subject">What that one is called</label>
+          <div className="help">The subject of the note to the team. The letter itself is a four-line digest.</div>
+          <input
+            id="submitted-subject"
+            className="input"
+            style={{ marginTop: 6 }}
+            value={config.subjects.submitted}
+            onChange={(e) => patch({ subjects: { ...config.subjects, submitted: e.target.value } })}
+          />
+          <div className="row wrap" style={{ gap: 5, marginTop: 6 }}>
+            {APPLICATION_VARIABLES.filter((v) => v.name !== 'acces' && v.name !== 'lien').map((v) => (
+              <button
+                key={v.name}
+                className="btn ghost sm"
+                title={v.what}
+                onClick={() =>
+                  patch({ subjects: { ...config.subjects, submitted: `${config.subjects.submitted}{{${v.name}}}` } })
+                }
+              >
+                <Icon name="plus" size={11} /> {v.label}
+                <span className="faint" style={{ fontSize: 11, fontFamily: 'var(--mono)' }}>{`{{${v.name}}}`}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </>
   );
 }

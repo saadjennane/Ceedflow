@@ -174,19 +174,23 @@ export async function launchNotice(
  */
 export async function sendTest(
   blockId: string,
-  input: { kind: string; body: string; subjectId: string; to: string },
+  input: { kind: string; body: string; subject?: string; subjectId: string; to: string },
 ): Promise<{ written: boolean; live: boolean; state: string; error: string }> {
   const block = await repo.getBlock(blockId);
   const source = block && SOURCES[block.type];
   if (!source) return { written: false, live: false, state: 'failed', error: 'The block no longer exists.' };
 
   const values = await source.preview(blockId, input.kind, input.subjectId);
+  /* L'essai porte le vrai objet, préfixé.
+     C'est ce qu'on vient vérifier : une ligne d'objet se juge dans une boîte
+     mail, à côté des autres, et pas dans un champ de formulaire. */
+  const real = (input.subject ? fillTemplate(input.subject, values) : '').trim();
   const letter = await post({
     kind: `test_${input.kind}`,
     to: input.to,
     // Marked in the subject so nobody mistakes it for the real thing, in an
     // inbox or in the outbox three weeks later.
-    subject: `[Essai] ${block.name}`,
+    subject: `[Essai] ${real || block.name}`,
     body: fillTemplate(input.body, values),
   });
   /* Offered at once rather than left to the timer: somebody is standing in

@@ -88,6 +88,7 @@ export function NotifyDialog({
   title: given,
   onBack,
   body: template,
+  subject: subjectTemplate,
   variables = DELIVERABLE_VARIABLES,
   onDone,
   onClose,
@@ -107,6 +108,8 @@ export function NotifyDialog({
   onBack?: () => void;
   /** The template for this kind. Defaults to the deliverables block's own. */
   body?: string;
+  /** Its subject line, as a template too — shown filled in, never edited here. */
+  subject?: string;
   variables?: readonly { name: string; label: string; what: string }[];
   onDone: (view: unknown) => void;
   onClose: () => void;
@@ -131,6 +134,10 @@ export function NotifyDialog({
   const [body, setBody] = useState(
     template ?? (kind === 'request' ? config.messages.request : config.messages.reminder),
   );
+  /* Comme le corps : donné par l'écran qui ouvre la fenêtre, sinon celui de la
+     brique Deliverables, qui est le cas d'où cette fenêtre vient. */
+  const written =
+    subjectTemplate ?? (kind === 'request' ? config.messages.subjects?.request : config.messages.subjects?.reminder);
   /* Reading, not writing, is what this window is for: the wording was settled
      in the block's Messages tab, and what you came here to check is who gets
      it and what it says to them. So the letter opens full width and the editor
@@ -176,6 +183,10 @@ export function NotifyDialog({
      screen assembles. The preview's whole job is to be the letter, and a
      second map is a second chance to show one nobody receives. */
   const letter = shown ? fillTemplate(body, shown.values) : '';
+  /* L'objet au-dessus de la lettre, rempli pour cette startup-là : c'est la
+     seule ligne que le destinataire lit avant de décider d'ouvrir, et elle ne
+     se voyait nulle part avant l'envoi. */
+  const line = shown && written ? fillTemplate(written, shown.values) : '';
 
   /** Dropped where the cursor is, so the text stays text somebody rearranges. */
   const insert = (name: string) => {
@@ -197,7 +208,7 @@ export function NotifyDialog({
     try {
       const out = await api.post<{ live: boolean; state: string; error: string }>(
         `/api/blocks/${block.id}/notices/test`,
-        { kind, body, subjectId: shown.candidate.id, to: tryAt.trim() },
+        { kind, body, subject: written ?? '', subjectId: shown.candidate.id, to: tryAt.trim() },
       );
       /* What actually happened, from the provider itself. Announcing "sent"
          before anything was attempted is how somebody watches an inbox for a
@@ -458,6 +469,11 @@ export function NotifyDialog({
               )}
               {/* The letter, filled in. This is the only place the per-recipient
                   variable is visible as the thing that differs. */}
+              {line && (
+                <p style={{ margin: 0, fontSize: 13 }}>
+                  <span className="eyebrow">Subject</span> <strong>{line}</strong>
+                </p>
+              )}
               <pre className="letter" style={writing ? undefined : { maxHeight: 420 }}>
                 {letter || 'Nothing to preview.'}
               </pre>

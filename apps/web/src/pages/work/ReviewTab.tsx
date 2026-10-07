@@ -331,6 +331,11 @@ function Moment({
       const c = (selection?.config ?? {}) as SelectionConfig;
       return kind === 'selection_pass' ? c.messages.pass : kind === 'selection_wait' ? c.messages.wait : c.messages.fail;
     },
+    subjectOf: (kind) => {
+      const s = (selection?.config as SelectionConfig | undefined)?.messages.subjects;
+      if (!s) return '';
+      return kind === 'selection_pass' ? s.pass : kind === 'selection_wait' ? s.wait : s.fail;
+    },
     variablesOf: () => SELECTION_VARIABLES,
     /* Writing to an audience settles it: the funnel, the statuses and the
        badges all move, and the screen has to say so. */
