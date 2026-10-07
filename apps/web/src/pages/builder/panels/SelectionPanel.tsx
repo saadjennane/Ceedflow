@@ -26,12 +26,15 @@ function StatusPick({
   outcome,
   on,
   taken,
+  how,
   onToggle,
 }: {
   outcome: BlockOutcome;
   on: boolean;
   /** Why this one cannot be picked here, when it cannot. */
   taken?: string;
+  /** How the block upstream hands this out — a band, a judgement, or a count. */
+  how: string;
   onToggle: () => void;
 }) {
   return (
@@ -45,12 +48,7 @@ function StatusPick({
       <Icon name={on ? 'check' : 'square'} />
       <div>
         <strong>{outcome.label}</strong>
-        <span>
-          {taken ??
-            (outcome.minScore === null
-              ? 'The fallback — everyone no other band caught.'
-              : `Earned from ${outcome.minScore} out of 100.`)}
-        </span>
+        <span>{taken ?? how}</span>
       </div>
     </button>
   );
@@ -185,6 +183,33 @@ export function SelectionSetup({
       [which]: config[which].includes(id) ? config[which].filter((x) => x !== id) : [...config[which], id],
     });
 
+  /* Une règle qui nomme un statut que la brique d'amont ne donne plus.
+     Inserting a step between two blocks changes which one this reads, and the
+     ticks made against the old one then match nothing: the rule looks set, and
+     nobody passes. It happened the first time a review was slipped between a
+     due diligence and its selection. */
+  /**
+   * Comment l'amont donne ce mot-là.
+   *
+   * « The fallback — everyone no other band caught » was written for a grid,
+   * and a grid is now one of three things upstream. On a due diligence it
+   * described a count as a band, and on a review made by hand it described a
+   * judgement as a band — both read as a setting somebody had got wrong.
+   */
+  const howGiven = (outcome: BlockOutcome): string => {
+    if (source?.type === 'deliverable') return 'Follows from the file itself — every required item accepted, or not.';
+    if (source && (source.config as EvaluationConfig).method === 'verdict') {
+      return 'Named on each startup rather than earned from a score.';
+    }
+    return outcome.minScore === null
+      ? 'The fallback — everyone no other band caught.'
+      : `Earned from ${outcome.minScore} out of 100.`;
+  };
+
+  const lost = [...config.passOutcomeIds, ...config.waitOutcomeIds].filter(
+    (id) => !outcomes.some((o) => o.id === id),
+  );
+
   return (
     <>
       <div className="callout">
@@ -195,6 +220,19 @@ export function SelectionSetup({
           <strong>{source?.name ?? 'the evaluation'}</strong>.
         </div>
       </div>
+
+      {lost.length > 0 && (
+        <div className="callout warn">
+          <Icon name="alert" size={15} />
+          <div>
+            <strong>
+              {lost.length} status{lost.length === 1 ? '' : 'es'} this rule names {lost.length === 1 ? 'is' : 'are'} no
+              longer handed out.
+            </strong>{' '}
+            It now reads <strong>{source?.name ?? 'nothing'}</strong> — tick again below what moves on, or nobody will.
+          </div>
+        </div>
+      )}
 
       <div className="field">
         <label>What this selection produces</label>
@@ -258,6 +296,7 @@ export function SelectionSetup({
                 key={o.id}
                 outcome={o}
                 on={config.passOutcomeIds.includes(o.id)}
+                how={howGiven(o)}
                 onToggle={() => toggle('passOutcomeIds')(o.id)}
               />
             ))}
@@ -289,6 +328,7 @@ export function SelectionSetup({
                 key={o.id}
                 outcome={o}
                 on={config.waitOutcomeIds.includes(o.id)}
+                how={howGiven(o)}
                 /* Passing outranks waiting, so a status in both is shown as
                    taken rather than left to behave in whichever order the two
                    arrays happened to be read. */

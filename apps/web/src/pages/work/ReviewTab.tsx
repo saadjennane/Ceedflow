@@ -33,6 +33,14 @@ import { ScoreEditor } from '../builder/panels/shared';
 /* What the two endpoints return                                       */
 /* ------------------------------------------------------------------ */
 
+/** Le dossier qu'une étape juge, quand une brique Due diligence est en amont. */
+interface FileState {
+  complete: boolean;
+  accepted: number;
+  required: number;
+  rejected: number;
+}
+
 interface ScoringRow {
   candidate: Candidate;
   scores: (EvaluationScore & { normalised: number | null })[];
@@ -40,6 +48,7 @@ interface ScoringRow {
   outcomeId: string | null;
   proposedOutcomeId: string | null;
   overridden: boolean;
+  file: FileState | null;
 }
 
 interface ScoringGroup {
@@ -61,6 +70,8 @@ interface ScoringPayload {
   requireComment: boolean;
   outcomes: BlockOutcome[];
   scope: { blockId: string; name: string; assign: boolean } | null;
+  /** The Deliverables brick this step reads, when there is one upstream. */
+  fileFrom: { blockId: string; name: string } | null;
   groups: ScoringGroup[];
 }
 
@@ -85,7 +96,7 @@ interface DecisionPayload {
 
 /** One line of the merged table: what was measured, and what was decided. */
 /** The columns you can order the table by. */
-type SortKey = 'rank' | 'orgName' | 'score' | 'status' | 'decision';
+type SortKey = 'rank' | 'orgName' | 'score' | 'status' | 'decision' | 'file';
 
 interface Line {
   /**
@@ -253,6 +264,31 @@ function Progress({ section }: { section: { evaluators: PersonRef[]; lines: Line
   );
 }
 
+/**
+ * L'état du dossier, en face du mot qu'on va lui donner.
+ *
+ * Three readings and no more: in order, sent back, or still short — with the
+ * count, because « 7 of 9 accepted » is what tells somebody whether to wait a
+ * week or decide now.
+ */
+function FileCell({ file }: { file: FileState | null }) {
+  if (!file) return <span className="faint">—</span>;
+  return (
+    <span className="row" style={{ gap: 6 }}>
+      {file.complete ? (
+        <span className="badge ok">In order</span>
+      ) : file.rejected > 0 ? (
+        <span className="badge warn">Sent back</span>
+      ) : (
+        <span className="badge">Short</span>
+      )}
+      <span className="faint num" style={{ fontSize: 12 }}>
+        {file.accepted}/{file.required}
+      </span>
+    </span>
+  );
+}
+
 function Moment({
   evaluation,
   selection,
@@ -353,6 +389,13 @@ function Moment({
     if (key === 'rank') return l.rank;
     if (key === 'orgName') return l.candidate.orgName;
     if (key === 'status') return statusOf(l) || null;
+    /* Les dossiers en souffrance en premier quand on trie dessus : un dossier
+       renvoyé est ce qu'on va chercher sur cette colonne. */
+    if (key === 'file') {
+      const f = l.scoring?.file;
+      if (!f) return null;
+      return f.complete ? 2 : f.rejected > 0 ? 0 : 1;
+    }
     // Passed above held above refused, so sorting by the decision reads down
     // the funnel rather than alphabetically by whatever it is called.
     if (key === 'decision') {
@@ -402,8 +445,21 @@ function Moment({
      chose, and a number in front of them would claim something untrue. */
   const running = Boolean(scoring?.scope?.assign);
 
-  /** No panel means nobody applies the grid — that is a committee's to say. */
-  const noPanel = Boolean(evaluation) && (scoring?.groups.length ?? 0) === 0;
+  /**
+   * Personne ne note cette étape.
+   *
+   * Two different situations wear the same shape. A grid with nobody to apply
+   * it is waiting for a committee — that is a thing to fix. An internal review
+   * never had a panel and never will: CEED reads the file and gives it a word,
+   * and saying « nobody scores this » there would be reporting a fault where
+   * there is none.
+   */
+  const noPanel = Boolean(evaluation) && !scoring?.scope;
+  /* Une colonne par question réellement posée : une note sans grille ni jury
+     n'est pas une colonne vide, c'est une colonne qui ment. */
+  const showFile = Boolean(scoring?.fileFrom);
+  const showScore = Boolean(scoring) && (criteria.length > 0 || Boolean(scoring?.scope));
+  const byHand = noPanel && criteria.length === 0;
 
   /**
    * One table per sitting, each showing only the jury that sat on it. Pooling
@@ -734,13 +790,13 @@ function Moment({
 
       <div className="row wrap">
         <span className="badge num">{lines.length} candidates</span>
-        {scoring && (
+        {showScore && (
           <span className="badge">
             <span className="num">{lines.filter((l) => l.scoring?.consensus !== null && l.scoring).length}</span> scored
           </span>
         )}
         <div className="spacer" />
-        {scoring && sections.length > 0 && (
+        {showScore && sections.length > 0 && (
           <button className="btn sm" onClick={() => setExporting(true)} title="A spreadsheet, or one sheet per juror">
             <Icon name="file" size={13} /> Export
           </button>
@@ -748,15 +804,28 @@ function Moment({
         {announcing.button}
       </div>
 
-      {noPanel ? (
-        <div className="empty">
-          <h3>Nobody scores {evaluation!.name}</h3>
-          <p>
-            Who reviews is a committee&apos;s to say — an event with a date, or work spread over days. Add one in this
-            phase and its panels appear here.
-          </p>
+      {noPanel && lines.length > 0 && (
+        <div className={byHand ? 'callout' : 'callout warn'}>
+          <Icon name={byHand ? 'edit' : 'alert'} size={15} />
+          <div>
+            {byHand ? (
+              <>
+                <strong>These files are yours to judge.</strong> {evaluation!.name} has no panel, and does not need
+                one: read each file and give it its word below.{' '}
+                {scoring?.fileFrom && <>What they sent sits in <strong>{scoring.fileFrom.name}</strong>.</>}
+              </>
+            ) : (
+              <>
+                <strong>No committee applies this grid.</strong> Who reviews is a committee&apos;s to say — an event
+                with a date, or work spread over days. Add one in this phase and its panels appear here; until then the
+                status is yours to give, row by row.
+              </>
+            )}
+          </div>
         </div>
-      ) : !lines.length ? (
+      )}
+
+      {!lines.length ? (
         <div className="empty">
           <h3>Nobody has reached this step</h3>
           <p>Candidates arrive once they pass the selection before it.</p>
@@ -819,7 +888,7 @@ function Moment({
                 <thead>
                   {evaluation && selection && (
                     <tr>
-                      <th style={{ borderBottom: 0 }} colSpan={numbered ? 2 : 1} />
+                      <th style={{ borderBottom: 0 }} colSpan={(numbered ? 2 : 1) + (showFile ? 1 : 0)} />
                       <th style={{ borderBottom: 0, textAlign: 'center', color: 'var(--blue)' }}>
                         {selection.name}
                       </th>
@@ -827,7 +896,7 @@ function Moment({
                           score, the status it earned, the way in to the marks,
                           and the marks themselves. */}
                       <th
-                        colSpan={section.evaluators.length + 3}
+                        colSpan={section.evaluators.length + (showScore ? 3 : 2)}
                         style={{
                           borderBottom: 0,
                           textAlign: 'center',
@@ -864,13 +933,18 @@ function Moment({
                       </th>
                     )}
                     {sortable('orgName', 'Candidate')}
+                    {/* Ce qu'on juge, avant le jugement : « favorable » donné
+                        sans savoir qu'il manque trois pièces est un avis sur
+                        rien. Il n'appartient ni à l'évaluation ni à la
+                        sélection — c'est ce qu'on lit avant les deux. */}
+                    {showFile && sortable('file', 'File')}
                     {/* The decision first, then what it was made on. Reading a
                         row means starting at the verdict and going right for
                         the reasons — which is the order the work happens in,
                         and it spares a scroll past twenty jurors to reach the
                         one control you came for. */}
                     {selection && sortable('decision', 'Decision')}
-                    {scoring &&
+                    {showScore &&
                       sortable('score', voting ? 'Votes' : 'Score', 'right', {
                         borderLeft: selection ? '1px solid var(--line-strong)' : undefined,
                       })}
@@ -910,6 +984,12 @@ function Moment({
                             )}
                           </td>
 
+                          {showFile && (
+                            <td>
+                              <FileCell file={line.scoring?.file ?? null} />
+                            </td>
+                          )}
+
                           {selection && (
                             <td style={{ width: 280 }}>
                               {line.decision ? (
@@ -946,7 +1026,7 @@ function Moment({
                             </td>
                           )}
 
-                          {scoring && (
+                          {showScore && (
                             <td
                               className="score"
                               style={{

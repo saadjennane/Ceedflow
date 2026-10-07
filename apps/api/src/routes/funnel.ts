@@ -9,6 +9,7 @@ import {
   setOutcomeInput,
   submitApplicationInput,
   formPages,
+  orderedBlocks,
   profileOf,
   proposedOutcome,
   type ApplicationConfig,
@@ -16,6 +17,7 @@ import {
   type EditionStatus,
   type EvaluationConfig,
   type SourcingChannel,
+  type TrackWithPhases,
 } from '@ceed/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -63,6 +65,36 @@ const scoreInput = z.object({
   comment: z.string().optional(),
   submit: z.boolean().optional(),
 });
+
+/**
+ * Le dossier que cette étape juge, quand elle en juge un.
+ *
+ * An Evaluation placed after a Deliverables brick exists to say whether the
+ * documents hold up — « dossier complet » is a count, « favorable » is a
+ * judgement, and the two are different questions. Somebody answering the
+ * second one needs the first in front of them: a status given without knowing
+ * that three pieces are still missing is a status given about nothing.
+ */
+async function fileAhead(track: TrackWithPhases, blockId: string) {
+  const ordered = orderedBlocks(track);
+  const index = ordered.findIndex((b) => b.id === blockId);
+  const brick = ordered
+    .slice(0, index === -1 ? undefined : index)
+    .filter((b) => b.type === 'deliverable')
+    .pop();
+  if (!brick) return null;
+  const view = await deliverableView(brick.id);
+  if (!view) return null;
+  return {
+    from: { blockId: brick.id, name: brick.name },
+    byCandidate: new Map(
+      view.rows.map((r) => [
+        r.candidate.id,
+        { complete: r.complete, accepted: r.accepted, required: r.required, rejected: r.rejected },
+      ]),
+    ),
+  };
+}
 
 /** Candidates reaching a block, resolved through its track. */
 async function intakeForBlock(blockId: string) {
@@ -462,6 +494,7 @@ export async function funnelRoutes(app: FastifyInstance) {
     const outcomes = outcomesOf(block);
     const grouped = await scoresByCandidate(block);
     const statuses = await outcomesByCandidate(block);
+    const file = await fileAhead(found.track, id);
 
     const row = (candidate: Candidate) => {
       const entry = grouped.get(candidate.id);
@@ -474,6 +507,7 @@ export async function funnelRoutes(app: FastifyInstance) {
         outcomeId: status?.outcomeId ?? null,
         proposedOutcomeId: proposedOutcome(entry?.consensus ?? null, outcomes),
         overridden: status?.overridden ?? false,
+        file: file?.byCandidate.get(candidate.id) ?? null,
       };
     };
 
@@ -491,6 +525,7 @@ export async function funnelRoutes(app: FastifyInstance) {
         voteRule: config.voteRule,
         requireComment: config.requireComment,
         outcomes,
+        fileFrom: file?.from ?? null,
         // Whether the sittings were given startups by hand. When they were,
         // the order they come back in is the running order of the day, which
         // is a column the screen can offer; without it, the rows are simply
@@ -513,7 +548,11 @@ export async function funnelRoutes(app: FastifyInstance) {
       };
     }
 
-    // Who reviews is a committee's to say. Without one, nobody scores this grid.
+    /* Personne ne note — ce qui n'est pas la même chose que personne ne décide.
+       A committee says who applies a grid. An internal review has no panel and
+       never will: CEED reads the file and gives it a word. Returning no rows
+       at all left that step with nothing on screen, so the only way to give
+       the word was to open each candidacy one by one from another tab. */
     return {
       block,
       criteria: config.criteria,
@@ -523,8 +562,17 @@ export async function funnelRoutes(app: FastifyInstance) {
       voteRule: config.voteRule,
       requireComment: config.requireComment,
       outcomes,
+      fileFrom: file?.from ?? null,
       scope: null,
-      groups: [],
+      groups: [
+        {
+          sessionId: null,
+          name: '',
+          heldOn: null,
+          evaluators: [],
+          rows: found.intake.filter((c) => c.status !== 'Withdrawn').map(row),
+        },
+      ],
     };
   });
 
