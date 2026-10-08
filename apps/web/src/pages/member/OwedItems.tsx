@@ -2,6 +2,7 @@ import { itemComplete, itemUnfinished, longDate, type DeliverableConfig } from '
 import { useEffect, useRef, useState } from 'react';
 import { useLang } from '../../lib/lang';
 import { api } from '../../lib/api';
+import { forget, remember, stranded } from './drafts';
 import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
 import { DeliverableItemInput } from '../../ui/DeliverableItemInput';
@@ -65,9 +66,28 @@ export function OwedItems({
 
   if (!owed.data?.length) return null;
 
-  const save = async (blockId: string, itemId: string, value: unknown) => {
+  const save = async (blockId: string, itemId: string, value: unknown, leaving = false) => {
+    /* En partant, on n'attend plus rien et on ne redessine rien : la page est
+       en train de disparaître. `keepalive` demande au navigateur de laisser
+       partir la requête malgré ça — c'est fait pour ce moment-là, et c'est la
+       seule façon qu'une réponse tapée à la dernière seconde arrive. */
+    if (leaving) {
+      try {
+        await fetch(`/api/me/deliverables/${candidateId}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ blockId, itemId, value }),
+          keepalive: true,
+        });
+        forget(candidateId, blockId, itemId);
+      } catch {
+        /* Gardé dans le navigateur : on le remettra dans le champ au retour. */
+      }
+      return;
+    }
     try {
       const next = await api.post<Owed[]>(`/api/me/deliverables/${candidateId}`, { blockId, itemId, value });
+      forget(candidateId, blockId, itemId);
       owed.set(next);
     } catch (err) {
       toast((err as Error).message, true);
@@ -83,7 +103,8 @@ export function OwedItems({
           orgName={orgName}
           readOnly={readOnly}
           startOpen={startOpen}
-          onSave={(itemId, value) => save(ask.block.id, itemId, value)}
+          candidateId={candidateId}
+          onSave={(itemId, value, leaving) => save(ask.block.id, itemId, value, leaving)}
         />
       ))}
     </>
@@ -102,12 +123,15 @@ export function OwedList({
   ask,
   orgName,
   onSave,
+  candidateId,
   startOpen = false,
   readOnly = false,
 }: {
   ask: Owed;
   orgName: string;
-  onSave: (itemId: string, value: unknown) => void | Promise<void>;
+  onSave: (itemId: string, value: unknown, leaving?: boolean) => void | Promise<void>;
+  /** Ce qui nomme les brouillons gardés dans ce navigateur. Absent sur l'aperçu. */
+  candidateId?: string;
   /** Open from the start, for the preview that exists to show the form. */
   startOpen?: boolean;
   /** Looked at rather than filled in: CEED reading somebody else's page. */
@@ -128,20 +152,57 @@ export function OwedList({
    * Le texte vit donc ici pendant qu'on écrit, et ne redescend du serveur que
    * pour ce à quoi on n'a pas touché.
    */
-  const [typed, setTyped] = useState<Record<string, unknown>>({});
+  const [typed, setTyped] = useState<Record<string, unknown>>(() =>
+    candidateId && !readOnly ? stranded(candidateId, ask.block.id) : {},
+  );
+  /* Dit une fois, et seulement s'il y avait vraiment quelque chose à rattraper :
+     « c'est de retour » sur une page où rien n'avait été perdu inquiéterait
+     pour rien. */
+  const [recovered] = useState(() => Object.keys(candidateId && !readOnly ? stranded(candidateId, ask.block.id) : {}));
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   /** Les envois promis et pas encore partis, pour les lâcher en quittant. */
-  const pending = useRef<Record<string, () => void>>({});
+  const pending = useRef<Record<string, (leaving?: boolean) => void>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
 
   /* Ce qui est en attente part quand même si la page se ferme : une réponse
      écrite puis abandonnée en fermant l'onglet serait pire que pas de champ. */
-  useEffect(
-    () => () => {
-      for (const flush of Object.values(pending.current)) flush();
-    },
-    [],
-  );
+  /**
+   * Partir, c'est encore écrire.
+   *
+   * `visibilitychange` attrape l'onglet qu'on quitte et le téléphone qu'on
+   * verrouille ; `pagehide` attrape la fermeture et la navigation, là où
+   * `beforeunload` n'est jamais appelé sur un mobile. Les deux peuvent tomber
+   * l'un après l'autre : ce qui est déjà parti ne repart pas.
+   */
+  /* Repartir tout seul : ce qui a été remis dans le champ doit finir par
+     arriver, sans demander à personne d'y retoucher. */
+  useEffect(() => {
+    if (!candidateId) return;
+    for (const [itemId, value] of Object.entries(stranded(candidateId, ask.block.id))) {
+      void onSave(itemId, value);
+    }
+    // Une seule fois, à l'ouverture de la liste.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const leave = () => {
+      for (const [itemId, flush] of Object.entries(pending.current)) {
+        clearTimeout(timers.current[itemId]);
+        flush(true);
+      }
+    };
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') leave();
+    };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', leave);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', leave);
+      leave();
+    };
+  }, []);
   const need = ask.config.items.filter((i) => i.required);
   const mineOf = (id: string) => ask.returns.find((r) => r.itemId === id);
   /* What they have sent, over what is asked. That is the only number they can
@@ -174,21 +235,25 @@ export function OwedList({
    */
   const write = (itemId: string, value: unknown) => {
     setTyped((x) => ({ ...x, [itemId]: value }));
+    /* Dans le navigateur à la frappe, avant toute requête : c'est la copie qui
+       survit à une ligne qui tombe, et elle s'efface dès que le serveur a
+       répondu. Ce qui reste est donc exactement ce qui n'est jamais arrivé. */
+    if (candidateId) remember(candidateId, ask.block.id, itemId, value);
     clearTimeout(timers.current[itemId]);
-    const send = async () => {
+    const send = async (leaving = false) => {
       delete pending.current[itemId];
       /* Tenu jusqu'à ce que le serveur l'ait, pas jusqu'à ce qu'on le lui
          envoie : entre les deux il y a la seconde où l'on ferme l'ordinateur. */
       setSaving((x) => ({ ...x, [itemId]: true }));
       try {
-        await onSave(itemId, value);
+        await onSave(itemId, value, leaving);
       } finally {
         setSaving((x) => ({ ...x, [itemId]: false }));
       }
     };
     if (!holds(value)) return void send();
     setSaving((x) => ({ ...x, [itemId]: true }));
-    pending.current[itemId] = () => void send();
+    pending.current[itemId] = (leaving) => void send(leaving);
     timers.current[itemId] = setTimeout(() => void send(), PAUSE);
   };
 
@@ -280,6 +345,15 @@ export function OwedList({
         <div className="callout warn">
           <Icon name="alert" size={15} />
           <div>{t('owed.oneBack')}</div>
+        </div>
+      )}
+
+      {/* Ce qui n'était jamais parti, remis dans le champ. Dit, parce qu'une
+          réponse qui réapparaît sans explication fait douter de ce qu'on lit. */}
+      {recovered.length > 0 && (
+        <div className="callout">
+          <Icon name="edit" size={15} />
+          <div>{t('owed.back.unsent')}</div>
         </div>
       )}
 

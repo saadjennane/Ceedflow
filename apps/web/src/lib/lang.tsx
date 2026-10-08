@@ -80,6 +80,10 @@ const WORDS = {
     en: 'Each answer is kept as you give it — there is nothing to send at the end.',
   },
   'owed.saving': { fr: 'Enregistrement…', en: 'Saving…' },
+  'owed.back.unsent': {
+    fr: 'Une réponse tapée ici n’était pas partie — elle est de retour dans le champ, et elle s’enregistre.',
+    en: 'Something typed here never left — it is back in the field, and it is being saved.',
+  },
   'owed.accepted': { fr: 'Reçu', en: 'Accepted' },
   'owed.waiting': { fr: 'Envoyé le', en: 'Sent' },
   'owed.unread': { fr: '— en attente de lecture', en: '— waiting to be read' },
