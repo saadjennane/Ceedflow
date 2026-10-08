@@ -79,6 +79,7 @@ const WORDS = {
     fr: 'Chaque réponse est conservée au fur et à mesure — il n’y a rien à envoyer à la fin.',
     en: 'Each answer is kept as you give it — there is nothing to send at the end.',
   },
+  'owed.saving': { fr: 'Enregistrement…', en: 'Saving…' },
   'owed.accepted': { fr: 'Reçu', en: 'Accepted' },
   'owed.waiting': { fr: 'Envoyé le', en: 'Sent' },
   'owed.unread': { fr: '— en attente de lecture', en: '— waiting to be read' },

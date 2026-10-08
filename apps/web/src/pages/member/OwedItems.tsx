@@ -1,5 +1,5 @@
 import { itemComplete, itemUnfinished, longDate, type DeliverableConfig } from '@ceed/shared';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLang } from '../../lib/lang';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
@@ -7,6 +7,18 @@ import { useAsync } from '../../lib/useAsync';
 import { DeliverableItemInput } from '../../ui/DeliverableItemInput';
 import { Icon } from '../../ui/Icon';
 import { useToast } from '../../ui/Overlays';
+
+/**
+ * Le temps qu'on laisse à quelqu'un de finir son mot.
+ *
+ * Assez long pour qu'une phrase ne parte pas en trente requêtes, assez court
+ * pour que fermer l'onglet juste après avoir tapé ne perde rien — et de toute
+ * façon ce qui est en attente part aussi quand la page se ferme.
+ */
+const PAUSE = 700;
+
+/** Ce qui s'écrit lettre à lettre, et mérite donc d'attendre la fin du mot. */
+const holds = (value: unknown): boolean => typeof value === 'string';
 
 export interface Owed {
   block: { id: string; name: string };
@@ -71,7 +83,7 @@ export function OwedItems({
           orgName={orgName}
           readOnly={readOnly}
           startOpen={startOpen}
-          onSave={(itemId, value) => void save(ask.block.id, itemId, value)}
+          onSave={(itemId, value) => save(ask.block.id, itemId, value)}
         />
       ))}
     </>
@@ -95,7 +107,7 @@ export function OwedList({
 }: {
   ask: Owed;
   orgName: string;
-  onSave: (itemId: string, value: unknown) => void;
+  onSave: (itemId: string, value: unknown) => void | Promise<void>;
   /** Open from the start, for the preview that exists to show the form. */
   startOpen?: boolean;
   /** Looked at rather than filled in: CEED reading somebody else's page. */
@@ -103,6 +115,33 @@ export function OwedList({
 }) {
   const [showing, setShowing] = useState(startOpen);
   const { t } = useLang();
+  /**
+   * Ce qu'on vient de taper, qui gagne sur ce que le serveur renvoie.
+   *
+   * Chaque frappe partait en requête, et la réponse — qui porte la valeur
+   * telle qu'elle était au départ de *cette* requête — réécrivait le champ.
+   * Sur une connexion lente, les lettres disparaissaient à mesure et le
+   * curseur sautait : « on dirait que le champ est en lecture seule ». Une
+   * startup y a laissé sa dénomination sociale, pendant que d'autres, sur une
+   * meilleure ligne, n'ont rien vu.
+   *
+   * Le texte vit donc ici pendant qu'on écrit, et ne redescend du serveur que
+   * pour ce à quoi on n'a pas touché.
+   */
+  const [typed, setTyped] = useState<Record<string, unknown>>({});
+  const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  /** Les envois promis et pas encore partis, pour les lâcher en quittant. */
+  const pending = useRef<Record<string, () => void>>({});
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+
+  /* Ce qui est en attente part quand même si la page se ferme : une réponse
+     écrite puis abandonnée en fermant l'onglet serait pire que pas de champ. */
+  useEffect(
+    () => () => {
+      for (const flush of Object.values(pending.current)) flush();
+    },
+    [],
+  );
   const need = ask.config.items.filter((i) => i.required);
   const mineOf = (id: string) => ask.returns.find((r) => r.itemId === id);
   /* What they have sent, over what is asked. That is the only number they can
@@ -125,6 +164,33 @@ export function OwedList({
      lists would otherwise be a page nobody reads to the end. */
   const left = need.length - sent;
   const closing = ask.config.closesAt ? longDate(ask.config.closesAt) : '';
+
+  /**
+   * Écrire : tout de suite à l'écran, après une pause sur le serveur.
+   *
+   * Un fichier ou un choix n'a pas de pause à attendre — il arrive d'un coup
+   * et part d'un coup. Du texte s'écrit lettre à lettre, et chaque lettre
+   * n'est pas une réponse : c'est le moment où l'on s'arrête qui en est une.
+   */
+  const write = (itemId: string, value: unknown) => {
+    setTyped((x) => ({ ...x, [itemId]: value }));
+    clearTimeout(timers.current[itemId]);
+    const send = async () => {
+      delete pending.current[itemId];
+      /* Tenu jusqu'à ce que le serveur l'ait, pas jusqu'à ce qu'on le lui
+         envoie : entre les deux il y a la seconde où l'on ferme l'ordinateur. */
+      setSaving((x) => ({ ...x, [itemId]: true }));
+      try {
+        await onSave(itemId, value);
+      } finally {
+        setSaving((x) => ({ ...x, [itemId]: false }));
+      }
+    };
+    if (!holds(value)) return void send();
+    setSaving((x) => ({ ...x, [itemId]: true }));
+    pending.current[itemId] = () => void send();
+    timers.current[itemId] = setTimeout(() => void send(), PAUSE);
+  };
 
   return (
     <section className="card card-pad stack" style={{ gap: 12 }}>
@@ -224,10 +290,15 @@ export function OwedList({
             <div key={item.id}>
               <DeliverableItemInput
                 item={item}
-                value={mine?.value ?? null}
+                value={item.id in typed ? typed[item.id] : (mine?.value ?? null)}
                 readOnly={readOnly || !ask.open}
-                onChange={(v) => onSave(item.id, v)}
+                onChange={(v) => write(item.id, v)}
               />
+              {/* Dit par pièce : avec une écriture différée, le silence se
+                  lirait comme une perte. */}
+              {saving[item.id] && (
+                <div className="faint" style={{ fontSize: 12, marginTop: 3 }}>{t('owed.saving')}</div>
+              )}
               {/* Said back, because the thing people want to know after sending
                   a document is what became of it. */}
               {mine?.state === 'rejected' ? (

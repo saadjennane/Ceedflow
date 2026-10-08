@@ -192,6 +192,18 @@ describe('a due diligence as a step of the funnel', { skip: skipWithoutServer },
     assert.equal(source?.id, due.id, 'the due diligence, not the evaluation before it');
   });
 
+  it('takes a plain sentence as an answer, not only a file', async () => {
+    /* La colonne est du jsonb et une réponse texte est une chaîne nue :
+       « DAWI SARL AU » n'est pas du JSON. Le pilote de production l'encodait,
+       celui du portable non — donc le cas le plus courant du produit tombait
+       en développement sans qu'aucun test ne le dise. */
+    const { due, ready } = await setUp();
+    await repo.saveReturn(due.id, ready.id, 'cac', 'DAWI SARL AU');
+    const view = await deliverableView(due.id);
+    const mine = view!.rows.find((r) => r.candidate.id === ready.id);
+    assert.equal(mine?.returns.find((r) => r.itemId === 'cac')?.value, 'DAWI SARL AU');
+  });
+
   it('hands down complete and incomplete, by name', async () => {
     const { due } = await setUp();
     const block = (await repo.getBlock(due.id))!;

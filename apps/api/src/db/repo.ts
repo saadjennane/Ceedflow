@@ -808,9 +808,17 @@ export async function saveReturn(
     ]);
     return;
   }
+  /* Une réponse texte est une chaîne nue, et la colonne est du jsonb :
+     « DAWI SARL AU » n'est pas du JSON valide. Les deux pilotes ne s'accordent
+     pas là-dessus — celui de production l'encode, celui qui tourne sur un
+     portable le passe tel quel et la base refuse — si bien que le cas le plus
+     courant du produit tombait en développement, sans qu'aucun test ne le
+     dise. Alors on ne demande à aucun des deux de deviner : le texte part en
+     texte, et c'est la base qui en fait du JSON. */
+  const text = typeof value === 'string';
   await conn.query(
     `insert into deliverable_returns (block_id, candidate_id, item_id, value, returned_at, updated_at)
-     values ($1, $2, $3, $4, now(), now())
+     values ($1, $2, $3, ${text ? 'to_jsonb($4::text)' : '$4'}, now(), now())
      on conflict (block_id, candidate_id, item_id) do update
        set value = excluded.value,
            -- The first handing-in is the date that matters; a correction later
