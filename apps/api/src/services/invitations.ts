@@ -132,13 +132,21 @@ export async function accessFor(
   const password = suggestPassword();
   if (account) await reissueProvisionalPassword(account.id, password);
   else await createAccount({ email, password, recordId, mustChangePassword: true });
+
+  /* L'adresse qui ouvre la porte, pas celle de la fiche.
+     Une candidature déposée en septembre ouvre un compte sur l'adresse d'alors ;
+     la fiche, elle, change — un contact qui passe à l'adresse de sa société,
+     par exemple. La lettre nommait l'adresse de la fiche et le mot de passe du
+     compte : deux moitiés qui ne vont pas ensemble, et « mot de passe ou login
+     erroné » pour quelqu'un qui tape exactement ce qu'on lui a écrit. */
+  const signsInWith = (await accountOfRecord(recordId))?.email ?? email;
   // Marked invited here too: being told how to get in is being invited, and a
   // screen that said "never invited" about somebody holding their password
   // would be saying something untrue.
   const opened = account ?? (await accountOfRecord(recordId));
   if (opened) await markInvited(opened.id);
 
-  return accessBlock(email, password, template || ACCESS_DEFAULT);
+  return accessBlock(signsInWith, password, template || ACCESS_DEFAULT);
 }
 
 /**

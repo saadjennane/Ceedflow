@@ -226,6 +226,42 @@ export async function reissueProvisionalPassword(accountId: string, password: st
 }
 
 /**
+ * Quand l'adresse d'une fiche change, l'identifiant suit — tant qu'il n'a servi
+ * à personne.
+ *
+ * Un compte s'ouvre sur l'adresse du jour où la candidature est déposée. La
+ * fiche, elle, bouge : un contact passe à l'adresse de sa société, CEED
+ * corrige une faute de frappe. Le compte restait derrière, sans que rien ne le
+ * dise — et la lettre suivante donnait l'adresse de la fiche comme identifiant
+ * avec le mot de passe du compte. Deux moitiés qui ne vont pas ensemble.
+ *
+ * Un seul cas fait bouger quelque chose : le compte n'a jamais été invité,
+ * donc personne ne tient de lettre nommant l'ancienne adresse. Dès qu'une
+ * lettre est partie — a fortiori si elle s'en est servie — l'identifiant
+ * reste, et l'écran de la fiche dit que les deux adresses diffèrent. Déplacer
+ * une porte dont quelqu'un a déjà la clé, c'est la lui fermer.
+ */
+export async function followRecordEmail(
+  recordId: string,
+  email: string,
+): Promise<'moved' | 'kept' | 'taken' | 'none'> {
+  const wanted = normalise(email);
+  if (!wanted) return 'none';
+  const account = await accountOfRecord(recordId);
+  if (!account) return 'none';
+  if (normalise(account.email) === wanted) return 'none';
+  if (account.state !== 'unclaimed' || account.invitedAt) return 'kept';
+
+  /* Déjà pris par quelqu'un d'autre : deux personnes ne peuvent pas se
+     connecter avec la même adresse, et écraser serait voler une porte. */
+  const other = await findAccount(wanted);
+  if (other && other.id !== account.id) return 'taken';
+
+  await (await db()).query('update accounts set email = $2 where id = $1', [account.id, wanted]);
+  return 'moved';
+}
+
+/**
  * Taking an account away. The directory record it belonged to is untouched —
  * the person is still in the directory, they simply have no way in any more.
  * Their sessions go with it.

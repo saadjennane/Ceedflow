@@ -24,6 +24,7 @@ import {
   closeAccount,
   createAccount,
   findAccount,
+  followRecordEmail,
   reissueProvisionalPassword,
   setAccountDisabled,
 } from '../services/auth.js';
@@ -107,7 +108,18 @@ export async function directoryRoutes(app: FastifyInstance) {
     if (current.kind === 'person' && (patch.firstName !== undefined || patch.lastName !== undefined)) {
       patch.name = fullName(patch.firstName ?? current.firstName, patch.lastName ?? current.lastName);
     }
-    return dir.updateRecord(id, patch);
+    const saved = await dir.updateRecord(id, patch);
+    /* L'identifiant suit l'adresse tant que personne ne tient de lettre qui
+       nomme l'ancienne : sans ça, la fiche dit une adresse, le compte en
+       attend une autre, et la lettre d'accès donne la première avec le mot de
+       passe du second. Rendu à l'écran, parce qu'un identifiant qui change
+       sans que rien ne le dise est la même panne dans l'autre sens. */
+    const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+    const login =
+      patch.email !== undefined && !same(patch.email, current.email)
+        ? await followRecordEmail(id, patch.email)
+        : 'none';
+    return { ...saved, login };
   });
 
   /**

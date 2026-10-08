@@ -66,9 +66,26 @@ export function RecordModal({
          up listing somebody under a name their own page does not use. */
       const body = isOrg ? draft : { ...draft, name: fullName(draft.firstName, draft.lastName) };
       const saved = editing
-        ? await api.patch<DirectoryRecord>(`/api/records/${record!.id}`, body)
+        ? await api.patch<DirectoryRecord & { login?: 'moved' | 'kept' | 'taken' | 'none' }>(
+            `/api/records/${record!.id}`,
+            body,
+          )
         : await api.post<DirectoryRecord>('/api/records', { kind, origin: 'manual', ...body });
-      toast(editing ? 'Saved.' : `${saved.name} added to the directory.`);
+      /* Ce que l'adresse a fait au compte, dit sur le coup : « enregistré »
+         tout court laisserait quelqu'un croire que la connexion a suivi, ou
+         qu'elle n'a pas suivi, selon ce qu'il espérait. */
+      const login = 'login' in saved ? saved.login : 'none';
+      toast(
+        !editing
+          ? `${saved.name} added to the directory.`
+          : login === 'moved'
+            ? 'Saved — they now sign in with this address too.'
+            : login === 'kept'
+              ? 'Saved. Their sign-in address is unchanged: they already have it. Send the access again to move it.'
+              : login === 'taken'
+                ? 'Saved, but another account already signs in with this address — theirs is unchanged.'
+                : 'Saved.',
+      );
       onSaved(saved);
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrors(err.fields);

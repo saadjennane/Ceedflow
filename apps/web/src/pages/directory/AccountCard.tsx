@@ -107,6 +107,20 @@ export function AccountCard({
         ) : (
           <>
             <Line label="Signs in with" value={account.email} />
+            {/* Dit, parce que c'est invisible et que ça coûte une connexion.
+                Tant que le mot de passe est provisoire, l'identifiant suit
+                l'adresse de la fiche tout seul ; une fois qu'elle s'en est
+                servie, on ne la déplace plus sous elle — alors on le dit. */}
+            {record.email.trim() && account.email.trim().toLowerCase() !== record.email.trim().toLowerCase() && (
+              <div className="callout warn" style={{ margin: '2px 0' }}>
+                <Icon name="alert" size={15} />
+                <div>
+                  <strong>Not the address on this record.</strong> They sign in with{' '}
+                  <strong>{account.email}</strong>, and the record says <strong>{record.email}</strong> — which is where
+                  letters go. Whoever writes to them names the wrong one half the time.
+                </div>
+              </div>
+            )}
             <Line label="Opened" value={formatDate(account.createdAt)} />
             {account.invitedAt && <Line label="Invited" value={formatDate(account.invitedAt)} />}
 
