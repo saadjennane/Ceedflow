@@ -8,6 +8,8 @@ import {
   editionTakesInput,
   setOutcomeInput,
   submitApplicationInput,
+  contactProblem,
+  CONTACT_SAYS,
   formPages,
   orderedBlocks,
   profileOf,
@@ -393,6 +395,13 @@ export async function funnelRoutes(app: FastifyInstance) {
       const value = input.answers[field.id];
       const empty = value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length);
       if (empty) missing[`answers.${field.id}`] = 'This answer is required.';
+    }
+    /* Et ce qui est là mais ne peut servir à rien : une adresse fautive sur une
+       candidature, c'est l'accusé de réception qui ne part pas, et personne ne
+       s'en aperçoit avant le jour où elle comptait. */
+    for (const field of config.fields) {
+      const problem = contactProblem(field.type, input.answers[field.id]);
+      if (problem) missing[`answers.${field.id}`] = CONTACT_SAYS[problem];
     }
     if (Object.keys(missing).length) throw new HttpError(422, 'Some answers are missing.', missing);
 

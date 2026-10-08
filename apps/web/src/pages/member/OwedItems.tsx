@@ -1,4 +1,11 @@
-import { itemComplete, itemUnfinished, longDate, type DeliverableConfig } from '@ceed/shared';
+import {
+  contactProblemsIn,
+  itemComplete,
+  itemUnfinished,
+  longDate,
+  type DeliverableConfig,
+  type DeliverableItem,
+} from '@ceed/shared';
 import { useEffect, useRef, useState } from 'react';
 import { useLang } from '../../lib/lang';
 import { api } from '../../lib/api';
@@ -233,13 +240,22 @@ export function OwedList({
    * et part d'un coup. Du texte s'écrit lettre à lettre, et chaque lettre
    * n'est pas une réponse : c'est le moment où l'on s'arrête qui en est une.
    */
-  const write = (itemId: string, value: unknown) => {
+  const write = (item: DeliverableItem, value: unknown) => {
+    const itemId = item.id;
     setTyped((x) => ({ ...x, [itemId]: value }));
     /* Dans le navigateur à la frappe, avant toute requête : c'est la copie qui
        survit à une ligne qui tombe, et elle s'efface dès que le serveur a
        répondu. Ce qui reste est donc exactement ce qui n'est jamais arrivé. */
     if (candidateId) remember(candidateId, ask.block.id, itemId, value);
     clearTimeout(timers.current[itemId]);
+    /* Une adresse à moitié tapée est fautive le temps de la taper : l'envoyer
+       ferait un refus rouge à chaque pause. Elle reste dans la page et dans le
+       navigateur, le champ dit ce qui cloche, et ça part dès que c'en est une. */
+    if (Object.keys(contactProblemsIn(item, value)).length) {
+      delete pending.current[itemId];
+      setSaving((x) => ({ ...x, [itemId]: false }));
+      return;
+    }
     const send = async (leaving = false) => {
       delete pending.current[itemId];
       /* Tenu jusqu'à ce que le serveur l'ait, pas jusqu'à ce qu'on le lui
@@ -366,7 +382,7 @@ export function OwedList({
                 item={item}
                 value={item.id in typed ? typed[item.id] : (mine?.value ?? null)}
                 readOnly={readOnly || !ask.open}
-                onChange={(v) => write(item.id, v)}
+                onChange={(v) => write(item, v)}
               />
               {/* Dit par pièce : avec une écriture différée, le silence se
                   lirait comme une perte. */}

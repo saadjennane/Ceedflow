@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { contactProblem, type ContactProblem } from './contact.js';
 
 /**
  * Block types. Only the five recruitment-and-selection types are implemented;
@@ -1188,11 +1189,40 @@ export function entryFilled(item: DeliverableItem, entry: unknown): boolean {
 }
 
 export function entryComplete(item: DeliverableItem, entry: unknown): boolean {
-  if (item.kind !== 'group') return filled(entry);
+  /* Une adresse fautive n'est pas une adresse : la compter comme remplie
+     ferait dire « 9/9 » à un dossier que personne ne pourra joindre. */
+  const given = (type: string, value: unknown) => filled(value) && !contactProblem(type, value);
+  if (item.kind !== 'group') return given(item.type, entry);
   const values = (entry ?? {}) as Record<string, unknown>;
   const need = item.fields.filter((f) => f.required);
   // A group with nothing marked required is complete once anything is in it.
-  return need.length ? need.every((f) => filled(values[f.id])) : item.fields.some((f) => filled(values[f.id]));
+  return need.length
+    ? need.every((f) => given(f.type, values[f.id]))
+    : item.fields.some((f) => given(f.type, values[f.id]));
+}
+
+/**
+ * Ce qui cloche dans une réponse, champ par champ, pour le dire au bon endroit.
+ *
+ * Rendu par identifiant de champ plutôt qu'en une phrase : sur un groupe
+ * répété — trois associés, trois adresses — « une adresse est fautive » laisse
+ * chercher laquelle.
+ */
+export function contactProblemsIn(item: DeliverableItem, value: unknown): Record<string, ContactProblem> {
+  const out: Record<string, ContactProblem> = {};
+  for (const entry of itemEntries(item, value)) {
+    if (item.kind !== 'group') {
+      const problem = contactProblem(item.type, entry);
+      if (problem) out[item.id] = problem;
+      continue;
+    }
+    const values = (entry ?? {}) as Record<string, unknown>;
+    for (const field of item.fields) {
+      const problem = contactProblem(field.type, values[field.id]);
+      if (problem) out[field.id] = problem;
+    }
+  }
+  return out;
 }
 
 /** The entries actually present — empty ones are ignored, never counted. */

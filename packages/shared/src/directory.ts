@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { emailValue, phoneValue } from './contact.js';
 import { ORG_STAGES } from './profile.js';
 
 /**
@@ -233,8 +234,8 @@ export const createRecordInput = z.object({
   foundedYear: z.number().nullable().default(null),
   teamSize: z.number().nullable().default(null),
   linkedin: z.string().default(''),
-  email: z.string().default(''),
-  phone: z.string().default(''),
+  email: emailValue(),
+  phone: phoneValue(),
   city: z.string().default(''),
   country: z.string().default('Morocco'),
   website: z.string().default(''),
@@ -276,8 +277,8 @@ export const affiliationInput = z.object({
  */
 export const teamMemberInput = z.object({
   name: z.string().min(1, 'Who are you adding?'),
-  email: z.string().email('Enter a valid email address.').or(z.literal('')).default(''),
-  phone: z.string().default(''),
+  email: emailValue(),
+  phone: phoneValue(),
   /** Their title on the page. */
   role: z.string().default(''),
   access: z.enum(ORG_ACCESS).default('member'),
@@ -433,7 +434,7 @@ export const changePasswordInput = z
 export const profileInput = z.object({
   firstName: z.string().min(1, 'A first name is required.'),
   lastName: z.string().min(1, 'A last name is required.'),
-  phone: z.string().default(''),
+  phone: phoneValue(),
   city: z.string().default(''),
   country: z.string().default(''),
   bio: z.string().default(''),
@@ -443,8 +444,8 @@ export const profileInput = z.object({
 export const myOrgInput = z.object({
   name: z.string().min(1, 'Tell us the name of the organisation.'),
   roles: z.array(z.string()).default(['Startup']),
-  email: z.string().default(''),
-  phone: z.string().default(''),
+  email: emailValue(),
+  phone: phoneValue(),
   city: z.string().default(''),
   country: z.string().default('Morocco'),
   website: z.string().default(''),

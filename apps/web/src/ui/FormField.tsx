@@ -1,4 +1,4 @@
-import { MAX_UPLOAD_BYTES, type FormField } from '@ceed/shared';
+import { MAX_UPLOAD_BYTES, contactProblem, type FormField } from '@ceed/shared';
 import { useState } from 'react';
 import { useLang } from '../lib/lang';
 import { Icon } from './Icon';
@@ -34,6 +34,10 @@ export function FormFieldInput({
   readOnly?: boolean;
 }) {
   const { t } = useLang();
+  /* Dit en écrivant, pas à l'envoi : une adresse qu'on corrige est une adresse
+     qu'on a encore sous les yeux. Rien tant que le champ est vide — « non
+     renseigné » n'est pas une faute. */
+  const problem = readOnly ? '' : contactProblem(field.type, value);
 
   const label = (
     <label>
@@ -118,7 +122,11 @@ export function FormFieldInput({
         />
       )}
 
-      {error && <div style={{ color: 'var(--stop)', fontSize: 12 }}>{error}</div>}
+      {(error || problem) && (
+        <div style={{ color: 'var(--stop)', fontSize: 12 }}>
+          {error || t(problem === 'email' ? 'bad.email' : 'bad.phone')}
+        </div>
+      )}
     </div>
   );
 }

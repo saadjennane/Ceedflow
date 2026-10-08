@@ -3,6 +3,8 @@ import {
   canEditOrg,
   canManageTeam,
   changePasswordInput,
+  contactProblemsIn,
+  CONTACT_SAYS,
   fullName,
   orderedBlocks,
   loginInput,
@@ -418,6 +420,18 @@ export async function authRoutes(app: FastifyInstance) {
     const block = await repo.getBlock(input.blockId);
     if (!block || blockStatus(block) !== 'live') {
       throw new HttpError(403, 'That list is not open. Ask the team if you still need to send something.');
+    }
+
+    /* Une adresse ou un numéro fautif est refusé ici aussi : l'écran le dit en
+       écrivant, mais c'est l'API qui garde le fichier, et une règle qui ne vit
+       que dans la page n'en est pas une. */
+    const item = asked.config.items.find((i) => i.id === input.itemId)!;
+    const wrong = contactProblemsIn(item, input.value);
+    if (Object.keys(wrong).length) {
+      const [, problem] = Object.entries(wrong)[0]!;
+      throw new HttpError(422, CONTACT_SAYS[problem as 'email' | 'phone'], {
+        [input.itemId]: CONTACT_SAYS[problem as 'email' | 'phone'],
+      });
     }
 
     await repo.saveReturn(input.blockId, candidateId, input.itemId, input.value ?? null);
