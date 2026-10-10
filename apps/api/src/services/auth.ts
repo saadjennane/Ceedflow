@@ -232,6 +232,22 @@ export async function reissueProvisionalPassword(accountId: string, password: st
 }
 
 /**
+ * Changer l'adresse de connexion d'un compte, à la demande.
+ *
+ * Distinct de `followRecordEmail`, qui suit la fiche sans qu'on demande rien :
+ * ici c'est un geste — ajouter un collègue sous une autre adresse — et il
+ * porte sa propre règle, la seule qui ne se négocie pas : deux personnes ne
+ * peuvent pas se connecter avec la même adresse.
+ */
+export async function setAccountEmail(accountId: string, email: string): Promise<'moved' | 'taken'> {
+  const wanted = normalise(email);
+  const other = await findAccount(wanted);
+  if (other && other.id !== accountId) return 'taken';
+  await (await db()).query('update accounts set email = $2 where id = $1', [accountId, wanted]);
+  return 'moved';
+}
+
+/**
  * Quand l'adresse d'une fiche change, l'identifiant suit — tant qu'il n'a servi
  * à personne.
  *

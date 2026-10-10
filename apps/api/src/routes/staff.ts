@@ -7,12 +7,14 @@ import {
 import type { FastifyInstance } from 'fastify';
 import * as dir from '../db/directory.js';
 import {
+  accountOfRecord,
   adminCount,
   createAccount,
   findAccount,
   listStaff,
   markInvited,
   reissueProvisionalPassword,
+  setAccountEmail,
   setStaffRole,
 } from '../services/auth.js';
 import { binned, restore } from '../services/trash.js';
@@ -93,17 +95,52 @@ export async function staffRoutes(app: FastifyInstance) {
       return { team: await resolve(), invite: null, promoted: true };
     }
 
+    /* Par l'adresse, puis par le nom.
+       Chercher sur la seule adresse a fabriqué des jumelles : une faute de
+       frappe dans le domaine — ceed-morocco.com pour .org — et la même
+       collègue entre deux fois, avec deux fiches et deux comptes dont un ne
+       servira jamais. Le nom est le second filet, et c'est lui qui attrape ce
+       cas-là. */
+    const known =
+      (await dir.findByEmail('person', email)) ?? (await dir.findByName('person', input.name.trim()));
+    const password = suggestPassword();
+
+    if (known) {
+      const held = await accountOfRecord(known.id);
+      if (held) {
+        /* Elle a déjà une porte. Si personne ne s'en est servi, c'est la même
+           porte qu'on déplace — sinon on ne la lui ferme pas dans le dos. */
+        if (held.state === 'claimed' || held.state === 'disabled') {
+          throw new HttpError(
+            422,
+            `${known.name} already signs in with ${held.email}. Change that address on their record rather than adding them a second time.`,
+            { email: 'They already have a way in.' },
+          );
+        }
+        if ((await setAccountEmail(held.id, email)) === 'taken') {
+          throw new HttpError(422, 'Another account already signs in with this address.', { email: 'Already taken.' });
+        }
+        await reissueProvisionalPassword(held.id, password);
+        await setStaffRole(held.id, input.role);
+        /* La fiche aussi : c'est là que part le courrier, et l'ancienne
+           adresse était une faute de frappe. */
+        await dir.updateRecord(known.id, { email, roles: [...new Set([...known.roles, 'CEED team'])] });
+        reply.code(200);
+        return { team: await resolve(), invite: { email, password }, promoted: false };
+      }
+    }
+
     const record =
-      (await dir.findByEmail('person', email)) ??
+      known ??
       (await dir.createRecord({
         kind: 'person',
         name: input.name.trim(),
         email,
         roles: ['CEED team'],
         origin: 'manual',
+        by: req.staff ? { id: req.staff.id, name: req.staff.email } : null,
       }));
 
-    const password = suggestPassword();
     const account = await createAccount({ email, password, recordId: record.id, mustChangePassword: true });
     await setStaffRole(account.id, input.role);
     reply.code(201);
