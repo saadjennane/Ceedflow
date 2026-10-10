@@ -4,6 +4,7 @@ export * from './domain.js';
 export * from './candidates.js';
 export * from './contact.js';
 export * from './directory.js';
+export * from './places.js';
 export * from './profile.js';
 export * from './pdf.js';
 export * from './sheets.js';
