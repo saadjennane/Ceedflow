@@ -20,6 +20,14 @@ export interface Attached {
   role: string;
 }
 
+/** Ce qu'une organisation montre d'elle sans qu'on ouvre sa fiche. */
+export interface OrgRow {
+  /** Qui la tient, la première personne en premier. */
+  contacts: { id: string; name: string; email: string; phones: string[]; role: string }[];
+  alumni: number;
+  current: string[];
+}
+
 export interface PersonRow {
   /** Les organisations qu'il tient, la première en premier. */
   orgs: Attached[];
@@ -38,12 +46,26 @@ export interface PersonRow {
 const OUT = new Set(['Not selected', 'Withdrawn']);
 
 export async function peopleRows(): Promise<Map<string, PersonRow>> {
-  const links = await all<{ personId: string; orgId: string; name: string; role: string }>(
-    `select a.person_id as "personId", a.org_id as "orgId", r.name, a.role
+  return (await directoryRows()).people;
+}
+
+/** La même matière pour les organisations : qui les tient, et leurs programmes. */
+export async function orgRows(): Promise<Map<string, OrgRow>> {
+  return (await directoryRows()).orgs;
+}
+
+async function directoryRows(): Promise<{ people: Map<string, PersonRow>; orgs: Map<string, OrgRow> }> {
+  const links = await all<{
+    personId: string; orgId: string; name: string; role: string;
+    person: string; email: string; phones: string[];
+  }>(
+    `select a.person_id as "personId", a.org_id as "orgId", o.name, a.role,
+            p.name as person, p.email, p.phones
        from affiliations a
-       join records r on r.id = a.org_id
-      where r.deleted_at is null
-      order by a.since nulls last, r.name`,
+       join records o on o.id = a.org_id
+       join records p on p.id = a.person_id
+      where o.deleted_at is null and p.deleted_at is null
+      order by a.since nulls last, o.name`,
   );
   const candidacies = await all<{
     personId: string | null;
@@ -61,10 +83,16 @@ export async function peopleRows(): Promise<Map<string, PersonRow>> {
       where c.deleted_at is null`,
   );
 
-  const rows = new Map<string, PersonRow>();
+  const people = new Map<string, PersonRow>();
+  const orgs = new Map<string, OrgRow>();
   const of = (id: string) => {
-    const found = rows.get(id) ?? { orgs: [], alumni: 0, current: [] };
-    rows.set(id, found);
+    const found = people.get(id) ?? { orgs: [], alumni: 0, current: [] };
+    people.set(id, found);
+    return found;
+  };
+  const org = (id: string) => {
+    const found = orgs.get(id) ?? { contacts: [], alumni: 0, current: [] };
+    orgs.set(id, found);
     return found;
   };
 
@@ -73,6 +101,9 @@ export async function peopleRows(): Promise<Map<string, PersonRow>> {
   const byOrg = new Map<string, string[]>();
   for (const link of links) {
     of(link.personId).orgs.push({ id: link.orgId, name: link.name, role: link.role });
+    org(link.orgId).contacts.push({
+      id: link.personId, name: link.person, email: link.email, phones: link.phones ?? [], role: link.role,
+    });
     byOrg.set(link.orgId, [...(byOrg.get(link.orgId) ?? []), link.personId]);
   }
 
@@ -95,7 +126,15 @@ export async function peopleRows(): Promise<Map<string, PersonRow>> {
       if (c.editionStatus === 'Completed') row.alumni += 1;
       else if (c.editionStatus === 'Live' && !row.current.includes(c.programme)) row.current.push(c.programme);
     }
+
+    /* La société, elle, compte sa candidature une fois — qui l'a déposée ne
+       change rien à ce qu'elle a fait. */
+    if (c.orgId) {
+      const row = org(c.orgId);
+      if (c.editionStatus === 'Completed') row.alumni += 1;
+      else if (c.editionStatus === 'Live' && !row.current.includes(c.programme)) row.current.push(c.programme);
+    }
   }
 
-  return rows;
+  return { people, orgs };
 }

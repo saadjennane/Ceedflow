@@ -4,6 +4,7 @@ import { ApiError, api } from '../../lib/api';
 import { TagField, TextArea, TextField } from '../../ui/Field';
 import { Modal, useToast } from '../../ui/Overlays';
 import { PhoneLines } from '../../ui/PhoneLines';
+import { PlaceLines } from '../../ui/PlaceLines';
 import { RecordImage } from '../../ui/OrgProfile';
 import { ProfileFields } from '../../ui/OrgProfile';
 
@@ -38,8 +39,7 @@ export function RecordModal({
     roles: record?.roles ?? (isOrg ? ['Startup'] : []),
     email: record?.email ?? '',
     phones: record?.phones ?? [],
-    city: record?.city ?? '',
-    country: record?.country ?? 'Morocco',
+    places: record?.places ?? [],
     website: record?.website ?? '',
     bio: record?.bio ?? '',
     tags: record?.tags ?? [],
@@ -201,10 +201,7 @@ export function RecordModal({
 
       <TextField label="Email" value={draft.email} onChange={(v) => set({ email: v })} placeholder="contact@…" />
       <PhoneLines label="Phone" values={draft.phones} onChange={(v) => set({ phones: v })} />
-      <div className="grid-2">
-        <TextField label="City" value={draft.city} onChange={(v) => set({ city: v })} placeholder="Casablanca" />
-        <TextField label="Country" value={draft.country} onChange={(v) => set({ country: v })} />
-      </div>
+      <PlaceLines label="Where" values={draft.places} onChange={(v) => set({ places: v })} />
       {isOrg && <TextField label="Website" value={draft.website} onChange={(v) => set({ website: v })} />}
       <TextArea
         label={isOrg ? 'What they do' : 'About'}

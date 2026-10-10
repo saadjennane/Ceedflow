@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { emailValue, phoneList } from './contact.js';
+import { emailValue, phoneList, placeList } from './contact.js';
 import { ORG_STAGES } from './profile.js';
 
 /**
@@ -81,6 +81,8 @@ export const recordSchema = z.object({
   email: z.string().default(''),
   /** Tous les numéros, dans l'ordre où ils ont été donnés. */
   phones: z.array(z.string()).default([]),
+  /** Tous les lieux. Le premier est celui qu'on donne quand il n'y en a qu'un. */
+  places: z.array(z.object({ city: z.string().default(''), country: z.string().default('') })).default([]),
   /** Le premier de la liste. Calculé par la base : il ne peut pas en différer. */
   phone: z.string().default(''),
   city: z.string().default(''),
@@ -242,8 +244,7 @@ export const createRecordInput = z.object({
   linkedin: z.string().default(''),
   email: emailValue(),
   phones: phoneList(),
-  city: z.string().default(''),
-  country: z.string().default('Morocco'),
+  places: placeList(),
   website: z.string().default(''),
   bio: z.string().default(''),
   tags: z.array(z.string()).default([]),
@@ -441,8 +442,7 @@ export const profileInput = z.object({
   firstName: z.string().min(1, 'A first name is required.'),
   lastName: z.string().min(1, 'A last name is required.'),
   phones: phoneList(),
-  city: z.string().default(''),
-  country: z.string().default(''),
+  places: placeList(),
   bio: z.string().default(''),
 });
 
@@ -452,8 +452,7 @@ export const myOrgInput = z.object({
   roles: z.array(z.string()).default(['Startup']),
   email: emailValue(),
   phones: phoneList(),
-  city: z.string().default(''),
-  country: z.string().default('Morocco'),
+  places: placeList(),
   website: z.string().default(''),
   bio: z.string().default(''),
   logoUploadId: z.string().nullable().default(null),

@@ -103,3 +103,14 @@ export const phoneList = () =>
     .default([])
     .transform((list) => list.map((n) => n.trim()).filter(Boolean))
     .refine((list) => list.every((n) => !phoneProblem(n)), CONTACT_SAYS.phone);
+
+/** Un lieu : une ville, et le pays où elle est. */
+export const placeList = () =>
+  z
+    .array(z.object({ city: z.string().default(''), country: z.string().default('') }))
+    .default([])
+    .transform((list) =>
+      list
+        .map((p) => ({ city: p.city.trim(), country: p.country.trim() }))
+        .filter((p) => p.city || p.country),
+    );

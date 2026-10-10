@@ -29,7 +29,7 @@ import {
   setAccountDisabled,
 } from '../services/auth.js';
 import { post, sendingIsLive } from '../services/mail.js';
-import { peopleRows } from '../services/people.js';
+import { orgRows, peopleRows } from '../services/people.js';
 import { invite, inviteBlock, inviteMany } from '../services/invitations.js';
 import { HttpError, notFound, parse } from './util.js';
 import { requireWorkspaceAdmin, workspaceGuard } from './guard.js';
@@ -70,14 +70,23 @@ export async function directoryRoutes(app: FastifyInstance) {
     /* Ce que la liste des individus montre en plus : où ils travaillent, les
        programmes faits et celui en cours. Trois requêtes pour toute la page. */
     const people = kind === 'person' ? await peopleRows() : new Map();
-    const rows = records.map((r) => ({
-      ...r,
-      contacts: counts.get(r.id) ?? 0,
-      account: accounts.get(r.id) ?? null,
-      orgs: people.get(r.id)?.orgs ?? [],
-      alumni: people.get(r.id)?.alumni ?? 0,
-      current: people.get(r.id)?.current ?? [],
-    }));
+    const orgs = kind === 'org' ? await orgRows() : new Map();
+    const rows = records.map((r) => {
+      const side = kind === 'org' ? orgs.get(r.id) : people.get(r.id);
+      /* Une organisation n'a pas de compte : c'est celui de la personne qui la
+         tient qui dit si quelqu'un peut entrer, et c'est ce qu'on vient y
+         chercher. */
+      const holder = kind === 'org' ? (orgs.get(r.id)?.contacts[0]?.id ?? null) : r.id;
+      return {
+        ...r,
+        contacts: counts.get(r.id) ?? 0,
+        account: (holder ? accounts.get(holder) : null) ?? null,
+        orgs: people.get(r.id)?.orgs ?? [],
+        holders: orgs.get(r.id)?.contacts ?? [],
+        alumni: side?.alumni ?? 0,
+        current: side?.current ?? [],
+      };
+    });
     // Somebody a founder typed onto their own team page is content until they
     // come through the door themselves. A search still reaches them — hiding a
     // row from a list is not the same as making a person unfindable.
@@ -399,8 +408,7 @@ export async function directoryRoutes(app: FastifyInstance) {
         name: input.contactName,
         origin: 'signup',
         email: input.contactEmail,
-        city: input.contactCity,
-        country: 'Morocco',
+        places: input.contactCity.trim() ? [{ city: input.contactCity.trim(), country: 'Morocco' }] : [],
         bio: input.contactBio,
       }));
 
@@ -411,7 +419,11 @@ export async function directoryRoutes(app: FastifyInstance) {
       ? await dir.updateRecord(found.id, {
           email: found.email || input.email,
           website: found.website || input.website,
-          city: found.city || input.city,
+          places: found.places.length
+            ? found.places
+            : input.city.trim()
+              ? [{ city: input.city.trim(), country: 'Morocco' }]
+              : [],
           bio: found.bio || input.bio,
         })
       : await dir.createRecord({
@@ -421,8 +433,7 @@ export async function directoryRoutes(app: FastifyInstance) {
           origin: 'signup',
           email: input.email,
           website: input.website,
-          city: input.city,
-          country: 'Morocco',
+          places: input.city.trim() ? [{ city: input.city.trim(), country: 'Morocco' }] : [],
           bio: input.bio,
         });
 
@@ -485,8 +496,11 @@ async function runImport(
         .split(/[,;]/)
         .map((n) => n.trim())
         .filter(Boolean),
-      city: text(row, 'city'),
-      country: text(row, 'country'),
+      /* Une ligne de fichier porte une ville et un pays : c'est un lieu, et
+         la liste en commence un. */
+      places: text(row, 'city').trim() || text(row, 'country').trim()
+        ? [{ city: text(row, 'city').trim(), country: text(row, 'country').trim() }]
+        : [],
       website: text(row, 'website'),
       bio: text(row, 'bio'),
     };
@@ -551,8 +565,7 @@ async function runImport(
             name: contactName,
             origin: 'import',
             email: text(row, 'contactEmail'),
-            city: patch.city,
-            country: patch.country,
+            places: patch.places,
           });
           people.set(pKey, person);
         }

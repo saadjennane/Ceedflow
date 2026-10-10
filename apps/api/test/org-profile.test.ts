@@ -65,7 +65,9 @@ describe('a startup’s profile', { skip: skipWithoutServer }, () => {
 
   it('moves as each ask is answered, and names what is left', async () => {
     const org = await dir.createRecord({ kind: 'org', name: `Pas à pas ${Date.now()}`, origin: 'manual' });
-    await dir.updateRecord(org.id, { pitch: 'Une phrase.', sector: 'Santé', city: 'Agadir' });
+    await dir.updateRecord(org.id, {
+      pitch: 'Une phrase.', sector: 'Santé', places: [{ city: 'Agadir', country: 'Morocco' }],
+    });
     const after = profileOf((await dir.getRecord(org.id))!);
     assert.equal(profileDone(after), 30);
     assert.deepEqual(profileMissing(after), ['logo', 'stage', 'founded', 'team', 'website', 'linkedin', 'bio']);
@@ -75,7 +77,8 @@ describe('a startup’s profile', { skip: skipWithoutServer }, () => {
     const org = await dir.createRecord({
       kind: 'org', name: `Complète ${Date.now()}`, origin: 'manual',
       pitch: 'Une phrase.', sector: 'Santé', stage: 'growing', foundedYear: 2019, teamSize: 24,
-      city: 'Casablanca', website: 'https://exemple.ma', linkedin: 'https://linkedin.com/company/x',
+      places: [{ city: 'Casablanca', country: 'Morocco' }],
+      website: 'https://exemple.ma', linkedin: 'https://linkedin.com/company/x',
       bio: 'Ce qu’elle fait, en long.',
     });
     assert.deepEqual(profileMissing(profileOf(org)), ['logo'], 'only the logo is missing');

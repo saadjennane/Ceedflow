@@ -200,7 +200,7 @@ export async function authRoutes(app: FastifyInstance) {
         firstName: input.firstName,
         lastName: input.lastName,
         email: input.email,
-        country: 'Morocco',
+        places: [],
         origin: 'signup',
       }));
     if (existing) {
@@ -319,8 +319,7 @@ export async function authRoutes(app: FastifyInstance) {
         roles: input.roles,
         email: input.email,
         phones: input.phones,
-        city: input.city,
-        country: input.country,
+        places: input.places,
         website: input.website,
         bio: input.bio,
         origin: 'signup',
@@ -328,11 +327,11 @@ export async function authRoutes(app: FastifyInstance) {
     if (found) {
       await dir.updateRecord(found.id, {
         email: found.email || input.email,
-        /* Les numéros s'ajoutent plutôt que de s'écraser : une page que CEED
-           connaissait déjà a souvent le standard, et la fondatrice donne le
-           sien. */
+        /* Les numéros et les lieux s'ajoutent plutôt que de s'écraser : une
+           page que CEED connaissait déjà a souvent le standard, et la
+           fondatrice donne le sien. */
         phones: [...new Set([...found.phones, ...input.phones])],
-        city: found.city || input.city,
+        places: found.places.length ? found.places : input.places,
         website: found.website || input.website,
         bio: found.bio || input.bio,
       });
@@ -599,7 +598,7 @@ export async function authRoutes(app: FastifyInstance) {
         name: input.name.trim(),
         email: input.email.trim(),
         phones: input.phones,
-        country: 'Morocco',
+        places: [],
         origin: 'team',
       }));
 

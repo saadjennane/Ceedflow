@@ -25,6 +25,7 @@ import { MemberHome, type CandidacyState } from './MemberHome';
 import { LangProvider, useLang } from '../../lib/lang';
 import { TeamModal } from './TeamPanel';
 import { PhoneLines } from '../../ui/PhoneLines';
+import { PlaceLines } from '../../ui/PlaceLines';
 import { ProfileBar, ProfileFacts, ProfileFields, type ProfileDraft } from '../../ui/OrgProfile';
 
 /**
@@ -820,8 +821,7 @@ function ProfileModal({ me, onClose, onSaved }: { me: Me; onClose: () => void; o
   const [draft, setDraft] = useState({
     ...known,
     phones: me.record.phones,
-    city: me.record.city,
-    country: me.record.country || 'Morocco',
+    places: me.record.places,
     bio: me.record.bio,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -879,10 +879,7 @@ function ProfileModal({ me, onClose, onSaved }: { me: Me; onClose: () => void; o
           <Text label={t('my.firstName')} value={draft.firstName} error={errors.firstName} onChange={(v) => set({ firstName: v })} />
           <Text label={t('my.lastName')} value={draft.lastName} error={errors.lastName} onChange={(v) => set({ lastName: v })} />
         </div>
-        <div className="grid-2">
-          <Text label={t('prof.city')} value={draft.city} onChange={(v) => set({ city: v })} placeholder="Casablanca" />
-          <Text label={t('org.country')} value={draft.country} onChange={(v) => set({ country: v })} />
-        </div>
+        <PlaceLines label={t('prof.city')} values={draft.places} onChange={(v) => set({ places: v })} />
         <PhoneLines label={t('my.phone')} values={draft.phones} onChange={(v) => set({ phones: v })} />
         <p className="faint" style={{ margin: 0, fontSize: 12 }}>
           {t('my.emailFixed')}
@@ -1064,8 +1061,7 @@ function OrgModal({
     roles: link?.record.roles ?? ['Startup'],
     email: link?.record.email ?? '',
     phones: link?.record.phones ?? [],
-    city: link?.record.city ?? '',
-    country: link?.record.country || 'Morocco',
+    places: link?.record.places ?? [],
     website: link?.record.website ?? '',
     bio: link?.record.bio ?? '',
     myRole: link?.affiliation.role ?? 'Founder',
@@ -1123,7 +1119,9 @@ function OrgModal({
       {/* En haut, et vivante : chaque champ rempli la fait monter pendant qu'on
           écrit, ce qui est la seule raison d'avoir une barre plutôt qu'une
           liste de champs. */}
-      <ProfileBar profile={profileOf(draft)} />
+      {/* La barre lit un lieu, la fiche en tient plusieurs : c'est le premier
+          qui compte, comme partout où il n'y a de la place que pour un. */}
+      <ProfileBar profile={profileOf({ ...draft, city: draft.places[0]?.city ?? '', country: draft.places[0]?.country ?? '' })} />
 
       <Text label={t('org.name')} value={draft.name} error={errors.name} onChange={(v) => set({ name: v })} placeholder="Nakhla Bio" />
 
@@ -1151,10 +1149,7 @@ function OrgModal({
 
       <Text label={t('org.email')} value={draft.email} onChange={(v) => set({ email: v })} />
       <PhoneLines label={t('my.phone')} values={draft.phones} onChange={(v) => set({ phones: v })} />
-      <div className="grid-2">
-        <Text label={t('org.city')} value={draft.city} onChange={(v) => set({ city: v })} />
-        <Text label={t('org.country')} value={draft.country} onChange={(v) => set({ country: v })} />
-      </div>
+      <PlaceLines label={t('org.city')} values={draft.places} onChange={(v) => set({ places: v })} />
       <Text label={t('org.website')} value={draft.website} onChange={(v) => set({ website: v })} />
       <div className="field">
         <label>{t('prof.bio')}</label>

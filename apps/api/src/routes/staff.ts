@@ -100,7 +100,6 @@ export async function staffRoutes(app: FastifyInstance) {
         name: input.name.trim(),
         email,
         roles: ['CEED team'],
-        country: 'Morocco',
         origin: 'manual',
       }));
 

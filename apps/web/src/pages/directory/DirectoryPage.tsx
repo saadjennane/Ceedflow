@@ -20,6 +20,8 @@ export interface RecordRow extends DirectoryRecord {
   account: RecordAccount | null;
   /** Les organisations qu'une personne tient. Vide pour une organisation. */
   orgs: { id: string; name: string; role: string }[];
+  /** Les personnes qui tiennent une organisation. Vide pour une personne. */
+  holders: { id: string; name: string; email: string; phones: string[]; role: string }[];
   /** Les programmes finis où elle était encore en lice à la clôture. */
   alumni: number;
   /** Ceux qui tournent et où elle l'est encore. */
@@ -185,17 +187,17 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
                     </th>
                   )}
                   <th>Name</th>
-                  {!isOrg && <th>Phone</th>}
-                  {!isOrg && <th>Email</th>}
+                  {isOrg && <th>Sector</th>}
+                  {isOrg && <th>Contact</th>}
+                  <th>Phone</th>
+                  <th>Email</th>
                   <th>Roles</th>
-                  <th>{isOrg ? 'City' : 'Where'}</th>
-                  <th>{isOrg ? 'Contacts' : 'Company'}</th>
-                  {!isOrg && (
-                    <th title="Programmes that are over and where they were still in at the close, and the one running now">
-                      Programmes
-                    </th>
-                  )}
-                  {!isOrg && <th>Account</th>}
+                  <th>Where</th>
+                  {!isOrg && <th>Company</th>}
+                  <th title="Programmes that are over and where they were still in at the close, and the one running now">
+                    Programmes
+                  </th>
+                  <th>Account</th>
                   <th>Came from</th>
                 </tr>
               </thead>
@@ -232,19 +234,58 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
                       </Link>
                     </td>
 
-                    {!isOrg && (
-                      <td className="muted num" style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>
-                        {r.phones[0] ?? <span className="faint">—</span>}
-                        {/* Les autres sont sur la fiche : une colonne qui les
-                            empile ferait des lignes de trois hauteurs. */}
-                        {r.phones.length > 1 && (
-                          <span className="faint" title={r.phones.slice(1).join(' · ')}> +{r.phones.length - 1}</span>
+                    {isOrg && (
+                      <td className="muted" style={{ fontSize: 12.5 }}>
+                        {r.sector || <span className="faint">—</span>}
+                      </td>
+                    )}
+                    {isOrg && (
+                      <td style={{ fontSize: 12.5 }}>
+                        {r.holders.length ? (
+                          <>
+                            <Link to={`/directory/${r.holders[0]!.id}`}>{r.holders[0]!.name}</Link>
+                            {r.holders.length > 1 && (
+                              <span className="faint" title={r.holders.slice(1).map((h) => h.name).join(' · ')}>
+                                {' '}+{r.holders.length - 1}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="badge warn">None</span>
                         )}
                       </td>
                     )}
-                    {!isOrg && (
+
+                    {(
+                      <td className="muted num" style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>
+                        {/* Le sien, sinon celui de qui la tient — c'est ce
+                            numéro-là qu'on compose. Marqué, pour qu'on sache
+                            qui on appelle. */}
+                        {(() => {
+                          const own = r.phones[0];
+                          const borrowed = own ? null : (r.holders[0]?.phones[0] ?? null);
+                          const shown = own ?? borrowed;
+                          if (!shown) return <span className="faint">—</span>;
+                          const more = own ? r.phones.length - 1 : 0;
+                          return (
+                            <>
+                              {shown}
+                              {more > 0 && (
+                                <span className="faint" title={r.phones.slice(1).join(' · ')}> +{more}</span>
+                              )}
+                              {borrowed && (
+                                <span className="faint" title={`Of ${r.holders[0]!.name}`}> ·{' '}
+                                  {r.holders[0]!.name.split(' ')[0]}
+                                </span>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </td>
+                    )}
+                    {(
                       <td className="muted" style={{ fontSize: 12.5 }}>
-                        {r.email || <span className="faint">—</span>}
+                        {r.email || r.holders[0]?.email || <span className="faint">—</span>}
                       </td>
                     )}
                     <td>
@@ -262,23 +303,21 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
                         sans ville se lit comme un renseignement, et n'en est
                         pas un — le pays est à Morocco par défaut pour tout le
                         monde. */}
+                    {/* Tous les lieux, un par ligne : une société à Casablanca
+                        et à Agadir est à deux endroits, pas à un. */}
                     <td className="muted" style={{ fontSize: 12.5 }}>
-                      {r.city ? (
-                        [r.city, isOrg ? null : r.country].filter(Boolean).join(', ')
+                      {r.places.length ? (
+                        r.places.map((p, i) => (
+                          <span key={i} style={{ display: 'block', whiteSpace: 'nowrap' }}>
+                            {[p.city, p.country].filter(Boolean).join(', ')}
+                          </span>
+                        ))
                       ) : (
                         <span className="faint">—</span>
                       )}
                     </td>
 
-                    {isOrg ? (
-                      <td>
-                        {r.contacts ? (
-                          <span className="num muted">{r.contacts}</span>
-                        ) : (
-                          <span className="badge warn">None</span>
-                        )}
-                      </td>
-                    ) : (
+                    {isOrg ? null : (
                       /* Où il travaille, et ce qu'il y fait : la fonction de sa
                          fiche, sinon le rôle du lien — « Founder » faute de
                          mieux vaut mieux que rien du tout. */
@@ -303,7 +342,7 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
                       </td>
                     )}
 
-                    {!isOrg && (
+                    {(
                       <td style={{ fontSize: 12.5 }}>
                         {r.alumni > 0 && (
                           <span className="badge" title="Programmes that are over and where they were still in">
@@ -318,8 +357,10 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
                         {!r.alumni && !r.current.length && <span className="faint">—</span>}
                       </td>
                     )}
-                    {!isOrg && (
+                    {(
                       <td style={{ whiteSpace: 'nowrap' }}>
+                        {/* Pour une organisation, c'est le compte de qui la
+                            tient : une société ne se connecte pas. */}
                         <AccountBadge account={r.account} />
                         {/* La date qui compte : la dernière fois qu'on les a
                             vus, sinon le jour où le compte a été ouvert. Un

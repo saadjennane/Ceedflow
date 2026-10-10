@@ -364,8 +364,7 @@ async function seedJudges() {
       name,
       roles,
       email,
-      city: 'Casablanca',
-      country: 'Morocco',
+      places: [{ city: 'Casablanca', country: 'Morocco' }],
       origin: 'manual',
     });
     people.push({ id: record.id, name: record.name });
@@ -519,8 +518,7 @@ async function main() {
       name,
       roles: ['Partner'],
       email,
-      city: 'Casablanca',
-      country: 'Morocco',
+      places: [{ city: 'Casablanca', country: 'Morocco' }],
       origin: 'manual',
     });
   }
@@ -545,8 +543,7 @@ async function main() {
       roles: ['Startup'],
       email: spec.email,
       phones: [spec.phone],
-      city: spec.city,
-      country: 'Morocco',
+      places: [{ city: spec.city, country: 'Morocco' }],
       website: `www.${spec.orgName.toLowerCase().replace(/[^a-z0-9]+/g, '')}.ma`,
       bio: spec.problem,
       tags: [spec.sector, spec.stage],
@@ -560,8 +557,7 @@ async function main() {
       lastName: rest.join(' '),
       email: spec.email,
       phones: [spec.phone],
-      city: spec.city,
-      country: 'Morocco',
+      places: [{ city: spec.city, country: 'Morocco' }],
       bio: `Founder of ${spec.orgName}.`,
       origin: 'signup',
     });
