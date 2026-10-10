@@ -103,6 +103,7 @@ const WORDS = {
   'file.replace': { fr: 'Remplacer', en: 'Replace' },
   'field.choose': { fr: 'Choisir', en: 'Choose one' },
   'bad.email': { fr: 'Une adresse s’écrit nom@domaine.ma.', en: 'An address is written name@domain.ma.' },
+  'phone.add': { fr: 'Ajouter un numéro', en: 'Add a number' },
   'bad.phone': {
     fr: 'Un numéro, ce sont des chiffres — 06 12 34 56 78, ou +212 6 12 34 56 78.',
     en: 'A number is digits — 06 12 34 56 78, or +212 6 12 34 56 78.',

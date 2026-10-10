@@ -318,7 +318,7 @@ export async function authRoutes(app: FastifyInstance) {
         name: input.name,
         roles: input.roles,
         email: input.email,
-        phone: input.phone,
+        phones: input.phones,
         city: input.city,
         country: input.country,
         website: input.website,
@@ -328,7 +328,10 @@ export async function authRoutes(app: FastifyInstance) {
     if (found) {
       await dir.updateRecord(found.id, {
         email: found.email || input.email,
-        phone: found.phone || input.phone,
+        /* Les numéros s'ajoutent plutôt que de s'écraser : une page que CEED
+           connaissait déjà a souvent le standard, et la fondatrice donne le
+           sien. */
+        phones: [...new Set([...found.phones, ...input.phones])],
         city: found.city || input.city,
         website: found.website || input.website,
         bio: found.bio || input.bio,
@@ -595,7 +598,7 @@ export async function authRoutes(app: FastifyInstance) {
         kind: 'person',
         name: input.name.trim(),
         email: input.email.trim(),
-        phone: input.phone,
+        phones: input.phones,
         country: 'Morocco',
         origin: 'team',
       }));

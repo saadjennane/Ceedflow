@@ -32,7 +32,7 @@ describe('saving a profile', { skip: skipWithoutServer }, () => {
     assert.equal(person.lastName, 'Berrada Souni');
 
     // They change their phone and save. Nothing about the name was touched.
-    await dir.updateRecord(person.id, { phone: '+212 6 11 22 33 44', ...nameAfterSave('', '') });
+    await dir.updateRecord(person.id, { phones: ['+212 6 11 22 33 44'], ...nameAfterSave('', '') });
     const after = await dir.getRecord(person.id);
     assert.equal(after?.name, 'Salma Berrada Souni', 'saving a phone number erased the name');
     assert.equal(after?.phone, '+212 6 11 22 33 44');

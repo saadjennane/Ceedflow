@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { ApiError, api } from '../../lib/api';
 import { TagField, TextArea, TextField } from '../../ui/Field';
 import { Modal, useToast } from '../../ui/Overlays';
+import { PhoneLines } from '../../ui/PhoneLines';
 import { ProfileFields } from '../../ui/OrgProfile';
 
 /** Typed by the team — one of the two ways a record gets into the directory. */
@@ -35,7 +36,7 @@ export function RecordModal({
     department: record?.department ?? '',
     roles: record?.roles ?? (isOrg ? ['Startup'] : []),
     email: record?.email ?? '',
-    phone: record?.phone ?? '',
+    phones: record?.phones ?? [],
     city: record?.city ?? '',
     country: record?.country ?? 'Morocco',
     website: record?.website ?? '',
@@ -186,10 +187,8 @@ export function RecordModal({
         </div>
       </div>
 
-      <div className="grid-2">
-        <TextField label="Email" value={draft.email} onChange={(v) => set({ email: v })} placeholder="contact@…" />
-        <TextField label="Phone" value={draft.phone} onChange={(v) => set({ phone: v })} />
-      </div>
+      <TextField label="Email" value={draft.email} onChange={(v) => set({ email: v })} placeholder="contact@…" />
+      <PhoneLines label="Phone" values={draft.phones} onChange={(v) => set({ phones: v })} />
       <div className="grid-2">
         <TextField label="City" value={draft.city} onChange={(v) => set({ city: v })} placeholder="Casablanca" />
         <TextField label="Country" value={draft.country} onChange={(v) => set({ country: v })} />

@@ -19,7 +19,7 @@ const COLS = `id, kind, name, first_name as "firstName", last_name as "lastName"
   job_title as "jobTitle", department,
   logo_upload_id as "logoUploadId", pitch, sector, stage,
   founded_year as "foundedYear", team_size as "teamSize", linkedin,
-  email, phone, city, country, website, bio, tags, created_at::text as "createdAt"`;
+  email, phone, phones, city, country, website, bio, tags, created_at::text as "createdAt"`;
 
 const AFF_COLS = `id, person_id as "personId", org_id as "orgId", role, access, since`;
 
@@ -61,7 +61,8 @@ export async function listRecords(filter: RecordFilter = {}): Promise<DirectoryR
     params.push(`%${filter.q.trim().toLowerCase()}%`);
     where.push(`(lower(name) like $${params.length} or lower(email) like $${params.length}
       or lower(city) like $${params.length} or lower(tags::text) like $${params.length}
-      or lower(job_title) like $${params.length} or lower(department) like $${params.length})`);
+      or lower(job_title) like $${params.length} or lower(department) like $${params.length}
+      or lower(phones::text) like $${params.length})`);
   }
   where.push(LIVE);
   return all<DirectoryRecord>(
@@ -101,7 +102,7 @@ export async function createRecord(input: {
   department?: string;
   origin?: string;
   email?: string;
-  phone?: string;
+  phones?: string[];
   city?: string;
   country?: string;
   website?: string;
@@ -122,11 +123,11 @@ export async function createRecord(input: {
      guess at later. Whatever the caller gives wins: it knows better. */
   const cut = input.kind === 'person' ? splitName(input.name) : { firstName: '', lastName: '' };
   await (await db()).query(
-    `insert into records (id, kind, name, first_name, last_name, roles, origin, email, phone, city,
+    `insert into records (id, kind, name, first_name, last_name, roles, origin, email, city,
        country, website, bio, tags, job_title, department,
-       pitch, sector, stage, founded_year, team_size, linkedin)
-     values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,
-       $17,$18,$19,$20,$21,$22)`,
+       pitch, sector, stage, founded_year, team_size, linkedin, phones)
+     values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,
+       $16,$17,$18,$19,$20,$21,$22::jsonb)`,
     [
       id,
       input.kind,
@@ -136,7 +137,6 @@ export async function createRecord(input: {
       input.roles ?? [],
       input.origin ?? 'manual',
       input.email ?? '',
-      input.phone ?? '',
       input.city ?? '',
       input.country ?? '',
       input.website ?? '',
@@ -150,6 +150,7 @@ export async function createRecord(input: {
       input.foundedYear ?? null,
       input.teamSize ?? null,
       input.linkedin ?? '',
+      (input.phones ?? []).filter(Boolean),
     ],
   );
   return (await getRecord(id))!;
@@ -160,7 +161,6 @@ const FIELDS: Record<string, string> = {
   firstName: 'first_name',
   lastName: 'last_name',
   email: 'email',
-  phone: 'phone',
   city: 'city',
   country: 'country',
   website: 'website',
@@ -177,6 +177,15 @@ const FIELDS: Record<string, string> = {
 };
 
 export async function updateRecord(id: string, patch: Record<string, unknown>): Promise<DirectoryRecord | null> {
+  /* Fort plutôt que silencieux.
+     `phone` n'est plus une colonne qu'on écrit — c'est le premier de `phones`,
+     calculé par la base. Un appelant qui l'envoie encore croit enregistrer un
+     numéro et n'enregistre rien ; la boucle ci-dessous l'ignorerait sans un
+     mot, et c'est le genre de panne qu'on découvre trois semaines plus tard en
+     cherchant à joindre quelqu'un. */
+  if ('phone' in patch) {
+    throw new Error('A record holds `phones`, a list — `phone` is the first of it, and the database computes it.');
+  }
   const sets: string[] = [];
   const params: unknown[] = [id];
   for (const [key, column] of Object.entries(FIELDS)) {
@@ -184,7 +193,9 @@ export async function updateRecord(id: string, patch: Record<string, unknown>): 
     params.push(patch[key]);
     sets.push(`${column} = $${params.length}`);
   }
-  for (const key of ['roles', 'tags'] as const) {
+  /* `phones` avec les autres listes, et jamais `phone` : la base la calcule, et
+     écrire dessus est refusé — ce qui est exactement ce qu'on veut. */
+  for (const key of ['roles', 'tags', 'phones'] as const) {
     if (patch[key] === undefined) continue;
     params.push(patch[key]);
     sets.push(`${key} = $${params.length}::jsonb`);

@@ -89,3 +89,17 @@ export const phoneValue = () =>
     .string()
     .default('')
     .refine((v) => !phoneProblem(v), CONTACT_SAYS.phone);
+
+/**
+ * Plusieurs numéros, et le premier est celui qu'on donne quand il n'y a de la
+ * place que pour un.
+ *
+ * Les vides tombent : une ligne qu'on a ajoutée puis pas remplie n'est pas un
+ * numéro, et la refuser ferait un message d'erreur pour un clic de trop.
+ */
+export const phoneList = () =>
+  z
+    .array(z.string())
+    .default([])
+    .transform((list) => list.map((n) => n.trim()).filter(Boolean))
+    .refine((list) => list.every((n) => !phoneProblem(n)), CONTACT_SAYS.phone);

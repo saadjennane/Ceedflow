@@ -24,6 +24,7 @@ import { Agenda, type AgendaEntry } from './Agenda';
 import { MemberHome, type CandidacyState } from './MemberHome';
 import { LangProvider, useLang } from '../../lib/lang';
 import { TeamModal } from './TeamPanel';
+import { PhoneLines } from '../../ui/PhoneLines';
 import { ProfileBar, ProfileFacts, ProfileFields, type ProfileDraft } from '../../ui/OrgProfile';
 
 /**
@@ -818,7 +819,7 @@ function ProfileModal({ me, onClose, onSaved }: { me: Me; onClose: () => void; o
   const known = splitName(me.record);
   const [draft, setDraft] = useState({
     ...known,
-    phone: me.record.phone,
+    phones: me.record.phones,
     city: me.record.city,
     country: me.record.country || 'Morocco',
     bio: me.record.bio,
@@ -879,10 +880,10 @@ function ProfileModal({ me, onClose, onSaved }: { me: Me; onClose: () => void; o
           <Text label={t('my.lastName')} value={draft.lastName} error={errors.lastName} onChange={(v) => set({ lastName: v })} />
         </div>
         <div className="grid-2">
-          <Text label={t('my.phone')} value={draft.phone} onChange={(v) => set({ phone: v })} placeholder="+212 6 …" />
           <Text label={t('prof.city')} value={draft.city} onChange={(v) => set({ city: v })} placeholder="Casablanca" />
+          <Text label={t('org.country')} value={draft.country} onChange={(v) => set({ country: v })} />
         </div>
-        <Text label={t('org.country')} value={draft.country} onChange={(v) => set({ country: v })} />
+        <PhoneLines label={t('my.phone')} values={draft.phones} onChange={(v) => set({ phones: v })} />
         <p className="faint" style={{ margin: 0, fontSize: 12 }}>
           {t('my.emailFixed')}
         </p>
@@ -1062,7 +1063,7 @@ function OrgModal({
     name: link?.record.name ?? '',
     roles: link?.record.roles ?? ['Startup'],
     email: link?.record.email ?? '',
-    phone: link?.record.phone ?? '',
+    phones: link?.record.phones ?? [],
     city: link?.record.city ?? '',
     country: link?.record.country || 'Morocco',
     website: link?.record.website ?? '',
@@ -1148,10 +1149,8 @@ function OrgModal({
           Un second écran « profil » aurait fait deux endroits à tenir à jour. */}
       <ProfileFields draft={draft as ProfileDraft} set={(partial) => set(partial)} name={draft.name} />
 
-      <div className="grid-2">
-        <Text label={t('org.email')} value={draft.email} onChange={(v) => set({ email: v })} />
-        <Text label={t('my.phone')} value={draft.phone} onChange={(v) => set({ phone: v })} />
-      </div>
+      <Text label={t('org.email')} value={draft.email} onChange={(v) => set({ email: v })} />
+      <PhoneLines label={t('my.phone')} values={draft.phones} onChange={(v) => set({ phones: v })} />
       <div className="grid-2">
         <Text label={t('org.city')} value={draft.city} onChange={(v) => set({ city: v })} />
         <Text label={t('org.country')} value={draft.country} onChange={(v) => set({ country: v })} />

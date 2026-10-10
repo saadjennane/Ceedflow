@@ -453,7 +453,12 @@ async function runImport(kind: RecordKind, rows: Record<string, string>[], dryRu
     const contactName = kind === 'org' ? text(row, 'contactName') : '';
     const patch = {
       email: text(row, 'email'),
-      phone: text(row, 'phone'),
+      /* Une colonne, un numéro : un fichier qui en porte deux les sépare par
+         une virgule ou un point-virgule, et c'est ce que les gens font. */
+      phones: text(row, 'phone')
+        .split(/[,;]/)
+        .map((n) => n.trim())
+        .filter(Boolean),
       city: text(row, 'city'),
       country: text(row, 'country'),
       website: text(row, 'website'),

@@ -202,7 +202,7 @@ function AddMemberModal({
   onClose: () => void;
   onAdded: () => void;
 }) {
-  const [draft, setDraft] = useState({ name: '', email: '', phone: '', role: '', access: 'member' as OrgAccess });
+  const [draft, setDraft] = useState({ name: '', email: '', phones: [] as string[], role: '', access: 'member' as OrgAccess });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const toast = useToast();

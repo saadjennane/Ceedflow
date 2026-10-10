@@ -95,7 +95,11 @@ export function RecordPage() {
               )}
               <div className="row wrap faint" style={{ gap: 14, marginTop: 8, fontSize: 12.5 }}>
                 {record.email && <span>{record.email}</span>}
-                {record.phone && <span className="num">{record.phone}</span>}
+                {/* Tous, et pas seulement le premier : c'est la page où l'on
+                    vient chercher comment joindre quelqu'un. */}
+                {record.phones.map((number) => (
+                  <span className="num" key={number}>{number}</span>
+                ))}
                 {!isOrg && record.city && <span>{[record.city, record.country].filter(Boolean).join(', ')}</span>}
                 {!isOrg && record.website && <span>{record.website}</span>}
               </div>

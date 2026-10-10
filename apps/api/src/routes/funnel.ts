@@ -207,13 +207,14 @@ export async function funnelRoutes(app: FastifyInstance) {
 
     /** The email tells two people apart when they share a name. */
     const personFor = async (name: string, email: string, phone = '', origin: 'manual' | 'team' = 'manual') => {
+      const phones = phone.trim() ? [phone.trim()] : [];
       const clean = name.trim();
       if (!clean) return null;
       const found =
         (email.trim() ? await dir.findByEmail('person', email) : null) ?? (await dir.findByName('person', clean));
       return (
         found ??
-        (await dir.createRecord({ kind: 'person', name: clean, email: email.trim(), phone, country: 'Morocco', origin }))
+        (await dir.createRecord({ kind: 'person', name: clean, email: email.trim(), phones, country: 'Morocco', origin }))
       );
     };
 

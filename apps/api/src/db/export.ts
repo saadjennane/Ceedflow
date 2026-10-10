@@ -103,9 +103,14 @@ export async function exportSql(write: (line: string) => void): Promise<number> 
   write('begin;');
 
   for (const table of order) {
+    /* Les colonnes calculées sont sautées : la base les refait à l'insertion,
+       et elle refuse qu'on les écrive. `records.phone` en est une — le premier
+       numéro de la liste — et une sauvegarde qui la portait ne se rechargeait
+       plus du tout. */
     const columns = await all<{ name: string; type: string }>(
       `select column_name as name, data_type as type from information_schema.columns
-        where table_schema = 'public' and table_name = $1 order by ordinal_position`,
+        where table_schema = 'public' and table_name = $1 and is_generated = 'NEVER'
+        order by ordinal_position`,
       [table],
     );
     const rows = await all<Record<string, unknown>>(`select * from "${table}"`);

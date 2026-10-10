@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { emailValue, phoneValue } from './contact.js';
+import { emailValue, phoneList } from './contact.js';
 import { ORG_STAGES } from './profile.js';
 
 /**
@@ -76,6 +76,9 @@ export const recordSchema = z.object({
   linkedin: z.string().default(''),
   origin: z.enum(RECORD_ORIGINS).default('manual'),
   email: z.string().default(''),
+  /** Tous les numéros, dans l'ordre où ils ont été donnés. */
+  phones: z.array(z.string()).default([]),
+  /** Le premier de la liste. Calculé par la base : il ne peut pas en différer. */
   phone: z.string().default(''),
   city: z.string().default(''),
   country: z.string().default(''),
@@ -235,7 +238,7 @@ export const createRecordInput = z.object({
   teamSize: z.number().nullable().default(null),
   linkedin: z.string().default(''),
   email: emailValue(),
-  phone: phoneValue(),
+  phones: phoneList(),
   city: z.string().default(''),
   country: z.string().default('Morocco'),
   website: z.string().default(''),
@@ -278,7 +281,7 @@ export const affiliationInput = z.object({
 export const teamMemberInput = z.object({
   name: z.string().min(1, 'Who are you adding?'),
   email: emailValue(),
-  phone: phoneValue(),
+  phones: phoneList(),
   /** Their title on the page. */
   role: z.string().default(''),
   access: z.enum(ORG_ACCESS).default('member'),
@@ -434,7 +437,7 @@ export const changePasswordInput = z
 export const profileInput = z.object({
   firstName: z.string().min(1, 'A first name is required.'),
   lastName: z.string().min(1, 'A last name is required.'),
-  phone: phoneValue(),
+  phones: phoneList(),
   city: z.string().default(''),
   country: z.string().default(''),
   bio: z.string().default(''),
@@ -445,7 +448,7 @@ export const myOrgInput = z.object({
   name: z.string().min(1, 'Tell us the name of the organisation.'),
   roles: z.array(z.string()).default(['Startup']),
   email: emailValue(),
-  phone: phoneValue(),
+  phones: phoneList(),
   city: z.string().default(''),
   country: z.string().default('Morocco'),
   website: z.string().default(''),

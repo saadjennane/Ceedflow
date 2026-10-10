@@ -1,4 +1,5 @@
 import {
+  type RecordDetail,
   fullName,
   orderedBlocks,
   splitName,
@@ -11,13 +12,14 @@ import {
   type FormField,
   type TrackWithPhases,
 } from '@ceed/shared';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AccountBadge } from '../directory/AccountCard';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
 import { TextField } from '../../ui/Field';
+import { PhoneLines } from '../../ui/PhoneLines';
 import { FormFieldInput } from '../../ui/FormField';
 import { Icon } from '../../ui/Icon';
 import { Linked } from '../../ui/Linked';
@@ -393,9 +395,22 @@ function CandidateDrawer({
     firstName: candidate.contactFirstName || splitName(candidate.contactName).firstName,
     lastName: candidate.contactLastName || splitName(candidate.contactName).lastName,
     email: candidate.email,
-    phone: candidate.phone,
+    /* La liste entière, pas le premier numéro.
+       Ce volet écrit sur la personne de l'annuaire : n'envoyer que celui qu'il
+       affiche effacerait les autres — et personne ne verrait lesquels. Elle
+       arrive avec la fiche, sinon avec le seul numéro que la candidature
+       connaît. */
+    phones: candidate.phone ? [candidate.phone] : [],
     source: candidate.source,
   });
+  /* La fiche de la personne, pour éditer ses numéros sans perdre les autres. */
+  const person = useAsync(
+    async () => (candidate.personId ? api.get<RecordDetail>(`/api/records/${candidate.personId}`) : null),
+    candidate.personId ?? 'none',
+  );
+  useEffect(() => {
+    if (person.data) setWho((w) => ({ ...w, phones: person.data!.record.phones }));
+  }, [person.data]);
 
   const saveAll = async () => {
     setBusy(true);
@@ -409,7 +424,7 @@ function CandidateDrawer({
             firstName: who.firstName.trim(),
             lastName: who.lastName.trim(),
             email: who.email.trim(),
-            phone: who.phone.trim(),
+            phones: who.phones,
           });
         } else {
           const person = await api.post<{ id: string }>('/api/records', {
@@ -418,7 +433,7 @@ function CandidateDrawer({
             firstName: who.firstName.trim(),
             lastName: who.lastName.trim(),
             email: who.email.trim(),
-            phone: who.phone.trim(),
+            phones: who.phones,
             origin: 'manual',
             affiliateTo: candidate.orgId,
             affiliationRole: 'Founder',
@@ -598,7 +613,7 @@ function CandidateDrawer({
             </div>
             <div className="grid-2">
               <TextField label="Email" type="email" value={who.email} onChange={(v) => setWho((w) => ({ ...w, email: v }))} />
-              <TextField label="Phone" value={who.phone} onChange={(v) => setWho((w) => ({ ...w, phone: v }))} />
+              <PhoneLines label="Phone" values={who.phones} onChange={(v) => setWho((w) => ({ ...w, phones: v }))} />
             </div>
             <TextField label="Source" value={who.source} onChange={(v) => setWho((w) => ({ ...w, source: v }))} />
             <p className="faint" style={{ margin: 0, fontSize: 12 }}>
@@ -651,7 +666,7 @@ function CandidateDrawer({
                     firstName: candidate.contactFirstName || splitName(candidate.contactName).firstName,
                     lastName: candidate.contactLastName || splitName(candidate.contactName).lastName,
                     email: candidate.email,
-                    phone: candidate.phone,
+                    phones: person.data?.record.phones ?? (candidate.phone ? [candidate.phone] : []),
                     source: candidate.source,
                   });
                   setEditing(false);
