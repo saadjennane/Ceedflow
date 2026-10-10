@@ -24,6 +24,7 @@ import { Agenda, type AgendaEntry } from './Agenda';
 import { MemberHome, type CandidacyState } from './MemberHome';
 import { LangProvider, useLang } from '../../lib/lang';
 import { TeamModal } from './TeamPanel';
+import { EmailLines } from '../../ui/EmailLines';
 import { PhoneLines } from '../../ui/PhoneLines';
 import { PlaceLines } from '../../ui/PlaceLines';
 import { ProfileBar, ProfileFacts, ProfileFields, type ProfileDraft } from '../../ui/OrgProfile';
@@ -1065,7 +1066,7 @@ function OrgModal({
   const [draft, setDraft] = useState({
     name: link?.record.name ?? '',
     roles: link?.record.roles ?? ['Startup'],
-    email: link?.record.email ?? '',
+    emails: link?.record.emails ?? [],
     phones: link?.record.phones ?? [],
     places: link?.record.places ?? [],
     website: link?.record.website ?? '',
@@ -1153,7 +1154,7 @@ function OrgModal({
           Un second écran « profil » aurait fait deux endroits à tenir à jour. */}
       <ProfileFields draft={draft as ProfileDraft} set={(partial) => set(partial)} name={draft.name} />
 
-      <Text label={t('org.email')} value={draft.email} onChange={(v) => set({ email: v })} />
+      <EmailLines label={t('org.email')} values={draft.emails} onChange={(v) => set({ emails: v })} />
       <PhoneLines label={t('my.phone')} values={draft.phones} onChange={(v) => set({ phones: v })} />
       <PlaceLines label={t('org.city')} values={draft.places} onChange={(v) => set({ places: v })} />
       <Text label={t('org.website')} value={draft.website} onChange={(v) => set({ website: v })} />

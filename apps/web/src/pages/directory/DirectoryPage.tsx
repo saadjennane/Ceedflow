@@ -283,9 +283,20 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
                         })()}
                       </td>
                     )}
+                    {/* Toutes, une par ligne : une fiche qui en porte deux le
+                        fait pour qu'on les voie. Celle de qui la tient quand
+                        elle n'en a aucune. */}
                     {(
                       <td className="muted" style={{ fontSize: 12.5 }}>
-                        {r.email || r.holders[0]?.email || <span className="faint">—</span>}
+                        {r.emails.length ? (
+                          r.emails.map((e) => (
+                            <span key={e} style={{ display: 'block' }}>{e}</span>
+                          ))
+                        ) : r.holders[0]?.email ? (
+                          <span>{r.holders[0]!.email}</span>
+                        ) : (
+                          <span className="faint">—</span>
+                        )}
                       </td>
                     )}
                     <td>

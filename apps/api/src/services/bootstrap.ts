@@ -42,7 +42,7 @@ export async function bootstrapAdmin(log: (message: string) => void): Promise<vo
   } else {
     const record =
       (await dir.findByEmail('person', EMAIL)) ??
-      (await dir.createRecord({ kind: 'person', name: NAME, email: EMAIL, origin: 'manual' }));
+      (await dir.createRecord({ kind: 'person', name: NAME, emails: [EMAIL], origin: 'manual' }));
     const account = await createAccount({ email: EMAIL, password, recordId: record.id, mustChangePassword: true });
     await setStaffRole(account.id, 'admin');
   }

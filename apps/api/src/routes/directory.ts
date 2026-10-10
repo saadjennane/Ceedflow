@@ -107,9 +107,12 @@ export async function directoryRoutes(app: FastifyInstance) {
     // Two organisations may not share a name. Two people may — this file holds
     // five different founders called Ali. What separates them is the address, so
     // a namesake is refused only when nothing tells them apart.
-    const sameEmail =
-      Boolean(existing?.email) && existing!.email.trim().toLowerCase() === (input.email ?? '').trim().toLowerCase();
-    const namesake = existing && input.kind === 'person' && input.email?.trim() && !sameEmail;
+    const asked = (input.emails ?? []).map((e) => e.trim().toLowerCase()).filter(Boolean);
+    const held = (existing?.emails ?? []).map((e) => e.trim().toLowerCase());
+    /* Une adresse en commun, n'importe laquelle : deux fiches qui partagent
+       une boîte sont la même personne, et c'est ce qui distingue cinq Ali. */
+    const sameEmail = asked.some((e) => held.includes(e));
+    const namesake = existing && input.kind === 'person' && asked.length > 0 && !sameEmail;
     if (existing && !namesake) {
       throw new HttpError(422, `${existing.name} is already in the directory.`, { name: 'Already in the directory.' });
     }
@@ -144,10 +147,8 @@ export async function directoryRoutes(app: FastifyInstance) {
        passe du second. Rendu à l'écran, parce qu'un identifiant qui change
        sans que rien ne le dise est la même panne dans l'autre sens. */
     const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
-    const login =
-      patch.email !== undefined && !same(patch.email, current.email)
-        ? await followRecordEmail(id, patch.email)
-        : 'none';
+    const wanted = patch.emails?.[0];
+    const login = wanted !== undefined && !same(wanted, current.email) ? await followRecordEmail(id, wanted) : 'none';
     return { ...saved, login };
   });
 
@@ -407,7 +408,7 @@ export async function directoryRoutes(app: FastifyInstance) {
         kind: 'person',
         name: input.contactName,
         origin: 'signup',
-        email: input.contactEmail,
+        emails: [input.contactEmail],
         places: input.contactCity.trim() ? [{ city: input.contactCity.trim(), country: 'Morocco' }] : [],
         bio: input.contactBio,
       }));
@@ -431,7 +432,7 @@ export async function directoryRoutes(app: FastifyInstance) {
           name: input.name,
           roles: ['Startup'],
           origin: 'signup',
-          email: input.email,
+          emails: input.email.trim() ? [input.email.trim()] : [],
           website: input.website,
           places: input.city.trim() ? [{ city: input.city.trim(), country: 'Morocco' }] : [],
           bio: input.bio,
@@ -489,7 +490,10 @@ async function runImport(
     const hit = known.get(key);
     const contactName = kind === 'org' ? text(row, 'contactName') : '';
     const patch = {
-      email: text(row, 'email'),
+      emails: text(row, 'email')
+        .split(/[,;]/)
+        .map((e) => e.trim())
+        .filter(Boolean),
       /* Une colonne, un numéro : un fichier qui en porte deux les sépare par
          une virgule ou un point-virgule, et c'est ce que les gens font. */
       phones: text(row, 'phone')
@@ -564,7 +568,7 @@ async function runImport(
             kind: 'person',
             name: contactName,
             origin: 'import',
-            email: text(row, 'contactEmail'),
+            emails: text(row, 'contactEmail').trim() ? [text(row, 'contactEmail').trim()] : [],
             places: patch.places,
           });
           people.set(pKey, person);

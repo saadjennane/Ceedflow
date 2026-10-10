@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react';
 import { ApiError, api } from '../../lib/api';
 import { Icon } from '../../ui/Icon';
 import { Modal, useToast } from '../../ui/Overlays';
+import { EmailLines } from '../../ui/EmailLines';
 
 const initials = (name: string) =>
   name
@@ -202,7 +203,7 @@ function AddMemberModal({
   onClose: () => void;
   onAdded: () => void;
 }) {
-  const [draft, setDraft] = useState({ name: '', email: '', phones: [] as string[], role: '', access: 'member' as OrgAccess });
+  const [draft, setDraft] = useState({ name: '', emails: [] as string[], phones: [] as string[], role: '', access: 'member' as OrgAccess });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const toast = useToast();
@@ -256,20 +257,12 @@ function AddMemberModal({
           <div className="hint">CTO, COO, Head of sales — what the jury reads. Not a permission.</div>
         </div>
 
-        <div className="field">
-          <label>Email</label>
-          <input
-            className={errors.email ? 'input bad' : 'input'}
-            type="email"
-            value={draft.email}
-            onChange={(e) => set({ email: e.target.value })}
-          />
-          {errors.email ? (
-            <div style={{ color: 'var(--stop)', fontSize: 12 }}>{errors.email}</div>
-          ) : (
-            <div className="hint">Optional now, required the day you invite them.</div>
-          )}
-        </div>
+        <EmailLines label="Email" values={draft.emails} onChange={(v) => set({ emails: v })} />
+        {errors.emails ? (
+          <div style={{ color: 'var(--stop)', fontSize: 12 }}>{errors.emails}</div>
+        ) : (
+          <div className="hint">Optional now, required the day you invite them.</div>
+        )}
 
         <div className="field">
           <label>What they may do</label>

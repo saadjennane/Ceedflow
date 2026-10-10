@@ -20,7 +20,7 @@ const COLS = `id, kind, name, first_name as "firstName", last_name as "lastName"
   logo_upload_id as "logoUploadId", pitch, sector, stage,
   created_by as "createdBy", created_by_name as "createdByName",
   founded_year as "foundedYear", team_size as "teamSize", linkedin,
-  email, phone, phones, city, country, places, website, bio, tags,
+  email, emails, phone, phones, city, country, places, website, bio, tags,
   created_at::text as "createdAt"`;
 
 const AFF_COLS = `id, person_id as "personId", org_id as "orgId", role, access, since`;
@@ -64,7 +64,7 @@ export async function listRecords(filter: RecordFilter = {}): Promise<DirectoryR
     where.push(`(lower(name) like $${params.length} or lower(email) like $${params.length}
       or lower(city) like $${params.length} or lower(tags::text) like $${params.length}
       or lower(job_title) like $${params.length} or lower(department) like $${params.length}
-      or lower(phones::text) like $${params.length} or lower(places::text) like $${params.length})`);
+      or lower(emails::text) like $${params.length} or lower(phones::text) like $${params.length} or lower(places::text) like $${params.length})`);
   }
   where.push(LIVE);
   return all<DirectoryRecord>(
@@ -91,7 +91,16 @@ export async function findByName(kind: RecordKind, name: string): Promise<Direct
 export async function findByEmail(kind: RecordKind, email: string): Promise<DirectoryRecord | null> {
   const wanted = email.trim().toLowerCase();
   if (!wanted) return null;
-  return one<DirectoryRecord>(`select ${COLS} from records where kind = $1 and lower(email) = $2 and ${LIVE}`, [kind, wanted]);
+  /* Sur toutes ses adresses, et pas seulement celle qu'on montre : c'est tout
+     l'objet d'en tenir plusieurs. Chercher sur la première a fabriqué deux
+     fiches pour la même collègue — l'une sous le domaine qu'on avait mal
+     tapé, l'autre sous le bon. */
+  return one<DirectoryRecord>(
+    `select ${COLS} from records
+      where kind = $1 and ${LIVE}
+        and exists (select 1 from jsonb_array_elements_text(emails) e where lower(e) = $2)`,
+    [kind, wanted],
+  );
 }
 
 export async function createRecord(input: {
@@ -103,7 +112,7 @@ export async function createRecord(input: {
   jobTitle?: string;
   department?: string;
   origin?: string;
-  email?: string;
+  emails?: string[];
   phones?: string[];
   places?: { city: string; country: string }[];
   website?: string;
@@ -126,11 +135,11 @@ export async function createRecord(input: {
      guess at later. Whatever the caller gives wins: it knows better. */
   const cut = input.kind === 'person' ? splitName(input.name) : { firstName: '', lastName: '' };
   await (await db()).query(
-    `insert into records (id, kind, name, first_name, last_name, roles, origin, email,
+    `insert into records (id, kind, name, first_name, last_name, roles, origin, emails,
        website, bio, tags, job_title, department,
        pitch, sector, stage, founded_year, team_size, linkedin, phones, places,
        created_by, created_by_name)
-     values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11::jsonb,$12,$13,
+     values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8::jsonb,$9,$10,$11::jsonb,$12,$13,
        $14,$15,$16,$17,$18,$19,$20::jsonb,$21::jsonb,$22,$23)`,
     [
       id,
@@ -140,7 +149,7 @@ export async function createRecord(input: {
       (input.lastName ?? '').trim() || cut.lastName,
       input.roles ?? [],
       input.origin ?? 'manual',
-      input.email ?? '',
+      (input.emails ?? []).filter(Boolean),
       input.website ?? '',
       input.bio ?? '',
       input.tags ?? [],
@@ -165,7 +174,6 @@ const FIELDS: Record<string, string> = {
   name: 'name',
   firstName: 'first_name',
   lastName: 'last_name',
-  email: 'email',
   website: 'website',
   bio: 'bio',
   jobTitle: 'job_title',
@@ -189,6 +197,9 @@ export async function updateRecord(id: string, patch: Record<string, unknown>): 
   if ('city' in patch || 'country' in patch) {
     throw new Error('A record holds `places` — `city` and `country` are the first of them, and the database computes them.');
   }
+  if ('email' in patch) {
+    throw new Error('A record holds `emails` — `email` is the first of them, and the database computes it.');
+  }
   if ('phone' in patch) {
     throw new Error('A record holds `phones`, a list — `phone` is the first of it, and the database computes it.');
   }
@@ -201,7 +212,7 @@ export async function updateRecord(id: string, patch: Record<string, unknown>): 
   }
   /* `phones` avec les autres listes, et jamais `phone` : la base la calcule, et
      écrire dessus est refusé — ce qui est exactement ce qu'on veut. */
-  for (const key of ['roles', 'tags', 'phones', 'places'] as const) {
+  for (const key of ['roles', 'tags', 'phones', 'places', 'emails'] as const) {
     if (patch[key] === undefined) continue;
     params.push(patch[key]);
     sets.push(`${key} = $${params.length}::jsonb`);

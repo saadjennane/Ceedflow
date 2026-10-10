@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { ApiError, api } from '../../lib/api';
 import { TagField, TextArea, TextField } from '../../ui/Field';
 import { Modal, useToast } from '../../ui/Overlays';
+import { EmailLines } from '../../ui/EmailLines';
 import { PhoneLines } from '../../ui/PhoneLines';
 import { PlaceLines } from '../../ui/PlaceLines';
 import { RecordImage } from '../../ui/OrgProfile';
@@ -37,7 +38,7 @@ export function RecordModal({
     jobTitle: record?.jobTitle ?? '',
     department: record?.department ?? '',
     roles: record?.roles ?? (isOrg ? ['Startup'] : []),
-    email: record?.email ?? '',
+    emails: record?.emails ?? [],
     phones: record?.phones ?? [],
     places: record?.places ?? [],
     website: record?.website ?? '',
@@ -199,7 +200,7 @@ export function RecordModal({
         />
       )}
 
-      <TextField label="Email" value={draft.email} onChange={(v) => set({ email: v })} placeholder="contact@…" />
+      <EmailLines label="Email" values={draft.emails} onChange={(v) => set({ emails: v })} />
       <PhoneLines label="Phone" values={draft.phones} onChange={(v) => set({ phones: v })} />
       <PlaceLines label="Where" values={draft.places} onChange={(v) => set({ places: v })} />
       {isOrg && <TextField label="Website" value={draft.website} onChange={(v) => set({ website: v })} />}

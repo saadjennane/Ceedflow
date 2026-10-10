@@ -38,7 +38,7 @@ describe('convening a committee', { skip: skipWithoutServer }, () => {
     const stamp = `${Date.now()}.${Math.random().toString(36).slice(2, 6)}`;
     const person = async (name: string, withAccount = true) => {
       const email = `${name.toLowerCase().replace(/\s+/g, '.')}.${stamp}@example.test`;
-      const record = await dir.createRecord({ kind: 'person', name: `${name} ${stamp}`, email, origin: 'manual' });
+      const record = await dir.createRecord({ kind: 'person', name: `${name} ${stamp}`, emails: [email], origin: 'manual' });
       if (withAccount) await createAccount({ email, password: 'given-by-ceed', recordId: record.id });
       return record;
     };
@@ -48,7 +48,7 @@ describe('convening a committee', { skip: skipWithoutServer }, () => {
     const candidacy = async (orgName: string) => {
       const org = await dir.createRecord({ kind: 'org', name: `${orgName} ${stamp}`, origin: 'manual' });
       const email = `${orgName.split(' ')[0]!.toLowerCase()}.${stamp}@example.test`;
-      const founder = await dir.createRecord({ kind: 'person', name: `${orgName} F ${stamp}`, email, origin: 'manual' });
+      const founder = await dir.createRecord({ kind: 'person', name: `${orgName} F ${stamp}`, emails: [email], origin: 'manual' });
       return repo.createCandidate({
         editionId: edition.id, trackId: track.id, orgId: org.id, personId: founder.id,
       });
@@ -152,7 +152,7 @@ describe('convening a committee', { skip: skipWithoutServer }, () => {
     const email = `sans.${stamp}@example.test`;
     const { panel } = await setUp();
     const stray = await dir.createRecord({
-      kind: 'person', name: `Sans compte ${stamp}`, email, origin: 'manual',
+      kind: 'person', name: `Sans compte ${stamp}`, emails: [email], origin: 'manual',
     });
     const sitting = (await repo.listSessions(panel.id))[0]!;
     await repo.updateSession(sitting.id, { jury: [...sitting.jury, stray.id] });
@@ -173,7 +173,7 @@ describe('convening a committee', { skip: skipWithoutServer }, () => {
     const stamp = Date.now();
     const email = `apercu.${stamp}@example.test`;
     const { panel } = await setUp();
-    const stray = await dir.createRecord({ kind: 'person', name: `Aperçu ${stamp}`, email, origin: 'manual' });
+    const stray = await dir.createRecord({ kind: 'person', name: `Aperçu ${stamp}`, emails: [email], origin: 'manual' });
     const sitting = (await repo.listSessions(panel.id))[0]!;
     await repo.updateSession(sitting.id, { jury: [...sitting.jury, stray.id] });
 

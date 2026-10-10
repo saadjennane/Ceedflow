@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { emailValue, phoneList, placeList } from './contact.js';
+import { emailList, phoneList, placeList } from './contact.js';
 import { ORG_STAGES } from './profile.js';
 
 /**
@@ -79,6 +79,8 @@ export const recordSchema = z.object({
   createdBy: z.string().nullable().default(null),
   createdByName: z.string().default(''),
   email: z.string().default(''),
+  /** Toutes les adresses. La première est celle qu'on donne. */
+  emails: z.array(z.string()).default([]),
   /** Tous les numéros, dans l'ordre où ils ont été donnés. */
   phones: z.array(z.string()).default([]),
   /** Tous les lieux. Le premier est celui qu'on donne quand il n'y en a qu'un. */
@@ -242,7 +244,7 @@ export const createRecordInput = z.object({
   foundedYear: z.number().nullable().default(null),
   teamSize: z.number().nullable().default(null),
   linkedin: z.string().default(''),
-  email: emailValue(),
+  emails: emailList(),
   phones: phoneList(),
   places: placeList(),
   website: z.string().default(''),
@@ -284,7 +286,7 @@ export const affiliationInput = z.object({
  */
 export const teamMemberInput = z.object({
   name: z.string().min(1, 'Who are you adding?'),
-  email: emailValue(),
+  emails: emailList(),
   phones: phoneList(),
   /** Their title on the page. */
   role: z.string().default(''),
@@ -450,7 +452,7 @@ export const profileInput = z.object({
 export const myOrgInput = z.object({
   name: z.string().min(1, 'Tell us the name of the organisation.'),
   roles: z.array(z.string()).default(['Startup']),
-  email: emailValue(),
+  emails: emailList(),
   phones: phoneList(),
   places: placeList(),
   website: z.string().default(''),

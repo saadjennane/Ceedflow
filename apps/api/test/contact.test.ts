@@ -78,9 +78,11 @@ describe('an address and a number', { skip: skipWithoutServer }, () => {
   });
 
   it('refuses to write a wrong address onto an organisation page', () => {
-    const bad = myOrgInput.safeParse({ name: 'Rafid Tech', email: 'contact@rafid' });
+    const bad = myOrgInput.safeParse({ name: 'Rafid Tech', emails: ['contact@rafid'] });
     assert.equal(bad.success, false);
-    const good = myOrgInput.safeParse({ name: 'Rafid Tech', email: 'contact@rafid.ma', phone: '+212 6 12 34 56 78' });
+    const good = myOrgInput.safeParse({
+      name: 'Rafid Tech', emails: ['contact@rafid.ma', 'zineb@rafid.ma'], phones: ['+212 6 12 34 56 78'],
+    });
     assert.equal(good.success, true);
   });
 });

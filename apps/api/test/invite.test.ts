@@ -38,7 +38,7 @@ describe('inviting somebody into an account', { skip: skipWithoutServer }, () =>
     await app.register(directoryRoutes);
     await app.ready();
 
-    const me = await dir.createRecord({ kind: 'person', name: 'CEED Staff', email: 'staff@example.test', origin: 'manual' });
+    const me = await dir.createRecord({ kind: 'person', name: 'CEED Staff', emails: ['staff@example.test'], origin: 'manual' });
     const account = await createAccount({ email: 'staff@example.test', password: 'chosen-by-them', recordId: me.id });
     await setStaffRole(account.id, 'admin');
     session = (await createSession(account.id)).token;
@@ -51,7 +51,7 @@ describe('inviting somebody into an account', { skip: skipWithoutServer }, () =>
   /** A founder with an account nobody has claimed. */
   const somebody = async (name: string) => {
     const email = `${name}.${Date.now()}@example.test`;
-    const record = await dir.createRecord({ kind: 'person', name, email, origin: 'manual' });
+    const record = await dir.createRecord({ kind: 'person', name, emails: [email], origin: 'manual' });
     await createAccount({ email, password: 'given-by-ceed', recordId: record.id, mustChangePassword: true });
     return { record, email };
   };
@@ -104,7 +104,7 @@ describe('inviting somebody into an account', { skip: skipWithoutServer }, () =>
     /* Otherwise this is a way to reset somebody's password without saying so —
        the reset route exists, says what it does, and ends their sessions. */
     const email = `claimed.${Date.now()}@example.test`;
-    const record = await dir.createRecord({ kind: 'person', name: 'Déjà entrée', email, origin: 'manual' });
+    const record = await dir.createRecord({ kind: 'person', name: 'Déjà entrée', emails: [email], origin: 'manual' });
     await createAccount({ email, password: 'chosen-by-them', recordId: record.id });
 
     const res = await invite(record.id);
@@ -128,7 +128,7 @@ describe('inviting somebody into an account', { skip: skipWithoutServer }, () =>
        invitation that only works on people who already have one would be
        useless for the one case it exists for. */
     const email = `jamais.${Date.now()}@example.test`;
-    const record = await dir.createRecord({ kind: 'person', name: `Jamais ${Date.now()}`, email, origin: 'manual' });
+    const record = await dir.createRecord({ kind: 'person', name: `Jamais ${Date.now()}`, emails: [email], origin: 'manual' });
     const out = await inviteDirect(record.id);
     assert.equal(out.blocked, '');
 
@@ -146,7 +146,7 @@ describe('inviting somebody into an account', { skip: skipWithoutServer }, () =>
     const ids: string[] = [];
     for (let i = 0; i < 5; i++) {
       const email = `lot${i}.${stamp}@example.test`;
-      const r = await dir.createRecord({ kind: 'person', name: `Lot ${i} ${stamp}`, email, origin: 'manual' });
+      const r = await dir.createRecord({ kind: 'person', name: `Lot ${i} ${stamp}`, emails: [email], origin: 'manual' });
       ids.push(r.id);
     }
     const out = await inviteMany(ids, 2);
@@ -164,7 +164,7 @@ describe('inviting somebody into an account', { skip: skipWithoutServer }, () =>
     const stamp = Date.now();
     const mute = await dir.createRecord({ kind: 'person', name: `Sans ${stamp}`, origin: 'manual' });
     const claimedEmail = `claimee.${stamp}@example.test`;
-    const claimed = await dir.createRecord({ kind: 'person', name: `Déjà ${stamp}`, email: claimedEmail, origin: 'manual' });
+    const claimed = await dir.createRecord({ kind: 'person', name: `Déjà ${stamp}`, emails: [claimedEmail], origin: 'manual' });
     await createAccount({ email: claimedEmail, password: 'chosen-by-them', recordId: claimed.id });
 
     const out = await inviteMany([mute.id, claimed.id], null);
@@ -193,7 +193,7 @@ describe('inviting somebody into an account', { skip: skipWithoutServer }, () =>
 describe('the way in, carried by the letter', { skip: skipWithoutServer }, () => {
   const somebody = async (name: string, withAccount: 'none' | 'unclaimed' | 'claimed') => {
     const email = `${name.toLowerCase()}.${Date.now()}.${Math.random().toString(36).slice(2, 6)}@example.test`;
-    const record = await dir.createRecord({ kind: 'person', name: `${name} ${Date.now()}`, email, origin: 'manual' });
+    const record = await dir.createRecord({ kind: 'person', name: `${name} ${Date.now()}`, emails: [email], origin: 'manual' });
     if (withAccount !== 'none') {
       await createAccount({
         email,

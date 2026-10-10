@@ -124,7 +124,12 @@ export async function staffRoutes(app: FastifyInstance) {
         await setStaffRole(held.id, input.role);
         /* La fiche aussi : c'est là que part le courrier, et l'ancienne
            adresse était une faute de frappe. */
-        await dir.updateRecord(known.id, { email, roles: [...new Set([...known.roles, 'CEED team'])] });
+        /* La nouvelle adresse passe en tête, l'ancienne reste : c'était une
+           faute de frappe, mais on n'efface pas ce que quelqu'un a écrit. */
+        await dir.updateRecord(known.id, {
+          emails: [email, ...known.emails.filter((e) => e.toLowerCase() !== email)],
+          roles: [...new Set([...known.roles, 'CEED team'])],
+        });
         reply.code(200);
         return { team: await resolve(), invite: { email, password }, promoted: false };
       }
@@ -135,7 +140,7 @@ export async function staffRoutes(app: FastifyInstance) {
       (await dir.createRecord({
         kind: 'person',
         name: input.name.trim(),
-        email,
+        emails: [email],
         roles: ['CEED team'],
         origin: 'manual',
         by: req.staff ? { id: req.staff.id, name: req.staff.email } : null,

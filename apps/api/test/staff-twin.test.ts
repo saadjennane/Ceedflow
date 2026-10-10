@@ -22,7 +22,7 @@ const addToTeam = async (name: string, email: string) => {
     const held = await accountOfRecord(known.id);
     if (held) return { record: known, account: held, reused: true };
   }
-  const record = known ?? (await dir.createRecord({ kind: 'person', name, email, roles: ['CEED team'], origin: 'manual' }));
+  const record = known ?? (await dir.createRecord({ kind: 'person', name, emails: [email], roles: ['CEED team'], origin: 'manual' }));
   const account = await createAccount({ email, password: 'given', recordId: record.id, mustChangePassword: true });
   await setStaffRole(account.id, 'editor');
   return { record, account, reused: false };

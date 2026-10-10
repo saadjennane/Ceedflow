@@ -296,7 +296,7 @@ describe('telling the startups', { skip: skipWithoutServer }, () => {
 
     const candidacy = async (orgName: string, email: string) => {
       const org = await dir.createRecord({ kind: 'org', name: orgName, origin: 'manual' });
-      const person = await dir.createRecord({ kind: 'person', name: `${orgName} F`, email, origin: 'manual' });
+      const person = await dir.createRecord({ kind: 'person', name: `${orgName} F`, emails: [email], origin: 'manual' });
       await createAccount({ email, password: 'given-by-ceed', recordId: person.id, mustChangePassword: true });
       return repo.createCandidate({
         editionId: edition.id, trackId: track.id, orgId: org.id, personId: person.id,
@@ -460,7 +460,7 @@ describe('telling the startups', { skip: skipWithoutServer }, () => {
     assert.equal(await lettersFor(due.id), 2, 'the two that could hear it');
 
     const address = `plus-tard.${Date.now()}@example.test`;
-    await dir.updateRecord(person.id, { email: address });
+    await dir.updateRecord(person.id, { emails: [address ]});
     await createAccount({ email: address, password: 'given-by-ceed', recordId: person.id });
 
     const again = await noticeRoster(due.id, 'request');
@@ -658,7 +658,7 @@ describe('sending a test', { skip: skipWithoutServer }, () => {
 
     const org = await dir.createRecord({ kind: 'org', name: `Rafid Tech ${stamp}`, origin: 'manual' });
     const person = await dir.createRecord({
-      kind: 'person', name: `Karim ${stamp}`, email: `karim.${stamp}@example.test`, origin: 'manual',
+      kind: 'person', name: `Karim ${stamp}`, emails: [`karim.${stamp}@example.test`], origin: 'manual',
     });
     const candidate = await repo.createCandidate({
       editionId: edition.id, trackId: track.id, orgId: org.id, personId: person.id,

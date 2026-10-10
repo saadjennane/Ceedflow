@@ -50,7 +50,7 @@ describe('calling for applications', { skip: skipWithoutServer }, () => {
         kind: 'person',
         name: `${name} ${stamp}`,
         origin: 'manual',
-        ...(email ? { email: `${name.toLowerCase()}.${stamp}@example.test` } : {}),
+        ...(email ? { emails: [`${name.toLowerCase()}.${stamp}@example.test`] } : {}),
         tags: [tag],
       });
       return record;
@@ -139,7 +139,7 @@ describe('calling for applications', { skip: skipWithoutServer }, () => {
 
     const stamp = Date.now();
     await dir.createRecord({
-      kind: 'person', name: `Tardif ${stamp}`, email: `tardif.${stamp}@example.test`,
+      kind: 'person', name: `Tardif ${stamp}`, emails: [`tardif.${stamp}@example.test`],
       origin: 'manual', tags: [tag],
     });
     const again = await sourcingRoster(call.id, SOURCING_KIND);

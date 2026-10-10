@@ -111,13 +111,15 @@ export function AccountCard({
                 Tant que le mot de passe est provisoire, l'identifiant suit
                 l'adresse de la fiche tout seul ; une fois qu'elle s'en est
                 servie, on ne la déplace plus sous elle — alors on le dit. */}
-            {record.email.trim() && account.email.trim().toLowerCase() !== record.email.trim().toLowerCase() && (
+            {record.emails.length > 0 &&
+              !record.emails.some((e) => e.trim().toLowerCase() === account.email.trim().toLowerCase()) && (
               <div className="callout warn" style={{ margin: '2px 0' }}>
                 <Icon name="alert" size={15} />
                 <div>
-                  <strong>Not the address on this record.</strong> They sign in with{' '}
-                  <strong>{account.email}</strong>, and the record says <strong>{record.email}</strong> — which is where
-                  letters go. Whoever writes to them names the wrong one half the time.
+                  <strong>Not one of the addresses on this record.</strong> They sign in with{' '}
+                  <strong>{account.email}</strong>, and the record holds{' '}
+                  <strong>{record.emails.join(', ')}</strong> — which is where letters go. Whoever writes to them names
+                  the wrong one half the time.
                 </div>
               </div>
             )}

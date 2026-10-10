@@ -30,7 +30,7 @@ describe('acknowledging an application', { skip: skipWithoutServer }, () => {
 
     const org = await dir.createRecord({ kind: 'org', name: `Rafid Tech ${stamp}`, origin: 'manual' });
     const email = `rafid.${stamp}@example.test`;
-    const person = await dir.createRecord({ kind: 'person', name: `Karim ${stamp}`, email, origin: 'manual' });
+    const person = await dir.createRecord({ kind: 'person', name: `Karim ${stamp}`, emails: [email], origin: 'manual' });
     const candidate = await repo.createCandidate({
       editionId: edition.id, trackId: track.id, orgId: org.id, personId: person.id, originBlockId: form.id,
     });

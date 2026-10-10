@@ -114,3 +114,11 @@ export const placeList = () =>
         .map((p) => ({ city: p.city.trim(), country: p.country.trim() }))
         .filter((p) => p.city || p.country),
     );
+
+/** Plusieurs adresses, la première étant celle qu'on donne. */
+export const emailList = () =>
+  z
+    .array(z.string())
+    .default([])
+    .transform((list) => list.map((e) => e.trim()).filter(Boolean))
+    .refine((list) => list.every((e) => !emailProblem(e)), CONTACT_SAYS.email);

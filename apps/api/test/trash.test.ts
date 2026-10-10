@@ -34,7 +34,7 @@ describe('the thirty days before a deletion is true', { skip: skipWithoutServer 
     const mark = stamp();
     const email = `karim.${mark}@example.test`;
     const org = await dir.createRecord({ kind: 'org', name: `Rafid Tech ${mark}`, origin: 'manual' });
-    const person = await dir.createRecord({ kind: 'person', name: `Karim ${mark}`, email, origin: 'manual' });
+    const person = await dir.createRecord({ kind: 'person', name: `Karim ${mark}`, emails: [email], origin: 'manual' });
     await dir.linkRecords({ personId: person.id, orgId: org.id, role: 'Founder', access: 'admin' });
     await createAccount({ email, password: 'given-by-ceed', recordId: person.id, mustChangePassword: true });
 

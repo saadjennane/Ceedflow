@@ -199,7 +199,7 @@ export async function authRoutes(app: FastifyInstance) {
         name,
         firstName: input.firstName,
         lastName: input.lastName,
-        email: input.email,
+        emails: [input.email],
         places: [],
         origin: 'signup',
       }));
@@ -317,7 +317,7 @@ export async function authRoutes(app: FastifyInstance) {
         kind: 'org',
         name: input.name,
         roles: input.roles,
-        email: input.email,
+        emails: input.emails,
         phones: input.phones,
         places: input.places,
         website: input.website,
@@ -326,7 +326,9 @@ export async function authRoutes(app: FastifyInstance) {
       }));
     if (found) {
       await dir.updateRecord(found.id, {
-        email: found.email || input.email,
+        /* Les adresses aussi : une page que CEED connaissait déjà a souvent
+           un contact@, et la fondatrice donne la sienne. */
+        emails: [...new Set([...found.emails, ...input.emails])],
         /* Les numéros et les lieux s'ajoutent plutôt que de s'écraser : une
            page que CEED connaissait déjà a souvent le standard, et la
            fondatrice donne le sien. */
@@ -590,13 +592,13 @@ export async function authRoutes(app: FastifyInstance) {
 
     // Somebody CEED already knows joins the page instead of arriving as a twin —
     // the rule that kept the import from splitting one founder in two.
-    const existing = input.email.trim() ? await dir.findByEmail('person', input.email) : null;
+    const existing = input.emails[0] ? await dir.findByEmail('person', input.emails[0]) : null;
     const person =
       existing ??
       (await dir.createRecord({
         kind: 'person',
         name: input.name.trim(),
-        email: input.email.trim(),
+        emails: input.emails,
         phones: input.phones,
         places: [],
         origin: 'team',

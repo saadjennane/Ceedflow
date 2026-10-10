@@ -50,7 +50,7 @@ after(closeDb);
 
 /** Somebody with an account they have made their own. */
 const withClaimedAccount = async (email: string) => {
-  const person = await dir.createRecord({ kind: 'person', name: 'Nawal Cherkaoui', email, origin: 'manual' });
+  const person = await dir.createRecord({ kind: 'person', name: 'Nawal Cherkaoui', emails: [email], origin: 'manual' });
   await createAccount({ email, password: 'given-by-ceed', recordId: person.id, mustChangePassword: true });
   const account = (await accountOfRecord(person.id))!;
   // She replaces it, which is what makes the account hers.

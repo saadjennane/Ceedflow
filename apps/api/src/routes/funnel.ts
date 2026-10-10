@@ -214,7 +214,7 @@ export async function funnelRoutes(app: FastifyInstance) {
         (email.trim() ? await dir.findByEmail('person', email) : null) ?? (await dir.findByName('person', clean));
       return (
         found ??
-        (await dir.createRecord({ kind: 'person', name: clean, email: email.trim(), phones, origin }))
+        (await dir.createRecord({ kind: 'person', name: clean, emails: email.trim() ? [email.trim()] : [], phones, origin }))
       );
     };
 

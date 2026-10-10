@@ -22,14 +22,14 @@ describe('the address somebody signs in with', { skip: skipWithoutServer }, () =
   after(closeDb);
 
   const person = async (email: string) =>
-    dir.createRecord({ kind: 'person', name: `Sanaa ${uniq()}`, email, origin: 'manual' });
+    dir.createRecord({ kind: 'person', name: `Sanaa ${uniq()}`, emails: [email], origin: 'manual' });
 
   it('follows the record while nobody has used it', async () => {
     const mark = uniq();
     const who = await person(`old.${mark}@example.test`);
     await createAccount({ email: `old.${mark}@example.test`, password: 'given-by-ceed', recordId: who.id, mustChangePassword: true });
 
-    await dir.updateRecord(who.id, { email: `new.${mark}@example.test` });
+    await dir.updateRecord(who.id, { emails: [`new.${mark}@example.test`] });
     assert.equal(await followRecordEmail(who.id, `new.${mark}@example.test`), 'moved');
     assert.equal((await accountOfRecord(who.id))?.email, `new.${mark}@example.test`);
     assert.ok(await findAccount(`new.${mark}@example.test`), 'and that is what signs in now');
@@ -77,7 +77,7 @@ describe('the address somebody signs in with', { skip: skipWithoutServer }, () =
     const mark = uniq();
     const who = await person(`signs.${mark}@example.test`);
     await createAccount({ email: `signs.${mark}@example.test`, password: 'given', recordId: who.id, mustChangePassword: true });
-    await dir.updateRecord(who.id, { email: `writes.${mark}@example.test` });
+    await dir.updateRecord(who.id, { emails: [`writes.${mark}@example.test`] });
 
     const block = await accessFor(who.id);
     assert.ok(block.includes(`signs.${mark}@example.test`), 'the one that opens the door');

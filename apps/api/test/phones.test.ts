@@ -17,7 +17,6 @@ const uniq = () => `${Date.now()}.${Math.random().toString(36).slice(2, 7)}`;
 
 describe('several numbers for the same person', { skip: skipWithoutServer }, () => {
   before(migrate);
-  after(closeDb);
 
   it('keeps them all, in the order they were given', async () => {
     const who = await dir.createRecord({
@@ -66,5 +65,38 @@ describe('several numbers for the same person', { skip: skipWithoutServer }, () 
 
     const bad = createRecordInput.safeParse({ kind: 'person', name: 'Sanaa', phones: ['06 12 34 56 78', 'à venir'] });
     assert.equal(bad.success, false, 'un seul numéro fautif suffit à refuser');
+  });
+});
+
+describe('several addresses for the same record', { skip: skipWithoutServer }, () => {
+  before(migrate);
+  after(closeDb);
+
+  it('keeps them all, and the first is the one shown', async () => {
+    const who = await dir.createRecord({
+      kind: 'org', name: `Rafid ${uniq()}`, origin: 'manual',
+      emails: ['contact@rafid.ma', 'zineb@rafid.ma'],
+    });
+    assert.deepEqual(who.emails, ['contact@rafid.ma', 'zineb@rafid.ma']);
+    assert.equal(who.email, 'contact@rafid.ma');
+  });
+
+  it('finds somebody by an address that is not the first', async () => {
+    /* C'est tout l'objet d'en tenir plusieurs : la collègue ajoutée deux fois
+       l'a été parce qu'on cherchait sur une seule. */
+    const mark = uniq().replace(/\W/g, '');
+    const who = await dir.createRecord({
+      kind: 'person', name: `Ghita ${mark}`, origin: 'manual',
+      emails: [`g.${mark}@ceed-morocco.com`, `g.${mark}@ceed-morocco.org`],
+    });
+    const found = await dir.findByEmail('person', `G.${mark}@CEED-morocco.ORG`);
+    assert.equal(found?.id, who.id, 'trouvée sur la seconde, et sans égard à la casse');
+  });
+
+  it('refuses a list with one wrong address in it', () => {
+    const bad = createRecordInput.safeParse({
+      kind: 'org', name: 'Rafid', emails: ['contact@rafid.ma', 'zineb@rafid'],
+    });
+    assert.equal(bad.success, false);
   });
 });

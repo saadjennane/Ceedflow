@@ -87,7 +87,7 @@ describe('a selection that holds some startups', { skip: skipWithoutServer }, ()
     const candidacy = async (orgName: string, outcome: string) => {
       const org = await dir.createRecord({ kind: 'org', name: orgName, origin: 'manual' });
       const email = `${orgName.split(' ')[0]!.toLowerCase()}.${Date.now()}.${Math.random().toString(36).slice(2, 6)}@example.test`;
-      const person = await dir.createRecord({ kind: 'person', name: `${orgName} F`, email, origin: 'manual' });
+      const person = await dir.createRecord({ kind: 'person', name: `${orgName} F`, emails: [email], origin: 'manual' });
       await createAccount({ email, password: 'given-by-ceed', recordId: person.id, mustChangePassword: true });
       const c = await repo.createCandidate({
         editionId: edition.id, trackId: track.id, orgId: org.id, personId: person.id,
@@ -187,7 +187,7 @@ describe('telling each audience what was decided', { skip: skipWithoutServer }, 
     const candidacy = async (orgName: string, outcome: string) => {
       const org = await dir.createRecord({ kind: 'org', name: orgName, origin: 'manual' });
       const email = `${orgName.split(' ')[0]!.toLowerCase()}.${Date.now()}.${Math.random().toString(36).slice(2, 6)}@example.test`;
-      const person = await dir.createRecord({ kind: 'person', name: `${orgName} F`, email, origin: 'manual' });
+      const person = await dir.createRecord({ kind: 'person', name: `${orgName} F`, emails: [email], origin: 'manual' });
       await createAccount({ email, password: 'given-by-ceed', recordId: person.id, mustChangePassword: true });
       const c = await repo.createCandidate({
         editionId: edition.id, trackId: track.id, orgId: org.id, personId: person.id,
@@ -203,7 +203,7 @@ describe('telling each audience what was decided', { skip: skipWithoutServer }, 
       const org = await dir.createRecord({ kind: 'org', name: orgName, origin: 'manual' });
       const person = await dir.createRecord({
         kind: 'person', name: `${orgName} F`, origin: 'manual',
-        email: `${orgName.split(' ')[0]!.toLowerCase()}.${Date.now()}.${Math.random().toString(36).slice(2, 6)}@example.test`,
+        emails: [`${orgName.split(' ')[0]!.toLowerCase()}.${Date.now()}.${Math.random().toString(36).slice(2, 6)}@example.test`],
       });
       return repo.createCandidate({
         editionId: edition.id, trackId: track.id, orgId: org.id, personId: person.id,
