@@ -4,6 +4,7 @@ import { ApiError, api } from '../../lib/api';
 import { TagField, TextArea, TextField } from '../../ui/Field';
 import { Modal, useToast } from '../../ui/Overlays';
 import { PhoneLines } from '../../ui/PhoneLines';
+import { RecordImage } from '../../ui/OrgProfile';
 import { ProfileFields } from '../../ui/OrgProfile';
 
 /** Typed by the team — one of the two ways a record gets into the directory. */
@@ -186,6 +187,17 @@ export function RecordModal({
             : 'Leave empty for a contact known through their organisation.'}
         </div>
       </div>
+
+      {/* Une organisation a un logo, une personne une photo : c'est la même
+          image sur la même fiche, et seul le mot change. */}
+      {!isOrg && (
+        <RecordImage
+          label="Photo"
+          uploadId={draft.logoUploadId}
+          name={draft.name}
+          onChange={(v) => set({ logoUploadId: v })}
+        />
+      )}
 
       <TextField label="Email" value={draft.email} onChange={(v) => set({ email: v })} placeholder="contact@…" />
       <PhoneLines label="Phone" values={draft.phones} onChange={(v) => set({ phones: v })} />

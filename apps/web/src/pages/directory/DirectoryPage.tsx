@@ -2,6 +2,7 @@ import { ORIGIN_LABEL, rolesFor, type DirectoryRecord, type RecordAccount, type 
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
+import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
 import { SearchBox } from '../../ui/SearchBox';
@@ -17,6 +18,12 @@ export interface RecordRow extends DirectoryRecord {
   contacts: number;
   /** Null for an organisation, and for anybody who has no way in yet. */
   account: RecordAccount | null;
+  /** Les organisations qu'une personne tient. Vide pour une organisation. */
+  orgs: { id: string; name: string; role: string }[];
+  /** Les programmes finis où elle était encore en lice à la clôture. */
+  alumni: number;
+  /** Ceux qui tournent et où elle l'est encore. */
+  current: string[];
 }
 
 export const initials = (name: string) =>
@@ -178,9 +185,16 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
                     </th>
                   )}
                   <th>Name</th>
+                  {!isOrg && <th>Phone</th>}
+                  {!isOrg && <th>Email</th>}
                   <th>Roles</th>
-                  <th>City</th>
-                  <th>{isOrg ? 'Contacts' : 'Organisations'}</th>
+                  <th>{isOrg ? 'City' : 'Where'}</th>
+                  <th>{isOrg ? 'Contacts' : 'Company'}</th>
+                  {!isOrg && (
+                    <th title="Programmes that are over and where they were still in at the close, and the one running now">
+                      Programmes
+                    </th>
+                  )}
                   {!isOrg && <th>Account</th>}
                   <th>Came from</th>
                 </tr>
@@ -200,10 +214,16 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
                     )}
                     <td className="name">
                       <Link to={`/directory/${r.id}`} className="rec-name">
-                        <span className="rec-mark">{initials(r.name)}</span>
+                        {/* La photo là où était la marque, à la même taille :
+                            une ligne sans photo ne décale donc pas les autres. */}
+                        {r.logoUploadId ? (
+                          <img className="rec-photo" src={`/api/uploads/${r.logoUploadId}`} alt="" />
+                        ) : (
+                          <span className="rec-mark">{initials(r.name)}</span>
+                        )}
                         <span>
                           {r.name}
-                          {r.email && (
+                          {isOrg && r.email && (
                             <span className="faint" style={{ display: 'block', fontWeight: 400, fontSize: 12 }}>
                               {r.email}
                             </span>
@@ -211,6 +231,22 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
                         </span>
                       </Link>
                     </td>
+
+                    {!isOrg && (
+                      <td className="muted num" style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>
+                        {r.phones[0] ?? <span className="faint">—</span>}
+                        {/* Les autres sont sur la fiche : une colonne qui les
+                            empile ferait des lignes de trois hauteurs. */}
+                        {r.phones.length > 1 && (
+                          <span className="faint" title={r.phones.slice(1).join(' · ')}> +{r.phones.length - 1}</span>
+                        )}
+                      </td>
+                    )}
+                    {!isOrg && (
+                      <td className="muted" style={{ fontSize: 12.5 }}>
+                        {r.email || <span className="faint">—</span>}
+                      </td>
+                    )}
                     <td>
                       {r.roles.length ? (
                         r.roles.map((x) => (
@@ -222,23 +258,86 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
                         <span className="faint">—</span>
                       )}
                     </td>
-                    <td className="muted">{r.city || <span className="faint">—</span>}</td>
-                    <td>
-                      {r.contacts ? (
-                        <span className="num muted">{r.contacts}</span>
-                      ) : isOrg ? (
-                        <span className="badge warn">None</span>
+                    {/* Le pays seul ne dit pas où : « Morocco » sur une ligne
+                        sans ville se lit comme un renseignement, et n'en est
+                        pas un — le pays est à Morocco par défaut pour tout le
+                        monde. */}
+                    <td className="muted" style={{ fontSize: 12.5 }}>
+                      {r.city ? (
+                        [r.city, isOrg ? null : r.country].filter(Boolean).join(', ')
                       ) : (
                         <span className="faint">—</span>
                       )}
                     </td>
-                    {!isOrg && (
+
+                    {isOrg ? (
                       <td>
+                        {r.contacts ? (
+                          <span className="num muted">{r.contacts}</span>
+                        ) : (
+                          <span className="badge warn">None</span>
+                        )}
+                      </td>
+                    ) : (
+                      /* Où il travaille, et ce qu'il y fait : la fonction de sa
+                         fiche, sinon le rôle du lien — « Founder » faute de
+                         mieux vaut mieux que rien du tout. */
+                      <td style={{ fontSize: 12.5 }}>
+                        {r.orgs.length ? (
+                          <>
+                            <Link to={`/directory/${r.orgs[0]!.id}`}>{r.orgs[0]!.name}</Link>
+                            {r.orgs.length > 1 && (
+                              <span className="faint" title={r.orgs.slice(1).map((o) => o.name).join(' · ')}>
+                                {' '}+{r.orgs.length - 1}
+                              </span>
+                            )}
+                            {(r.jobTitle || r.orgs[0]!.role) && (
+                              <span className="faint" style={{ display: 'block' }}>
+                                {r.jobTitle || r.orgs[0]!.role}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="faint">{r.jobTitle || '—'}</span>
+                        )}
+                      </td>
+                    )}
+
+                    {!isOrg && (
+                      <td style={{ fontSize: 12.5 }}>
+                        {r.alumni > 0 && (
+                          <span className="badge" title="Programmes that are over and where they were still in">
+                            {r.alumni} done
+                          </span>
+                        )}
+                        {r.current.map((name) => (
+                          <span className="badge ok" key={name} style={{ marginLeft: r.alumni ? 5 : 0 }}>
+                            {name}
+                          </span>
+                        ))}
+                        {!r.alumni && !r.current.length && <span className="faint">—</span>}
+                      </td>
+                    )}
+                    {!isOrg && (
+                      <td style={{ whiteSpace: 'nowrap' }}>
                         <AccountBadge account={r.account} />
+                        {/* La date qui compte : la dernière fois qu'on les a
+                            vus, sinon le jour où le compte a été ouvert. Un
+                            compte jamais utilisé se lit alors d'un coup d'œil. */}
+                        {r.account && (
+                          <span className="faint" style={{ display: 'block', fontSize: 11.5 }}>
+                            {r.account.lastSeenAt
+                              ? `seen ${formatDate(r.account.lastSeenAt)}`
+                              : `opened ${formatDate(r.account.createdAt)}`}
+                          </span>
+                        )}
                       </td>
                     )}
                     <td className="faint" style={{ fontSize: 12 }} title={ORIGIN_LABEL[r.origin]}>
-                      {r.origin === 'import' ? 'File' : r.origin === 'signup' ? 'Registered' : 'By hand'}
+                      {/* Qui, quand on le sait ; par quelle porte sinon. Les
+                          fiches d'avant ce champ n'ont que la porte, et c'est
+                          déjà ce qu'elles disaient. */}
+                      {r.createdByName || (r.origin === 'import' ? 'File' : r.origin === 'signup' ? 'Registered' : 'By hand')}
                     </td>
                   </tr>
                 ))}

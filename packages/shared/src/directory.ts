@@ -75,6 +75,9 @@ export const recordSchema = z.object({
   teamSize: z.number().nullable().default(null),
   linkedin: z.string().default(''),
   origin: z.enum(RECORD_ORIGINS).default('manual'),
+  /** Le collaborateur qui l'a ajoutée, par son nom au moment où il l'a fait. */
+  createdBy: z.string().nullable().default(null),
+  createdByName: z.string().default(''),
   email: z.string().default(''),
   /** Tous les numéros, dans l'ordre où ils ont été donnés. */
   phones: z.array(z.string()).default([]),
@@ -606,6 +609,8 @@ export interface RecordAccount {
   /** When the way in was closed. Null while the account still works. */
   disabledAt: string | null;
   createdAt: string;
+  /** La dernière session ouverte. Null pour qui n'est jamais entré. */
+  lastSeenAt?: string | null;
 }
 
 export interface Me {

@@ -15,7 +15,7 @@ import {
   type ImportReport,
   type RecordKind,
 } from '@ceed/shared';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import * as dir from '../db/directory.js';
 import {
@@ -29,6 +29,7 @@ import {
   setAccountDisabled,
 } from '../services/auth.js';
 import { post, sendingIsLive } from '../services/mail.js';
+import { peopleRows } from '../services/people.js';
 import { invite, inviteBlock, inviteMany } from '../services/invitations.js';
 import { HttpError, notFound, parse } from './util.js';
 import { requireWorkspaceAdmin, workspaceGuard } from './guard.js';
@@ -46,6 +47,19 @@ export async function directoryRoutes(app: FastifyInstance) {
 
   /* ---- The two lists are one query ---- */
 
+  /**
+   * Le collaborateur qui agit, tel qu'on l'inscrira sur la fiche.
+   *
+   * Son nom d'annuaire s'il en a un, son adresse sinon : une liste qui dit
+   * « s.jennane@ceed-morocco.org » répond tout de même à la question posée,
+   * qui est « à qui je demande ».
+   */
+  const actor = async (req: FastifyRequest) => {
+    if (!req.staff) return null;
+    const record = await dir.getRecord(req.staff.recordId);
+    return { id: req.staff.id, name: record?.name?.trim() || req.staff.email };
+  };
+
   app.get('/api/records', async (req) => {
     const { kind, role, q } = req.query as Record<string, string | undefined>;
     const records = await dir.listRecords({ kind: kind as RecordKind, role, q });
@@ -53,10 +67,16 @@ export async function directoryRoutes(app: FastifyInstance) {
     const counts = await dir.linkCounts();
     // Where each person stands on having their own way in. One query for all.
     const accounts = await accountStatesByRecord();
+    /* Ce que la liste des individus montre en plus : où ils travaillent, les
+       programmes faits et celui en cours. Trois requêtes pour toute la page. */
+    const people = kind === 'person' ? await peopleRows() : new Map();
     const rows = records.map((r) => ({
       ...r,
       contacts: counts.get(r.id) ?? 0,
       account: accounts.get(r.id) ?? null,
+      orgs: people.get(r.id)?.orgs ?? [],
+      alumni: people.get(r.id)?.alumni ?? 0,
+      current: people.get(r.id)?.current ?? [],
     }));
     // Somebody a founder typed onto their own team page is content until they
     // come through the door themselves. A search still reaches them — hiding a
@@ -84,7 +104,7 @@ export async function directoryRoutes(app: FastifyInstance) {
     if (existing && !namesake) {
       throw new HttpError(422, `${existing.name} is already in the directory.`, { name: 'Already in the directory.' });
     }
-    const record = await dir.createRecord({ ...input, name });
+    const record = await dir.createRecord({ ...input, name, by: await actor(req) });
     if (input.affiliateTo) {
       const org = await dir.getRecord(input.affiliateTo);
       if (org) {
@@ -362,7 +382,7 @@ export async function directoryRoutes(app: FastifyInstance) {
 
   app.post('/api/records/import', async (req) => {
     const input = parse(importInput, req.body);
-    return runImport(input.kind, input.rows, input.dryRun);
+    return runImport(input.kind, input.rows, input.dryRun, await actor(req));
   });
 
   /* ---- Registering yourself ---- */
@@ -428,7 +448,13 @@ const text = (row: Record<string, string>, key: string) => (row[key] ?? '').trim
  * Rows already mapped onto the model's columns. An existing record is completed
  * rather than overwritten — an import never destroys what someone typed.
  */
-async function runImport(kind: RecordKind, rows: Record<string, string>[], dryRun: boolean): Promise<ImportReport> {
+async function runImport(
+  kind: RecordKind,
+  rows: Record<string, string>[],
+  dryRun: boolean,
+  /** Qui importe : le fichier dit d'où, lui dit de qui. */
+  who: { id: string; name: string } | null,
+): Promise<ImportReport> {
   const existing = await dir.listRecords({ kind });
   const known = new Map(existing.map((r) => [matchKey(r.name), r] as const));
   const people = new Map((await dir.listRecords({ kind: 'person' })).map((r) => [matchKey(r.name), r] as const));
@@ -505,7 +531,7 @@ async function runImport(kind: RecordKind, rows: Record<string, string>[], dryRu
         contact: contactName || null,
       });
       if (!dryRun) {
-        record = await dir.createRecord({ kind, name, roles, tags, origin: 'import', ...patch });
+        record = await dir.createRecord({ kind, name, roles, tags, origin: 'import', ...patch, by: who });
         known.set(key, record);
       } else {
         known.set(key, { id: 'preview', name } as DirectoryRecord);
@@ -520,6 +546,7 @@ async function runImport(kind: RecordKind, rows: Record<string, string>[], dryRu
         let person = people.get(pKey) ?? null;
         if (!person) {
           person = await dir.createRecord({
+            by: who,
             kind: 'person',
             name: contactName,
             origin: 'import',

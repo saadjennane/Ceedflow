@@ -18,6 +18,7 @@ import { db } from './client.js';
 const COLS = `id, kind, name, first_name as "firstName", last_name as "lastName", roles, origin,
   job_title as "jobTitle", department,
   logo_upload_id as "logoUploadId", pitch, sector, stage,
+  created_by as "createdBy", created_by_name as "createdByName",
   founded_year as "foundedYear", team_size as "teamSize", linkedin,
   email, phone, phones, city, country, website, bio, tags, created_at::text as "createdAt"`;
 
@@ -114,6 +115,8 @@ export async function createRecord(input: {
   foundedYear?: number | null;
   teamSize?: number | null;
   linkedin?: string;
+  /** Qui l'ajoute, quand quelqu'un l'ajoute. Recopié, pas joint. */
+  by?: { id: string; name: string } | null;
 }): Promise<DirectoryRecord> {
   const id = idOf.record();
   /* Coupé ici, une fois pour toutes.
@@ -125,9 +128,10 @@ export async function createRecord(input: {
   await (await db()).query(
     `insert into records (id, kind, name, first_name, last_name, roles, origin, email, city,
        country, website, bio, tags, job_title, department,
-       pitch, sector, stage, founded_year, team_size, linkedin, phones)
+       pitch, sector, stage, founded_year, team_size, linkedin, phones,
+       created_by, created_by_name)
      values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,
-       $16,$17,$18,$19,$20,$21,$22::jsonb)`,
+       $16,$17,$18,$19,$20,$21,$22::jsonb,$23,$24)`,
     [
       id,
       input.kind,
@@ -151,6 +155,8 @@ export async function createRecord(input: {
       input.teamSize ?? null,
       input.linkedin ?? '',
       (input.phones ?? []).filter(Boolean),
+      input.by?.id ?? null,
+      input.by?.name ?? '',
     ],
   );
   return (await getRecord(id))!;

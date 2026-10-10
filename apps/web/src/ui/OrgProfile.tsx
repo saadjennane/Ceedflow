@@ -221,6 +221,71 @@ const whole = (text: string): number | null => {
   return Number.isFinite(n) ? Math.round(n) : null;
 };
 
+/**
+ * L'image d'une fiche : un logo pour une société, une photo pour quelqu'un.
+ *
+ * Le même champ et la même colonne — ce qui change est le mot, et ce que la
+ * liste en fait. Sortie du formulaire de la fiche startup pour que l'annuaire
+ * s'en serve aussi, plutôt que d'en écrire une seconde qui dériverait.
+ */
+export function RecordImage({
+  label,
+  uploadId,
+  name,
+  onChange,
+}: {
+  label: string;
+  uploadId: string | null;
+  name: string;
+  onChange: (next: string | null) => void;
+}) {
+  const { lang } = useLang();
+  const t = (w: Parameters<typeof say>[0]) => say(w, lang);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState('');
+
+  const put = async (file: File) => {
+    setProblem('');
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setProblem(`${(file.size / 1024 / 1024).toFixed(1)} MB — 10 MB max.`);
+      return;
+    }
+    setBusy(true);
+    try {
+      const body = new FormData();
+      body.append('fieldId', 'logo');
+      body.append('file', file);
+      const res = await fetch('/api/public/uploads', { method: 'POST', body });
+      if (!res.ok) throw new Error((await res.json())?.error ?? 'Upload failed.');
+      const saved = (await res.json()) as { id: string };
+      onChange(saved.id);
+    } catch (err) {
+      setProblem((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="field">
+      <label>{label}</label>
+      {uploadId ? (
+        <div className="row" style={{ gap: 10 }}>
+          <Logo uploadId={uploadId} name={name} size={44} />
+          <button className="btn ghost sm" onClick={() => onChange(null)}>{t('file.replace')}</button>
+        </div>
+      ) : (
+        <label className="dropzone">
+          <input type="file" accept="image/*" disabled={busy} onChange={(e) => e.target.files?.[0] && put(e.target.files[0])} />
+          <Icon name="file" size={16} />
+          <span>{busy ? t('file.sending') : t('file.choose')}</span>
+        </label>
+      )}
+      {problem && <div style={{ color: 'var(--stop)', fontSize: 12 }}>{problem}</div>}
+    </div>
+  );
+}
+
 export function ProfileFields({
   draft,
   set,
@@ -235,56 +300,14 @@ export function ProfileFields({
   const context = useLang();
   const l = voice(lang, context.lang);
   const t = (w: Parameters<typeof say>[0]) => say(w, l);
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState('');
-
-  const putLogo = async (file: File) => {
-    setProblem('');
-    if (file.size > MAX_UPLOAD_BYTES) {
-      setProblem(`${(file.size / 1024 / 1024).toFixed(1)} MB — 10 MB max.`);
-      return;
-    }
-    setBusy(true);
-    try {
-      const body = new FormData();
-      body.append('fieldId', 'logo');
-      body.append('file', file);
-      const res = await fetch('/api/public/uploads', { method: 'POST', body });
-      if (!res.ok) throw new Error((await res.json())?.error ?? 'Upload failed.');
-      const saved = (await res.json()) as { id: string };
-      set({ logoUploadId: saved.id });
-    } catch (err) {
-      setProblem((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <>
-      <div className="field">
-        <label>{t('prof.logo')}</label>
-        {draft.logoUploadId ? (
-          <div className="row" style={{ gap: 10 }}>
-            <Logo uploadId={draft.logoUploadId} name={name} size={44} />
-            <button className="btn ghost sm" onClick={() => set({ logoUploadId: null })}>
-              {t('file.replace')}
-            </button>
-          </div>
-        ) : (
-          <label className="dropzone">
-            <input
-              type="file"
-              accept="image/*"
-              disabled={busy}
-              onChange={(e) => e.target.files?.[0] && putLogo(e.target.files[0])}
-            />
-            <Icon name="file" size={16} />
-            <span>{busy ? t('file.sending') : t('file.choose')}</span>
-          </label>
-        )}
-        {problem && <div style={{ color: 'var(--stop)', fontSize: 12 }}>{problem}</div>}
-      </div>
+      <RecordImage
+        label={t('prof.logo')}
+        uploadId={draft.logoUploadId}
+        name={name}
+        onChange={(v) => set({ logoUploadId: v })}
+      />
 
       <div className="field">
         <label>{t('prof.pitch')}</label>

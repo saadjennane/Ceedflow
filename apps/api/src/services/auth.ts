@@ -184,11 +184,16 @@ export async function accountStatesByRecord(): Promise<Map<string, RecordAccount
     invitedAt: string | null;
     disabledAt: string | null;
     createdAt: string;
+    lastSeenAt: string | null;
   }>(
-    `select id, record_id as "recordId", email, must_change_password as "mustChangePassword",
-            invited_at::text as "invitedAt", disabled_at::text as "disabledAt",
-            created_at::text as "createdAt"
-       from accounts`,
+    /* La dernière fois qu'on les a vus, c'est la dernière session ouverte.
+       Un compte ouvert en septembre et jamais utilisé et un compte dont on
+       s'est servi ce matin se ressemblent sans elle. */
+    `select a.id, a.record_id as "recordId", a.email, a.must_change_password as "mustChangePassword",
+            a.invited_at::text as "invitedAt", a.disabled_at::text as "disabledAt",
+            a.created_at::text as "createdAt",
+            (select max(s.created_at)::text from sessions s where s.account_id = a.id) as "lastSeenAt"
+       from accounts a`,
   );
   return new Map(
     rows.map((r) => [
@@ -196,6 +201,7 @@ export async function accountStatesByRecord(): Promise<Map<string, RecordAccount
       {
         id: r.id, email: r.email, state: accountStateOf(r),
         invitedAt: r.invitedAt, disabledAt: r.disabledAt, createdAt: r.createdAt,
+        lastSeenAt: r.lastSeenAt,
       },
     ]),
   );

@@ -399,3 +399,15 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
   object-fit: contain;
   flex: none;
 }
+
+/* Une photo exactement là où était la marque, et de la même taille : une
+   liste où certaines lignes en ont et d'autres non ne doit pas onduler. */
+.rec-photo {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--wash);
+  border: 1px solid var(--line);
+}
