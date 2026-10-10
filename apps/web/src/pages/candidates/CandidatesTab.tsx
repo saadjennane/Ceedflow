@@ -15,6 +15,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AccountBadge } from '../directory/AccountCard';
+import { initials } from '../directory/DirectoryPage';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
@@ -259,7 +260,19 @@ export function CandidatesTab({
             <tbody>
               {rows.map((candidate) => (
                 <tr key={candidate.id} style={{ cursor: 'pointer' }} onClick={() => setOpenId(candidate.id)}>
-                  <td className="name">{candidate.orgName}</td>
+                  {/* Avec son logo quand elle en a déposé un : c'est la liste
+                      où CEED passe ses journées, et une startup s'y reconnaît
+                      plus vite à son image qu'à son nom dans une colonne. */}
+                  <td className="name">
+                    <span className="rec-name">
+                      {candidate.orgLogoUploadId ? (
+                        <img className="rec-photo" src={`/api/uploads/${candidate.orgLogoUploadId}`} alt="" />
+                      ) : (
+                        <span className="rec-mark">{initials(candidate.orgName)}</span>
+                      )}
+                      <span>{candidate.orgName}</span>
+                    </span>
+                  </td>
                   <td className="muted">{candidate.contactName || '—'}</td>
                   <td>
                     <AccountBadge

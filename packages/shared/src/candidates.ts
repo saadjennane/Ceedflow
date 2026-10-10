@@ -44,6 +44,8 @@ export const candidateSchema = z.object({
   personId: z.string().nullable().default(null),
   /* The four below are read through the directory, not stored twice. */
   orgName: z.string().min(1),
+  /** Son logo, pour que les écrans qui la nomment puissent la montrer. */
+  orgLogoUploadId: z.string().nullable().default(null),
   contactName: z.string().default(''),
   /** Read from the record rather than cut out of the full name: "Marie-Claire"
       and "Abdel Karim" are not the same kind of word, and a letter that opens

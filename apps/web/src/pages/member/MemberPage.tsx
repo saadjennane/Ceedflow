@@ -988,7 +988,13 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
           {me.organisations.map((link) => (
             <div className="rowcard stack" key={link.affiliation.id} style={{ gap: 10 }}>
               <div className="row" style={{ gap: 10 }}>
-              <span className="rec-mark">{initials(link.record.name)}</span>
+              {/* Son logo, là où elle le dépose : ne pas le lui montrer sur
+                  sa propre liste donne l'impression qu'il n'est pas arrivé. */}
+              {link.record.logoUploadId ? (
+                <img className="rec-photo" src={`/api/uploads/${link.record.logoUploadId}`} alt="" />
+              ) : (
+                <span className="rec-mark">{initials(link.record.name)}</span>
+              )}
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ fontWeight: 600, fontSize: 13 }}>{link.record.name}</span>
                 <span className="faint" style={{ display: 'block', fontSize: 12 }}>

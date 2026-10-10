@@ -52,6 +52,7 @@ const CANDIDATE_FROM = `
 const CANDIDATE_SELECT = `select c.id, c.edition_id as "editionId", c.track_id as "trackId",
   c.origin_block_id as "originBlockId", c.org_id as "orgId", c.person_id as "personId",
   o.name as "orgName",
+  o.logo_upload_id as "orgLogoUploadId",
   coalesce(p.name, '') as "contactName",
   coalesce(p.first_name, '') as "contactFirstName",
   coalesce(p.last_name, '') as "contactLastName",
