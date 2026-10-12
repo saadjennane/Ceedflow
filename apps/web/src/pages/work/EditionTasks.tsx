@@ -49,7 +49,7 @@ export function EditionTasks({ editionId, editionName }: { editionId: string; ed
           <span>Show what is done</span>
         </label>
         <button className="btn primary sm" onClick={() => setGiving(true)}>
-          <Icon name="plus" size={13} /> Give a task
+          <Icon name="plus" size={13} /> Task
         </button>
       </div>
 

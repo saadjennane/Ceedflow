@@ -13,6 +13,7 @@ import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
 import { ConfirmDialog, Modal, useToast } from '../../ui/Overlays';
 import { PeoplePicker } from '../directory/PeoplePicker';
+import { TaskModal } from '../../ui/TaskModal';
 
 /** The columns that belong to the program rather than to the application form. */
 const PROGRAM_COLUMNS = [
@@ -38,6 +39,10 @@ export function CohortTable({
   onChanged: () => void;
 }) {
   const [trackFilter, setTrackFilter] = useState<string | null>(null);
+  /* La startup dont on veut demander quelque chose. Le lien de la tâche sera
+     sa candidature — « le dossier de Rafid Tech dans cette cohorte » — et non
+     la société en général, qui en a peut-être trois autres ailleurs. */
+  const [giving, setGiving] = useState<Candidate | null>(null);
   const [picking, setPicking] = useState(false);
   const [shown, setShown] = useState<string[] | null>(null);
   const [withdrawing, setWithdrawing] = useState<Candidate | null>(null);
@@ -236,9 +241,18 @@ export function CohortTable({
                   )}
 
                   <td style={{ textAlign: 'right' }}>
-                    <button className="btn ghost sm" disabled={busy} onClick={() => setWithdrawing(member)}>
-                      Withdraw
-                    </button>
+                    <div className="row" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                      <button
+                        className="btn ghost sm"
+                        title={`Give a task about ${member.orgName} in this cohort`}
+                        onClick={() => setGiving(member)}
+                      >
+                        <Icon name="plus" size={13} /> Task
+                      </button>
+                      <button className="btn ghost sm" disabled={busy} onClick={() => setWithdrawing(member)}>
+                        Withdraw
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -329,6 +343,21 @@ export function CohortTable({
 
       {editingBench && (
         <MentorBench edition={edition} onClose={() => setEditingBench(false)} onSaved={onChanged} />
+      )}
+
+      {giving && (
+        <TaskModal
+          attach={{
+            candidateId: giving.id,
+            editionId: giving.editionId,
+            about: giving.orgName,
+            /* À la startup elle-même : tous ceux qui tiennent sa page la
+               voient, et le premier qui s'en occupe la coche. */
+            owner: { id: giving.orgId, kind: 'org' },
+          }}
+          onClose={() => setGiving(null)}
+          onSaved={() => setGiving(null)}
+        />
       )}
     </>
   );

@@ -153,7 +153,7 @@ export function RecordPage() {
                 <span className="badge num">{tasks.data.filter((t) => t.state === 'open').length}</span>
               )}
               <button className="btn sm" onClick={() => setGiving(true)}>
-                <Icon name="plus" size={13} /> Give a task
+                <Icon name="plus" size={13} /> Task
               </button>
             </div>
             {!tasks.data?.length ? (

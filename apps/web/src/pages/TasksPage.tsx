@@ -59,7 +59,7 @@ export function TasksPage() {
         <h1>Tasks</h1>
         <div className="spacer" />
         <button className="btn primary" onClick={() => setAdding(true)}>
-          <Icon name="plus" size={14} /> Give a task
+          <Icon name="plus" size={14} /> Task
         </button>
       </header>
 

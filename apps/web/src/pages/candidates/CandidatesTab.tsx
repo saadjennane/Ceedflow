@@ -25,6 +25,7 @@ import { FormFieldInput } from '../../ui/FormField';
 import { Icon } from '../../ui/Icon';
 import { Linked } from '../../ui/Linked';
 import { SearchBox } from '../../ui/SearchBox';
+import { TaskModal } from '../../ui/TaskModal';
 import { ConfirmDialog, Drawer, Modal, useToast } from '../../ui/Overlays';
 import { CohortTable } from './CohortTable';
 
@@ -397,6 +398,7 @@ function CandidateDrawer({
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [giving, setGiving] = useState(false);
   const [edits, setEdits] = useState<Record<string, unknown>>(candidate.answers);
   /* The contact lives on a person in the directory, not on this row — so
      editing it writes there, and creates the person when the candidacy never
@@ -504,6 +506,12 @@ function CandidateDrawer({
               <Icon name="trash" size={13} /> Delete
             </button>
             <div className="spacer" />
+            {/* Liée à cette candidature, et non à la société : la même startup
+                peut être dans trois programmes, et « vérifier le registre » ne
+                parle que de celui-ci. */}
+            <button className="btn sm" onClick={() => setGiving(true)}>
+              <Icon name="plus" size={13} /> Task
+            </button>
             <button className="btn ghost" onClick={onClose}>
               Close
             </button>
@@ -720,6 +728,19 @@ function CandidateDrawer({
             onChanged();
             onClose();
           }}
+        />
+      )}
+
+      {giving && (
+        <TaskModal
+          attach={{
+            candidateId: candidate.id,
+            editionId: candidate.editionId,
+            about: candidate.orgName,
+            owner: { id: candidate.orgId, kind: 'org' },
+          }}
+          onClose={() => setGiving(false)}
+          onSaved={() => setGiving(false)}
         />
       )}
     </>
