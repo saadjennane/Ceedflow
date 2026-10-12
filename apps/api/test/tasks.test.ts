@@ -11,6 +11,8 @@ import { after, before, describe, it } from 'node:test';
 import { isLate } from '@ceed/shared';
 import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
+import * as repo from '../src/db/repo.js';
+import { teamOf } from '../src/services/people.js';
 import { changeTask, createTasks, listTasks } from '../src/services/tasks.js';
 import { restore } from '../src/services/trash.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
@@ -24,7 +26,6 @@ const blank = {
 
 describe('a task', { skip: skipWithoutServer }, () => {
   before(migrate);
-  after(closeDb);
 
   const people = async () => {
     const mark = uniq();
@@ -92,5 +93,50 @@ describe('a task', { skip: skipWithoutServer }, () => {
 
     await restore(batch);
     assert.equal((await listTasks({ ownerIds: [one.id] })).length, 1, 'et de retour avec elle');
+  });
+});
+
+describe('the team of a programme', { skip: skipWithoutServer }, () => {
+  before(migrate);
+  after(closeDb);
+
+  it('has four groups, each from where it really lives', async () => {
+    /* Les quatre viennent d'endroits différents — des comptes, des séances, du
+       banc de l'édition, des candidatures — et c'est pour ça que les
+       rassembler est un service plutôt qu'une requête recopiée. */
+    const mark = uniq();
+    const program = await repo.createProgram({ name: `The Builders ${mark}` });
+    const edition = await repo.createEdition(program.id, { name: 'Cohorte 1' });
+    const track = (await repo.getEditionDetail(edition.id))!.tracks[0]!;
+
+    const mentor = await dir.createRecord({ kind: 'person', name: `Mentor ${mark}`, roles: ['Mentor'], origin: 'manual' });
+    const juror = await dir.createRecord({ kind: 'person', name: `Jure ${mark}`, roles: ['Jury'], origin: 'manual' });
+    const org = await dir.createRecord({ kind: 'org', name: `Startup ${mark}`, origin: 'manual' });
+    await repo.updateEdition(edition.id, { mentors: [mentor.id] });
+    const panel = await repo.createBlock(track.phases[0]!.id, 'committee', 'Jury Day');
+    await repo.createSession(panel.id, { name: 'Jour 1', jury: [juror.id] } as never);
+    await repo.createCandidate({ editionId: edition.id, trackId: track.id, orgId: org.id });
+
+    const team = await teamOf(edition.id);
+    const of = (key: string) => team.find((g) => g.key === key)!.people.map((p) => p.name);
+    assert.deepEqual(of('mentors'), [mentor.name]);
+    assert.deepEqual(of('jury'), [juror.name]);
+    assert.deepEqual(of('startups'), [org.name]);
+    /* Et la startup est rendue comme une organisation : une tâche adressée à
+       la société est vue par tous ceux qui tiennent sa page. */
+    assert.equal(team.find((g) => g.key === 'startups')!.people[0]!.kind, 'org');
+  });
+
+  it('leaves out a startup that was not kept', async () => {
+    const mark = uniq();
+    const program = await repo.createProgram({ name: `The Builders ${mark}` });
+    const edition = await repo.createEdition(program.id, { name: 'Cohorte 1' });
+    const track = (await repo.getEditionDetail(edition.id))!.tracks[0]!;
+    const out = await dir.createRecord({ kind: 'org', name: `Écartée ${mark}`, origin: 'manual' });
+    const candidate = await repo.createCandidate({ editionId: edition.id, trackId: track.id, orgId: out.id });
+    await repo.updateCandidate(candidate.id, { status: 'Not selected' });
+
+    const team = await teamOf(edition.id);
+    assert.deepEqual(team.find((g) => g.key === 'startups')!.people, [], 'une refusée n’est plus de l’équipe');
   });
 });

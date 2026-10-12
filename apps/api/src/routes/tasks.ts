@@ -13,6 +13,7 @@
 import { createTaskInput, taskPatch } from '@ceed/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import * as dir from '../db/directory.js';
+import { teamOf } from '../services/people.js';
 import { changeTask, createTasks, dropTask, getTask, listTasks } from '../services/tasks.js';
 import { workspaceGuard } from './guard.js';
 import { notFound, parse } from './util.js';
@@ -30,6 +31,12 @@ export async function taskRoutes(app: FastifyInstance) {
   app.get('/api/tasks', async (req) => {
     const { editionId, recordId, open } = req.query as Record<string, string | undefined>;
     return listTasks({ editionId, recordId, open: open !== 'all' });
+  });
+
+  /** Qui travaille sur cette édition, en quatre groupes. */
+  app.get('/api/editions/:id/team', async (req) => {
+    const { id } = req.params as { id: string };
+    return teamOf(id);
   });
 
   app.post('/api/tasks', async (req, reply) => {

@@ -27,6 +27,13 @@ export interface TaskAttach {
   about?: string;
 }
 
+/** L'équipe d'une édition, telle que le serveur la groupe. */
+interface TeamGroup {
+  key: string;
+  label: string;
+  people: { id: string; name: string; kind: 'person' | 'org' }[];
+}
+
 export function TaskModal({
   attach,
   onClose,
@@ -46,6 +53,13 @@ export function TaskModal({
      son RIB » n'est à personne en particulier, et tous ceux qui tiennent sa
      page la voient. */
   const companies = useAsync(() => api.get<DirectoryRecord[]>('/api/records?kind=org'), 'orgs-for-task');
+  /* Depuis un programme, on ne cherche pas dans l'annuaire entier : les quatre
+     groupes de son équipe sont la réponse à « à qui », et ils tiennent sur
+     l'écran. */
+  const team = useAsync(
+    async () => (attach?.editionId ? api.get<TeamGroup[]>(`/api/editions/${attach.editionId}/team`) : null),
+    attach?.editionId ?? 'no-edition',
+  );
 
   const set = (partial: Partial<typeof draft>) => setDraft((d) => ({ ...d, ...partial }));
   const owners = [...people, ...orgs];
@@ -100,9 +114,50 @@ export function TaskModal({
         <textarea className="textarea" rows={2} value={draft.detail} onChange={(e) => set({ detail: e.target.value })} />
       </div>
 
-      <PeoplePicker label="Who does it" value={people} onChange={setPeople} />
+      {team.data ? (
+        <div className="field">
+          <label>Who does it</label>
+          <div className="help">The team of this programme. Pick as many as you like — one task each.</div>
+          <div className="stack" style={{ gap: 8, marginTop: 4 }}>
+            {team.data
+              .filter((group) => group.people.length > 0)
+              .map((group) => (
+                <div key={group.key}>
+                  <div className="eyebrow">{group.label}</div>
+                  <div className="work-pick">
+                    {group.people.map((person) => {
+                      const chosen = person.kind === 'org' ? orgs : people;
+                      const put = person.kind === 'org' ? setOrgs : setPeople;
+                      return (
+                        <button
+                          key={person.id}
+                          type="button"
+                          className={chosen.includes(person.id) ? 'track on' : 'track'}
+                          onClick={() =>
+                            put((x) =>
+                              x.includes(person.id) ? x.filter((o) => o !== person.id) : [...x, person.id],
+                            )
+                          }
+                        >
+                          {person.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            {team.data.every((group) => !group.people.length) && (
+              <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+                Nobody is on this programme yet — no jury, no mentor, no startup.
+              </p>
+            )}
+          </div>
+        </div>
+      ) : (
+        <PeoplePicker label="Who does it" value={people} onChange={setPeople} />
+      )}
 
-      <div className="field">
+      <div className="field" style={{ display: team.data ? 'none' : undefined }}>
         <label>Or an organisation</label>
         <div className="help">Everybody who holds its page sees it, and the first one to deal with it ticks it.</div>
         <div className="work-pick" style={{ maxHeight: 150, overflowY: 'auto' }}>

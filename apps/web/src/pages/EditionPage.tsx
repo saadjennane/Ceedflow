@@ -10,11 +10,12 @@ import { ConfirmDialog, Modal, useToast } from '../ui/Overlays';
 import { BlockDrawer } from './builder/BlockDrawer';
 import { BuilderCanvas } from './builder/BuilderCanvas';
 import { CandidatesTab } from './candidates/CandidatesTab';
+import { EditionTasks } from './work/EditionTasks';
 import { WorkTab } from './work/WorkTab';
 import '../ui/builder.css';
 import '../ui/programs.css';
 
-type Tab = 'builder' | 'startups' | 'outreach' | 'committees' | 'review' | 'deliverables';
+type Tab = 'builder' | 'startups' | 'tasks' | 'outreach' | 'committees' | 'review' | 'deliverables';
 
 /**
  * The builder composes the workflow; these run it. A work tab only appears when
@@ -113,7 +114,7 @@ export function EditionPage() {
   const setupBlock = track.phases.flatMap((p) => p.blocks).find((b) => b.id === setupId) ?? null;
   const present = new Set(track.phases.flatMap((p) => p.blocks.map((b) => b.type)));
   const workTabs = WORK_TABS.filter((t) => t.types.some((type) => present.has(type)));
-  const tab: Tab = (['startups', ...workTabs.map((t) => t.key)] as string[]).includes(asked)
+  const tab: Tab = (['startups', 'tasks', ...workTabs.map((t) => t.key)] as string[]).includes(asked)
     ? (asked as Tab)
     : 'builder';
 
@@ -170,6 +171,11 @@ export function EditionPage() {
             {t.label}
           </button>
         ))}
+        {/* Toujours là, elle : une édition sans brique a déjà des choses à
+            faire — convoquer un jury, préparer une salle. */}
+        <button role="tab" className={tab === 'tasks' ? 'tab on' : 'tab'} onClick={() => setTab('tasks')}>
+          Tasks
+        </button>
         {LATER_TABS.map((label) => (
           <span key={label} className="tab off" title="Not built yet">
             {label}
@@ -197,6 +203,8 @@ export function EditionPage() {
           />
           {tab === 'startups' ? (
             <CandidatesTab edition={detail} track={track} candidates={candidates.data ?? []} onChanged={refresh} />
+          ) : tab === 'tasks' ? (
+            <EditionTasks editionId={detail.id} editionName={`${detail.program.name} · ${detail.name}`} />
           ) : (
             <WorkTab
               tab={tab}

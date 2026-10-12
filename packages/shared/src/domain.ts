@@ -78,7 +78,7 @@ export const editionSchema = z.object({
   startsOn: z.string().nullable().default(null),
   endsOn: z.string().nullable().default(null),
   city: z.string().default(''),
-  /** The mentors this edition can draw on. Names for now. */
+  /** Les fiches des mentors sur lesquels cette édition peut compter. */
   mentors: z.array(z.string()).default([]),
   position: z.number().int().default(0),
   createdAt: z.string(),

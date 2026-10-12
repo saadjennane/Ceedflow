@@ -3,14 +3,16 @@ import {
   COHORT_TONE,
   type Candidate,
   type CohortStatus,
+  type DirectoryRecord,
   type EditionDetail,
   type FormField,
 } from '@ceed/shared';
 import { useState } from 'react';
 import { api } from '../../lib/api';
+import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
 import { ConfirmDialog, Modal, useToast } from '../../ui/Overlays';
-import { TagField } from '../../ui/Field';
+import { PeoplePicker } from '../directory/PeoplePicker';
 
 /** The columns that belong to the program rather than to the application form. */
 const PROGRAM_COLUMNS = [
@@ -42,6 +44,10 @@ export function CohortTable({
   const [editingBench, setEditingBench] = useState(false);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
+  /* L'annuaire une fois pour le tableau : la colonne Mentor nomme des fiches,
+     et une requête par ligne ferait trente requêtes pour une cohorte. */
+  const people = useAsync(() => api.get<DirectoryRecord[]>('/api/records?kind=person'), 'bench');
+  const bench = people.data ?? [];
 
   const trackName = (id: string) => edition.tracks.find((t) => t.id === id)?.name ?? '—';
   const rows = trackFilter ? members.filter((m) => m.trackId === trackFilter) : members;
@@ -165,24 +171,31 @@ export function CohortTable({
 
                   {on('mentor') && (
                   <td>
+                    {/* Des fiches, pas des noms : c'est à elles qu'on confie
+                        une tâche et c'est à elles qu'on écrit. Le banc de
+                        l'édition d'abord, et celui qui suit déjà cette startup
+                        même s'il en est sorti depuis. */}
                     <select
                       className="status-select"
-                      value={member.mentor}
+                      value={member.mentorId ?? ''}
                       disabled={busy}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const picked = bench.find((p) => p.id === e.target.value);
                         patch(
                           member,
-                          { mentor: e.target.value },
-                          e.target.value ? `${e.target.value} mentors ${member.orgName}.` : 'Mentor cleared.',
-                        )
-                      }
+                          { mentorId: e.target.value || null },
+                          picked ? `${picked.name} mentors ${member.orgName}.` : 'Mentor cleared.',
+                        );
+                      }}
                     >
                       <option value="">Unassigned</option>
-                      {[...new Set([...edition.mentors, member.mentor].filter(Boolean))].map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
+                      {bench
+                        .filter((p) => edition.mentors.includes(p.id) || p.id === member.mentorId)
+                        .map((person) => (
+                          <option key={person.id} value={person.id}>
+                            {person.name}
+                          </option>
+                        ))}
                     </select>
                   </td>
                   )}
@@ -337,7 +350,7 @@ function MentorBench({
   return (
     <Modal
       title="Mentors"
-      subtitle="Who this edition can put in front of its startups. Names for now — they become directory profiles once Community is built."
+      subtitle="Who this edition can put in front of its startups."
       onClose={onClose}
       footer={
         <>
@@ -361,7 +374,12 @@ function MentorBench({
         </>
       }
     >
-      <TagField label="Mentor bench" values={mentors} onChange={setMentors} placeholder="Add a mentor" />
+      <PeoplePicker
+        label="Mentor bench"
+        value={mentors}
+        onChange={setMentors}
+        help="Directory profiles, so a mentor can be given a task and written to."
+      />
     </Modal>
   );
 }

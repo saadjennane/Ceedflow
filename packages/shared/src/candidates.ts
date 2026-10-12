@@ -63,8 +63,10 @@ export const candidateSchema = z.object({
    */
   accountState: z.enum(ACCOUNT_STATES).nullable().default(null),
   status: z.enum(CANDIDATE_STATUSES).default('Applied'),
-  /** Who mentors it once it is in the cohort. Empty until someone is named. */
-  mentor: z.string().default(''),
+  /** La fiche de qui la suit, une fois dans la cohorte. */
+  mentorId: z.string().nullable().default(null),
+  /** Son nom, joint pour l'affichage — jamais recopié dans la candidature. */
+  mentorName: z.string().default(''),
   cohortStatus: z.enum(COHORT_STATUSES).default('Active'),
   /** Answers to the application form, keyed by field id. */
   answers: z.record(z.unknown()).default({}),

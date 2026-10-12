@@ -48,7 +48,8 @@ const CANDIDATE_FROM = `
   from candidates c
   join records o on o.id = c.org_id
   left join records p on p.id = c.person_id
-  left join accounts a on a.record_id = p.id`;
+  left join accounts a on a.record_id = p.id
+  left join records m on m.id = c.mentor_id`;
 const CANDIDATE_SELECT = `select c.id, c.edition_id as "editionId", c.track_id as "trackId",
   c.origin_block_id as "originBlockId", c.org_id as "orgId", c.person_id as "personId",
   o.name as "orgName",
@@ -58,7 +59,8 @@ const CANDIDATE_SELECT = `select c.id, c.edition_id as "editionId", c.track_id a
   coalesce(p.last_name, '') as "contactLastName",
   coalesce(nullif(p.email, ''), o.email, '') as "email",
   coalesce(nullif(p.phone, ''), o.phone, '') as "phone",
-  c.source, c.status, c.mentor, c.cohort_status as "cohortStatus", c.answers,
+  c.source, c.status, c.mentor_id as "mentorId", coalesce(m.name, '') as "mentorName",
+  c.cohort_status as "cohortStatus", c.answers,
   -- Derived here rather than stored: an account nobody was told about, one whose
   -- owner has not come, and one they made their own.
   case
@@ -659,7 +661,7 @@ export async function updateCandidate(id: string, patch: Record<string, unknown>
     source: 'source',
     status: 'status',
     trackId: 'track_id',
-    mentor: 'mentor',
+    mentorId: 'mentor_id',
     cohortStatus: 'cohort_status',
     // Who applied, and through which call — correctable, because an imported
     // candidacy arrives without either and a wrong contact is worth fixing.
