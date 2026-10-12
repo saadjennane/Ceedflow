@@ -49,7 +49,10 @@ export async function listTasks(filter: TaskFilter = {}): Promise<Task[]> {
   }
   if (filter.editionId) {
     params.push(filter.editionId);
-    where.push(`t.edition_id = $${params.length}`);
+    /* Liée à l'édition, ou à l'une de ses startups : « ce que cette édition
+       attend » comprend ce qu'on a demandé pour Rafid Tech, sinon la tâche
+       n'est visible que depuis la fiche de la startup. */
+    where.push(`(t.edition_id = $${params.length} or c.edition_id = $${params.length})`);
   }
   if (filter.recordId) {
     params.push(filter.recordId);

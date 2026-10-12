@@ -127,6 +127,29 @@ describe('the team of a programme', { skip: skipWithoutServer }, () => {
     assert.equal(team.find((g) => g.key === 'startups')!.people[0]!.kind, 'org');
   });
 
+  it('shows, on the edition, what was asked about one of its startups', async () => {
+    /* Le lien est la candidature — « le dossier de Rafid Tech dans cette
+       cohorte » — et non l'édition. Sans cette lecture, la tâche n'existerait
+       que sur la fiche de la startup, c'est-à-dire nulle part où on la
+       cherche. */
+    const mark = uniq();
+    const program = await repo.createProgram({ name: `The Builders ${mark}` });
+    const edition = await repo.createEdition(program.id, { name: 'Cohorte 1' });
+    const track = (await repo.getEditionDetail(edition.id))!.tracks[0]!;
+    const org = await dir.createRecord({ kind: 'org', name: `Rafid ${mark}`, origin: 'manual' });
+    const candidate = await repo.createCandidate({ editionId: edition.id, trackId: track.id, orgId: org.id });
+    const who = await dir.createRecord({ kind: 'person', name: `Rima ${mark}`, origin: 'manual' });
+
+    await createTasks(
+      { ...blank, title: 'Vérifier le registre', ownerIds: [who.id], candidateId: candidate.id },
+      CEED,
+    );
+
+    const [task] = await listTasks({ editionId: edition.id });
+    assert.equal(task?.title, 'Vérifier le registre');
+    assert.equal(task?.aboutName, org.name, 'et elle se lit au nom de la startup');
+  });
+
   it('leaves out a startup that was not kept', async () => {
     const mark = uniq();
     const program = await repo.createProgram({ name: `The Builders ${mark}` });

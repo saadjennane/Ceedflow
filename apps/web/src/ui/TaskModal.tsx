@@ -1,15 +1,19 @@
 /**
  * Donner une tâche.
  *
- * Trois questions dans l'ordre où on se les pose : quoi, à qui, pour quand.
- * Le « à propos de » vient en dernier parce qu'il est souvent déjà rempli —
- * la fenêtre s'ouvre depuis une fiche ou depuis un programme, et elle sait
- * alors de quoi elle parle.
+ * Quatre champs, nommés par ce qu'ils sont : Task, Description, Owner, Link.
+ * Les intitulés en phrase — « what has to be done », « who does it » — se
+ * lisent bien une fois et se cherchent ensuite, parce qu'on ne retient pas une
+ * question comme on retient un mot.
+ *
+ * Le lien se choisit, il ne se subit plus : la fenêtre s'ouvre parfois depuis
+ * une fiche ou un programme et le pré-remplit, mais depuis la page des tâches
+ * il n'y avait aucun moyen de dire de quoi on parlait.
  *
  * Plusieurs destinataires créent plusieurs tâches, et c'est dit sous le champ :
  * sinon « fait » serait un mot sans sujet.
  */
-import { type DirectoryRecord } from '@ceed/shared';
+import { type DirectoryRecord, type ProgramWithEditions } from '@ceed/shared';
 import { useState } from 'react';
 import { ApiError, api } from '../lib/api';
 import { useAsync } from '../lib/useAsync';
@@ -17,6 +21,7 @@ import { PeoplePicker } from '../pages/directory/PeoplePicker';
 import { TextField } from './Field';
 import { Icon } from './Icon';
 import { Modal, useToast } from './Overlays';
+import { SearchBox } from './SearchBox';
 
 export interface TaskAttach {
   recordId?: string | null;
@@ -29,9 +34,9 @@ export interface TaskAttach {
    * À qui, déjà coché.
    *
    * Sur la page de quelqu'un, « donner une tâche » veut dire la lui donner.
-   * L'attache dit de quoi il s'agit, elle ne dit pas qui s'en occupe — et
-   * sans ce pré-cochage il fallait retrouver dans l'annuaire la personne dont
-   * on avait la fiche sous les yeux.
+   * Le lien dit de quoi il s'agit, il ne dit pas qui s'en occupe — et sans ce
+   * pré-cochage il fallait retrouver dans l'annuaire la personne dont on avait
+   * la fiche sous les yeux.
    */
   owner?: { id: string; kind: 'person' | 'org' };
 }
@@ -42,6 +47,17 @@ interface TeamGroup {
   label: string;
   people: { id: string; name: string; kind: 'person' | 'org' }[];
 }
+
+/** Ce à quoi une tâche peut se rapporter. Une seule chose à la fois. */
+type LinkKind = '' | 'person' | 'org' | 'edition' | 'candidate';
+
+const LINK_KINDS: { value: LinkKind; label: string }[] = [
+  { value: '', label: 'Nothing' },
+  { value: 'person', label: 'An individual' },
+  { value: 'org', label: 'An organisation' },
+  { value: 'edition', label: 'A programme' },
+  { value: 'candidate', label: 'A startup in a programme' },
+];
 
 export function TaskModal({
   attach,
@@ -60,13 +76,56 @@ export function TaskModal({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [tell, setTell] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [orgQuery, setOrgQuery] = useState('');
   const toast = useToast();
+
+  /* Le lien, tel que l'endroit d'où l'on vient l'a déjà rempli. Le genre se
+     déduit de ce qui est posé, et `owner` tranche entre personne et société
+     dans le seul cas où une fiche arrive ici — sa propre page. */
+  const [link, setLink] = useState<{
+    kind: LinkKind;
+    recordId: string;
+    editionId: string;
+    candidateId: string;
+  }>(() => ({
+    kind: attach?.candidateId
+      ? 'candidate'
+      : attach?.editionId
+        ? 'edition'
+        : attach?.recordId
+          ? attach.owner?.id === attach.recordId
+            ? attach.owner.kind
+            : 'person'
+          : '',
+    recordId: attach?.recordId ?? '',
+    editionId: attach?.editionId ?? '',
+    candidateId: attach?.candidateId ?? '',
+  }));
+
   /* Les sociétés aussi peuvent porter une tâche : « Rafid Tech doit envoyer
      son RIB » n'est à personne en particulier, et tous ceux qui tiennent sa
      page la voient. */
   const companies = useAsync(() => api.get<DirectoryRecord[]>('/api/records?kind=org'), 'orgs-for-task');
+  const persons = useAsync(
+    async () => (link.kind === 'person' ? api.get<DirectoryRecord[]>('/api/records?kind=person') : null),
+    `people-for-link:${link.kind}`,
+  );
+  const programs = useAsync(
+    async () =>
+      link.kind === 'edition' || link.kind === 'candidate'
+        ? api.get<ProgramWithEditions[]>('/api/programs')
+        : null,
+    `programs-for-link:${link.kind}`,
+  );
+  const startups = useAsync(
+    async () =>
+      link.kind === 'candidate' && link.editionId
+        ? api.get<{ id: string; orgName: string }[]>(`/api/editions/${link.editionId}/candidates`)
+        : null,
+    `startups-for-link:${link.kind}:${link.editionId}`,
+  );
   /* Depuis un programme, on ne cherche pas dans l'annuaire entier : les quatre
-     groupes de son équipe sont la réponse à « à qui », et ils tiennent sur
+     groupes de son équipe sont la réponse à « owner », et ils tiennent sur
      l'écran. */
   const team = useAsync(
     async () => (attach?.editionId ? api.get<TeamGroup[]>(`/api/editions/${attach.editionId}/team`) : null),
@@ -76,6 +135,14 @@ export function TaskModal({
   const set = (partial: Partial<typeof draft>) => setDraft((d) => ({ ...d, ...partial }));
   const owners = [...people, ...orgs];
 
+  const editions = (programs.data ?? []).flatMap((p) =>
+    p.editions.map((e) => ({ id: e.id, label: `${p.name} — ${e.name}` })),
+  );
+
+  const shownOrgs = (companies.data ?? []).filter(
+    (o) => !orgQuery.trim() || o.name.toLowerCase().includes(orgQuery.trim().toLowerCase()),
+  );
+
   const save = async () => {
     setSaving(true);
     setErrors({});
@@ -84,10 +151,13 @@ export function TaskModal({
         ...draft,
         dueOn: draft.dueOn || null,
         ownerIds: owners,
-        recordId: attach?.recordId ?? null,
-        editionId: attach?.editionId ?? null,
+        /* Une attache et une seule : c'est la liste d'une édition qui sait
+           retrouver les tâches liées à ses startups, et non la tâche qui porte
+           deux attaches en se contredisant. */
+        recordId: link.kind === 'person' || link.kind === 'org' ? link.recordId || null : null,
+        editionId: link.kind === 'edition' ? link.editionId || null : null,
+        candidateId: link.kind === 'candidate' ? link.candidateId || null : null,
         blockId: attach?.blockId ?? null,
-        candidateId: attach?.candidateId ?? null,
         tell,
       });
       toast(made.length === 1 ? 'Given.' : `Given to ${made.length}.`);
@@ -103,7 +173,6 @@ export function TaskModal({
   return (
     <Modal
       title="Give a task"
-      subtitle={attach?.about ? `About ${attach.about}.` : undefined}
       onClose={onClose}
       footer={
         <>
@@ -115,7 +184,7 @@ export function TaskModal({
       }
     >
       <TextField
-        label="What has to be done"
+        label="Task"
         value={draft.title}
         error={errors.title}
         placeholder="Chase the commercial register"
@@ -123,13 +192,13 @@ export function TaskModal({
       />
 
       <div className="field">
-        <label>More, if it needs it</label>
+        <label>Description</label>
         <textarea className="textarea" rows={2} value={draft.detail} onChange={(e) => set({ detail: e.target.value })} />
       </div>
 
       {team.data ? (
         <div className="field">
-          <label>Who does it</label>
+          <label>Owner</label>
           <div className="help">The team of this programme. Pick as many as you like — one task each.</div>
           <div className="stack" style={{ gap: 8, marginTop: 4 }}>
             {team.data
@@ -167,28 +236,124 @@ export function TaskModal({
           </div>
         </div>
       ) : (
-        <PeoplePicker label="Who does it" value={people} onChange={setPeople} />
+        <>
+          <PeoplePicker label="Owner" value={people} onChange={setPeople} />
+
+          <div className="field">
+            <div className="eyebrow">Or an organisation</div>
+            <div className="help">Everybody who holds its page sees it, and the first one to deal with it ticks it.</div>
+            {/* Cherchable, et sans coupure : la liste s'arrêtait aux soixante
+                premières, et une société absente passait pour inconnue. */}
+            <SearchBox
+              value={orgQuery}
+              onChange={setOrgQuery}
+              label="Search organisations"
+              placeholder="Search organisations…"
+              style={{ marginBottom: 6 }}
+            />
+            <div className="work-pick" style={{ maxHeight: 150, overflowY: 'auto' }}>
+              {shownOrgs.map((org) => (
+                <button
+                  key={org.id}
+                  type="button"
+                  className={orgs.includes(org.id) ? 'track on' : 'track'}
+                  onClick={() => setOrgs((x) => (x.includes(org.id) ? x.filter((o) => o !== org.id) : [...x, org.id]))}
+                >
+                  {org.name}
+                </button>
+              ))}
+              {!shownOrgs.length && <span className="faint" style={{ fontSize: 12 }}>Nothing by that name.</span>}
+            </div>
+          </div>
+        </>
       )}
 
-      <div className="field" style={{ display: team.data ? 'none' : undefined }}>
-        <label>Or an organisation</label>
-        <div className="help">Everybody who holds its page sees it, and the first one to deal with it ticks it.</div>
-        <div className="work-pick" style={{ maxHeight: 150, overflowY: 'auto' }}>
-          {(companies.data ?? []).slice(0, 60).map((org) => (
-            <button
-              key={org.id}
-              type="button"
-              className={orgs.includes(org.id) ? 'track on' : 'track'}
-              onClick={() => setOrgs((x) => (x.includes(org.id) ? x.filter((o) => o !== org.id) : [...x, org.id]))}
-            >
-              {org.name}
-            </button>
+      {/* Le lien : de quoi parle cette tâche. Choisi ici, et non déduit de la
+          page d'où l'on vient — depuis la liste des tâches, il n'y en avait
+          aucun moyen. */}
+      <div className="field">
+        <label htmlFor="task-link">Link</label>
+        <div className="help">What it is about. Optional — and one thing at a time.</div>
+        <select
+          id="task-link"
+          className="input"
+          value={link.kind}
+          onChange={(e) =>
+            /* Changer de genre vide ce qui le remplissait : un identifiant de
+               fiche gardé sous « une édition » partirait en silence au
+               serveur, et la tâche se lierait à ce qu'on vient de quitter. */
+            setLink({ kind: e.target.value as LinkKind, recordId: '', editionId: '', candidateId: '' })
+          }
+        >
+          {LINK_KINDS.map((k) => (
+            <option key={k.value} value={k.value}>{k.label}</option>
           ))}
-        </div>
+        </select>
+
+        {link.kind === 'person' && (
+          <select
+            className="input"
+            aria-label="Which individual"
+            style={{ marginTop: 6 }}
+            value={link.recordId}
+            onChange={(e) => setLink((l) => ({ ...l, recordId: e.target.value }))}
+          >
+            <option value="">Pick someone…</option>
+            {(persons.data ?? []).map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        )}
+
+        {link.kind === 'org' && (
+          <select
+            className="input"
+            aria-label="Which organisation"
+            style={{ marginTop: 6 }}
+            value={link.recordId}
+            onChange={(e) => setLink((l) => ({ ...l, recordId: e.target.value }))}
+          >
+            <option value="">Pick an organisation…</option>
+            {(companies.data ?? []).map((o) => (
+              <option key={o.id} value={o.id}>{o.name}</option>
+            ))}
+          </select>
+        )}
+
+        {(link.kind === 'edition' || link.kind === 'candidate') && (
+          <select
+            className="input"
+            aria-label="Which edition"
+            style={{ marginTop: 6 }}
+            value={link.editionId}
+            onChange={(e) => setLink((l) => ({ ...l, editionId: e.target.value, candidateId: '' }))}
+          >
+            <option value="">Pick a programme…</option>
+            {editions.map((e) => (
+              <option key={e.id} value={e.id}>{e.label}</option>
+            ))}
+          </select>
+        )}
+
+        {link.kind === 'candidate' && (
+          <select
+            className="input"
+            aria-label="Which startup"
+            style={{ marginTop: 6 }}
+            disabled={!link.editionId}
+            value={link.candidateId}
+            onChange={(e) => setLink((l) => ({ ...l, candidateId: e.target.value }))}
+          >
+            <option value="">{link.editionId ? 'Pick a startup…' : 'A programme first'}</option>
+            {(startups.data ?? []).map((c) => (
+              <option key={c.id} value={c.id}>{c.orgName}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div className="field">
-        <label htmlFor="task-due">By when</label>
+        <label htmlFor="task-due">Due date</label>
         <input
           id="task-due"
           className="input"
