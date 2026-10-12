@@ -6,7 +6,6 @@ import {
   channelSlug,
   type ApplicationConfig,
   type Block,
-  type DirectoryRecord,
   type SourcingChannel,
   type SourcingConfig,
   type TrackWithPhases,
@@ -16,6 +15,7 @@ import { api } from '../../../lib/api';
 import { formatDate } from '../../../lib/format';
 import { useAsync } from '../../../lib/useAsync';
 import { SelectField, TextArea, TextField } from '../../../ui/Field';
+import { type RecordRow } from '../../directory/DirectoryPage';
 import { Icon } from '../../../ui/Icon';
 import { useToast } from '../../../ui/Overlays';
 import { useAnnouncing } from '../../work/TellThem';
@@ -174,6 +174,16 @@ function ChannelsTab({
 
 /* ---- Audience: a question asked of the directory ---- */
 
+/**
+ * L'adresse par laquelle on atteint une société qui n'en a pas.
+ *
+ * La même règle que `reachFor` côté serveur : qui tient la page d'abord, et
+ * c'est la liste qui les rend déjà dans cet ordre. Deux comptes qui divergent,
+ * c'est un écran qui annonce un nombre de destinataires que l'envoi dément.
+ */
+const holderAddress = (record: RecordRow): string =>
+  (record.holders ?? []).map((h) => (h.email ?? '').trim()).find(Boolean) ?? '';
+
 function AudienceTab({
   config,
   patch,
@@ -181,7 +191,9 @@ function AudienceTab({
   config: SourcingConfig;
   patch: (partial: Partial<SourcingConfig>) => void;
 }) {
-  const records = useAsync(() => api.get<DirectoryRecord[]>('/api/records'), 'records');
+  /* `RecordRow` et non `DirectoryRecord` : la liste dit aussi qui tient la
+     page d'une société, et c'est ce qui rend une startup joignable. */
+  const records = useAsync(() => api.get<RecordRow[]>('/api/records'), 'records');
   const [query, setQuery] = useState('');
   const audience = config.audience;
   const all = records.data ?? [];
@@ -205,7 +217,11 @@ function AudienceTab({
         (audience.roles.some((role) => (r.roles ?? []).includes(role)) ||
           audience.tags.some((tag) => (r.tags ?? []).includes(tag)))),
   );
-  const reachable = caught.filter((r) => r.email.trim());
+  /* La même règle que le serveur : l'adresse de la fiche, sinon celle de qui
+     tient sa page. Une startup venue d'une candidature n'en a presque jamais à
+     elle, et les compter injoignables ici donnait un écran qui annonce treize
+     destinataires là où la lettre en atteint quatre cent quarante. */
+  const reachable = caught.filter((r) => r.email.trim() || holderAddress(r));
 
   const needle = query.trim().toLowerCase();
   const found = needle
@@ -277,7 +293,10 @@ function AudienceTab({
                 <Icon name={audience.recordIds.includes(record.id) ? 'check' : 'square'} />
                 <div>
                   <strong>{record.name}</strong>
-                  <span>{record.email || 'No email'}</span>
+                  {/* Dit ici, pas découvert à l'envoi : écrire « à Rafid Tech »
+                      et que la lettre parte chez sa fondatrice est juste, à
+                      condition de le savoir avant. */}
+                  <span>{record.email || holderAddress(record) || 'No email'}</span>
                 </div>
               </button>
             ))}
@@ -387,6 +406,8 @@ interface Prospect {
   kind: string;
   email: string;
   roles: string[];
+  /** La personne dont l'adresse sert, quand la fiche n'en a pas. */
+  via: string;
 }
 
 interface ChannelResult {

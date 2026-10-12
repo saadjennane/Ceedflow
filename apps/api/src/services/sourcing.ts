@@ -12,6 +12,7 @@ import {
 } from '@ceed/shared';
 import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
+import { reachFor } from './people.js';
 
 /** One person or organisation the call would be written to. */
 export interface Prospect {
@@ -20,6 +21,15 @@ export interface Prospect {
   kind: string;
   email: string;
   roles: string[];
+  /**
+   * La personne dont on emprunte l'adresse, quand la fiche n'en a pas.
+   *
+   * Dit à l'écran plutôt que deviné : écrire « à Rafid Tech » et que la lettre
+   * parte chez Karim est juste, mais le découvrir après coup ne l'est pas.
+   */
+  via: string;
+  /** Sa fiche, pour que la première connexion soit la sienne et non celle d'une société. */
+  viaId: string | null;
 }
 
 /** What one channel brought in, from the link to the cohort. */
@@ -84,7 +94,11 @@ export async function outreachView(blockId: string): Promise<OutreachView | null
   const formConfig = form ? (form.config as ApplicationConfig) : null;
 
   const records = await resolveAudience(config.audience);
-  const withEmail = records.filter((r) => r.email.trim());
+  /* L'adresse d'une société est la sienne, sinon celle de qui tient sa page :
+     une startup venue d'une candidature n'en a presque jamais à elle, et son
+     contact est pourtant lié à elle depuis le premier jour. */
+  const reach = await reachFor(records.map((r) => ({ id: r.id, kind: r.kind, name: r.name, email: r.email })));
+  const withEmail = records.filter((r) => (reach.get(r.id)?.email ?? '').trim());
 
   /* ---- What each channel brought in ---- */
   const candidates = await repo.listCandidates(context.editionId, track.id);
@@ -129,7 +143,15 @@ export async function outreachView(blockId: string): Promise<OutreachView | null
     block,
     config,
     form: form && formConfig ? { blockId: form.id, token: formConfig.publicToken, published: blockStatus(form) === 'live' } : null,
-    audience: withEmail.map((r) => ({ id: r.id, name: r.name, kind: r.kind, email: r.email, roles: r.roles ?? [] })),
+    audience: withEmail.map((r) => ({
+      id: r.id,
+      name: r.name,
+      kind: r.kind,
+      email: reach.get(r.id)!.email,
+      roles: r.roles ?? [],
+      via: reach.get(r.id)!.viaName,
+      viaId: reach.get(r.id)!.viaId,
+    })),
     unreachable: records.length - withEmail.length,
     channels,
     sends,

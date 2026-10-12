@@ -26,6 +26,7 @@ import { all, one } from '../db/client.js';
 import * as dir from '../db/directory.js';
 import { accessFor } from './invitations.js';
 import { houseLetter } from './houseLetters.js';
+import { reachFor } from './people.js';
 import { post } from './mail.js';
 import { publicOrigin } from './platform.js';
 import { getTask } from './tasks.js';
@@ -55,29 +56,20 @@ export async function whoHears(ownerId: string): Promise<Hearer> {
   const record = await dir.getRecord(ownerId);
   if (!record) return { email: '', toName: '', accountFor: null, blocked: 'gone' };
 
-  const own = (record.email ?? '').trim();
-  if (record.kind === 'person') {
-    return own
-      ? { email: own, toName: record.name, accountFor: record.id, blocked: '' }
-      : { email: '', toName: record.name, accountFor: null, blocked: 'no_email' };
-  }
-
-  if (own) return { email: own, toName: record.name, accountFor: null, blocked: '' };
-
-  /* Qui tient la page d'abord — `teamOf` les rend déjà dans cet ordre. */
-  const team = await dir.teamOf(record.id);
-  const holder = team.find((m) => (m.person.email ?? '').trim());
-  return holder
-    ? {
-        email: holder.person.email!.trim(),
-        /* Son nom, pas celui de la société : la lettre arrive chez une
-           personne, et « Bonjour Rafid Tech » dans sa boîte est une lettre
-           qui ne lui est pas adressée. */
-        toName: holder.person.name,
-        accountFor: holder.person.id,
-        blocked: '',
-      }
-    : { email: '', toName: record.name, accountFor: null, blocked: 'no_email' };
+  /* La même règle que l'audience d'un sourcing, et pour la même raison : une
+     société n'a presque jamais d'adresse à elle, et celle de son contact est
+     liée à elle depuis le premier jour. Une seule écriture de cette règle,
+     sinon deux écrans comptent deux nombres de joignables. */
+  const [reach] = [...(await reachFor([{ id: record.id, kind: record.kind, name: record.name, email: record.email }])).values()];
+  if (!reach?.email) return { email: '', toName: record.name, accountFor: null, blocked: 'no_email' };
+  return {
+    email: reach.email,
+    toName: reach.toName,
+    /* La fiche à qui on ouvrirait une porte : une personne, jamais une
+       société — un compte se tient par quelqu'un. */
+    accountFor: reach.viaId ?? (record.kind === 'person' ? record.id : null),
+    blocked: '',
+  };
 }
 
 /** Le prénom quand on le connaît, le nom entier sinon. */

@@ -13,6 +13,7 @@ import * as repo from '../db/repo.js';
 import { accessFor, wouldAccess } from './invitations.js';
 import { suppressedAmong } from './mail.js';
 import { publicOrigin } from './platform.js';
+import { reachFor } from './people.js';
 import { outreachView, resolveAudience } from './sourcing.js';
 import type { Gate, NoticeSource, NoticeTargetRow } from './notices.js';
 
@@ -31,20 +32,28 @@ async function audienceRows(blockId: string): Promise<NoticeTargetRow[]> {
   const view = await outreachView(blockId);
   if (!view) return [];
   const records = await resolveAudience((view.block.config as SourcingConfig).audience);
-  const held = await suppressedAmong(records.map((r) => r.email ?? ''));
+  /* La même adresse que celle montrée à l'écran, par le même résolveur : une
+     fenêtre qui annonce 427 destinataires et un envoi qui en trouve 13 serait
+     une vérification pour rien. */
+  const reach = await reachFor(records.map((r) => ({ id: r.id, kind: r.kind, name: r.name, email: r.email })));
+  const held = await suppressedAmong([...reach.values()].map((r) => r.email));
 
-  return records.map((person) => ({
-    subjectId: person.id,
-    as: 'person' as const,
-    email: person.email ?? '',
-    toName: person.name,
-    orgName: person.name,
-    blocked: !person.email?.trim()
-      ? 'no_email'
-      : held.has(person.email.trim().toLowerCase())
-        ? 'suppressed'
-        : '',
-  }));
+  return records.map((person) => {
+    const at = reach.get(person.id)!;
+    return {
+      subjectId: person.id,
+      as: 'person' as const,
+      email: at.email,
+      /* À qui la lettre est adressée : la personne dont c'est la boîte. */
+      toName: at.toName,
+      orgName: person.name,
+      blocked: !at.email.trim()
+        ? 'no_email'
+        : held.has(at.email.trim().toLowerCase())
+          ? 'suppressed'
+          : '',
+    };
+  });
 }
 
 /** Everybody this call has already written to. */
@@ -114,10 +123,16 @@ export async function sourcingValues(
   const form = view.form;
   const link = form && origin ? applyLink(form.token, channel?.id ?? null, origin) : '';
 
-  const record = await dir.getRecord(subjectId);
+  /* Quand l'adresse est empruntée à qui tient la page, la lettre arrive chez
+     cette personne : c'est son prénom qu'elle lit, et c'est à elle qu'une
+     première connexion doit s'ouvrir — en ouvrir une au nom d'une société
+     serait un compte que personne ne tient. Le nom invité, lui, reste celui
+     de la société : c'est elle qu'on appelle à candidater. */
+  const who = person.viaId ?? subjectId;
+  const record = await dir.getRecord(who);
   return {
-    prenom: firstNameOf(person.name, record?.firstName),
-    acces: preview ? '' : await accessFor(subjectId, config.outreach.access),
+    prenom: firstNameOf(record?.name ?? person.name, record?.firstName),
+    acces: preview ? '' : await accessFor(who, config.outreach.access),
     nom: person.name,
     lien: link,
     canal: channel?.label ?? '',

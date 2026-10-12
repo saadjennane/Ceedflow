@@ -45,16 +45,7 @@ export interface PersonRow {
 
 const OUT = new Set(['Not selected', 'Withdrawn']);
 
-export async function peopleRows(): Promise<Map<string, PersonRow>> {
-  return (await directoryRows()).people;
-}
-
-/** La même matière pour les organisations : qui les tient, et leurs programmes. */
-export async function orgRows(): Promise<Map<string, OrgRow>> {
-  return (await directoryRows()).orgs;
-}
-
-async function directoryRows(): Promise<{ people: Map<string, PersonRow>; orgs: Map<string, OrgRow> }> {
+export async function directoryRows(): Promise<{ people: Map<string, PersonRow>; orgs: Map<string, OrgRow> }> {
   const links = await all<{
     personId: string; orgId: string; name: string; role: string;
     person: string; email: string; phones: string[];
@@ -205,4 +196,76 @@ export async function teamOf(editionId: string): Promise<TeamGroup[]> {
     { key: 'jury', label: 'Jury', people: jury.map((p) => ({ ...p, kind: 'person' as const })) },
     { key: 'startups', label: 'Startups', people: startups.map((p) => ({ ...p, kind: 'org' as const })) },
   ];
+}
+
+/* ------------------------------------------------------------------ */
+/* L'adresse à laquelle on atteint une fiche                           */
+/* ------------------------------------------------------------------ */
+
+/** Où une lettre arrive, et par qui quand ce n'est pas l'adresse de la fiche. */
+export interface Reach {
+  email: string;
+  /** Le nom à qui la lettre est adressée — jamais « Bonjour Rafid Tech ». */
+  toName: string;
+  /** La personne dont on emprunte l'adresse, quand on en emprunte une. */
+  viaId: string | null;
+  viaName: string;
+}
+
+/**
+ * L'adresse d'une société : la sienne, sinon celle de qui tient sa page.
+ *
+ * Une startup venue d'une candidature n'a presque jamais d'adresse à elle —
+ * 427 sur 440 ici. L'adresse saisie dans le formulaire est celle du contact,
+ * et c'est sur sa fiche qu'elle est rangée, liée à la société. Ne regarder que
+ * l'adresse propre, c'est déclarer injoignable toute une promotion dont on a
+ * pourtant l'adresse de chacun.
+ *
+ * Une seule requête pour toute une liste : une audience en compte des
+ * centaines, et une requête par ligne est une page qui ne s'affiche plus.
+ *
+ * Qui tient la page d'abord, puis le plus ancien lien, puis l'alphabet — le
+ * même ordre que l'équipe affichée sur la page de la société, pour que « la
+ * première personne » désigne la même partout.
+ */
+export async function reachFor(
+  records: { id: string; kind: 'person' | 'org'; name: string; email: string }[],
+): Promise<Map<string, Reach>> {
+  const out = new Map<string, Reach>();
+  const orphans: string[] = [];
+
+  for (const record of records) {
+    const own = (record.email ?? '').trim();
+    if (own) out.set(record.id, { email: own, toName: record.name, viaId: null, viaName: '' });
+    else if (record.kind === 'org') orphans.push(record.id);
+    else out.set(record.id, { email: '', toName: record.name, viaId: null, viaName: '' });
+  }
+  if (!orphans.length) return out;
+
+  const held = await all<{ orgId: string; personId: string; name: string; email: string }>(
+    `select a.org_id as "orgId", r.id as "personId", r.name, r.email
+       from affiliations a
+       join records r on r.id = a.person_id and r.deleted_at is null
+      where a.org_id = any($1::text[]) and coalesce(r.email, '') <> ''
+      order by case a.access when 'admin' then 0 when 'editor' then 1 else 2 end,
+               a.since nulls last, r.name`,
+    [orphans],
+  );
+
+  const first = new Map<string, { personId: string; name: string; email: string }>();
+  for (const row of held) if (!first.has(row.orgId)) first.set(row.orgId, row);
+
+  for (const id of orphans) {
+    const found = first.get(id);
+    const record = records.find((r) => r.id === id)!;
+    out.set(id, {
+      email: found?.email ?? '',
+      /* Le nom de la personne, pas celui de la société : la lettre arrive dans
+         sa boîte, et « Bonjour Rafid Tech » n'est adressé à personne. */
+      toName: found?.name ?? record.name,
+      viaId: found?.personId ?? null,
+      viaName: found?.name ?? '',
+    });
+  }
+  return out;
 }

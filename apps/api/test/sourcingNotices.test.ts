@@ -82,6 +82,60 @@ describe('calling for applications', { skip: skipWithoutServer }, () => {
     assert.ok(roster.every((r) => r.as === 'person'), 'these are not candidacies yet');
   });
 
+  it('reaches a startup through whoever holds its page', async () => {
+    /* Une startup venue d'une candidature n'a presque jamais d'adresse à elle :
+       celle du formulaire est rangée sur la fiche du contact, liée à la
+       société. Ne regarder que l'adresse propre déclarait injoignable toute une
+       promotion dont on avait pourtant l'adresse de chacun. */
+    const { call, tag } = await setUp();
+    const stamp = `${Date.now()}.${Math.random().toString(36).slice(2, 6)}`;
+    const org = await dir.createRecord({ kind: 'org', name: `Rafid ${stamp}`, origin: 'manual', tags: [tag] });
+    const founder = await dir.createRecord({
+      kind: 'person', name: `Zineb ${stamp}`, origin: 'manual',
+      emails: [`zineb.${stamp}@example.test`],
+    });
+    await dir.linkRecords({ personId: founder.id, orgId: org.id, access: 'admin' });
+
+    const roster = await sourcingRoster(call.id, SOURCING_KIND);
+    const row = roster.find((r) => r.subjectId === org.id);
+    assert.equal(row?.blocked, '', 'elle est joignable');
+    assert.equal(row?.email, `zineb.${stamp}@example.test`);
+    /* Adressée à la personne dont c'est la boîte : « Bonjour Rafid Tech » dans
+       sa messagerie n'est adressé à personne. */
+    assert.equal(row?.toName, `Zineb ${stamp}`);
+    assert.equal(row?.orgName, `Rafid ${stamp}`, 'mais c’est bien la société qu’on invite');
+
+    const values = await sourcingValues(call.id, org.id, true);
+    assert.equal(values?.prenom, 'Zineb', 'le prénom de qui lit');
+    assert.equal(values?.nom, `Rafid ${stamp}`, 'le nom de qui est invité');
+  });
+
+  it('keeps a company’s own address when it has one', async () => {
+    const { call, tag } = await setUp();
+    const stamp = `${Date.now()}.${Math.random().toString(36).slice(2, 6)}`;
+    const org = await dir.createRecord({
+      kind: 'org', name: `Innolia ${stamp}`, origin: 'manual', tags: [tag],
+      emails: [`contact.${stamp}@example.test`],
+    });
+    const founder = await dir.createRecord({
+      kind: 'person', name: `Omar ${stamp}`, origin: 'manual', emails: [`omar.${stamp}@example.test`],
+    });
+    await dir.linkRecords({ personId: founder.id, orgId: org.id, access: 'admin' });
+
+    const row = (await sourcingRoster(call.id, SOURCING_KIND)).find((r) => r.subjectId === org.id);
+    assert.equal(row?.email, `contact.${stamp}@example.test`);
+    assert.equal(row?.toName, `Innolia ${stamp}`, 'et c’est elle qu’on salue');
+  });
+
+  it('still names a company nobody can be reached through', async () => {
+    const { call, tag } = await setUp();
+    const stamp = `${Date.now()}.${Math.random().toString(36).slice(2, 6)}`;
+    const org = await dir.createRecord({ kind: 'org', name: `Muette ${stamp}`, origin: 'manual', tags: [tag] });
+
+    const row = (await sourcingRoster(call.id, SOURCING_KIND)).find((r) => r.subjectId === org.id);
+    assert.equal(row?.blocked, 'no_email', 'nommée, et laissée de côté');
+  });
+
   it('carries the channel’s own link, absolute, which is what makes a candidacy traceable', async () => {
     const { call, karim } = await setUp();
     await noteOrigin('https', 'www.ceedflow.com');

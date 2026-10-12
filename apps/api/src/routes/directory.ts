@@ -29,7 +29,7 @@ import {
   setAccountDisabled,
 } from '../services/auth.js';
 import { post, sendingIsLive } from '../services/mail.js';
-import { orgRows, peopleRows } from '../services/people.js';
+import { directoryRows } from '../services/people.js';
 import { invite, inviteBlock, inviteMany } from '../services/invitations.js';
 import { HttpError, notFound, parse } from './util.js';
 import { requireWorkspaceAdmin, workspaceGuard } from './guard.js';
@@ -69,8 +69,13 @@ export async function directoryRoutes(app: FastifyInstance) {
     const accounts = await accountStatesByRecord();
     /* Ce que la liste des individus montre en plus : où ils travaillent, les
        programmes faits et celui en cours. Trois requêtes pour toute la page. */
-    const people = kind === 'person' ? await peopleRows() : new Map();
-    const orgs = kind === 'org' ? await orgRows() : new Map();
+    /* Les deux côtés, même sans filtre de genre : l'audience d'un sourcing
+       lit cette liste entière et a besoin de savoir, pour une société sans
+       adresse à elle, qui tient sa page — sinon elle la compte injoignable
+       alors que le serveur, lui, saura l'atteindre. */
+    const both = await directoryRows();
+    const people = kind === 'org' ? new Map() : both.people;
+    const orgs = kind === 'person' ? new Map() : both.orgs;
     const rows = records.map((r) => {
       const side = kind === 'org' ? orgs.get(r.id) : people.get(r.id);
       /* Une organisation n'a pas de compte : c'est celui de la personne qui la
