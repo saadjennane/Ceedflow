@@ -697,7 +697,26 @@ export async function findPublicForm(token: string) {
       where b.type = 'application' and b.config->>'publicToken' = $1`,
     [token],
   );
-  if (!row) return null;
+  return row ? formContext(row) : null;
+}
+
+/**
+ * Le même contexte, trouvé par le bloc plutôt que par le jeton.
+ *
+ * L'aperçu du builder a le bloc en main et pas de lien public — il n'en veut
+ * pas un, d'ailleurs : relire son formulaire ne doit pas obliger à le publier.
+ */
+export async function findFormByBlock(blockId: string) {
+  const row = await one<{ blockId: string; trackId: string; editionId: string }>(
+    `select b.id as "blockId", t.id as "trackId", t.edition_id as "editionId"
+       from blocks b join phases p on p.id = b.phase_id join tracks t on t.id = p.track_id
+      where b.id = $1 and b.type = 'application'`,
+    [blockId],
+  );
+  return row ? formContext(row) : null;
+}
+
+async function formContext(row: { blockId: string; trackId: string; editionId: string }) {
   const block = await getBlock(row.blockId);
   if (!block) return null;
   const edition = await one<Edition>(`select ${EDITION_COLS} from editions where id = $1 and deleted_at is null`, [row.editionId]);

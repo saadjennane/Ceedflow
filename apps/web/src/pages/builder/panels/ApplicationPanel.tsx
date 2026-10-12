@@ -14,12 +14,13 @@ import {
 } from '@ceed/shared';
 import { useState } from 'react';
 import { api } from '../../../lib/api';
+import { useAsync } from '../../../lib/useAsync';
 import { formatDate } from '../../../lib/format';
 import { DateField, SelectField, TagField, TextArea, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
 import { AccessTemplate, Template } from './Template';
 import { ConfirmDialog, Modal, useToast } from '../../../ui/Overlays';
-import { FormPageBody, FormSteps } from '../../../ui/FormPages';
+import { ApplyCard, formShape, type PublicForm } from '../../../ui/ApplyCard';
 
 /* ------------------------------------------------------------------ */
 /* Setup                                                               */
@@ -264,7 +265,7 @@ export function ApplicationSetup({
         <span className="badge num">{config.fields.length}</span>
         {paged && <span className="badge num">{config.pages.length} pages</span>}
         <div className="spacer" />
-        <FormPreview config={config} />
+        <FormPreview block={block} config={config} />
         {paged && (
           <button className="btn sm" onClick={addPage}>
             <Icon name="plus" size={13} /> Add page
@@ -812,83 +813,121 @@ export function ApplicationSubmissions({
 }
 
 /**
- * Le formulaire tel qu'on le recevra, avant que personne ne le reçoive.
+ * La page de candidature telle qu'on la recevra, avant que personne ne la
+ * reçoive.
  *
- * Nourri par le brouillon et non par le bloc enregistré : on relit ses
- * questions pendant qu'on les écrit, et un aperçu qui lit le serveur montre
- * celles d'avant. Le rendu, lui, est celui de la page publique — même
- * composant — pour qu'un libellé, un ordre ou un champ obligatoire ne puissent
- * pas s'y afficher autrement que chez le candidat.
+ * C'est la vraie page — même composant que celle où l'on candidate — montée
+ * sur deux moitiés : son décor vient du serveur (le nom du programme, sa
+ * couleur, les canaux qui amènent les candidats, qui ne s'éditent pas ici) et
+ * ses questions viennent du brouillon, puisque c'est pendant qu'on les écrit
+ * qu'on veut les relire.
  *
- * Rien n'est enregistré : ni réponse, ni candidature.
+ * La porte est forcée ouverte : un formulaire encore fermé est précisément
+ * celui qu'on veut voir. Et rien ne s'enregistre — ni réponse, ni candidature.
  */
-function FormPreview({ config }: { config: ApplicationConfig }) {
+function FormPreview({ block, config }: { block: Block; config: ApplicationConfig }) {
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<Record<string, unknown>>({});
+  const [ticked, setTicked] = useState<string[]>([]);
+  const [heardFrom, setHeardFrom] = useState('');
   const [step, setStep] = useState(0);
 
-  const pages = formPages(config).map(({ page, fields }) => ({ ...page, fields }));
-  const paged = config.layout === 'paged';
-  const names = pages.map((p, i) => p.name || `Page ${i + 1}`);
-  const here = pages[step];
+  const context = useAsync(
+    async () => (open ? api.get<PublicForm>(`/api/blocks/${block.id}/form-preview`) : null),
+    `form-preview:${block.id}:${open}`,
+  );
 
-  if (!config.fields.length) return null;
+  if (!config.fields.length && !config.eligibility.criteria.length) return null;
+
+  const start = () => {
+    setStep(0);
+    setValues({});
+    setTicked([]);
+    setOpen(true);
+  };
+
+  /* Le décor du serveur, les questions du brouillon. */
+  const data: PublicForm | null = context.data && {
+    ...context.data,
+    intro: config.intro,
+    eligibility: config.eligibility,
+    layout: config.layout,
+    pages: formPages(config).map(({ page, fields }) => ({ ...page, fields })),
+    closesAt: config.closesAt || null,
+    state: 'open',
+  };
+  const shape = data ? formShape(data, ticked) : null;
+  const last = !shape?.paged || step === shape.steps.length - 1;
 
   return (
     <>
-      <button className="btn sm" onClick={() => { setStep(0); setOpen(true); }}>
+      <button className="btn sm" onClick={start}>
         <Icon name="eye" size={13} /> Preview
       </button>
       {open && (
         <Modal
           wide
           title="What they see"
-          subtitle="Your questions as an applicant reads them. Nothing here is saved — no answer, no application."
+          subtitle="The page as an applicant reads it, shown whether or not the call is open. Nothing here is saved — no answer, no application."
           onClose={() => setOpen(false)}
           footer={
             <>
-              {paged && step > 0 && (
-                <button className="btn" onClick={() => setStep((n) => n - 1)}>
-                  Back
-                </button>
-              )}
               <div className="spacer" />
-              {paged && step < pages.length - 1 ? (
-                <button className="btn" onClick={() => setStep((n) => n + 1)}>
-                  Continue <Icon name="arrowRight" size={14} />
-                </button>
-              ) : (
-                <button className="btn primary" onClick={() => setOpen(false)}>
-                  Close
-                </button>
-              )}
+              <button className="btn primary" onClick={() => setOpen(false)}>
+                Close
+              </button>
             </>
           }
         >
-          {/* La page publique ouvre là-dessus ; le reste de son décor — qui
-              candidate, par quel canal — n'est pas ce qu'on relit ici. */}
-          {config.intro && <p className="public-intro">{config.intro}</p>}
-          {paged && <FormSteps names={names} step={step} />}
-
-          {paged ? (
-            here && (
-              <FormPageBody
-                heading
-                page={here}
-                values={values}
-                onAnswer={(id, v) => setValues((old) => ({ ...old, [id]: v }))}
-              />
-            )
+          {!data ? (
+            <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+              {context.error ?? 'Loading…'}
+            </p>
           ) : (
-            pages.map((page) => (
-              <div key={page.id || 'single'}>
-                <FormPageBody
-                  page={page}
-                  values={values}
-                  onAnswer={(id, v) => setValues((old) => ({ ...old, [id]: v }))}
-                />
-              </div>
-            ))
+            <ApplyCard
+              data={data}
+              values={values}
+              errors={{}}
+              ticked={ticked}
+              step={step}
+              onAnswer={(id, v) => setValues((old) => ({ ...old, [id]: v }))}
+              onTick={setTicked}
+              heardFrom={heardFrom}
+              onHeardFrom={setHeardFrom}
+              /* Une société pour l'exemple : l'aperçu n'en candidate aucune. */
+              applicant={
+                <div className="rowcard link-row">
+                  <span className="rec-mark">RT</span>
+                  <span style={{ flex: 1 }}>
+                    <strong style={{ fontSize: 13 }}>Rafid Tech</strong>
+                    <span className="faint" style={{ display: 'block', fontSize: 12 }}>
+                      An example — whoever applies sees their own page here.
+                    </span>
+                  </span>
+                </div>
+              }
+              actions={
+                <>
+                  {shape?.paged && step > 0 && (
+                    <button className="btn" onClick={() => setStep((n) => n - 1)}>
+                      Back
+                    </button>
+                  )}
+                  <div className="spacer" />
+                  {last ? (
+                    /* Jamais actif : l'aperçu ne dépose rien, et un bouton qui
+                       ne fait rien sans le dire est pire que pas de bouton. */
+                    <span className="btn off" title="Nothing is sent from a preview">
+                      Send my application
+                    </span>
+                  ) : (
+                    <button className="btn primary" onClick={() => setStep((n) => n + 1)}>
+                      Continue <Icon name="arrowRight" size={14} />
+                    </button>
+                  )}
+                </>
+              }
+            />
           )}
         </Modal>
       )}

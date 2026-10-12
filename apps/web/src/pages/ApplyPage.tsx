@@ -1,38 +1,15 @@
-import { type Eligibility, type FormField } from '@ceed/shared';
+
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError, api } from '../lib/api';
 import { useAccount } from '../lib/account';
 import { formatDate } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
-import { FormPageBody, FormSteps } from '../ui/FormPages';
+import { ApplyCard, formShape, type PublicForm } from '../ui/ApplyCard';
 import { Icon } from '../ui/Icon';
 import '../ui/builder.css';
 import '../ui/directory.css';
 
-interface PublicPage {
-  id: string;
-  name: string;
-  intro: string;
-  fields: FormField[];
-}
-
-interface PublicForm {
-  programName: string;
-  editionName: string;
-  colour: string;
-  blockName: string;
-  intro: string;
-  eligibility: Eligibility;
-  channels: { id: string; label: string }[];
-  layout: 'single' | 'paged';
-  pages: PublicPage[];
-  opensAt: string | null;
-  closesAt: string | null;
-  /** What a latecomer is told, when the team wrote something. */
-  closedMessage: string;
-  state: 'open' | 'closed' | 'not_open';
-}
 
 const isEmpty = (value: unknown) =>
   value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length);
@@ -187,14 +164,7 @@ export function ApplyPage() {
   }
 
   const applyingAs = orgId || me.organisations[0].record.id;
-  const gate = data.eligibility.mode === 'gate';
-  const allTicked = data.eligibility.criteria.every((c) => ticked.includes(c.id));
-  const blockedByGate = gate && !allTicked;
-
-  const hasEligibility = data.eligibility.criteria.length > 0;
-  const paged = data.layout === 'paged' && data.pages.length > 0;
-  // Step 0 is who is applying, plus the eligibility list when there is one.
-  const steps = paged ? ['Before you start', ...data.pages.map((p) => p.name)] : [];
+  const { blockedByGate, paged, steps } = formShape(data, ticked);
   const currentPage = paged ? (step === 0 ? null : data.pages[step - 1]) : null;
   const last = !paged || step === steps.length - 1;
 
@@ -256,162 +226,73 @@ export function ApplyPage() {
     }
   };
 
-  const start = (
-    <>
-      <h3 className="section-title">Who is applying</h3>
-      {me.organisations.length > 1 ? (
-        <div className="field">
-          <label>Organisation</label>
-          <select className="input" value={applyingAs} onChange={(e) => setOrgId(e.target.value)}>
-            {me.organisations.map((o) => (
-              <option key={o.record.id} value={o.record.id}>
-                {o.record.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      ) : (
-        <div className="rowcard link-row">
-          <span className="rec-mark">
-            {me.organisations[0].record.name
-              .split(/\s+/)
-              .map((w) => w[0])
-              .slice(0, 2)
-              .join('')
-              .toUpperCase()}
+  const applicantCard =
+    me.organisations.length > 1 ? (
+      <div className="field">
+        <label>Organisation</label>
+        <select className="input" value={applyingAs} onChange={(e) => setOrgId(e.target.value)}>
+          {me.organisations.map((o) => (
+            <option key={o.record.id} value={o.record.id}>
+              {o.record.name}
+            </option>
+          ))}
+        </select>
+      </div>
+    ) : (
+      <div className="rowcard link-row">
+        <span className="rec-mark">
+          {me.organisations[0].record.name
+            .split(/\s+/)
+            .map((w) => w[0])
+            .slice(0, 2)
+            .join('')
+            .toUpperCase()}
+        </span>
+        <span style={{ flex: 1 }}>
+          <strong style={{ fontSize: 13 }}>{me.organisations[0].record.name}</strong>
+          <span className="faint" style={{ display: 'block', fontSize: 12 }}>
+            {me.record.name} · {me.account.email}
           </span>
-          <span style={{ flex: 1 }}>
-            <strong style={{ fontSize: 13 }}>{me.organisations[0].record.name}</strong>
-            <span className="faint" style={{ display: 'block', fontSize: 12 }}>
-              {me.record.name} · {me.account.email}
-            </span>
-          </span>
-        </div>
-      )}
-
-      {/* A tagged link already answered this. Only the bare one has to ask. */}
-      {!via && data.channels.length > 0 && (
-        <div className="field">
-          <label>How did you hear about {data.programName}?</label>
-          <div className="pick-list">
-            {data.channels.map((channel) => (
-              <button
-                type="button"
-                key={channel.id}
-                className={heardFrom === channel.id ? 'pick on' : 'pick'}
-                onClick={() => setHeardFrom(heardFrom === channel.id ? '' : channel.id)}
-              >
-                <Icon name={heardFrom === channel.id ? 'check' : 'square'} />
-                <div>
-                  <strong>{channel.label}</strong>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {hasEligibility && (
-        <>
-          <h3 className="section-title">Before you start</h3>
-          <p className="faint" style={{ margin: '0 0 8px', fontSize: 12.5 }}>
-            {gate
-              ? 'Every line has to be true to apply to this call.'
-              : 'What this call is looking for. Tick what applies to you.'}
-          </p>
-          <div className="rows">
-            {data.eligibility.criteria.map((c) => (
-              <label className="check rowcard" style={{ padding: '10px 12px' }} key={c.id}>
-                <input
-                  type="checkbox"
-                  checked={ticked.includes(c.id)}
-                  onChange={(e) => setTicked((t) => (e.target.checked ? [...t, c.id] : t.filter((x) => x !== c.id)))}
-                />
-                <span style={{ fontSize: 13 }}>{c.label}</span>
-              </label>
-            ))}
-          </div>
-          {blockedByGate && (
-            <div className="callout warn">
-              <Icon name="alert" size={15} />
-              This call is only open to organisations that meet every criterion above.
-            </div>
-          )}
-        </>
-      )}
-    </>
-  );
-
+        </span>
+      </div>
+    );
 
   return (
-    <div className="public">
-      <div className="public-card">
-        <div className="public-top" style={{ background: `linear-gradient(90deg, ${data.colour}, ${data.colour}55)` }} />
-        <div className="public-body">
-          <div className="eyebrow">{data.editionName}</div>
-          <h1>{data.programName}</h1>
-          {data.intro && <p className="public-intro">{data.intro}</p>}
-
-          {data.closesAt && (
-            <span className="badge warn">
-              <Icon name="clock" size={13} /> Closes {formatDate(data.closesAt)}
-            </span>
+    <ApplyCard
+      data={data}
+      values={values}
+      errors={errors}
+      ticked={ticked}
+      step={step}
+      onAnswer={setAnswer}
+      onTick={setTicked}
+      heardFrom={heardFrom}
+      /* Un lien étiqueté a déjà répondu : on ne le redemande pas. */
+      onHeardFrom={via ? undefined : setHeardFrom}
+      applicant={applicantCard}
+      actions={
+        <>
+          {paged && step > 0 && (
+            <button className="btn" onClick={() => setStep((s) => s - 1)}>
+              Back
+            </button>
           )}
-
-          {paged && <FormSteps names={steps} step={step} />}
-
-          {errors._ && (
-            <div className="callout warn">
-              <Icon name="alert" size={15} /> {errors._}
-            </div>
-          )}
-
-          {paged ? (
-            step === 0 ? (
-              start
-            ) : (
-              <FormPageBody
-                heading
-                page={currentPage!}
-                values={values}
-                errors={errors}
-                onAnswer={setAnswer}
-              />
-            )
+          <div className="spacer" />
+          {last ? (
+            <button className="btn primary" disabled={sending || blockedByGate} onClick={submit}>
+              {sending ? 'Sending…' : 'Send my application'}
+            </button>
           ) : (
-            <>
-              {start}
-              {data.pages.map((page) => (
-                <div key={page.id}>
-                  <FormPageBody page={page} values={values} errors={errors} onAnswer={setAnswer} />
-                </div>
-              ))}
-            </>
+            /* A gate holds the form shut: there is no way past this step. */
+            !blockedByGate && (
+              <button className="btn primary" onClick={next}>
+                Continue <Icon name="arrowRight" size={14} />
+              </button>
+            )
           )}
-
-          <div className="row" style={{ marginTop: 16 }}>
-            {paged && step > 0 && (
-              <button className="btn" onClick={() => setStep((s) => s - 1)}>
-                Back
-              </button>
-            )}
-            <div className="spacer" />
-            {last ? (
-              <button className="btn primary" disabled={sending || blockedByGate} onClick={submit}>
-                {sending ? 'Sending…' : 'Send my application'}
-              </button>
-            ) : (
-              /* A gate holds the form shut: there is no way past this step. */
-              !blockedByGate && (
-                <button className="btn primary" onClick={next}>
-                  Continue <Icon name="arrowRight" size={14} />
-                </button>
-              )
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    />
   );
 }
 

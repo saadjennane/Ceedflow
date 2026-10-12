@@ -313,6 +313,35 @@ export async function funnelRoutes(app: FastifyInstance) {
     return status === 'live' ? ('open' as const) : status === 'scheduled' ? ('not_open' as const) : ('closed' as const);
   };
 
+  /**
+   * Le formulaire tel qu'on le sert, en un seul endroit.
+   *
+   * Deux lecteurs : le candidat et l'aperçu du builder. Composer deux fois la
+   * même page, c'est se donner deux pages qui divergent — et l'aperçu ne vaut
+   * que s'il est vrai.
+   */
+  const formPayload = (
+    found: NonNullable<Awaited<ReturnType<typeof repo.findPublicForm>>>,
+    config: ApplicationConfig,
+    state: 'open' | 'closed' | 'not_open',
+  ) => ({
+    programName: found.program?.name ?? '',
+    editionName: found.edition?.name ?? '',
+    colour: found.program?.colour ?? '#2F5BFF',
+    blockName: found.block.name,
+    intro: config.intro,
+    eligibility: config.eligibility,
+    channels: found.channels,
+    layout: config.layout,
+    pages: formPages(config).map(({ page, fields }) => ({ ...page, fields })),
+    opensAt: config.opensAt,
+    // The date somebody arriving late is shown: the act if there was one, the
+    // deadline otherwise. An edition marked completed has neither.
+    closesAt: brickClosedOn(config),
+    closedMessage: config.closedMessage,
+    state,
+  });
+
   app.get('/api/public/forms/:token', async (req, reply) => {
     const { token } = req.params as { token: string };
     const found = await repo.findPublicForm(token);
@@ -320,25 +349,23 @@ export async function funnelRoutes(app: FastifyInstance) {
     const config = found.block.config as ApplicationConfig;
     const state = formState(found.edition, { type: 'application', config });
     if (!state) return notFound(reply, 'This form does not exist.');
-    const closed = state === 'closed';
-    const notYetOpen = state === 'not_open';
-    return {
-      programName: found.program?.name ?? '',
-      editionName: found.edition?.name ?? '',
-      colour: found.program?.colour ?? '#2F5BFF',
-      blockName: found.block.name,
-      intro: config.intro,
-      eligibility: config.eligibility,
-      channels: found.channels,
-      layout: config.layout,
-      pages: formPages(config).map(({ page, fields }) => ({ ...page, fields })),
-      opensAt: config.opensAt,
-      // The date somebody arriving late is shown: the act if there was one, the
-      // deadline otherwise. An edition marked completed has neither.
-      closesAt: brickClosedOn(config),
-      closedMessage: config.closedMessage,
-      state: closed ? 'closed' : notYetOpen ? 'not_open' : 'open',
-    };
+    return formPayload(found, config, state === 'closed' ? 'closed' : state === 'not_open' ? 'not_open' : 'open');
+  });
+
+  /**
+   * Le décor de cette page, pour la relire avant de l'ouvrir.
+   *
+   * Le nom du programme, sa couleur et les canaux ne sont pas ce qu'on édite
+   * dans ce panneau : ils viennent d'ici. Les questions, elles, restent celles
+   * du brouillon — on se relit pendant qu'on écrit. Et la porte est forcée
+   * ouverte : un formulaire encore fermé est précisément celui qu'on veut
+   * voir.
+   */
+  app.get('/api/blocks/:id/form-preview', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const found = await repo.findFormByBlock(id);
+    if (!found) return notFound(reply, 'This form does not exist.');
+    return formPayload(found, found.block.config as ApplicationConfig, 'open');
   });
 
   /** A channel arrives as its id and is stored under its name, so the Startups
