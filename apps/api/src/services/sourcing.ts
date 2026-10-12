@@ -51,6 +51,13 @@ export interface OutreachView {
   audience: Prospect[];
   /** Everyone the filter caught who has no email — they cannot be written to. */
   unreachable: number;
+  /**
+   * Et qui ils sont, pas seulement combien.
+   *
+   * Un nombre sur une pastille ne se corrige pas : il faut pouvoir ouvrir la
+   * liste et aller chercher les quatre fiches à qui il manque une adresse.
+   */
+  silent: string[];
   channels: ChannelResult[];
   sends: { id: string; subject: string; recipients: string[]; sentAt: string; channelId: string | null }[];
 }
@@ -153,6 +160,7 @@ export async function outreachView(blockId: string): Promise<OutreachView | null
       viaId: reach.get(r.id)!.viaId,
     })),
     unreachable: records.length - withEmail.length,
+    silent: records.filter((r) => !(reach.get(r.id)?.email ?? '').trim()).map((r) => r.id),
     channels,
     sends,
   };

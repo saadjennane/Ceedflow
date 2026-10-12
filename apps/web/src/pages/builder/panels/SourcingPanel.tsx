@@ -520,8 +520,29 @@ export function SourcingOutreach({ block, dirty }: { block: Block; dirty: boolea
         <div className="eyebrow">Ready to send{channel ? ` · as ${channel.label}` : ''}</div>
         <div style={{ fontWeight: 600 }}>{config.outreach.subject || <span className="faint">No subject yet</span>}</div>
         <div className="row wrap">
-          <span className="badge info num">{audience.length} recipients</span>
-          {unreachable > 0 && <span className="badge warn num">{unreachable} without an email</span>}
+          {/* Cliquables, et dans un onglet à part : un nombre ne se corrige
+              pas, une liste si — et quitter le builder emporterait les
+              modifications qu'on n'a pas encore enregistrées. */}
+          <a
+            className="badge info num"
+            href={`/organisations?from=${block.id}`}
+            target="_blank"
+            rel="noreferrer"
+            title="Open the list of everybody this would be written to"
+          >
+            {audience.length} recipients
+          </a>
+          {unreachable > 0 && (
+            <a
+              className="badge warn num"
+              href={`/organisations?from=${block.id}&only=silent`}
+              target="_blank"
+              rel="noreferrer"
+              title="Open the list of those nobody can be written to for"
+            >
+              {unreachable} without an email
+            </a>
+          )}
           <div className="spacer" />
           {/* Unsaved edits first: the window writes from the saved block, so
               sending now would send the message as it was, not as it reads. */}

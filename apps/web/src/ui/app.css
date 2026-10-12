@@ -540,6 +540,18 @@ textarea {
   white-space: nowrap;
 }
 
+/* Une pastille qui mène quelque part le dit : sinon c'est un nombre qu'on
+   clique par hasard, ou qu'on ne clique jamais. */
+a.badge {
+  text-decoration: none;
+  cursor: pointer;
+}
+
+a.badge:hover {
+  filter: brightness(0.95);
+  text-decoration: underline;
+}
+
 .badge.ok {
   background: var(--ok-wash);
   color: var(--ok);

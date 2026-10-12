@@ -1,6 +1,6 @@
 import { ORIGIN_LABEL, rolesFor, type DirectoryRecord, type RecordAccount, type RecordKind } from '@ceed/shared';
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
@@ -12,6 +12,12 @@ import { AccountBadge } from './AccountCard';
 import { ImportModal } from './ImportModal';
 import { InviteManyModal } from './InviteManyModal';
 import { RecordModal } from './RecordModal';
+
+/** Ce qu'une audience de sourcing rend : qui on écrit, et qui reste muet. */
+interface AudienceView {
+  audience: { id: string; name: string; kind: string }[];
+  silent: string[];
+}
 
 /** A record as the list endpoint returns it: with how many affiliations it has. */
 export interface RecordRow extends DirectoryRecord {
@@ -39,7 +45,22 @@ export const initials = (name: string) =>
 
 export function DirectoryPage({ kind }: { kind: RecordKind }) {
   const records = useAsync(() => api.get<RecordRow[]>(`/api/records?kind=${kind}`), kind);
+  /* Ouvert depuis une pastille : « les 440 qu'on va écrire », « les 4 sans
+     adresse ». Un nombre ne se corrige pas — une liste, si. Les identifiants
+     viennent du serveur et non de l'URL : quatre cents dans une adresse de
+     page est une adresse que rien ne transporte. */
+  const [params, setParams] = useSearchParams();
+  const from = params.get('from') ?? '';
+  const only = params.get('only') ?? '';
+  const audience = useAsync(
+    async () => (from ? api.get<AudienceView>(`/api/blocks/${from}/outreach`) : null),
+    `audience:${from}`,
+  );
   const [role, setRole] = useState<string | null>(null);
+  /* Avec ou sans compte : la question qu'on se pose en préparant une invitation
+     — qui a déjà une porte, et à qui il reste à en ouvrir une. Une organisation
+     n'a pas de compte, c'est celui de qui la tient. */
+  const [hasAccount, setHasAccount] = useState<'all' | 'with' | 'without'>('all');
   const [query, setQuery] = useState('');
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -51,10 +72,21 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
   const all = records.data ?? [];
   const isOrg = kind === 'org';
 
+  /* Exactement ce que la pastille comptait : la même liste, pas une requête
+     qui lui ressemble. */
+  const fromAudience = audience.data
+    ? new Set(only === 'silent' ? audience.data.silent : audience.data.audience.map((a) => a.id))
+    : null;
+  /* Une audience attrape des sociétés et des personnes. Celles qui ne sont pas
+     de ce genre-ci ne sont pas perdues : elles sont comptées et on y mène. */
+  const elsewhere = fromAudience ? fromAudience.size - all.filter((r) => fromAudience.has(r.id)).length : 0;
+
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return all.filter(
       (r) =>
+        (!fromAudience || fromAudience.has(r.id)) &&
+        (hasAccount === 'all' || (hasAccount === 'with' ? Boolean(r.account) : !r.account)) &&
         (!role || (role === '__none' ? !r.roles.length : r.roles.includes(role))) &&
         (!needle ||
           r.name.toLowerCase().includes(needle) ||
@@ -62,9 +94,15 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
           r.city.toLowerCase().includes(needle) ||
           r.tags.join(' ').toLowerCase().includes(needle)),
     );
-  }, [all, role, query]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all, role, query, audience.data, only, hasAccount]);
 
-  const countOf = (r: string) => all.filter((x) => (r === '__none' ? !x.roles.length : x.roles.includes(r))).length;
+  /* Comptés sur ce que la page montre : « All 4 » au-dessus d'une seule ligne
+     parce qu'on arrive d'une audience de quatre est un compteur qui parle
+     d'autre chose que de ce qu'on a sous les yeux. */
+  const shown = fromAudience ? all.filter((r) => fromAudience.has(r.id)) : all;
+  const countOf = (r: string) => shown.filter((x) => (r === '__none' ? !x.roles.length : x.roles.includes(r))).length;
 
   const toggle = (id: string) =>
     setPicked((was) => {
@@ -99,10 +137,46 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
       </header>
 
       <div className="page stack" style={{ gap: 14 }}>
+        {from && (
+          <div className="callout">
+            <Icon name="users" size={15} />
+            <div style={{ flex: 1 }}>
+              {!audience.data ? (
+                'Loading the call’s audience…'
+              ) : (
+                <>
+                  <strong>
+                    {only === 'silent'
+                      ? 'Nobody can be written to for these.'
+                      : 'Everybody this call would be written to.'}
+                  </strong>{' '}
+                  {only === 'silent'
+                    ? 'Neither their own address nor one on anybody holding their page. Add one and they join the send.'
+                    : 'Their own address, or the one of whoever holds their page.'}
+                  {/* L'audience attrape aussi des personnes : le dire plutôt que
+                      de les faire disparaître d'une liste d'organisations. */}
+                  {elsewhere > 0 && (
+                    <>
+                      {' '}
+                      <Link to={`/${isOrg ? 'individuals' : 'organisations'}?from=${from}${only ? `&only=${only}` : ''}`}>
+                        {elsewhere} {isOrg ? 'on the individuals list' : 'on the organisations list'}
+                      </Link>
+                      .
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+            <button className="btn sm" onClick={() => setParams({})}>
+              Show everybody
+            </button>
+          </div>
+        )}
+
         <div className="row wrap">
           <div className="work-pick">
             <button className={!role ? 'track on' : 'track'} onClick={() => setRole(null)}>
-              All <span className="num">{all.length}</span>
+              All <span className="num">{shown.length}</span>
             </button>
             {rolesFor(kind).map((r) => (
               <button key={r} className={role === r ? 'track on' : 'track'} onClick={() => setRole(r)}>
@@ -119,6 +193,34 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
               </button>
             )}
           </div>
+
+          {/* Qui peut déjà entrer, et à qui il reste à ouvrir. Sur les individus
+              seulement : une organisation ne signe jamais, c'est la personne qui
+              tient sa page qui a la clé. */}
+          {!isOrg && (
+            <div className="work-pick">
+              {(
+                [
+                  ['all', 'Any account'],
+                  ['with', 'With an account'],
+                  ['without', 'Without'],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  className={hasAccount === value ? 'track on' : 'track'}
+                  onClick={() => setHasAccount(value)}
+                >
+                  {label}{' '}
+                  {value !== 'all' && (
+                    <span className="num">
+                      {shown.filter((r) => (value === 'with' ? Boolean(r.account) : !r.account)).length}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="row wrap">
@@ -128,7 +230,7 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
             onChange={setQuery}
           />
           <span className="faint num" style={{ fontSize: 12.5 }}>
-            {rows.length} of {all.length}
+            {rows.length} of {shown.length}
           </span>
           {!isOrg && picked.size > 0 && (
             <>
