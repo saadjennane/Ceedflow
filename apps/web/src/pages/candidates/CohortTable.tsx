@@ -351,9 +351,10 @@ export function CohortTable({
             candidateId: giving.id,
             editionId: giving.editionId,
             about: giving.orgName,
-            /* À la startup elle-même : tous ceux qui tiennent sa page la
-               voient, et le premier qui s'en occupe la coche. */
-            owner: { id: giving.orgId, kind: 'org' },
+            /* Liée, pas confiée. Ce qu'on écrit en lisant cette ligne est le
+               plus souvent du travail de CEED — relancer, vérifier une pièce —
+               et pré-cocher la startup ferait partir une lettre chez elle pour
+               une tâche qui n'est pas la sienne. */
           }}
           onClose={() => setGiving(null)}
           onSaved={() => setGiving(null)}

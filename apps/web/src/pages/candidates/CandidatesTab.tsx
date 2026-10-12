@@ -737,7 +737,9 @@ function CandidateDrawer({
             candidateId: candidate.id,
             editionId: candidate.editionId,
             about: candidate.orgName,
-            owner: { id: candidate.orgId, kind: 'org' },
+            /* Liée à cette candidature, et confiée à personne d'avance : voir
+               le dossier de quelqu'un ne dit pas que c'est à lui de faire ce
+               qu'on est en train d'écrire. */
           }}
           onClose={() => setGiving(false)}
           onSaved={() => setGiving(false)}
