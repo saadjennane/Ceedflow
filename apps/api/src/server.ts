@@ -20,6 +20,7 @@ import { taskRoutes } from './routes/tasks.js';
 import { bootstrapAdmin } from './services/bootstrap.js';
 import { noteOrigin } from './services/platform.js';
 import { sendDueNotices } from './services/notices.js';
+import { sendLateDigests } from './services/taskNotices.js';
 import { KEPT_DAYS, purgeExpired } from './services/trash.js';
 import { flush, sendingIsLive } from './services/mail.js';
 import { HttpError } from './routes/util.js';
@@ -170,6 +171,29 @@ if (sendingIsLive()) {
       if (sent || failed) app.log.info({ sent, failed }, 'outbox');
     } catch (err) {
       app.log.error(err, 'outbox');
+    }
+  };
+  setInterval(() => void tick(), EVERY).unref();
+  void tick();
+}
+
+/*
+ * Les retards, une fois le matin venu.
+ *
+ * Toutes les quinze minutes plutôt qu'une fois par jour, pour la même raison
+ * que la corbeille : « une fois par jour » sur un processus qui redémarre deux
+ * fois par jour est un rendez-vous qu'on manque. La garde d'heure est dans
+ * `sendLateDigests`, et chaque ligne est réclamée au moment d'être choisie —
+ * deux ticks qui se chevauchent ne peuvent pas écrire deux fois.
+ */
+{
+  const EVERY = 900_000;
+  const tick = async () => {
+    try {
+      const { sent, skipped } = await sendLateDigests();
+      if (sent || skipped) app.log.info({ sent, skipped }, 'task reminders');
+    } catch (err) {
+      app.log.error(err, 'task reminders');
     }
   };
   setInterval(() => void tick(), EVERY).unref();

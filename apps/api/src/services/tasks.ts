@@ -17,7 +17,8 @@ const COLS = `
             l'étape ou la startup — ce qui se lit sur une ligne de liste. */
          coalesce(r.name, co.name, b.name, p.name || ' · ' || e.name, '') as "aboutName",
          t.created_by_name as "createdByName", t.created_at::text as "createdAt",
-         t.done_at::text as "doneAt", t.done_by_name as "doneByName"
+         t.done_at::text as "doneAt", t.done_by_name as "doneByName",
+         t.told_at::text as "toldAt"
     from tasks t
     /* Ce qui est à la corbeille n'est dans aucune liste — pas même dans celle
        des choses à faire. Une fiche restaurée retrouve ses tâches : elles ne

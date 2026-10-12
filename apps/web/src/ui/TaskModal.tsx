@@ -25,6 +25,15 @@ export interface TaskAttach {
   candidateId?: string | null;
   /** Ce que la fenêtre dit de l'attache, quand elle en a une. */
   about?: string;
+  /**
+   * À qui, déjà coché.
+   *
+   * Sur la page de quelqu'un, « donner une tâche » veut dire la lui donner.
+   * L'attache dit de quoi il s'agit, elle ne dit pas qui s'en occupe — et
+   * sans ce pré-cochage il fallait retrouver dans l'annuaire la personne dont
+   * on avait la fiche sous les yeux.
+   */
+  owner?: { id: string; kind: 'person' | 'org' };
 }
 
 /** L'équipe d'une édition, telle que le serveur la groupe. */
@@ -44,9 +53,12 @@ export function TaskModal({
   onSaved: () => void;
 }) {
   const [draft, setDraft] = useState({ title: '', detail: '', dueOn: '' });
-  const [people, setPeople] = useState<string[]>([]);
-  const [orgs, setOrgs] = useState<string[]>([]);
+  const [people, setPeople] = useState<string[]>(
+    attach?.owner?.kind === 'person' ? [attach.owner.id] : [],
+  );
+  const [orgs, setOrgs] = useState<string[]>(attach?.owner?.kind === 'org' ? [attach.owner.id] : []);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [tell, setTell] = useState(true);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
   /* Les sociétés aussi peuvent porter une tâche : « Rafid Tech doit envoyer
@@ -76,6 +88,7 @@ export function TaskModal({
         editionId: attach?.editionId ?? null,
         blockId: attach?.blockId ?? null,
         candidateId: attach?.candidateId ?? null,
+        tell,
       });
       toast(made.length === 1 ? 'Given.' : `Given to ${made.length}.`);
       onSaved();
@@ -186,11 +199,81 @@ export function TaskModal({
         <div className="hint">Leave it empty for something with no date. Late is counted from the day after.</div>
       </div>
 
+      <TellLine ownerIds={owners} tell={tell} onTell={setTell} />
+
       {owners.length > 1 && (
         <p className="faint" style={{ margin: 0, fontSize: 12 }}>
           <Icon name="alert" size={12} /> One task each, so that “done” can name somebody.
         </p>
       )}
     </Modal>
+  );
+}
+
+/** Pourquoi personne ne sera prévenu, en mots plutôt qu'en code. */
+const WHY: Record<string, string> = {
+  no_email: 'has no address',
+  gone: 'is no longer in the directory',
+};
+
+/**
+ * Qui recevra une lettre, dit avant de donner la tâche et non après.
+ *
+ * La liste vient du serveur parce que lui seul connaît la règle entière : une
+ * société sans adresse se rabat sur qui tient sa page. Refaire ce calcul ici
+ * donnerait un écran qui promet une lettre que personne ne reçoit.
+ */
+function TellLine({
+  ownerIds,
+  tell,
+  onTell,
+}: {
+  ownerIds: string[];
+  tell: boolean;
+  onTell: (next: boolean) => void;
+}) {
+  const hearers = useAsync(
+    async () =>
+      ownerIds.length
+        ? api.post<{ on: boolean; who: { id: string; toName: string; blocked: string }[] }>(
+            '/api/tasks/hearers',
+            { ownerIds },
+          )
+        : null,
+    `hearers:${[...ownerIds].sort().join(',')}`,
+  );
+  if (!ownerIds.length || !hearers.data) return null;
+
+  const reached = hearers.data.who.filter((w) => !w.blocked);
+  const missed = hearers.data.who.filter((w) => w.blocked);
+
+  if (!hearers.data.on) {
+    return (
+      <p className="faint" style={{ margin: 0, fontSize: 12 }}>
+        Task letters are switched off in Settings — nobody will be written to.
+      </p>
+    );
+  }
+
+  return (
+    <div className="field">
+      <label className="row" style={{ gap: 7, cursor: 'pointer', fontWeight: 500 }}>
+        <input type="checkbox" checked={tell} onChange={(e) => onTell(e.target.checked)} />
+        Tell them by email
+      </label>
+      {tell && reached.length > 0 && (
+        <div className="hint">
+          {reached.map((w) => w.toName).join(', ')} {reached.length === 1 ? 'gets' : 'get'} a letter now.
+        </div>
+      )}
+      {/* Nommés, et pas comptés : « 2 sans adresse » n'aide personne à savoir
+          qui rappeler à la main. */}
+      {missed.length > 0 && (
+        <p className="warnline" style={{ margin: '4px 0 0', fontSize: 12 }}>
+          {missed.map((w) => `${w.toName} ${WHY[w.blocked] ?? w.blocked}`).join(' · ')} — the task is still given,
+          but no letter goes out for it.
+        </p>
+      )}
+    </div>
   );
 }

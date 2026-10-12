@@ -1,5 +1,10 @@
 import {
   ACCOUNT_STATE_LABEL,
+  HOUSE_LETTERS,
+  TASK_GIVEN_VARIABLES,
+  TASK_LATE_VARIABLES,
+  type HouseLetter,
+  type HouseLetterKey,
   type ProgramWithEditions,
   STAFF_ROLES,
   STAFF_ROLE_HINT,
@@ -15,6 +20,7 @@ import { ApiError, api } from '../lib/api';
 import { formatDate } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
 import { initials } from './directory/DirectoryPage';
+import { Template } from './builder/panels/Template';
 import { Icon } from '../ui/Icon';
 import { Modal, useToast } from '../ui/Overlays';
 import '../ui/builder.css';
@@ -397,6 +403,8 @@ export function SettingsPage() {
           </p>
         </section>
 
+        <HouseLetters mayManage={mayManage} />
+
         <AsStartup />
 
         <Trash mayManage={mayManage} />
@@ -559,5 +567,132 @@ function InviteHandover({ invite, onClose }: { invite: Invite; onClose: () => vo
         </p>
       </div>
     </Modal>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Le courrier de la maison                                            */
+/* ------------------------------------------------------------------ */
+
+const LETTER_SAYS: Record<HouseLetterKey, { title: string; what: string; help: string }> = {
+  task_given: {
+    title: 'When a task is given',
+    what: 'Goes out at the moment somebody is given a task — once, and only if the box was ticked.',
+    help: 'What the person reads the day the task lands on them.',
+  },
+  task_late: {
+    title: 'When a task is late',
+    what: 'One letter per person rather than one per task, the morning after the date passes, and again a week later if it is still open.',
+    help: 'Everything of theirs past its date, in one message.',
+  },
+};
+
+const VARIABLES: Record<HouseLetterKey, typeof TASK_GIVEN_VARIABLES | typeof TASK_LATE_VARIABLES> = {
+  task_given: TASK_GIVEN_VARIABLES,
+  task_late: TASK_LATE_VARIABLES,
+};
+
+/**
+ * Les lettres qui ne sont d'aucun programme.
+ *
+ * Celles du tunnel se règlent dans la brique qui les envoie, parce qu'elles
+ * appartiennent à cette étape. Une tâche se donne depuis une fiche, depuis un
+ * programme ou depuis la page des tâches : son courrier est le même partout,
+ * et c'est ici qu'il s'écrit.
+ */
+function HouseLetters({ mayManage }: { mayManage: boolean }) {
+  const letters = useAsync(() => api.get<HouseLetter[]>('/api/house-letters'), 'house-letters');
+  const [draft, setDraft] = useState<Record<string, HouseLetter>>({});
+  const [busy, setBusy] = useState('');
+  const toast = useToast();
+
+  if (!mayManage || !letters.data) return null;
+
+  /* Ce qu'on est en train d'écrire prime sur ce qui est enregistré : sans ça,
+     chaque frappe serait reprise par la réponse du serveur. */
+  const now = (key: HouseLetterKey): HouseLetter =>
+    draft[key] ?? letters.data!.find((l) => l.key === key)!;
+
+  const edit = (key: HouseLetterKey, patch: Partial<HouseLetter>) =>
+    setDraft((d) => ({ ...d, [key]: { ...now(key), ...patch } }));
+
+  const save = async (key: HouseLetterKey) => {
+    setBusy(key);
+    const { subject, body, enabled } = now(key);
+    try {
+      await api.patch(`/api/house-letters/${key}`, { subject, body, enabled });
+      setDraft((d) => {
+        const { [key]: _gone, ...rest } = d;
+        return rest;
+      });
+      letters.reload();
+      toast('Saved.');
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  return (
+    <section className="card card-pad stack" style={{ maxWidth: 880, gap: 14, marginTop: 14 }}>
+      <div>
+        <h2 style={{ fontSize: 16, margin: 0 }}>Letters about tasks</h2>
+        <p className="faint" style={{ margin: '2px 0 0', fontSize: 12.5, lineHeight: 1.5 }}>
+          A task sits in this workspace, and the people it is given to are not all in it every day. These two
+          messages are what reaches them — written once here, the same from wherever a task is given.
+        </p>
+      </div>
+
+      {HOUSE_LETTERS.map((key) => {
+        const letter = now(key);
+        const dirty = Boolean(draft[key]);
+        return (
+          <div key={key} className="stack" style={{ gap: 8, borderTop: '1px solid var(--line)', paddingTop: 12 }}>
+            <div className="row" style={{ gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ fontSize: 14, margin: 0 }}>{LETTER_SAYS[key].title}</h3>
+                <p className="faint" style={{ margin: '2px 0 0', fontSize: 12.5, lineHeight: 1.5 }}>
+                  {LETTER_SAYS[key].what}
+                </p>
+              </div>
+              {/* Éteindre, plutôt que vider le gabarit pour arrêter les envois
+                  — et le retrouver entier le jour où on les reprend. */}
+              <label className="row" style={{ gap: 6, cursor: 'pointer', fontSize: 12.5, flexShrink: 0 }}>
+                <input
+                  type="checkbox"
+                  checked={letter.enabled}
+                  onChange={(e) => edit(key, { enabled: e.target.checked })}
+                />
+                {letter.enabled ? 'On' : 'Off'}
+              </label>
+            </div>
+
+            <Template
+              label="The message"
+              help={LETTER_SAYS[key].help}
+              value={letter.body}
+              onChange={(body) => edit(key, { body })}
+              subject={letter.subject}
+              onSubject={(subject) => edit(key, { subject })}
+              variables={VARIABLES[key]}
+            />
+
+            <div className="row" style={{ gap: 8 }}>
+              <button className="btn primary sm" disabled={!dirty || busy === key} onClick={() => void save(key)}>
+                {busy === key ? 'Saving…' : 'Save'}
+              </button>
+              {letter.updatedAt && !dirty && (
+                <span className="faint" style={{ fontSize: 12 }}>
+                  Last changed {formatDate(letter.updatedAt)}
+                  {letter.updatedByName ? ` by ${letter.updatedByName}` : ''}.
+                </span>
+              )}
+              {dirty && <span className="faint" style={{ fontSize: 12 }}>Not saved yet.</span>}
+            </div>
+          </div>
+        );
+      })}
+    </section>
   );
 }

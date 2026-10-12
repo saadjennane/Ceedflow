@@ -266,7 +266,11 @@ export function RecordPage() {
 
       {giving && (
         <TaskModal
-          attach={{ recordId, about: detail.data.record.name }}
+          attach={{
+            recordId,
+            about: detail.data.record.name,
+            owner: { id: recordId, kind: detail.data.record.kind },
+          }}
           onClose={() => setGiving(false)}
           onSaved={() => {
             setGiving(false);

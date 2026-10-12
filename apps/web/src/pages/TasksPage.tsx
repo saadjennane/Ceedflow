@@ -154,6 +154,17 @@ export function Row({ task, onTick }: { task: Task; onTick: () => void }) {
             .join(' ')}
         </span>
       </span>
+      {/* Prévenu ou non : sans ça, « je ne savais pas » et « je n'ai rien reçu »
+          sont deux phrases que personne ne peut départager. */}
+      {task.toldAt ? (
+        <span className="faint" style={{ fontSize: 11.5, whiteSpace: 'nowrap' }} title={`Written to on ${formatDate(task.toldAt)}`}>
+          <Icon name="send" size={11} /> Told
+        </span>
+      ) : (
+        <span className="faint" style={{ fontSize: 11.5, whiteSpace: 'nowrap' }} title="Nobody was written to about this one">
+          Not told
+        </span>
+      )}
       {task.editionId && (
         <Link className="btn ghost sm" to={`/editions/${task.editionId}`}>
           <Icon name="layers" size={13} />

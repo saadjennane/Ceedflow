@@ -1,7 +1,10 @@
 import {
+  HOUSE_LETTERS,
+  houseLetterPatch,
   staffMemberInput,
   staffRolePatch,
   suggestPassword,
+  type HouseLetterKey,
   type StaffMember,
 } from '@ceed/shared';
 import type { FastifyInstance } from 'fastify';
@@ -17,6 +20,7 @@ import {
   setAccountEmail,
   setStaffRole,
 } from '../services/auth.js';
+import { houseLetters, setHouseLetter } from '../services/houseLetters.js';
 import { binned, restore } from '../services/trash.js';
 import { requireWorkspaceAdmin, workspaceGuard } from './guard.js';
 import { HttpError, notFound, parse } from './util.js';
@@ -39,6 +43,23 @@ export async function staffRoutes(app: FastifyInstance) {
   app.get('/api/trash', async (req) => {
     requireWorkspaceAdmin(req);
     return binned();
+  });
+
+  /**
+   * Le courrier de la maison : les lettres qui ne sont d'aucun programme.
+   *
+   * Dans les réglages et non dans un builder, parce qu'elles sortent de
+   * partout — une tâche se donne depuis une fiche, une édition ou la page des
+   * tâches, et son objet doit être le même d'où qu'elle vienne.
+   */
+  app.get('/api/house-letters', async () => houseLetters());
+
+  app.patch('/api/house-letters/:key', async (req, reply) => {
+    const { key } = req.params as { key: string };
+    if (!(HOUSE_LETTERS as readonly string[]).includes(key)) return notFound(reply, 'No such letter.');
+    const patch = parse(houseLetterPatch, req.body);
+    const record = req.staff ? await dir.getRecord(req.staff.recordId) : null;
+    return setHouseLetter(key as HouseLetterKey, patch, record?.name?.trim() || req.staff?.email || '');
   });
 
   app.post('/api/trash/:batch/restore', async (req, reply) => {

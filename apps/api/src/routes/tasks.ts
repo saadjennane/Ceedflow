@@ -13,7 +13,9 @@
 import { createTaskInput, taskPatch } from '@ceed/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import * as dir from '../db/directory.js';
+import { houseLetter } from '../services/houseLetters.js';
 import { teamOf } from '../services/people.js';
+import { tellOwner, whoHears } from '../services/taskNotices.js';
 import { changeTask, createTasks, dropTask, getTask, listTasks } from '../services/tasks.js';
 import { workspaceGuard } from './guard.js';
 import { notFound, parse } from './util.js';
@@ -39,10 +41,31 @@ export async function taskRoutes(app: FastifyInstance) {
     return teamOf(id);
   });
 
+  /**
+   * Qui entendra parler de cette tâche, avant qu'elle existe.
+   *
+   * Demandé par la fenêtre qui la donne, pour qu'elle nomme d'avance ceux
+   * qu'on ne pourra pas prévenir. Une société sans adresse se rabat sur qui
+   * tient sa page : le client ne peut pas le savoir seul, et deux règles —
+   * une ici, une là-bas — seraient deux règles qui divergent.
+   */
+  app.post('/api/tasks/hearers', async (req) => {
+    const { ownerIds } = (req.body ?? {}) as { ownerIds?: string[] };
+    const letter = await houseLetter('task_given');
+    const who = await Promise.all(
+      [...new Set(ownerIds ?? [])].map(async (id) => ({ id, ...(await whoHears(id)) })),
+    );
+    return { on: letter.enabled, who };
+  });
+
   app.post('/api/tasks', async (req, reply) => {
     const input = parse(createTaskInput, req.body);
+    const made = await createTasks(input, await actor(req));
+    /* La lettre après l'enregistrement, et jamais à sa place : une tâche
+       confiée reste confiée même si le courrier ne part pas. */
+    if (input.tell) for (const task of made) await tellOwner(task.id);
     reply.code(201);
-    return createTasks(input, await actor(req));
+    return Promise.all(made.map(async (t) => (await getTask(t.id)) ?? t));
   });
 
   app.patch('/api/tasks/:id', async (req, reply) => {
