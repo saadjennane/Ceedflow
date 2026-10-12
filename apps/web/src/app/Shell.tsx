@@ -8,15 +8,13 @@ import { useAsync } from '../lib/useAsync';
 import type { ReviewPanel } from '../pages/member/ReviewPage';
 import { Icon } from '../ui/Icon';
 import { useSidebar, useTheme } from '../ui/Overlays';
+import { isLate, type Task } from '@ceed/shared';
 
 /**
  * The navigation the prototype settled on. Sections that exist in the model but
  * are not built yet stay visible and inert, so the shape of the product is legible.
  */
-const TOP = [
-  { label: 'Home', icon: 'home' },
-  { label: 'Tasks', icon: 'check' },
-];
+const TOP = [{ label: 'Home', icon: 'home' }];
 
 const COMMUNITY_LATER = [
   { label: 'CRM', icon: 'compass' },
@@ -42,6 +40,14 @@ export function Shell() {
     `panels:${staffRole ?? 'none'}`,
   );
   const onAPanel = (panels.data?.length ?? 0) > 0;
+  /* Ce qui a dépassé sa date, compté une fois pour la barre et pour l'accueil :
+     c'est la seule chose d'une liste de tâches qui ne peut pas attendre qu'on
+     pense à aller la regarder. */
+  const tasks = useAsync<Task[]>(
+    () => (staffRole ? api.get<Task[]>('/api/tasks?open=open') : Promise.resolve([])),
+    `tasks:${staffRole ?? 'none'}`,
+  );
+  const late = (tasks.data ?? []).filter((t) => isLate(t)).length;
   const waiting = stillWaiting(panels.data ?? []);
 
   useEffect(() => {
@@ -84,6 +90,13 @@ export function Shell() {
         {TOP.map((item) => (
           <Soon key={item.label} {...item} />
         ))}
+        {/* Avec le compte de ce qui est en retard : une liste qu'on doit aller
+            ouvrir est une liste qu'on oublie. */}
+        <NavLink to="/tasks" className={link} title="Tasks">
+          <Icon name="check" />
+          <span className="nav-label">Tasks</span>
+          {late > 0 && <span className="nav-count warn">{late}</span>}
+        </NavLink>
 
         <div className="eyebrow nav-group">Community</div>
         <NavLink to="/organisations" className={link} title="Organisations">

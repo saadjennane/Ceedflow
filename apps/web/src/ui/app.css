@@ -913,3 +913,6 @@ table.data td.name {
   background: var(--stop);
   color: #fff;
 }
+
+/* Un retard ne se dit pas de la même couleur qu'une pile de choses à faire. */
+.nav-count.warn { background: var(--stop); }

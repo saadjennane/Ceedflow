@@ -10,12 +10,14 @@
  * done once you know there is some.
  */
 import {
+  isLate,
   itemComplete,
   longDate,
   profileDone,
   profileMissing,
   type DeliverableItem,
   type OrgProfile,
+  type Task,
 } from '@ceed/shared';
 import { useLang } from '../../lib/lang';
 import { Icon } from '../../ui/Icon';
@@ -62,10 +64,15 @@ const soon = (on: string | null): boolean => {
 export function MemberHome({
   states,
   orgs,
+  tasks,
+  onTick,
   onOpen,
   onProfile,
 }: {
   states: CandidacyState[];
+  /** Ce que CEED demande en propre, à côté de ce que le tunnel déduit. */
+  tasks: Task[];
+  onTick: (task: Task) => void;
   /** The pages they look after, so an unfinished one can be said out loud. */
   orgs: { name: string; profile: OrgProfile }[];
   onOpen: (editionId: string) => void;
@@ -75,10 +82,27 @@ export function MemberHome({
 
   /* Une ligne par chose à faire, pas une par programme : ce qui compte est le
      geste, et le programme n'est que l'endroit où il se fait. */
-  const todo: { key: string; title: string; detail: string; go: () => void }[] = [];
+  const todo: {
+    key: string; title: string; detail: string; go: () => void; late?: boolean; tick?: boolean;
+  }[] = [];
 
-  /* La fiche d'abord : c'est ce qu'un jury lit avant de rencontrer, et la seule
-     chose de cette liste qui serve à tous les programmes à la fois. */
+  /* Ce que CEED a demandé à la main, en premier : une date passée attend
+     quelqu'un, et c'est la seule ligne de cette page qui ait un retard. */
+  for (const task of [...tasks].sort((a, b) => (a.dueOn ?? '9999').localeCompare(b.dueOn ?? '9999'))) {
+    todo.push({
+      key: `task-${task.id}`,
+      title: task.title,
+      detail: [task.detail, task.dueOn ? `${t('owed.before')} ${longDate(task.dueOn)}` : null]
+        .filter(Boolean)
+        .join(' · '),
+      go: () => onTick(task),
+      late: isLate(task),
+      tick: true,
+    });
+  }
+
+  /* La fiche ensuite : c'est ce qu'un jury lit avant de rencontrer, et la
+     seule chose de cette liste qui serve à tous les programmes à la fois. */
   for (const org of orgs) {
     const missing = profileMissing(org.profile);
     if (!missing.length) continue;
@@ -147,9 +171,23 @@ export function MemberHome({
                 style={{ padding: '11px 13px', gap: 11, width: '100%', textAlign: 'left' }}
                 onClick={item.go}
               >
-                <Icon name="check" size={15} />
+                {/* Une case pour ce qui se coche, une coche pour le reste :
+                    le geste n'est pas le même, et le dessin doit le dire. */}
+                {item.tick ? (
+                  <input
+                    type="checkbox"
+                    aria-label={item.title}
+                    checked={false}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={item.go}
+                  />
+                ) : (
+                  <Icon name="check" size={15} />
+                )}
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <strong style={{ fontSize: 13.5 }}>{item.title}</strong>
+                  <strong style={{ fontSize: 13.5, color: item.late ? 'var(--stop)' : undefined }}>
+                  {item.title}
+                </strong>
                   <span className="faint" style={{ display: 'block', fontSize: 12.5 }}>{item.detail}</span>
                 </span>
                 <Icon name="chevronRight" size={15} />

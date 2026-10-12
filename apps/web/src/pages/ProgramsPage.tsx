@@ -1,4 +1,4 @@
-import type { Edition, ProgramWithEditions } from '@ceed/shared';
+import { isLate, type Edition, type ProgramWithEditions, type Task } from '@ceed/shared';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { CreateEditionModal, CreateProgramModal } from '../pages/CreateModals';
@@ -18,6 +18,7 @@ const STATUS_TONE: Record<string, string> = {
 
 export function ProgramsPage() {
   const programs = useAsync(() => api.get<ProgramWithEditions[]>('/api/programs'), 'programs');
+  const tasks = useAsync(() => api.get<Task[]>('/api/tasks?open=open'), 'home-tasks');
   const [view, setView] = useState<'grid' | 'list'>(() => (localStorage.getItem('ceed.programView') as 'grid') ?? 'grid');
   const [newProgram, setNewProgram] = useState(false);
   const [newEditionFor, setNewEditionFor] = useState<ProgramWithEditions | null>(null);
@@ -31,6 +32,7 @@ export function ProgramsPage() {
   };
 
   const list = programs.data ?? [];
+  const late = (tasks.data ?? []).filter((t) => isLate(t));
   const editionCount = list.reduce((n, p) => n + p.editions.length, 0);
   const liveCount = list.reduce((n, p) => n + p.editions.filter((e) => e.status === 'Live').length, 0);
 
@@ -91,6 +93,26 @@ export function ProgramsPage() {
       </header>
 
       <div className="page">
+        {/* Ce qui a dépassé sa date, sur la page qu'on ouvre en arrivant.
+            Une liste de tâches qu'il faut penser à aller voir est une liste
+            qu'on oublie — et ce qui est en retard est précisément ce que
+            personne n'a pensé à aller voir. */}
+        {late.length > 0 && (
+          <Link className="callout warn" to="/tasks" style={{ textDecoration: 'none', marginBottom: 14 }}>
+            <Icon name="alert" size={15} />
+            <div>
+              <strong>
+                {late.length} task{late.length === 1 ? '' : 's'} past {late.length === 1 ? 'its' : 'their'} date.
+              </strong>{' '}
+              {late
+                .slice(0, 3)
+                .map((t) => `${t.title} — ${t.ownerName}`)
+                .join(' · ')}
+              {late.length > 3 ? ' …' : ''}
+            </div>
+          </Link>
+        )}
+
         {programs.loading && <div className="empty">Loading…</div>}
         {programs.error && <div className="empty">{programs.error}</div>}
 

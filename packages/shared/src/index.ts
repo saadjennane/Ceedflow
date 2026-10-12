@@ -8,3 +8,4 @@ export * from './places.js';
 export * from './profile.js';
 export * from './pdf.js';
 export * from './sheets.js';
+export * from './tasks.js';

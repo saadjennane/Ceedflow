@@ -14,6 +14,7 @@ import { RecordPage } from './pages/directory/RecordPage';
 import { ProgramPage } from './pages/ProgramPage';
 import { ProgramsPage } from './pages/ProgramsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { TasksPage } from './pages/TasksPage';
 import { ToastProvider } from './ui/Overlays';
 import './ui/app.css';
 
@@ -37,6 +38,7 @@ const router = createBrowserRouter([
       { path: 'organisations', element: <DirectoryPage kind="org" /> },
       { path: 'individuals', element: <DirectoryPage kind="person" /> },
       { path: 'directory/:recordId', element: <RecordPage /> },
+      { path: 'tasks', element: <TasksPage /> },
       { path: 'settings', element: <SettingsPage /> },
     ],
   },

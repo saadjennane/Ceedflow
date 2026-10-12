@@ -12,6 +12,7 @@ import {
   profileInput,
   signupAccountInput,
   suggestPassword,
+  taskPatch,
   teamMemberInput,
   teamMemberPatch,
   type BrickStatus,
@@ -24,6 +25,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
+import { changeTask, getTask, listTasks } from '../services/tasks.js';
 import { agendaFor } from '../services/agenda.js';
 import { deliverablesFor } from '../services/deliverables.js';
 import { panelFor, reviewsFor, whyNoPanel } from '../services/reviews.js';
@@ -359,6 +361,33 @@ export async function authRoutes(app: FastifyInstance) {
    * never from a line somebody typed. A form whose door is shut says so here,
    * and closing the brick is the only way to say it.
    */
+  /**
+   * Ce qu'on attend de moi, et de mes sociétés.
+   *
+   * Une tâche confiée à une startup est vue par tous ceux qui tiennent sa
+   * page : c'est l'intérêt de pouvoir la confier à une société plutôt qu'à
+   * quelqu'un en particulier — le premier qui s'en occupe la coche.
+   */
+  app.get('/api/me/tasks', async (req) => {
+    const account = await require(req);
+    const mine = [account.recordId, ...(await dir.orgIdsOf(account.recordId))];
+    return listTasks({ ownerIds: mine, open: true });
+  });
+
+  /** La cocher, et seulement si elle est à moi. */
+  app.patch('/api/me/tasks/:id', async (req, reply) => {
+    const account = await require(req);
+    const { id } = req.params as { id: string };
+    const task = await getTask(id);
+    const mine = [account.recordId, ...(await dir.orgIdsOf(account.recordId))];
+    if (!task || !mine.includes(task.ownerId)) return notFound(reply, 'Task not found.');
+    const who = await dir.getRecord(account.recordId);
+    /* Rien d'autre que l'état : le texte et l'échéance appartiennent à qui l'a
+       demandée. */
+    const { state } = parse(taskPatch.pick({ state: true }), req.body);
+    return changeTask(id, { state }, { id: account.recordId, name: who?.name ?? '' });
+  });
+
   app.get('/api/me/programs', async (req) => {
     const account = await require(req);
     return programsFor(account.recordId);

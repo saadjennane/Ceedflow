@@ -1,5 +1,6 @@
 import {
   ORIGIN_LABEL,
+  type Task,
   profileOf,
   profileStarted,
   type Affiliation,
@@ -21,6 +22,8 @@ import '../../ui/directory.css';
 import { AccountCard } from './AccountCard';
 import { initials } from './DirectoryPage';
 import { RecordModal } from './RecordModal';
+import { TaskModal } from '../../ui/TaskModal';
+import { Row as TaskRow } from '../TasksPage';
 import { ProfileBar, ProfileFacts, Logo } from '../../ui/OrgProfile';
 
 export function RecordPage() {
@@ -30,6 +33,8 @@ export function RecordPage() {
   const [linking, setLinking] = useState(false);
   const [unlinking, setUnlinking] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [giving, setGiving] = useState(false);
+  const tasks = useAsync(() => api.get<Task[]>(`/api/tasks?recordId=${recordId}&open=all`), `tasks:${recordId}`);
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -139,6 +144,40 @@ export function RecordPage() {
             </div>
           )}
 
+          {/* Ce qui l'attend, et ce qu'on attend d'elle : les deux sens du
+              mot « concerne », et c'est bien la même liste qu'on vient lire. */}
+          <div className="card">
+            <div className="rowcard-head" style={{ padding: '11px 14px' }}>
+              <strong style={{ flex: 1, fontFamily: 'var(--display)', fontSize: 13.5 }}>Tasks</strong>
+              {tasks.data && tasks.data.length > 0 && (
+                <span className="badge num">{tasks.data.filter((t) => t.state === 'open').length}</span>
+              )}
+              <button className="btn sm" onClick={() => setGiving(true)}>
+                <Icon name="plus" size={13} /> Give a task
+              </button>
+            </div>
+            {!tasks.data?.length ? (
+              <div className="empty" style={{ padding: 18 }}>
+                <p style={{ margin: 0, fontSize: 12.5 }}>Nothing is being asked here.</p>
+              </div>
+            ) : (
+              <div className="rows" style={{ padding: 10 }}>
+                {tasks.data.map((task) => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    onTick={async () => {
+                      await api.patch(`/api/tasks/${task.id}`, {
+                        state: task.state === 'done' ? 'open' : 'done',
+                      });
+                      tasks.reload();
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="card">
             <div className="rowcard-head" style={{ padding: '11px 14px' }}>
               <strong style={{ flex: 1, fontFamily: 'var(--display)', fontSize: 13.5 }}>
@@ -224,6 +263,17 @@ export function RecordPage() {
           </button>
         </aside>
       </div>
+
+      {giving && (
+        <TaskModal
+          attach={{ recordId, about: detail.data.record.name }}
+          onClose={() => setGiving(false)}
+          onSaved={() => {
+            setGiving(false);
+            tasks.reload();
+          }}
+        />
+      )}
 
       {editing && (
         <RecordModal

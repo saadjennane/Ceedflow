@@ -5,6 +5,7 @@ import {
   type AffiliationView,
   type Me,
   type OrgProfile,
+  type Task,
 } from '@ceed/shared';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -141,6 +142,13 @@ function MemberSpace({ preview }: { preview?: MemberPreview }) {
     `${key}:${preview ? 'preview' : 'mine'}`,
   );
 
+  /* Ce que CEED demande en propre : les siennes, et celles des sociétés dont
+     elle tient la page. En aperçu, rien — on regarde une page, on n'agit pas. */
+  const tasks = useAsync<Task[]>(
+    async () => (preview ? [] : api.get<Task[]>('/api/me/tasks')),
+    preview ? 'preview-tasks' : 'my-tasks',
+  );
+
   useEffect(() => {
     if (!preview && !loading && !me) navigate('/login', { replace: true });
   }, [preview, loading, me, navigate]);
@@ -250,6 +258,11 @@ function MemberSpace({ preview }: { preview?: MemberPreview }) {
         {tab === 'Home' && (
           <MemberHome
             states={states.data ?? []}
+            tasks={preview ? [] : (tasks.data ?? [])}
+            onTick={async (task) => {
+              await api.patch(`/api/me/tasks/${task.id}`, { state: 'done' });
+              tasks.reload();
+            }}
             orgs={
               preview
                 ? preview.profile
