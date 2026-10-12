@@ -5,7 +5,7 @@ import { ApiError, api } from '../lib/api';
 import { useAccount } from '../lib/account';
 import { formatDate } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
-import { FormFieldInput } from '../ui/FormField';
+import { FormPageBody, FormSteps } from '../ui/FormPages';
 import { Icon } from '../ui/Icon';
 import '../ui/builder.css';
 import '../ui/directory.css';
@@ -342,16 +342,6 @@ export function ApplyPage() {
     </>
   );
 
-  const fieldsOf = (page: PublicPage) =>
-    page.fields.map((field) => (
-      <FormFieldInput
-        key={field.id}
-        field={field}
-        value={values[field.id]}
-        onChange={(v) => setAnswer(field.id, v)}
-        error={errors[`answers.${field.id}`]}
-      />
-    ));
 
   return (
     <div className="public">
@@ -368,16 +358,7 @@ export function ApplyPage() {
             </span>
           )}
 
-          {paged && (
-            <div className="steps">
-              {steps.map((name, i) => (
-                <span className={i === step ? 'step on' : i < step ? 'step done' : 'step'} key={name}>
-                  <span className="step-n">{i + 1}</span>
-                  {name}
-                </span>
-              ))}
-            </div>
-          )}
+          {paged && <FormSteps names={steps} step={step} />}
 
           {errors._ && (
             <div className="callout warn">
@@ -389,27 +370,20 @@ export function ApplyPage() {
             step === 0 ? (
               start
             ) : (
-              <>
-                <h3 className="section-title">{currentPage!.name}</h3>
-                {currentPage!.intro && (
-                  <p className="faint" style={{ margin: '0 0 10px', fontSize: 12.5 }}>
-                    {currentPage!.intro}
-                  </p>
-                )}
-                {fieldsOf(currentPage!)}
-              </>
+              <FormPageBody
+                heading
+                page={currentPage!}
+                values={values}
+                errors={errors}
+                onAnswer={setAnswer}
+              />
             )
           ) : (
             <>
               {start}
               {data.pages.map((page) => (
                 <div key={page.id}>
-                  {page.intro && (
-                    <p className="faint" style={{ margin: '0 0 10px', fontSize: 12.5 }}>
-                      {page.intro}
-                    </p>
-                  )}
-                  {fieldsOf(page)}
+                  <FormPageBody page={page} values={values} errors={errors} onAnswer={setAnswer} />
                 </div>
               ))}
             </>

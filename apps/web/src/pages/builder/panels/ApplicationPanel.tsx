@@ -18,7 +18,8 @@ import { formatDate } from '../../../lib/format';
 import { DateField, SelectField, TagField, TextArea, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
 import { AccessTemplate, Template } from './Template';
-import { ConfirmDialog, useToast } from '../../../ui/Overlays';
+import { ConfirmDialog, Modal, useToast } from '../../../ui/Overlays';
+import { FormPageBody, FormSteps } from '../../../ui/FormPages';
 
 /* ------------------------------------------------------------------ */
 /* Setup                                                               */
@@ -263,6 +264,7 @@ export function ApplicationSetup({
         <span className="badge num">{config.fields.length}</span>
         {paged && <span className="badge num">{config.pages.length} pages</span>}
         <div className="spacer" />
+        <FormPreview config={config} />
         {paged && (
           <button className="btn sm" onClick={addPage}>
             <Icon name="plus" size={13} /> Add page
@@ -805,6 +807,91 @@ export function ApplicationSubmissions({
           </tbody>
         </table>
       </div>
+    </>
+  );
+}
+
+/**
+ * Le formulaire tel qu'on le recevra, avant que personne ne le reçoive.
+ *
+ * Nourri par le brouillon et non par le bloc enregistré : on relit ses
+ * questions pendant qu'on les écrit, et un aperçu qui lit le serveur montre
+ * celles d'avant. Le rendu, lui, est celui de la page publique — même
+ * composant — pour qu'un libellé, un ordre ou un champ obligatoire ne puissent
+ * pas s'y afficher autrement que chez le candidat.
+ *
+ * Rien n'est enregistré : ni réponse, ni candidature.
+ */
+function FormPreview({ config }: { config: ApplicationConfig }) {
+  const [open, setOpen] = useState(false);
+  const [values, setValues] = useState<Record<string, unknown>>({});
+  const [step, setStep] = useState(0);
+
+  const pages = formPages(config).map(({ page, fields }) => ({ ...page, fields }));
+  const paged = config.layout === 'paged';
+  const names = pages.map((p, i) => p.name || `Page ${i + 1}`);
+  const here = pages[step];
+
+  if (!config.fields.length) return null;
+
+  return (
+    <>
+      <button className="btn sm" onClick={() => { setStep(0); setOpen(true); }}>
+        <Icon name="eye" size={13} /> Preview
+      </button>
+      {open && (
+        <Modal
+          wide
+          title="What they see"
+          subtitle="Your questions as an applicant reads them. Nothing here is saved — no answer, no application."
+          onClose={() => setOpen(false)}
+          footer={
+            <>
+              {paged && step > 0 && (
+                <button className="btn" onClick={() => setStep((n) => n - 1)}>
+                  Back
+                </button>
+              )}
+              <div className="spacer" />
+              {paged && step < pages.length - 1 ? (
+                <button className="btn" onClick={() => setStep((n) => n + 1)}>
+                  Continue <Icon name="arrowRight" size={14} />
+                </button>
+              ) : (
+                <button className="btn primary" onClick={() => setOpen(false)}>
+                  Close
+                </button>
+              )}
+            </>
+          }
+        >
+          {/* La page publique ouvre là-dessus ; le reste de son décor — qui
+              candidate, par quel canal — n'est pas ce qu'on relit ici. */}
+          {config.intro && <p className="public-intro">{config.intro}</p>}
+          {paged && <FormSteps names={names} step={step} />}
+
+          {paged ? (
+            here && (
+              <FormPageBody
+                heading
+                page={here}
+                values={values}
+                onAnswer={(id, v) => setValues((old) => ({ ...old, [id]: v }))}
+              />
+            )
+          ) : (
+            pages.map((page) => (
+              <div key={page.id || 'single'}>
+                <FormPageBody
+                  page={page}
+                  values={values}
+                  onAnswer={(id, v) => setValues((old) => ({ ...old, [id]: v }))}
+                />
+              </div>
+            ))
+          )}
+        </Modal>
+      )}
     </>
   );
 }
