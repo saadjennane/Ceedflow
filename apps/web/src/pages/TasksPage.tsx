@@ -153,6 +153,16 @@ export function Row({ task, onTick }: { task: Task; onTick: () => void }) {
             .filter(Boolean)
             .join(' ')}
         </span>
+        {/* Par qui, et pas seulement « fait ».
+            C'est le sens même d'une tâche confiée à une société : tout le monde
+            sur sa page la voit, n'importe lequel d'entre eux la coche, et sans
+            ce nom « fait » ne dit pas qui l'a faite. */}
+        {done && (task.doneByName || task.doneAt) && (
+          <span className="faint" style={{ display: 'block', fontSize: 11.5 }}>
+            Done{task.doneByName ? ` by ${task.doneByName}` : ''}
+            {task.doneAt ? ` · ${formatDate(task.doneAt)}` : ''}
+          </span>
+        )}
       </span>
       {/* Prévenu ou non : sans ça, « je ne savais pas » et « je n'ai rien reçu »
           sont deux phrases que personne ne peut départager. */}

@@ -9,27 +9,38 @@ import { initials } from './DirectoryPage';
 import { RecordModal } from './RecordModal';
 
 /**
- * Picks people out of the directory. A jury and an evaluation panel are both
- * lists of people, so they share this rather than each keeping its own names —
- * which is what let a rename orphan a score.
+ * Picks records out of the directory — people by default, organisations when
+ * asked. A jury and an evaluation panel are both lists of people, so they
+ * share this rather than each keeping its own names — which is what let a
+ * rename orphan a score.
  *
  * Anyone can be picked: a real jury often includes a partner nobody thought to
  * tag. Those already carrying Jury or Mentor are offered first, and picking
  * somebody gives them the Jury role on the server, so the role fills itself in.
+ *
+ * Il sert aussi aux organisations parce que le geste est le même — chercher,
+ * cocher, retirer. La seule autre façon de proposer quatre cents sociétés est
+ * une liste de pastilles qu'il faut couper pour qu'elle tienne, et une liste
+ * coupée fait passer une société absente pour inconnue.
  */
 export function PeoplePicker({
   label,
   value,
   onChange,
   help,
+  kind = 'person',
 }: {
   label: string;
   /** Record ids. */
   value: string[];
   onChange: (ids: string[]) => void;
   help?: string;
+  kind?: 'person' | 'org';
 }) {
-  const people = useAsync(() => api.get<DirectoryRecord[]>('/api/records?kind=person'), 'people');
+  const people = useAsync(
+    () => api.get<DirectoryRecord[]>(`/api/records?kind=${kind}`),
+    `picker-${kind}`,
+  );
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -43,15 +54,17 @@ export function PeoplePicker({
     const scored = all
       .filter((p) => !value.includes(p.id))
       .filter((p) => !needle || p.name.toLowerCase().includes(needle) || p.email.toLowerCase().includes(needle));
-    // Those already known as jury or mentors sit at the top, without excluding anyone.
+    // Those already known as jury or mentors sit at the top, without excluding
+    // anyone. Une société n'a pas cet ordre-là : c'est l'alphabet.
     return scored
       .sort((a, b) => {
+        if (kind === 'org') return a.name.localeCompare(b.name);
         const rank = (p: DirectoryRecord) =>
           p.roles.includes('Jury') ? 0 : p.roles.includes('Mentor') ? 1 : 2;
         return rank(a) - rank(b) || a.name.localeCompare(b.name);
       })
       .slice(0, 8);
-  }, [all, value, query]);
+  }, [all, value, query, kind]);
 
   /* The list used to have no way out: nothing closed it, so it sat over the
      rest of the form long after the person had been picked. It closes on the
@@ -110,7 +123,9 @@ export function PeoplePicker({
 
       <SearchBox
         value={query}
-        placeholder={people.data ? 'Search the directory…' : 'Loading…'}
+        placeholder={
+          people.data ? (kind === 'org' ? 'Search organisations…' : 'Search the directory…') : 'Loading…'
+        }
         onChange={(v) => {
           setQuery(v);
           setOpen(true);
@@ -122,7 +137,11 @@ export function PeoplePicker({
         <div className="rows picker-rows">
           {/* A way out that is always in reach, whatever is below. */}
           <button type="button" className="picker-done" onClick={() => setOpen(false)}>
-            {suggestions.length ? `${suggestions.length} to pick from` : 'Nobody matches'}
+            {suggestions.length
+              ? `${suggestions.length} to pick from`
+              : kind === 'org'
+                ? 'Nothing matches'
+                : 'Nobody matches'}
             <span className="linkish">Done</span>
           </button>
           {suggestions.map((p) => (
@@ -147,7 +166,7 @@ export function PeoplePicker({
                   Add <strong>{query.trim()}</strong> to the directory
                 </>
               ) : (
-                'Somebody not in the directory yet'
+                kind === 'org' ? 'An organisation not in the directory yet' : 'Somebody not in the directory yet'
               )}
             </span>
           </button>
@@ -158,7 +177,7 @@ export function PeoplePicker({
 
       {creating && (
         <RecordModal
-          kind="person"
+          kind={kind}
           initialName={query.trim()}
           onClose={() => setCreating(false)}
           onSaved={(created) => {

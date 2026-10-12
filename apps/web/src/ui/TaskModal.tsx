@@ -21,7 +21,6 @@ import { PeoplePicker } from '../pages/directory/PeoplePicker';
 import { TextField } from './Field';
 import { Icon } from './Icon';
 import { Modal, useToast } from './Overlays';
-import { SearchBox } from './SearchBox';
 
 export interface TaskAttach {
   recordId?: string | null;
@@ -76,7 +75,6 @@ export function TaskModal({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [tell, setTell] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [orgQuery, setOrgQuery] = useState('');
   const toast = useToast();
 
   /* Le lien, tel que l'endroit d'où l'on vient l'a déjà rempli. Le genre se
@@ -137,10 +135,6 @@ export function TaskModal({
 
   const editions = (programs.data ?? []).flatMap((p) =>
     p.editions.map((e) => ({ id: e.id, label: `${p.name} — ${e.name}` })),
-  );
-
-  const shownOrgs = (companies.data ?? []).filter(
-    (o) => !orgQuery.trim() || o.name.toLowerCase().includes(orgQuery.trim().toLowerCase()),
   );
 
   const save = async () => {
@@ -239,32 +233,16 @@ export function TaskModal({
         <>
           <PeoplePicker label="Owner" value={people} onChange={setPeople} />
 
-          <div className="field">
-            <div className="eyebrow">Or an organisation</div>
-            <div className="help">Everybody who holds its page sees it, and the first one to deal with it ticks it.</div>
-            {/* Cherchable, et sans coupure : la liste s'arrêtait aux soixante
-                premières, et une société absente passait pour inconnue. */}
-            <SearchBox
-              value={orgQuery}
-              onChange={setOrgQuery}
-              label="Search organisations"
-              placeholder="Search organisations…"
-              style={{ marginBottom: 6 }}
-            />
-            <div className="work-pick" style={{ maxHeight: 150, overflowY: 'auto' }}>
-              {shownOrgs.map((org) => (
-                <button
-                  key={org.id}
-                  type="button"
-                  className={orgs.includes(org.id) ? 'track on' : 'track'}
-                  onClick={() => setOrgs((x) => (x.includes(org.id) ? x.filter((o) => o !== org.id) : [...x, org.id]))}
-                >
-                  {org.name}
-                </button>
-              ))}
-              {!shownOrgs.length && <span className="faint" style={{ fontSize: 12 }}>Nothing by that name.</span>}
-            </div>
-          </div>
+          {/* Cherchée, et non déroulée : quatre cents sociétés en pastilles
+              demandaient une coupure, et une liste coupée fait passer une
+              société absente pour inconnue. */}
+          <PeoplePicker
+            kind="org"
+            label="Or an organisation"
+            value={orgs}
+            onChange={setOrgs}
+            help="Everybody on its page sees it — whatever they may do there — and the first one to deal with it ticks it."
+          />
         </>
       )}
 
