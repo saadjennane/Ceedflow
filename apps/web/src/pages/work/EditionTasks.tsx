@@ -12,13 +12,16 @@ import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
 import { useToast } from '../../ui/Overlays';
 import { TaskModal } from '../../ui/TaskModal';
+import { TaskDrawer } from '../../ui/TaskDrawer';
 import { Row } from '../TasksPage';
 
 export function EditionTasks({ editionId, editionName }: { editionId: string; editionName: string }) {
   const tasks = useAsync(() => api.get<Task[]>(`/api/tasks?editionId=${editionId}&open=all`), `tasks:${editionId}`);
   const [giving, setGiving] = useState(false);
   const [showDone, setShowDone] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
   const toast = useToast();
+  const opened = (tasks.data ?? []).find((t) => t.id === openId) ?? null;
 
   const all = (tasks.data ?? []).filter((t) => (showDone ? true : isOpen(t)));
   /* Par destinataire, et ceux qui ont du retard d'abord : c'est la personne
@@ -72,12 +75,16 @@ export function EditionTasks({ editionId, editionName }: { editionId: string; ed
             </div>
             <div className="rows" style={{ padding: 10 }}>
               {theirs.map((task) => (
-                <Row key={task.id} task={task} onTick={() => tick(task)} />
+                <Row key={task.id} task={task} onTick={() => tick(task)} onOpen={() => setOpenId(task.id)} />
               ))}
             </div>
           </section>
         );
       })}
+
+      {opened && (
+        <TaskDrawer key={opened.id} task={opened} onClose={() => setOpenId(null)} onChanged={tasks.reload} />
+      )}
 
       {giving && (
         <TaskModal

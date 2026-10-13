@@ -23,6 +23,7 @@ import '../../ui/directory.css';
 import { AccountCard } from './AccountCard';
 import { initials } from './DirectoryPage';
 import { RecordModal } from './RecordModal';
+import { TaskDrawer } from '../../ui/TaskDrawer';
 import { TaskModal } from '../../ui/TaskModal';
 import { Row as TaskRow } from '../TasksPage';
 import { ProfileBar, ProfileFacts, Logo } from '../../ui/OrgProfile';
@@ -35,6 +36,7 @@ export function RecordPage() {
   const [unlinking, setUnlinking] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
   const [giving, setGiving] = useState(false);
+  const [openTask, setOpenTask] = useState<string | null>(null);
   const tasks = useAsync(() => api.get<Task[]>(`/api/tasks?recordId=${recordId}&open=all`), `tasks:${recordId}`);
   const navigate = useNavigate();
   const toast = useToast();
@@ -167,6 +169,7 @@ export function RecordPage() {
                   <TaskRow
                     key={task.id}
                     task={task}
+                    onOpen={() => setOpenTask(task.id)}
                     onTick={async () => {
                       await api.patch(`/api/tasks/${task.id}`, {
                         state: task.state === 'done' ? 'open' : 'done',
@@ -264,6 +267,15 @@ export function RecordPage() {
           </button>
         </aside>
       </div>
+
+      {openTask && tasks.data?.some((t) => t.id === openTask) && (
+        <TaskDrawer
+          key={openTask}
+          task={tasks.data.find((t) => t.id === openTask)!}
+          onClose={() => setOpenTask(null)}
+          onChanged={tasks.reload}
+        />
+      )}
 
       {giving && (
         <TaskModal

@@ -22,6 +22,7 @@ import { useAsync } from '../lib/useAsync';
 import { Icon } from '../ui/Icon';
 import { SearchBox } from '../ui/SearchBox';
 import { useToast } from '../ui/Overlays';
+import { TaskDrawer } from '../ui/TaskDrawer';
 import { TaskModal } from '../ui/TaskModal';
 import '../ui/builder.css';
 import '../ui/directory.css';
@@ -44,6 +45,7 @@ export function TasksPage() {
   const [adding, setAdding] = useState(false);
   const [showDone, setShowDone] = useState(false);
   const [view, setView] = useState<View>(savedView);
+  const [openId, setOpenId] = useState<string | null>(null);
   const toast = useToast();
 
   const setViewMode = (next: View) => {
@@ -67,6 +69,7 @@ export function TasksPage() {
       );
   }, [all, query, showDone, view]);
 
+  const opened = all.find((t) => t.id === openId) ?? null;
   const late = rows.filter((t) => isLate(t));
   const rest = rows.filter((t) => !isLate(t));
 
@@ -140,7 +143,7 @@ export function TasksPage() {
           </div>
         )}
 
-        {view === 'board' && all.length > 0 && <Board tasks={rows} onMove={move} />}
+        {view === 'board' && all.length > 0 && <Board tasks={rows} onMove={move} onOpen={(t) => setOpenId(t.id)} />}
 
         {view === 'list' && late.length > 0 && (
           <section className="card">
@@ -152,7 +155,7 @@ export function TasksPage() {
             </div>
             <div className="rows" style={{ padding: 10 }}>
               {late.map((task) => (
-                <Row key={task.id} task={task} onTick={() => tick(task)} />
+                <Row key={task.id} task={task} onTick={() => tick(task)} onOpen={() => setOpenId(task.id)} />
               ))}
             </div>
           </section>
@@ -162,12 +165,23 @@ export function TasksPage() {
           <section className="card">
             <div className="rows" style={{ padding: 10 }}>
               {rest.map((task) => (
-                <Row key={task.id} task={task} onTick={() => tick(task)} />
+                <Row key={task.id} task={task} onTick={() => tick(task)} onOpen={() => setOpenId(task.id)} />
               ))}
             </div>
           </section>
         )}
       </div>
+
+      {opened && (
+        <TaskDrawer
+          key={opened.id}
+          task={opened}
+          onClose={() => setOpenId(null)}
+          onChanged={(saved) =>
+            tasks.set(saved ? all.map((t) => (t.id === saved.id ? saved : t)) : all.filter((t) => t.id !== opened.id))
+          }
+        />
+      )}
 
       {adding && (
         <TaskModal
@@ -183,7 +197,7 @@ export function TasksPage() {
 }
 
 /** Une tâche, telle qu'on la lit dans une liste. */
-export function Row({ task, onTick }: { task: Task; onTick: () => void }) {
+export function Row({ task, onTick, onOpen }: { task: Task; onTick: () => void; onOpen?: () => void }) {
   const done = task.state === 'done';
   return (
     <div className="rowcard row" style={{ gap: 11, padding: '10px 12px' }}>
@@ -195,9 +209,19 @@ export function Row({ task, onTick }: { task: Task; onTick: () => void }) {
         onChange={onTick}
       />
       <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ fontWeight: 600, fontSize: 13, textDecoration: done ? 'line-through' : undefined }}>
-          {task.title}
-        </span>
+        {onOpen ? (
+          <button
+            className="task-title"
+            style={{ textDecoration: done ? 'line-through' : undefined }}
+            onClick={onOpen}
+          >
+            {task.title}
+          </button>
+        ) : (
+          <span style={{ fontWeight: 600, fontSize: 13, textDecoration: done ? 'line-through' : undefined }}>
+            {task.title}
+          </span>
+        )}
         {task.state === 'doing' && <span className="badge info" style={{ marginLeft: 7 }}>In progress</span>}
         {task.state === 'stuck' && <span className="badge stop" style={{ marginLeft: 7 }}>Stuck</span>}
         <span className="faint" style={{ display: 'block', fontSize: 12 }}>
@@ -257,7 +281,13 @@ export function Row({ task, onTick }: { task: Task; onTick: () => void }) {
  * Les flèches de chaque carte font la même chose que le glisser, une colonne
  * à la fois : le glisser natif ne marche ni au doigt ni au clavier.
  */
-function Board({ tasks, onMove }: { tasks: Task[]; onMove: (task: Task, state: TaskState) => void }) {
+function Board({
+  tasks, onMove, onOpen,
+}: {
+  tasks: Task[];
+  onMove: (task: Task, state: TaskState) => void;
+  onOpen: (task: Task) => void;
+}) {
   const [dragged, setDragged] = useState<string | null>(null);
   const [over, setOver] = useState<TaskState | null>(null);
 
@@ -315,6 +345,7 @@ function Board({ tasks, onMove }: { tasks: Task[]; onMove: (task: Task, state: T
                   prev={at > 0 ? BOARD_COLUMNS[at - 1] : undefined}
                   next={at < BOARD_COLUMNS.length - 1 ? BOARD_COLUMNS[at + 1] : undefined}
                   onMove={(state) => onMove(task, state)}
+                  onOpen={() => onOpen(task)}
                 />
               ))}
               {!cards.length && <div className="task-col-empty faint">Nothing here</div>}
@@ -328,7 +359,7 @@ function Board({ tasks, onMove }: { tasks: Task[]; onMove: (task: Task, state: T
 
 /** Une tâche, telle qu'on la lit sur un tableau. */
 function Card({
-  task, dragging, onDragStart, onDragEnd, prev, next, onMove,
+  task, dragging, onDragStart, onDragEnd, prev, next, onMove, onOpen,
 }: {
   task: Task;
   dragging: boolean;
@@ -337,6 +368,7 @@ function Card({
   prev?: { state: TaskState; label: string };
   next?: { state: TaskState; label: string };
   onMove: (state: TaskState) => void;
+  onOpen: () => void;
 }) {
   const done = task.state === 'done';
   return (
@@ -346,9 +378,9 @@ function Card({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
     >
-      <span style={{ fontWeight: 600, fontSize: 13, textDecoration: done ? 'line-through' : undefined }}>
+      <button className="task-title" style={{ textDecoration: done ? 'line-through' : undefined }} onClick={onOpen}>
         {task.title}
-      </span>
+      </button>
       <span className="faint" style={{ fontSize: 12 }}>
         {[task.ownerName, task.aboutName && task.aboutName !== task.ownerName ? `· ${task.aboutName}` : null]
           .filter(Boolean)

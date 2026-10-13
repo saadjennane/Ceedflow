@@ -486,3 +486,18 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
 .task-card:active { cursor: grabbing; }
 
 .task-card.dragging { opacity: 0.45; }
+
+/* L'intitulé d'une tâche s'ouvre : un bouton, qui se lit comme du texte. */
+.task-title {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.task-title:hover { color: var(--blue); }
