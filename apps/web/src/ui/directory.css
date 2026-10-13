@@ -501,3 +501,34 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
 }
 
 .task-title:hover { color: var(--blue); }
+
+/* Une ligne de checklist : poignée, case, libellé qu'on réécrit sur place. */
+.check-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: var(--r-sm);
+}
+
+.check-item:hover { background: var(--wash); }
+
+.check-item.in-flight { opacity: 0.5; }
+
+.check-item-label {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 4px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+
+.check-item-label:focus {
+  outline: none;
+  border-color: var(--line-strong);
+  background: var(--surface);
+}

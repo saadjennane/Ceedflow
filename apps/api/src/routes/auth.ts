@@ -398,10 +398,10 @@ export async function authRoutes(app: FastifyInstance) {
     if (!task || !mine.includes(task.ownerId)) return notFound(reply, 'Task not found.');
     const who = await dir.getRecord(account.recordId);
     const { done } = parse(taskItemPatch.pick({ done: true }).required(), req.body);
-    return (
-      (await changeItem(id, itemId, { done }, { id: account.recordId, name: who?.name ?? '' })) ??
-      notFound(reply, 'Item not found.')
-    );
+    if (!(await changeItem(id, itemId, { done }, { id: account.recordId, name: who?.name ?? '' }))) {
+      return notFound(reply, 'Item not found.');
+    }
+    return getTask(id);
   });
 
   app.get('/api/me/programs', async (req) => {

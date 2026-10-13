@@ -76,21 +76,24 @@ export async function taskRoutes(app: FastifyInstance) {
     return (await changeTask(id, patch, await actor(req))) ?? notFound(reply, 'Task not found.');
   });
 
-  /* ---- La checklist : écrite ici, et seulement ici ---- */
+  /* ---- La checklist : écrite ici, et seulement ici ----
+     Chaque route rend la tâche entière : cocher une ligne peut la faire
+     passer « en cours », et l'écran doit le voir sans relire la liste. */
 
   app.post('/api/tasks/:id/items', async (req, reply) => {
     const { id } = req.params as { id: string };
     if (!(await getTask(id))) return notFound(reply, 'Task not found.');
     const { label } = parse(createTaskItemInput, req.body);
-    const [item] = await addItems(id, [label]);
+    await addItems(id, [label]);
     reply.code(201);
-    return item;
+    return getTask(id);
   });
 
   app.patch('/api/tasks/:id/items/:itemId', async (req, reply) => {
     const { id, itemId } = req.params as { id: string; itemId: string };
     const patch = parse(taskItemPatch, req.body);
-    return (await changeItem(id, itemId, patch, await actor(req))) ?? notFound(reply, 'Item not found.');
+    if (!(await changeItem(id, itemId, patch, await actor(req)))) return notFound(reply, 'Item not found.');
+    return getTask(id);
   });
 
   app.put('/api/tasks/:id/items/order', async (req, reply) => {
@@ -103,7 +106,7 @@ export async function taskRoutes(app: FastifyInstance) {
   app.delete('/api/tasks/:id/items/:itemId', async (req, reply) => {
     const { id, itemId } = req.params as { id: string; itemId: string };
     if (!(await dropItem(id, itemId))) return notFound(reply, 'Item not found.');
-    reply.code(204);
+    return getTask(id);
   });
 
   app.delete('/api/tasks/:id', async (req, reply) => {

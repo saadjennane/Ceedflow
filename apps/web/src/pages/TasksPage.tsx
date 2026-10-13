@@ -13,7 +13,7 @@
  * pour quand. La liste répond à « qu'est-ce qui presse », le tableau à
  * « qu'est-ce qui coince » — d'où la colonne Stuck.
  */
-import { BOARD_COLUMNS, byDue, isLate, isOpen, type Task, type TaskState } from '@ceed/shared';
+import { BOARD_COLUMNS, byDue, isLate, isOpen, progress, type Task, type TaskState } from '@ceed/shared';
 import { useMemo, useState, type DragEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -222,6 +222,7 @@ export function Row({ task, onTick, onOpen }: { task: Task; onTick: () => void; 
             {task.title}
           </span>
         )}
+        <Progress task={task} />
         {task.state === 'doing' && <span className="badge info" style={{ marginLeft: 7 }}>In progress</span>}
         {task.state === 'stuck' && <span className="badge stop" style={{ marginLeft: 7 }}>Stuck</span>}
         <span className="faint" style={{ display: 'block', fontSize: 12 }}>
@@ -393,6 +394,7 @@ function Card({
         </span>
       )}
       <div className="row" style={{ gap: 4, marginTop: 2 }}>
+        <Progress task={task} bare />
         {task.dueOn && (
           <span className={isLate(task) ? 'badge warn' : 'badge'} style={{ whiteSpace: 'nowrap' }}>
             {formatDate(task.dueOn)}
@@ -421,5 +423,20 @@ function Card({
         )}
       </div>
     </article>
+  );
+}
+
+/** « 2/5 », vert quand tout est coché ; rien pour une tâche sans checklist. */
+function Progress({ task, bare }: { task: Task; bare?: boolean }) {
+  const { done, total } = progress(task);
+  if (!total) return null;
+  return (
+    <span
+      className={done === total ? 'badge ok num' : 'badge num'}
+      style={{ marginLeft: bare ? 0 : 7, whiteSpace: 'nowrap' }}
+      title={`${done} of ${total} lines ticked`}
+    >
+      <Icon name="check" size={11} /> {done}/{total}
+    </span>
   );
 }

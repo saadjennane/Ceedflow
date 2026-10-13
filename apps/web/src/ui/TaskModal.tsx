@@ -68,6 +68,8 @@ export function TaskModal({
   onSaved: () => void;
 }) {
   const [draft, setDraft] = useState({ title: '', detail: '', dueOn: '' });
+  const [items, setItems] = useState<string[]>([]);
+  const [line, setLine] = useState('');
   const [people, setPeople] = useState<string[]>(
     attach?.owner?.kind === 'person' ? [attach.owner.id] : [],
   );
@@ -141,8 +143,12 @@ export function TaskModal({
     setSaving(true);
     setErrors({});
     try {
+      /* Une ligne tapée et pas encore validée fait partie de la liste : on
+         ne la perd pas parce qu'on a cliqué « Give it » avant Entrée. */
+      const checklist = [...items, line].map((l) => l.trim()).filter(Boolean);
       const made = await api.post<unknown[]>('/api/tasks', {
         ...draft,
+        items: checklist,
         dueOn: draft.dueOn || null,
         ownerIds: owners,
         /* Une attache et une seule : c'est la liste d'une édition qui sait
@@ -188,6 +194,46 @@ export function TaskModal({
       <div className="field">
         <label>Description</label>
         <textarea className="textarea" rows={2} value={draft.detail} onChange={(e) => set({ detail: e.target.value })} />
+      </div>
+
+      <div className="field">
+        <label htmlFor="task-line">
+          Checklist <span className="faint" style={{ fontWeight: 400 }}>· optional</span>
+        </label>
+        {items.length > 0 && (
+          <div className="rows" style={{ gap: 2, marginBottom: 6 }}>
+            {items.map((item, at) => (
+              <div key={at} className="check-item">
+                <input type="checkbox" disabled aria-hidden />
+                <span style={{ flex: 1, fontSize: 13 }}>{item}</span>
+                <button
+                  className="btn ghost icon sm"
+                  aria-label={`Remove ${item}`}
+                  onClick={() => setItems((list) => list.filter((_, i) => i !== at))}
+                >
+                  <Icon name="x" size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <input
+          id="task-line"
+          className="input"
+          value={line}
+          placeholder={items.length ? 'Add a line' : 'Split it into lines to tick — press Enter after each'}
+          onChange={(e) => setLine(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && line.trim()) {
+              e.preventDefault();
+              setItems((list) => [...list, line.trim()]);
+              setLine('');
+            }
+          }}
+        />
+        {owners.length > 1 && items.length > 0 && (
+          <div className="hint">Each of them gets their own copy to tick.</div>
+        )}
       </div>
 
       {team.data ? (
