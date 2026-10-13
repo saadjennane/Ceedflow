@@ -411,3 +411,78 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
   background: var(--wash);
   border: 1px solid var(--line);
 }
+
+/* ------------------------------------------------------------------ */
+/* Le tableau des tâches                                               */
+/* ------------------------------------------------------------------ */
+
+/* Quatre colonnes côte à côte ; sur un écran étroit, elles défilent dans le
+   tableau plutôt que d'élargir la page. */
+.task-board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(240px, 1fr));
+  gap: 12px;
+  align-items: start;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.task-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 160px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--canvas);
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.task-col.over {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.task-col-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 13px 7px;
+}
+
+.task-col-head strong {
+  flex: 1;
+  font-family: var(--display);
+  font-size: 13.5px;
+}
+
+.task-col[data-state='stuck'] .task-col-head strong { color: var(--stop); }
+.task-col[data-state='done'] .task-col-head strong { color: var(--ok); }
+
+.task-col-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 9px 10px;
+}
+
+.task-col-empty {
+  padding: 14px 6px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.task-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 11px 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  cursor: grab;
+}
+
+.task-card:active { cursor: grabbing; }
+
+.task-card.dragging { opacity: 0.45; }

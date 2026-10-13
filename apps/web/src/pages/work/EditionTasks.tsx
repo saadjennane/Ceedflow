@@ -5,7 +5,7 @@
  * destinataire : la question qu'on se pose ici n'est pas « qu'est-ce qui
  * traîne » mais « où en est chacun ».
  */
-import { isLate, type Task } from '@ceed/shared';
+import { isLate, isOpen, type Task } from '@ceed/shared';
 import { useState } from 'react';
 import { api } from '../../lib/api';
 import { useAsync } from '../../lib/useAsync';
@@ -20,7 +20,7 @@ export function EditionTasks({ editionId, editionName }: { editionId: string; ed
   const [showDone, setShowDone] = useState(false);
   const toast = useToast();
 
-  const all = (tasks.data ?? []).filter((t) => (showDone ? true : t.state === 'open'));
+  const all = (tasks.data ?? []).filter((t) => (showDone ? true : isOpen(t)));
   /* Par destinataire, et ceux qui ont du retard d'abord : c'est la personne
      qu'on va relancer, pas la tâche. */
   const byOwner = [...new Map(all.map((t) => [t.ownerId, t.ownerName])).entries()].sort((a, b) => {
@@ -68,7 +68,7 @@ export function EditionTasks({ editionId, editionName }: { editionId: string; ed
             <div className="rowcard-head" style={{ padding: '11px 14px' }}>
               <strong style={{ flex: 1, fontFamily: 'var(--display)', fontSize: 13.5 }}>{ownerName}</strong>
               {late > 0 && <span className="badge warn num">{late} late</span>}
-              <span className="badge num">{theirs.filter((t) => t.state === 'open').length}</span>
+              <span className="badge num">{theirs.filter((t) => isOpen(t)).length}</span>
             </div>
             <div className="rows" style={{ padding: 10 }}>
               {theirs.map((task) => (

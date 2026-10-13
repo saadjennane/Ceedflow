@@ -5,7 +5,7 @@
  * et chacune a besoin du nom de son destinataire et de ce à quoi elle est
  * attachée. Les deux se joignent ici, une fois.
  */
-import { idOf, type Task } from '@ceed/shared';
+import { idOf, OPEN_TASK_STATES, type Task } from '@ceed/shared';
 import { all, one } from '../db/client.js';
 
 const COLS = `
@@ -60,7 +60,10 @@ export async function listTasks(filter: TaskFilter = {}): Promise<Task[]> {
        les deux sont « ce qui la concerne ». */
     where.push(`(t.record_id = $${params.length} or t.owner_id = $${params.length})`);
   }
-  if (filter.open) where.push(`t.state = 'open'`);
+  if (filter.open) {
+    params.push(OPEN_TASK_STATES);
+    where.push(`t.state = any($${params.length}::text[])`);
+  }
   const sql = `${COLS} ${where.length ? `where ${where.join(' and ')}` : ''}
     order by t.state = 'done', t.due_on nulls last, t.created_at`;
   return all<Task>(sql, params);
@@ -112,8 +115,9 @@ export async function changeTask(
   if (patch.state !== undefined) {
     put('state = $n', patch.state);
     /* Qui l'a close et quand, posés avec l'état plutôt que déduits : une tâche
-       rouverte puis refermée doit dire la dernière main, pas la première. */
-    if (patch.state === 'open') {
+       rouverte puis refermée doit dire la dernière main, pas la première.
+       Passer de « à faire » à « en cours » ou « bloquée » ne la close pas. */
+    if ((OPEN_TASK_STATES as readonly string[]).includes(patch.state)) {
       sets.push('done_at = null', "done_by = null", "done_by_name = ''");
     } else {
       sets.push('done_at = now()');

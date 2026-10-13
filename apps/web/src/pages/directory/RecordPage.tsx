@@ -1,5 +1,6 @@
 import {
   ORIGIN_LABEL,
+  isOpen,
   type Task,
   profileOf,
   profileStarted,
@@ -150,7 +151,7 @@ export function RecordPage() {
             <div className="rowcard-head" style={{ padding: '11px 14px' }}>
               <strong style={{ flex: 1, fontFamily: 'var(--display)', fontSize: 13.5 }}>Tasks</strong>
               {tasks.data && tasks.data.length > 0 && (
-                <span className="badge num">{tasks.data.filter((t) => t.state === 'open').length}</span>
+                <span className="badge num">{tasks.data.filter((t) => isOpen(t)).length}</span>
               )}
               <button className="btn sm" onClick={() => setGiving(true)}>
                 <Icon name="plus" size={13} /> Task

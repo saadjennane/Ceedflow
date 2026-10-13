@@ -181,7 +181,7 @@ interface LateRow {
  * tâche est rouge dans une lettre et pas dans la liste.
  */
 const LATE_AND_DUE_A_LETTER = `
-      state = 'open'
+      state in ('open', 'doing', 'stuck')
   and due_on is not null
   and due_on < current_date
   and (late_letter_at is null or late_letter_at < now() - interval '${LATE_AGAIN_AFTER_DAYS} days')`;

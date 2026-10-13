@@ -5,16 +5,35 @@
  * doit noter — des choses déduites du tunnel. Ceci est l'autre moitié : ce que
  * quelqu'un demande à quelqu'un, et qui n'est écrit nulle part ailleurs.
  *
- * Volontairement court. Pas de sous-tâches, pas de récurrence, pas de colonnes
- * à faire glisser : un intitulé, une échéance, un destinataire, une attache.
+ * Volontairement court. Pas de sous-tâches, pas de récurrence : un intitulé,
+ * une échéance, un destinataire, une attache — et où elle en est, pour qu'un
+ * tableau puisse la ranger en colonnes.
  * « En retard » n'est pas un état — c'est une date passée, et le déduire évite
  * qu'une tâche soit en retard dans la base et pas à l'écran.
  */
 import { z } from 'zod';
 import { accessBlock } from './blocks.js';
 
-export const TASK_STATES = ['open', 'done', 'dropped'] as const;
+export const TASK_STATES = ['open', 'doing', 'stuck', 'done', 'dropped'] as const;
 export type TaskState = (typeof TASK_STATES)[number];
+
+/**
+ * Ce qui reste à faire, où qu'on en soit.
+ *
+ * « En cours » et « bloquée » ne sont pas « faite » : elles comptent dans ce
+ * qui est ouvert, et une échéance passée les met en retard comme les autres.
+ */
+export const OPEN_TASK_STATES = ['open', 'doing', 'stuck'] as const satisfies readonly TaskState[];
+export const isOpen = (task: Pick<Task, 'state'>): boolean =>
+  (OPEN_TASK_STATES as readonly string[]).includes(task.state);
+
+/** Les colonnes du tableau, dans l'ordre où une tâche les traverse. */
+export const BOARD_COLUMNS: { state: TaskState; label: string }[] = [
+  { state: 'open', label: 'To do' },
+  { state: 'doing', label: 'In progress' },
+  { state: 'stuck', label: 'Stuck' },
+  { state: 'done', label: 'Done' },
+];
 
 /** Ce à quoi une tâche se rapporte, quand elle se rapporte à quelque chose. */
 export interface TaskAbout {
@@ -84,7 +103,7 @@ export const taskPatch = z.object({
  * devient rouge au réveil du jour dit est une tâche qui a tort.
  */
 export const isLate = (task: Pick<Task, 'dueOn' | 'state'>, today = new Date().toISOString().slice(0, 10)): boolean =>
-  task.state === 'open' && Boolean(task.dueOn) && task.dueOn! < today;
+  isOpen(task) && Boolean(task.dueOn) && task.dueOn! < today;
 
 /** Ce qui vient : aujourd'hui et les jours suivants, le plus proche d'abord. */
 export const byDue = (a: Task, b: Task): number => {
