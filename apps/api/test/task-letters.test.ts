@@ -236,10 +236,19 @@ describe('the reminder for what is late', { skip: skipWithoutServer }, () => {
        trois lignes vides au milieu du message. */
     const filled = fillTemplate(TASK_GIVEN_DEFAULT, {
       prenom: 'Karim', nom: 'Karim Benali', tache: 'Relire la grille',
-      detail: '', echeance: '', apropos: '', donnepar: 'Rima Arrach', acces: '',
+      detail: '', checklist: '', echeance: '', apropos: '', donnepar: 'Rima Arrach', acces: '',
       lien: 'https://www.ceedflow.com/me',
     });
     assert.doesNotMatch(filled, /\n\n\n/, 'pas de trou dans le texte');
     assert.doesNotMatch(filled, /\{\{/, 'pas une variable restée écrite');
+  });
+
+  it('lists the checklist, one line each', async () => {
+    const filled = fillTemplate(TASK_GIVEN_DEFAULT, {
+      prenom: 'Karim', nom: 'Karim Benali', tache: 'Préparer le jury',
+      detail: '', checklist: '  · Grille\n  · Salle', echeance: '', apropos: '', donnepar: 'Rima Arrach', acces: '',
+      lien: 'https://www.ceedflow.com/me',
+    });
+    assert.match(filled, /Préparer le jury\n\n  · Grille\n  · Salle\n\n/);
   });
 });

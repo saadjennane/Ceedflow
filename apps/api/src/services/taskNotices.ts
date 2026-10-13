@@ -155,6 +155,7 @@ async function givenValues(task: Task, hearer: Hearer, template: string): Promis
     nom: hearer.toName,
     tache: task.title,
     detail: task.detail,
+    checklist: task.items.map((i) => `  · ${i.label}`).join('\n'),
     echeance: task.dueOn ? `À faire pour le ${longDate(task.dueOn)}.` : '',
     apropos: task.aboutName ? `À propos de : ${task.aboutName}.` : '',
     donnepar: task.createdByName,

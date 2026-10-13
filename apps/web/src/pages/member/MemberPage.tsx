@@ -263,6 +263,10 @@ function MemberSpace({ preview }: { preview?: MemberPreview }) {
               await api.patch(`/api/me/tasks/${task.id}`, { state: 'done' });
               tasks.reload();
             }}
+            onTickItem={async (task, item) => {
+              await api.patch(`/api/me/tasks/${task.id}/items/${item.id}`, { done: !item.done });
+              tasks.reload();
+            }}
             orgs={
               preview
                 ? preview.profile

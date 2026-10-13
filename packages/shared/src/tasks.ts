@@ -190,6 +190,8 @@ export const TASK_GIVEN_DEFAULT = `Bonjour {{prenom}},
 
 {{detail}}
 
+{{checklist}}
+
 {{echeance}}
 
 {{apropos}}
@@ -214,6 +216,12 @@ export const TASK_GIVEN_VARIABLES = [
   { name: 'nom', label: 'Their name', what: 'The person or organisation the task is for', example: 'Karim Benali' },
   { name: 'tache', label: 'The task', what: 'What has to be done, as you wrote it', example: 'Relire la grille du jury' },
   { name: 'detail', label: 'Detail', what: 'What you added under it — empty when you added nothing', example: 'Les deux premiers critères ont changé depuis la dernière session.' },
+  {
+    name: 'checklist',
+    label: 'Checklist',
+    what: 'The lines to tick, one per line — empty when the task has none',
+    example: '  · Relire la grille\n  · Réserver la salle',
+  },
   { name: 'echeance', label: 'By when', what: 'The whole sentence, and nothing at all when the task has no date', example: 'À faire pour le 15 novembre 2026.' },
   { name: 'apropos', label: 'About', what: 'What the task is attached to — empty when it hangs on nothing', example: 'À propos de : The Builders · Cohorte 1.' },
   { name: 'donnepar', label: 'Who asked', what: 'The colleague who gave the task', example: 'Rima Arrach' },

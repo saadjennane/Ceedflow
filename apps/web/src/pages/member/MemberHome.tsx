@@ -18,6 +18,7 @@ import {
   type DeliverableItem,
   type OrgProfile,
   type Task,
+  type TaskItem,
 } from '@ceed/shared';
 import { useLang } from '../../lib/lang';
 import { Icon } from '../../ui/Icon';
@@ -66,6 +67,7 @@ export function MemberHome({
   orgs,
   tasks,
   onTick,
+  onTickItem,
   onOpen,
   onProfile,
 }: {
@@ -73,6 +75,8 @@ export function MemberHome({
   /** Ce que CEED demande en propre, à côté de ce que le tunnel déduit. */
   tasks: Task[];
   onTick: (task: Task) => void;
+  /** Cocher une ligne de sa checklist, sans clore la tâche. */
+  onTickItem: (task: Task, item: TaskItem) => void;
   /** The pages they look after, so an unfinished one can be said out loud. */
   orgs: { name: string; profile: OrgProfile }[];
   onOpen: (editionId: string) => void;
@@ -84,6 +88,7 @@ export function MemberHome({
      geste, et le programme n'est que l'endroit où il se fait. */
   const todo: {
     key: string; title: string; detail: string; go: () => void; late?: boolean; tick?: boolean;
+    task?: Task;
   }[] = [];
 
   /* Ce que CEED a demandé à la main, en premier : une date passée attend
@@ -92,12 +97,17 @@ export function MemberHome({
     todo.push({
       key: `task-${task.id}`,
       title: task.title,
-      detail: [task.detail, task.dueOn ? `${t('owed.before')} ${longDate(task.dueOn)}` : null]
+      detail: [
+        task.detail,
+        task.items.length ? `${task.items.filter((i) => i.done).length}/${task.items.length}` : null,
+        task.dueOn ? `${t('owed.before')} ${longDate(task.dueOn)}` : null,
+      ]
         .filter(Boolean)
         .join(' · '),
       go: () => onTick(task),
       late: isLate(task),
       tick: true,
+      task,
     });
   }
 
@@ -165,9 +175,9 @@ export function MemberHome({
         ) : (
           <div className="rows">
             {todo.map((item) => (
+              <div key={item.key} className="stack" style={{ gap: 0 }}>
               <button
                 className="rowcard row"
-                key={item.key}
                 style={{ padding: '11px 13px', gap: 11, width: '100%', textAlign: 'left' }}
                 onClick={item.go}
               >
@@ -192,6 +202,19 @@ export function MemberHome({
                 </span>
                 <Icon name="chevronRight" size={15} />
               </button>
+              {/* Les lignes de la checklist sous la tâche, et non dedans : une
+                  case dans un bouton ne se coche pas sans déclencher le bouton. */}
+              {item.task && item.task.items.length > 0 && (
+                <div className="stack" style={{ gap: 2, padding: '6px 13px 4px 37px' }}>
+                  {item.task.items.map((line) => (
+                    <label key={line.id} className="check" style={{ fontSize: 13 }}>
+                      <input type="checkbox" checked={line.done} onChange={() => onTickItem(item.task!, line)} />
+                      <span style={{ textDecoration: line.done ? 'line-through' : undefined }}>{line.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              </div>
             ))}
           </div>
         )}
