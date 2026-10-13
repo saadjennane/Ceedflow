@@ -118,6 +118,9 @@ export function CandidatesTab({
   const [openId, setOpenId] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [adding, setAdding] = useState(false);
+  /* Les startups cochées, pour leur donner une tâche d'un coup. */
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [givingMany, setGivingMany] = useState(false);
 
   const value = (candidate: Candidate, key: string): string | number => {
     if (key === 'orgName') return candidate.orgName;
@@ -151,6 +154,18 @@ export function CandidatesTab({
   }, [scope, query, status, sort, roster.data]);
 
   const open = candidates.find((c) => c.id === openId) ?? null;
+
+  /* Ne compte que ce qui est à l'écran : une startup cochée puis cachée par
+     un filtre ne doit pas recevoir une tâche qu'on ne la voit pas recevoir. */
+  const ticked = rows.filter((c) => selected.has(c.id));
+  const allShown = rows.length > 0 && ticked.length === rows.length;
+  const toggle = (id: string) =>
+    setSelected((was) => {
+      const next = new Set(was);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const header = (key: string, label: string, align?: 'right') => (
     <th
@@ -233,6 +248,19 @@ export function CandidatesTab({
       </div>
       )}
 
+      {segment === 'all' && ticked.length > 0 && (
+        <div className="select-bar">
+          <strong className="num">{ticked.length}</strong> selected
+          <div className="spacer" />
+          <button className="btn primary sm" onClick={() => setGivingMany(true)}>
+            <Icon name="plus" size={13} /> Task
+          </button>
+          <button className="btn ghost sm" onClick={() => setSelected(new Set())}>
+            Clear
+          </button>
+        </div>
+      )}
+
       {segment === 'all' && (!scope.length ? (
         <div className="empty">
           <h3>No candidate yet</h3>
@@ -246,6 +274,26 @@ export function CandidatesTab({
           <table className="data">
             <thead>
               <tr>
+                <th style={{ width: 34 }}>
+                  <input
+                    type="checkbox"
+                    aria-label={allShown ? 'Unselect every startup shown' : 'Select every startup shown'}
+                    checked={allShown}
+                    ref={(el) => {
+                      if (el) el.indeterminate = ticked.length > 0 && !allShown;
+                    }}
+                    onChange={() =>
+                      setSelected((was) => {
+                        const next = new Set(was);
+                        for (const c of rows) {
+                          if (allShown) next.delete(c.id);
+                          else next.add(c.id);
+                        }
+                        return next;
+                      })
+                    }
+                  />
+                </th>
                 {header('orgName', 'Organisation')}
                 {header('contactName', 'Contact')}
                 {header('accountState', 'Account')}
@@ -260,7 +308,21 @@ export function CandidatesTab({
             </thead>
             <tbody>
               {rows.map((candidate) => (
-                <tr key={candidate.id} style={{ cursor: 'pointer' }} onClick={() => setOpenId(candidate.id)}>
+                <tr
+                  key={candidate.id}
+                  className={selected.has(candidate.id) ? 'picked' : undefined}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setOpenId(candidate.id)}
+                >
+                  {/* La case attrape son propre clic : cocher n'ouvre pas la fiche. */}
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${candidate.orgName}`}
+                      checked={selected.has(candidate.id)}
+                      onChange={() => toggle(candidate.id)}
+                    />
+                  </td>
                   {/* Avec son logo quand elle en a déposé un : c'est la liste
                       où CEED passe ses journées, et une startup s'y reconnaît
                       plus vite à son image qu'à son nom dans une colonne. */}
@@ -348,6 +410,21 @@ export function CandidatesTab({
             ))}
           </div>
         </Modal>
+      )}
+
+      {givingMany && (
+        <TaskModal
+          attach={{
+            editionId: edition.id,
+            about: edition.name,
+            startups: ticked.map((c) => ({ id: c.id, orgId: c.orgId, orgName: c.orgName })),
+          }}
+          onClose={() => setGivingMany(false)}
+          onSaved={() => {
+            setGivingMany(false);
+            setSelected(new Set());
+          }}
+        />
       )}
 
       {adding && (

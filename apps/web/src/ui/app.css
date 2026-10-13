@@ -928,3 +928,28 @@ table.data td.name {
 
 /* Un retard ne se dit pas de la même couleur qu'une pile de choses à faire. */
 .nav-count.warn { background: var(--stop); }
+
+/* ------------------------------------------------------------------ */
+/* Plusieurs lignes cochées                                            */
+/* ------------------------------------------------------------------ */
+
+/* Ce qu'on peut faire de la sélection, au-dessus de la table qu'on coche.
+   Collée en haut au défilement : on coche en bas d'une longue liste, et
+   l'action ne doit pas être restée tout en haut. */
+.select-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 8px 14px;
+  border: 1px solid color-mix(in srgb, var(--blue) 35%, var(--line));
+  border-radius: var(--r);
+  background: var(--blue-soft);
+  font-size: 13px;
+}
+
+table.data tbody tr.picked td {
+  background: color-mix(in srgb, var(--blue-soft) 70%, transparent);
+}

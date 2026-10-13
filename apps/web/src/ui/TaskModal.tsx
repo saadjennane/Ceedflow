@@ -38,7 +38,17 @@ export interface TaskAttach {
    * la fiche sous les yeux.
    */
   owner?: { id: string; kind: 'person' | 'org' };
+  /**
+   * Plusieurs startups cochées dans la liste d'une édition.
+   *
+   * Deux façons de s'en servir, et la fenêtre fait choisir : une seule tâche
+   * dont chaque startup est une ligne (« appeler toutes les startups »), ou
+   * une tâche par startup, chacune liée à sa candidature.
+   */
+  startups?: { id: string; orgId: string; orgName: string }[];
 }
+
+type BulkMode = 'one' | 'each';
 
 /** L'équipe d'une édition, telle que le serveur la groupe. */
 interface TeamGroup {
@@ -67,8 +77,15 @@ export function TaskModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const bulk = attach?.startups?.length ? attach.startups : null;
+  const names = (bulk ?? []).map((s) => s.orgName);
+  const [mode, setMode] = useState<BulkMode>('one');
+  /* Une tâche par startup, confiée à la startup elle-même : sans ce choix, il
+     faudrait la cocher dans l'équipe — et chaque startup recevrait alors une
+     tâche pour chacune des autres. */
+  const [toStartup, setToStartup] = useState(false);
   const [draft, setDraft] = useState({ title: '', detail: '', dueOn: '' });
-  const [items, setItems] = useState<string[]>([]);
+  const [items, setItems] = useState<string[]>(names);
   const [line, setLine] = useState('');
   const [people, setPeople] = useState<string[]>(
     attach?.owner?.kind === 'person' ? [attach.owner.id] : [],
@@ -133,7 +150,20 @@ export function TaskModal({
   );
 
   const set = (partial: Partial<typeof draft>) => setDraft((d) => ({ ...d, ...partial }));
-  const owners = [...people, ...orgs];
+  const picked = [...people, ...orgs];
+  const each = Boolean(bulk) && mode === 'each';
+  const bySelf = each && toStartup;
+  /* À qui, tel qu'on le prévient : les startups elles-mêmes, ou l'équipe cochée. */
+  const owners = bySelf ? [...new Set(bulk!.map((s) => s.orgId))] : picked;
+  const count = each ? (bySelf ? bulk!.length : bulk!.length * picked.length) : picked.length;
+
+  /* Les noms des startups vont dans la checklist en mode « une tâche », et en
+     sortent dans l'autre ; ce qu'on y a ajouté à la main reste. */
+  const switchMode = (next: BulkMode) => {
+    setMode(next);
+    const own = items.filter((i) => !names.includes(i));
+    setItems(next === 'one' ? [...names, ...own] : own);
+  };
 
   const editions = (programs.data ?? []).flatMap((p) =>
     p.editions.map((e) => ({ id: e.id, label: `${p.name} — ${e.name}` })),
@@ -146,6 +176,38 @@ export function TaskModal({
       /* Une ligne tapée et pas encore validée fait partie de la liste : on
          ne la perd pas parce qu'on a cliqué « Give it » avant Entrée. */
       const checklist = [...items, line].map((l) => l.trim()).filter(Boolean);
+      if (each) {
+        /* Une requête par startup : chacune porte son lien, et une startup qui
+           échoue n'empêche pas les autres d'avoir la leur. */
+        let given = 0;
+        const failed: string[] = [];
+        for (const startup of bulk!) {
+          try {
+            const made = await api.post<unknown[]>('/api/tasks', {
+              ...draft,
+              items: checklist,
+              dueOn: draft.dueOn || null,
+              ownerIds: bySelf ? [startup.orgId] : picked,
+              recordId: null,
+              editionId: null,
+              candidateId: startup.id,
+              blockId: attach?.blockId ?? null,
+              tell,
+            });
+            given += made.length;
+          } catch (err) {
+            if (err instanceof ApiError && err.fields) {
+              setErrors(err.fields);
+              return;
+            }
+            failed.push(startup.orgName);
+          }
+        }
+        if (failed.length) toast(`Given ${given}. Not given for ${failed.join(', ')}.`, true);
+        else toast(`Given ${given}.`);
+        onSaved();
+        return;
+      }
       const made = await api.post<unknown[]>('/api/tasks', {
         ...draft,
         items: checklist,
@@ -177,12 +239,31 @@ export function TaskModal({
       footer={
         <>
           <button className="btn ghost" onClick={onClose}>Cancel</button>
-          <button className="btn primary" disabled={saving || !draft.title.trim() || !owners.length} onClick={save}>
-            {saving ? 'Giving…' : owners.length > 1 ? `Give ${owners.length} tasks` : 'Give it'}
+          <button className="btn primary" disabled={saving || !draft.title.trim() || !count} onClick={save}>
+            {saving ? 'Giving…' : count > 1 ? `Give ${count} tasks` : 'Give it'}
           </button>
         </>
       }
     >
+      {bulk && (
+        <div className="field">
+          <label>{bulk.length} startups</label>
+          <div className="seg" role="group" aria-label="How">
+            <button className={mode === 'one' ? 'on' : ''} onClick={() => switchMode('one')}>
+              One task, a line per startup
+            </button>
+            <button className={mode === 'each' ? 'on' : ''} onClick={() => switchMode('each')}>
+              One task per startup
+            </button>
+          </div>
+          <div className="hint">
+            {mode === 'one'
+              ? 'Say, a call with all of them: one task, and each startup is a line to tick.'
+              : 'The same task, given once for each startup and linked to it.'}
+          </div>
+        </div>
+      )}
+
       <TextField
         label="Task"
         value={draft.title}
@@ -236,7 +317,14 @@ export function TaskModal({
         )}
       </div>
 
-      {team.data ? (
+      {each && (
+        <label className="check">
+          <input type="checkbox" checked={toStartup} onChange={(e) => setToStartup(e.target.checked)} />
+          <span>Give each one to the startup itself</span>
+        </label>
+      )}
+
+      {bySelf ? null : team.data ? (
         <div className="field">
           <label>Owner</label>
           <div className="help">The team of this programme. Pick as many as you like — one task each.</div>
@@ -295,6 +383,14 @@ export function TaskModal({
       {/* Le lien : de quoi parle cette tâche. Choisi ici, et non déduit de la
           page d'où l'on vient — depuis la liste des tâches, il n'y en avait
           aucun moyen. */}
+      {bulk ? (
+        <div className="field">
+          <label>Link</label>
+          <div className="help">
+            {each ? 'Each task is linked to its own startup.' : `Linked to ${attach?.about ?? 'this programme'}.`}
+          </div>
+        </div>
+      ) : (
       <div className="field">
         <label htmlFor="task-link">Link</label>
         <div className="help">What it is about. Optional — and one thing at a time.</div>
@@ -375,6 +471,7 @@ export function TaskModal({
           </select>
         )}
       </div>
+      )}
 
       <div className="field">
         <label htmlFor="task-due">Due date</label>
@@ -390,7 +487,12 @@ export function TaskModal({
 
       <TellLine ownerIds={owners} tell={tell} onTell={setTell} />
 
-      {owners.length > 1 && (
+      {each && !bySelf && picked.length > 1 && (
+        <p className="faint" style={{ margin: 0, fontSize: 12 }}>
+          <Icon name="alert" size={12} /> {picked.length} people × {bulk!.length} startups: {count} tasks.
+        </p>
+      )}
+      {!each && picked.length > 1 && (
         <p className="faint" style={{ margin: 0, fontSize: 12 }}>
           <Icon name="alert" size={12} /> One task each, so that “done” can name somebody.
         </p>
