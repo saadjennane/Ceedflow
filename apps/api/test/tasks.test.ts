@@ -8,12 +8,15 @@
  */
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { isLate } from '@ceed/shared';
+import { isLate, progress } from '@ceed/shared';
+import { all } from '../src/db/client.js';
 import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
 import { teamOf } from '../src/services/people.js';
-import { changeTask, createTasks, listTasks } from '../src/services/tasks.js';
+import {
+  addItems, changeItem, changeTask, createTasks, dropTask, getTask, listTasks, orderItems,
+} from '../src/services/tasks.js';
 import { restore } from '../src/services/trash.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
@@ -93,6 +96,84 @@ describe('a task', { skip: skipWithoutServer }, () => {
 
     await restore(batch);
     assert.equal((await listTasks({ ownerIds: [one.id] })).length, 1, 'et de retour avec elle');
+  });
+});
+
+describe('a checklist', { skip: skipWithoutServer }, () => {
+  before(migrate);
+
+  const someone = async () =>
+    dir.createRecord({ kind: 'person', name: `Karim ${uniq()}`, origin: 'manual' });
+
+  it('is copied to each person the task is given to', async () => {
+    /* Chacun coche la sienne, comme chacun close la sienne. */
+    const [one, two] = [await someone(), await someone()];
+    const made = await createTasks(
+      { ...blank, title: 'Préparer le jury', ownerIds: [one.id, two.id], items: ['Grille', ' ', 'Salle'] },
+      CEED,
+    );
+    assert.equal(made.length, 2);
+    for (const task of made) assert.deepEqual(task.items.map((i) => i.label), ['Grille', 'Salle'], 'les lignes vides en moins');
+    assert.notEqual(made[0]!.items[0]!.id, made[1]!.items[0]!.id);
+
+    await changeItem(made[0]!.id, made[0]!.items[0]!.id, { done: true }, CEED);
+    const other = await getTask(made[1]!.id);
+    assert.equal(progress(other!).done, 0, 'cocher la sienne ne coche pas celle de l’autre');
+  });
+
+  it('says who ticked a line, and forgets it when unticked', async () => {
+    const [task] = await createTasks({ ...blank, title: 'Dossier', ownerIds: [(await someone()).id], items: ['RIB'] }, CEED);
+    const line = task!.items[0]!;
+    const ticked = await changeItem(task!.id, line.id, { done: true }, { id: 'x', name: 'Sanaa' });
+    assert.equal(ticked?.done, true);
+    assert.equal(ticked?.doneByName, 'Sanaa');
+    assert.ok(ticked?.doneAt);
+
+    const back = await changeItem(task!.id, line.id, { done: false }, CEED);
+    assert.equal(back?.doneByName, '');
+    assert.equal(back?.doneAt, null);
+  });
+
+  it('puts the task in progress on the first tick, only from to do', async () => {
+    const owner = (await someone()).id;
+    const [fresh] = await createTasks({ ...blank, title: 'A', ownerIds: [owner], items: ['un', 'deux'] }, CEED);
+    await changeItem(fresh!.id, fresh!.items[0]!.id, { done: true }, CEED);
+    assert.equal((await getTask(fresh!.id))?.state, 'doing');
+
+    const [stuck] = await createTasks({ ...blank, title: 'B', ownerIds: [owner], items: ['un'] }, CEED);
+    await changeTask(stuck!.id, { state: 'stuck' }, CEED);
+    await changeItem(stuck!.id, stuck!.items[0]!.id, { done: true }, CEED);
+    assert.equal((await getTask(stuck!.id))?.state, 'stuck', 'bloquée, elle le reste');
+  });
+
+  it('does not close the task when every line is ticked', async () => {
+    /* Une checklist dit rarement tout ce qu'il y a à faire. */
+    const [task] = await createTasks({ ...blank, title: 'C', ownerIds: [(await someone()).id], items: ['seule'] }, CEED);
+    await changeItem(task!.id, task!.items[0]!.id, { done: true }, CEED);
+    const after = await getTask(task!.id);
+    assert.deepEqual(progress(after!), { done: 1, total: 1 });
+    assert.notEqual(after?.state, 'done');
+  });
+
+  it('keeps the order it is given, and adds at the end', async () => {
+    const [task] = await createTasks({ ...blank, title: 'D', ownerIds: [(await someone()).id], items: ['a', 'b', 'c'] }, CEED);
+    const [a, b, c] = task!.items;
+    await orderItems(task!.id, [c!.id, a!.id, b!.id]);
+    await addItems(task!.id, ['d']);
+    assert.deepEqual((await getTask(task!.id))?.items.map((i) => i.label), ['c', 'a', 'b', 'd']);
+  });
+
+  it('will not touch a line through another task', async () => {
+    const owner = (await someone()).id;
+    const [mine] = await createTasks({ ...blank, title: 'E', ownerIds: [owner], items: ['à moi'] }, CEED);
+    const [other] = await createTasks({ ...blank, title: 'F', ownerIds: [owner] }, CEED);
+    assert.equal(await changeItem(other!.id, mine!.items[0]!.id, { done: true }, CEED), null);
+  });
+
+  it('goes with its task', async () => {
+    const [task] = await createTasks({ ...blank, title: 'G', ownerIds: [(await someone()).id], items: ['x'] }, CEED);
+    await dropTask(task!.id);
+    assert.equal((await all('select id from task_items where task_id = $1', [task!.id])).length, 0);
   });
 });
 

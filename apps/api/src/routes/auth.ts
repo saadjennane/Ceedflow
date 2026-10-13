@@ -12,6 +12,7 @@ import {
   profileInput,
   signupAccountInput,
   suggestPassword,
+  taskItemPatch,
   taskPatch,
   teamMemberInput,
   teamMemberPatch,
@@ -25,7 +26,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
-import { changeTask, getTask, listTasks } from '../services/tasks.js';
+import { changeItem, changeTask, getTask, listTasks } from '../services/tasks.js';
 import { agendaFor } from '../services/agenda.js';
 import { deliverablesFor } from '../services/deliverables.js';
 import { panelFor, reviewsFor, whyNoPanel } from '../services/reviews.js';
@@ -386,6 +387,21 @@ export async function authRoutes(app: FastifyInstance) {
        demandée. */
     const { state } = parse(taskPatch.pick({ state: true }), req.body);
     return changeTask(id, { state }, { id: account.recordId, name: who?.name ?? '' });
+  });
+
+  /** Cocher une ligne de sa checklist — la cocher, pas la réécrire. */
+  app.patch('/api/me/tasks/:id/items/:itemId', async (req, reply) => {
+    const account = await require(req);
+    const { id, itemId } = req.params as { id: string; itemId: string };
+    const task = await getTask(id);
+    const mine = [account.recordId, ...(await dir.orgIdsOf(account.recordId))];
+    if (!task || !mine.includes(task.ownerId)) return notFound(reply, 'Task not found.');
+    const who = await dir.getRecord(account.recordId);
+    const { done } = parse(taskItemPatch.pick({ done: true }).required(), req.body);
+    return (
+      (await changeItem(id, itemId, { done }, { id: account.recordId, name: who?.name ?? '' })) ??
+      notFound(reply, 'Item not found.')
+    );
   });
 
   app.get('/api/me/programs', async (req) => {

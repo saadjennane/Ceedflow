@@ -43,6 +43,23 @@ export interface TaskAbout {
   candidateId: string | null;
 }
 
+/**
+ * Une ligne de la checklist d'une tâche.
+ *
+ * Écrite par l'équipe CEED, cochée par qui doit faire la tâche. Pas d'échéance
+ * ni de destinataire à elle : ce sont ceux de la tâche, sinon ce serait une
+ * autre tâche.
+ */
+export const taskItemSchema = z.object({
+  id: z.string(),
+  label: z.string().min(1),
+  position: z.number().int(),
+  done: z.boolean(),
+  doneAt: z.string().nullable().default(null),
+  doneByName: z.string().default(''),
+});
+export type TaskItem = z.infer<typeof taskItemSchema>;
+
 export const taskSchema = z.object({
   id: z.string(),
   title: z.string().min(1),
@@ -65,9 +82,17 @@ export const taskSchema = z.object({
   doneByName: z.string().default(''),
   /** Quand la lettre qui l'annonce est partie. Null : personne n'a été prévenu. */
   toldAt: z.string().nullable().default(null),
+  /** La checklist, dans son ordre. Vide pour une tâche d'un seul geste. */
+  items: z.array(taskItemSchema).default([]),
 });
 
 export type Task = z.infer<typeof taskSchema>;
+
+/** Où en est la checklist : « 2/5 ». Rien à dire quand il n'y en a pas. */
+export const progress = (task: Pick<Task, 'items'>): { done: number; total: number } => ({
+  done: task.items.filter((i) => i.done).length,
+  total: task.items.length,
+});
 
 export const createTaskInput = z.object({
   title: z.string().min(1, 'Say what has to be done.'),
@@ -79,6 +104,13 @@ export const createTaskInput = z.object({
   editionId: z.string().nullable().default(null),
   blockId: z.string().nullable().default(null),
   candidateId: z.string().nullable().default(null),
+  /**
+   * La checklist, une ligne par sous-tâche.
+   *
+   * Recopiée sur chaque tâche quand il y a plusieurs destinataires : chacun
+   * coche la sienne, comme chacun close la sienne.
+   */
+  items: z.array(z.string()).default([]),
   /**
    * Prévenir par mail, ou pas.
    *
@@ -95,6 +127,17 @@ export const taskPatch = z.object({
   detail: z.string().optional(),
   dueOn: z.string().nullable().optional(),
 });
+
+export const createTaskItemInput = z.object({
+  label: z.string().trim().min(1, 'Say what has to be done.'),
+});
+
+export const taskItemPatch = z.object({
+  label: z.string().trim().min(1).optional(),
+  done: z.boolean().optional(),
+});
+
+export const taskItemOrder = z.object({ ids: z.array(z.string()).min(1) });
 
 /**
  * En retard : une échéance passée, et rien de fait.

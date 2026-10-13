@@ -5,7 +5,7 @@
  * et chacune a besoin du nom de son destinataire et de ce à quoi elle est
  * attachée. Les deux se joignent ici, une fois.
  */
-import { idOf, OPEN_TASK_STATES, type Task } from '@ceed/shared';
+import { idOf, OPEN_TASK_STATES, type Task, type TaskItem } from '@ceed/shared';
 import { all, one } from '../db/client.js';
 
 const COLS = `
@@ -18,7 +18,16 @@ const COLS = `
          coalesce(r.name, co.name, b.name, p.name || ' · ' || e.name, '') as "aboutName",
          t.created_by_name as "createdByName", t.created_at::text as "createdAt",
          t.done_at::text as "doneAt", t.done_by_name as "doneByName",
-         t.told_at::text as "toldAt"
+         t.told_at::text as "toldAt",
+         /* La checklist dans la même requête : une liste de deux cents tâches
+            ne doit pas en faire deux cent une. */
+         coalesce((
+           select json_agg(json_build_object(
+                    'id', i.id, 'label', i.label, 'position', i.position, 'done', i.done,
+                    'doneAt', i.done_at::text, 'doneByName', i.done_by_name)
+                  order by i.position, i.created_at)
+             from task_items i where i.task_id = t.id
+         ), '[]'::json) as items
     from tasks t
     /* Ce qui est à la corbeille n'est dans aucune liste — pas même dans celle
        des choses à faire. Une fiche restaurée retrouve ses tâches : elles ne
@@ -75,6 +84,7 @@ export async function createTasks(
   input: {
     title: string; detail: string; dueOn: string | null; ownerIds: string[];
     recordId: string | null; editionId: string | null; blockId: string | null; candidateId: string | null;
+    items?: string[];
   },
   by: { id: string; name: string } | null,
 ): Promise<Task[]> {
@@ -92,6 +102,7 @@ export async function createTasks(
         by?.id ?? null, by?.name ?? '',
       ],
     );
+    await addItems(id, input.items ?? []);
     const task = await getTask(id);
     if (task) made.push(task);
   }
@@ -127,6 +138,89 @@ export async function changeTask(
   }
   if (sets.length) await all(`update tasks set ${sets.join(', ')} where id = $1`, params);
   return getTask(id);
+}
+
+/* ------------------------------------------------------------------ */
+/* La checklist                                                        */
+/* ------------------------------------------------------------------ */
+
+const ITEM_COLS = `id, label, position, done, done_at::text as "doneAt", done_by_name as "doneByName"`;
+
+/**
+ * Ajoute des lignes à la fin de la checklist.
+ *
+ * La seule porte d'entrée, qu'elles viennent de la fenêtre qui donne la tâche,
+ * du panneau qui la détaille, ou d'une règle qui les écrira d'elle-même.
+ */
+export async function addItems(taskId: string, labels: string[]): Promise<TaskItem[]> {
+  const clean = labels.map((l) => l.trim()).filter(Boolean);
+  if (!clean.length) return [];
+  const last = await one<{ n: number }>(
+    'select coalesce(max(position), -1)::int as n from task_items where task_id = $1',
+    [taskId],
+  );
+  const made: TaskItem[] = [];
+  for (const [at, label] of clean.entries()) {
+    const item = await one<TaskItem>(
+      `insert into task_items (id, task_id, label, position) values ($1,$2,$3,$4) returning ${ITEM_COLS}`,
+      [idOf.taskItem(), taskId, label, (last?.n ?? -1) + 1 + at],
+    );
+    if (item) made.push(item);
+  }
+  return made;
+}
+
+/**
+ * Coche, décoche ou renomme une ligne.
+ *
+ * Cocher la première ligne d'une tâche encore « à faire » la met « en cours » :
+ * quelqu'un a commencé, et le tableau doit le montrer sans qu'on pense à
+ * déplacer la carte. Seulement depuis « à faire » — une tâche bloquée ou faite
+ * ne change pas d'état parce qu'on a coché une ligne.
+ */
+export async function changeItem(
+  taskId: string,
+  itemId: string,
+  patch: { label?: string; done?: boolean },
+  by: { id: string; name: string } | null,
+): Promise<TaskItem | null> {
+  const sets: string[] = [];
+  const params: unknown[] = [itemId, taskId];
+  const put = (sql: string, value: unknown) => {
+    params.push(value);
+    sets.push(sql.replace('$n', `$${params.length}`));
+  };
+  if (patch.label !== undefined) put('label = $n', patch.label.trim());
+  if (patch.done !== undefined) {
+    put('done = $n', patch.done);
+    if (patch.done) {
+      sets.push('done_at = now()');
+      put('done_by = $n', by?.id ?? null);
+      put('done_by_name = $n', by?.name ?? '');
+    } else {
+      sets.push('done_at = null', 'done_by = null', "done_by_name = ''");
+    }
+  }
+  if (!sets.length) return one<TaskItem>(`select ${ITEM_COLS} from task_items where id = $1 and task_id = $2`, params);
+  const item = await one<TaskItem>(
+    `update task_items set ${sets.join(', ')} where id = $1 and task_id = $2 returning ${ITEM_COLS}`,
+    params,
+  );
+  if (item && patch.done) await all(`update tasks set state = 'doing' where id = $1 and state = 'open'`, [taskId]);
+  return item;
+}
+
+export const dropItem = async (taskId: string, itemId: string): Promise<boolean> =>
+  (await all('delete from task_items where id = $1 and task_id = $2 returning id', [itemId, taskId])).length > 0;
+
+/** Range la checklist dans l'ordre donné ; une ligne qui n'en est pas est ignorée. */
+export async function orderItems(taskId: string, ids: string[]): Promise<void> {
+  await all(
+    `update task_items i set position = o.at - 1
+       from unnest($2::text[]) with ordinality as o(id, at)
+      where i.id = o.id and i.task_id = $1`,
+    [taskId, ids],
+  );
 }
 
 export const dropTask = async (id: string): Promise<void> => {
