@@ -55,11 +55,21 @@ export function OwedItems({
   given,
   readOnly = false,
   startOpen = false,
+  onSaved,
 }: {
   candidateId: string;
   orgName: string;
   /** Already fetched — how CEED looks at somebody else's page without being them. */
   given?: Owed[];
+  /**
+   * Ce que le serveur a renvoyé après un envoi, pour la page qui a fourni `given`.
+   *
+   * Sans ça, la page gardait la liste telle qu'au chargement : au premier
+   * retour sur l'onglet, la liste repartait de là, et tout ce qui avait été
+   * envoyé depuis semblait avoir disparu — jusqu'au champ suivant, dont la
+   * réponse ramenait le reste.
+   */
+  onSaved?: (owed: Owed[]) => void;
   readOnly?: boolean;
   /* Déplié d'emblée là où la liste est la page : sur l'onglet « À faire » d'un
      programme, le pli serait un clic pour arriver là où l'on est déjà. */
@@ -80,13 +90,16 @@ export function OwedItems({
        seule façon qu'une réponse tapée à la dernière seconde arrive. */
     if (leaving) {
       try {
-        await fetch(`/api/me/deliverables/${candidateId}`, {
+        const res = await fetch(`/api/me/deliverables/${candidateId}`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ blockId, itemId, value }),
           keepalive: true,
         });
         forget(candidateId, blockId, itemId);
+        /* Un onglet qu'on quitte n'est pas une page qui se ferme : on y
+           revient, et la page doit alors savoir ce qui est parti. */
+        if (res.ok) onSaved?.((await res.json()) as Owed[]);
       } catch {
         /* Gardé dans le navigateur : on le remettra dans le champ au retour. */
       }
@@ -96,6 +109,7 @@ export function OwedItems({
       const next = await api.post<Owed[]>(`/api/me/deliverables/${candidateId}`, { blockId, itemId, value });
       forget(candidateId, blockId, itemId);
       owed.set(next);
+      onSaved?.(next);
     } catch (err) {
       toast((err as Error).message, true);
     }

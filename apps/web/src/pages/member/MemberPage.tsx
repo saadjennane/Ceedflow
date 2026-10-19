@@ -284,6 +284,9 @@ function MemberSpace({ preview }: { preview?: MemberPreview }) {
           (openEdition ? (
             <ProgramPage
               state={(states.data ?? []).find((x) => x.programme.editionId === openEdition) ?? null}
+              onOwed={(candidateId, owed) =>
+                states.set((states.data ?? []).map((x) => (x.candidateId === candidateId ? { ...x, owed } : x)))
+              }
               readOnly={Boolean(preview)}
               onBack={() => setEdition('')}
             />
@@ -528,10 +531,13 @@ function Settings({ me }: { me: Me }) {
  */
 function ProgramPage({
   state,
+  onOwed,
   readOnly,
   onBack,
 }: {
   state: CandidacyState | null;
+  /** Ce qu'un envoi a changé, pour que la page ne reparte pas d'avant lui. */
+  onOwed: (candidateId: string, owed: Owed[]) => void;
   readOnly: boolean;
   onBack: () => void;
 }) {
@@ -578,6 +584,7 @@ function ProgramPage({
             candidateId={state.candidateId}
             orgName={state.orgName}
             given={state.owed}
+            onSaved={(owed) => onOwed(state.candidateId, owed)}
             readOnly={readOnly}
           />
         ) : (
