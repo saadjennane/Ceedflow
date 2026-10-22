@@ -95,6 +95,11 @@ function MemberSpace({ preview }: { preview?: MemberPreview }) {
      Nobody signs in to read their own profile: a founder comes to see what is
      still asked of them, a juror to see what is left to mark. Profile is where
      you end up when neither is true. */
+  /* Un formulaire de candidature qui attend : on est passé ici pour remplacer
+     un mot de passe provisoire, et on y retourne. Seulement vers un
+     formulaire — une adresse de retour libre enverrait n'importe où. */
+  const next = params.get('next') ?? '';
+  const returnTo = next.startsWith('/apply/') ? next : '';
   const landing: MemberTab = (programs.data?.length ?? 0) > 0 ? 'Home' : isJuror ? 'Jury' : 'Profile';
   const tab: MemberTab = asked && tabs.includes(asked) ? asked : landing;
   const setTab = (next: MemberTab) =>
@@ -153,6 +158,12 @@ function MemberSpace({ preview }: { preview?: MemberPreview }) {
     if (!preview && !loading && !me) navigate('/login', { replace: true });
   }, [preview, loading, me, navigate]);
 
+  /* Le mot de passe remplacé, on retourne au formulaire sans chercher le lien. */
+  useEffect(() => {
+    if (preview || !returnTo || !me || me.account.mustChangePassword) return;
+    navigate(returnTo, { replace: true });
+  }, [preview, returnTo, me, navigate]);
+
   if (!preview) {
     if (loading) return <div className="member-shell" />;
     if (!me) return null;
@@ -165,6 +176,8 @@ function MemberSpace({ preview }: { preview?: MemberPreview }) {
         me={me!}
         // Having replaced it, somebody at CEED belongs in the workspace rather
         // than on their own profile page.
+        // Une candidature en attente reprend la main juste après : l'effet de
+        // retour voit le mot de passe changé et ramène au formulaire.
         onDone={() => (me!.account.staffRole ? navigate('/', { replace: true }) : reload())}
       />
     );

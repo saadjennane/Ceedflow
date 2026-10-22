@@ -2,7 +2,6 @@ import {
   blockStatus,
   brickClosedOn,
   newId,
-  canApplyFor,
   candidateSchema,
   editionIsVisible,
   editionTakesInput,
@@ -353,6 +352,31 @@ export async function funnelRoutes(app: FastifyInstance) {
   });
 
   /**
+   * Celles de mes organisations qui ont déjà postulé à cet appel.
+   *
+   * Demandé à l'ouverture du formulaire et non découvert à l'envoi : le refus
+   * arrivait après la dernière question, quand tout avait été rempli pour
+   * rien. Seulement les miennes — savoir qui d'autre a postulé n'est à
+   * personne d'autre que CEED.
+   */
+  app.get('/api/public/forms/:token/applied', async (req, reply) => {
+    const { token } = req.params as { token: string };
+    const found = await repo.findPublicForm(token);
+    if (!found) return notFound(reply, 'This form does not exist.');
+    const account = await accountForToken(req.cookies[SESSION_COOKIE]);
+    if (!account) throw new HttpError(401, 'Sign in to apply.');
+    if (!(found.block.config as ApplicationConfig).onePerOrganisation) return [];
+    const mine = await dir.orgIdsOf(account.recordId);
+    return [
+      ...new Set(
+        (await repo.listCandidates(found.editionId))
+          .filter((c) => c.originBlockId === found.block.id && mine.has(c.orgId))
+          .map((c) => c.orgId),
+      ),
+    ];
+  });
+
+  /**
    * Le décor de cette page, pour la relire avant de l'ouvrir.
    *
    * Le nom du programme, sa couleur et les canaux ne sont pas ce qu'on édite
@@ -395,19 +419,11 @@ export async function funnelRoutes(app: FastifyInstance) {
     }
 
     const input = parse(submitApplicationInput, req.body);
-    // An application commits the organisation and carries the figures it declares,
-    // so it stays with whoever holds the page. The team drafts; the founder signs.
-    const access = await dir.accessOf(account.recordId, input.orgId);
-    if (!access) throw new HttpError(403, 'You can only apply for an organisation you belong to.');
-    if (!canApplyFor(access)) {
-      throw new HttpError(403, 'Only an administrator of this organisation can submit its application.');
-    }
-
-    if (config.onePerOrganisation) {
-      const already = (await repo.listCandidates(found.editionId)).find(
-        (c) => c.orgId === input.orgId && c.originBlockId === found.block.id,
-      );
-      if (already) throw new HttpError(422, 'This organisation has already applied to this call.');
+    /* Une organisation qu'on tient, quel que soit son rôle dedans : le compte
+       individuel est le seul passage obligé, et l'équipe d'une startup qui
+       postule pour elle n'a pas à attendre que l'administrateur s'en charge. */
+    if (input.orgId && !(await dir.accessOf(account.recordId, input.orgId))) {
+      throw new HttpError(403, 'You can only apply for an organisation you belong to.');
     }
 
     // A gate holds the form shut until every criterion is ticked; an
@@ -433,11 +449,31 @@ export async function funnelRoutes(app: FastifyInstance) {
     }
     if (Object.keys(missing).length) throw new HttpError(422, 'Some answers are missing.', missing);
 
+    /* L'organisation nommée dans le formulaire n'est créée qu'ici, une fois
+       tout le reste vérifié : une réponse manquante ne doit pas laisser une
+       page vide dans l'annuaire. Une organisation déjà connue est retrouvée,
+       et sa candidature éventuelle refusée avant qu'on y rattache qui que ce soit. */
+    const known = input.newOrg ? await dir.findByName('org', input.newOrg.name) : null;
+    const orgIdBefore = input.orgId || known?.id || '';
+    if (config.onePerOrganisation && orgIdBefore) {
+      const already = (await repo.listCandidates(found.editionId)).find(
+        (c) => c.orgId === orgIdBefore && c.originBlockId === found.block.id,
+      );
+      if (already) {
+        throw new HttpError(422, 'This organisation has already applied to this call.', {
+          orgName: 'This organisation has already applied to this call.',
+        });
+      }
+    }
+    const orgId =
+      input.orgId ||
+      (await dir.openOrganisation(account.recordId, { name: input.newOrg!.name, website: input.newOrg!.website })).org.id;
+
     const candidate = await repo.createCandidate({
       editionId: found.editionId,
       trackId: found.trackId,
       originBlockId: found.block.id,
-      orgId: input.orgId,
+      orgId,
       personId: account.recordId,
       // The form stamps the channel it came through: ?via= on the link, or the
       // question it asks when the link carried nothing.

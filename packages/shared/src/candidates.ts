@@ -190,12 +190,26 @@ export const setOutcomeInput = z.object({
 });
 
 /** Applying is done signed in, as one of your organisations. */
-export const submitApplicationInput = z.object({
-  orgId: z.string().min(1, 'Choose which organisation is applying.'),
-  source: z.string().default(''),
-  answers: z.record(z.unknown()).default({}),
-  /** Ids of the eligibility criteria ticked. */
-  acknowledged: z.array(z.string()).default([]),
-});
+export const submitApplicationInput = z
+  .object({
+    /** Une organisation que la personne tient déjà. */
+    orgId: z.string().default(''),
+    /**
+     * Ou celle qu'elle nomme dans le formulaire, créée à l'envoi.
+     *
+     * Le compte individuel est le seul passage obligé : demander d'aller
+     * ouvrir une page d'organisation ailleurs avant de pouvoir postuler
+     * faisait perdre le formulaire en route.
+     */
+    newOrg: z.object({ name: z.string().trim(), website: z.string().trim().default('') }).nullable().default(null),
+    source: z.string().default(''),
+    answers: z.record(z.unknown()).default({}),
+    /** Ids of the eligibility criteria ticked. */
+    acknowledged: z.array(z.string()).default([]),
+  })
+  .refine((v) => Boolean(v.orgId) || Boolean(v.newOrg?.name), {
+    message: 'Tell us which organisation is applying.',
+    path: ['orgName'],
+  });
 
 export type SubmitApplicationInput = z.input<typeof submitApplicationInput>;

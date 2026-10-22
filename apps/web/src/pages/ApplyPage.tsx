@@ -11,6 +11,9 @@ import '../ui/builder.css';
 import '../ui/directory.css';
 
 
+/** « Une autre organisation » : celle qu'on nomme dans le formulaire. */
+const NEW = '__new';
+
 const isEmpty = (value: unknown) =>
   value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length);
 
@@ -21,8 +24,16 @@ export function ApplyPage() {
   const via = params.get('via') ?? '';
   const form = useAsync(() => api.get<PublicForm>(`/api/public/forms/${token}`), token);
   const { me, loading: checkingAccount } = useAccount();
+  /* Celles de mes organisations qui ont déjà postulé : su en ouvrant le
+     formulaire, et non au moment de l'envoyer, après la dernière question. */
+  const applied = useAsync(
+    async () => (me ? api.get<string[]>(`/api/public/forms/${token}/applied`) : []),
+    `${token}:${me?.account.id ?? 'anonymous'}`,
+  );
 
+  /* L'organisation choisie parmi les siennes, ou NEW pour celle qu'on nomme ici. */
   const [orgId, setOrgId] = useState<string>('');
+  const [newOrg, setNewOrg] = useState({ name: '', website: '' });
   const [ticked, setTicked] = useState<string[]>([]);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -31,7 +42,7 @@ export function ApplyPage() {
   const [done, setDone] = useState<string | null>(null);
   const [heardFrom, setHeardFrom] = useState('');
 
-  if (form.loading || checkingAccount) {
+  if (form.loading || checkingAccount || (me && applied.loading)) {
     return (
       <div className="public">
         <div className="public-card">
@@ -84,8 +95,10 @@ export function ApplyPage() {
   }
 
   /* Applying is done signed in, so the form knows who is filling it — and the
-     channel has to survive that detour, or the link stops counting. */
+     channel has to survive that detour, or the link stops counting. Every
+     detour carries it: the account, the password, the organisation page. */
   const here = via ? `/apply/${token}?via=${encodeURIComponent(via)}` : `/apply/${token}`;
+  const detour = `/me?next=${encodeURIComponent(here)}`;
   if (!me) {
     return (
       <Shell colour={data.colour}>
@@ -137,33 +150,22 @@ export function ApplyPage() {
             Replace it and you will come straight back here.
           </div>
         </div>
-        <Link className="btn primary" to="/me">
+        <Link className="btn primary" to={detour}>
           Choose my password
         </Link>
       </Shell>
     );
   }
 
-  /* An organisation applies, and you may only apply for one you belong to. */
-  if (!me.organisations.length) {
-    return (
-      <Shell colour={data.colour}>
-        <h1>{data.programName}</h1>
-        <div className="callout">
-          <Icon name="alert" size={15} />
-          <div>
-            <strong>An organisation applies, not a person.</strong> Create your organisation page first — it takes a
-            minute, and it is yours from one edition to the next.
-          </div>
-        </div>
-        <Link className="btn primary" to="/me">
-          Create my organisation page
-        </Link>
-      </Shell>
-    );
-  }
-
-  const applyingAs = orgId || me.organisations[0].record.id;
+  /* Une organisation postule — mais on ne renvoie plus personne en créer une
+     ailleurs. Celles qu'on tient sont proposées, la première déjà choisie ;
+     sinon, ou pour une autre, on la nomme ici et elle est créée à l'envoi.
+     Le compte individuel est le seul passage obligé. */
+  const already = new Set(applied.data ?? []);
+  const open = me.organisations.filter((o) => !already.has(o.record.id));
+  const notHere = me.organisations.filter((o) => already.has(o.record.id));
+  const applyingAs = orgId === NEW ? NEW : open.some((o) => o.record.id === orgId) ? orgId : (open[0]?.record.id ?? NEW);
+  const naming = applyingAs === NEW;
   const { blockedByGate, paged, steps } = formShape(data, ticked);
   const currentPage = paged ? (step === 0 ? null : data.pages[step - 1]) : null;
   const last = !paged || step === steps.length - 1;
@@ -179,6 +181,8 @@ export function ApplyPage() {
 
   const checkStep = (): Record<string, string> => {
     const found: Record<string, string> = {};
+    /* « Qui postule » est en tête du formulaire : c'est là qu'on le vérifie. */
+    if (naming && (!paged || step === 0) && !newOrg.name.trim()) found.orgName = 'Tell us which organisation is applying.';
     const fields = paged ? (currentPage?.fields ?? []) : data.pages.flatMap((p) => p.fields);
     for (const field of fields) {
       if (field.required && isEmpty(values[field.id])) found[`answers.${field.id}`] = 'This answer is required.';
@@ -201,7 +205,8 @@ export function ApplyPage() {
     setSending(true);
     try {
       const result = await api.post<{ confirmation: string }>(`/api/public/forms/${token}`, {
-        orgId: applyingAs,
+        orgId: naming ? '' : applyingAs,
+        newOrg: naming ? newOrg : null,
         source: via || heardFrom,
         acknowledged: ticked,
         answers: values,
@@ -216,7 +221,9 @@ export function ApplyPage() {
             .filter((k) => k.startsWith('answers.'))
             .map((k) => k.slice('answers.'.length));
           const at = data.pages.findIndex((p) => p.fields.some((f) => bad.includes(f.id)));
-          if (at >= 0) setStep(at + 1);
+          /* L'organisation est sur la première étape, avant toute question. */
+          if (err.fields.orgName) setStep(0);
+          else if (at >= 0) setStep(at + 1);
         }
       } else {
         setErrors({ _: (err as Error).message });
@@ -226,36 +233,69 @@ export function ApplyPage() {
     }
   };
 
-  const applicantCard =
-    me.organisations.length > 1 ? (
-      <div className="field">
-        <label>Organisation</label>
-        <select className="input" value={applyingAs} onChange={(e) => setOrgId(e.target.value)}>
-          {me.organisations.map((o) => (
-            <option key={o.record.id} value={o.record.id}>
-              {o.record.name}
-            </option>
-          ))}
-        </select>
-      </div>
-    ) : (
-      <div className="rowcard link-row">
-        <span className="rec-mark">
-          {me.organisations[0].record.name
-            .split(/\s+/)
-            .map((w) => w[0])
-            .slice(0, 2)
-            .join('')
-            .toUpperCase()}
-        </span>
-        <span style={{ flex: 1 }}>
-          <strong style={{ fontSize: 13 }}>{me.organisations[0].record.name}</strong>
-          <span className="faint" style={{ display: 'block', fontSize: 12 }}>
-            {me.record.name} · {me.account.email}
-          </span>
-        </span>
-      </div>
-    );
+  const applicantCard = (
+    <div className="stack" style={{ gap: 8 }}>
+      {open.length > 0 && (
+        <div className="field">
+          <label htmlFor="apply-org">Organisation</label>
+          <select id="apply-org" className="input" value={applyingAs} onChange={(e) => setOrgId(e.target.value)}>
+            {open.map((o) => (
+              <option key={o.record.id} value={o.record.id}>
+                {o.record.name}
+              </option>
+            ))}
+            <option value={NEW}>Another organisation…</option>
+          </select>
+        </div>
+      )}
+      {naming && (
+        <>
+          <div className="field">
+            <label htmlFor="apply-org-name">
+              {open.length ? 'Its name' : 'Your organisation'}
+              <span style={{ color: 'var(--stop)' }}> *</span>
+            </label>
+            <input
+              id="apply-org-name"
+              className="input"
+              value={newOrg.name}
+              aria-invalid={Boolean(errors.orgName)}
+              placeholder="Rafid Tech"
+              onChange={(e) => {
+                setNewOrg((o) => ({ ...o, name: e.target.value }));
+                setErrors(({ orgName: _gone, ...rest }) => rest);
+              }}
+            />
+            {errors.orgName && <div className="err">{errors.orgName}</div>}
+          </div>
+          <div className="field">
+            <label htmlFor="apply-org-site">
+              Website <span className="faint" style={{ fontWeight: 400 }}>· optional</span>
+            </label>
+            <input
+              id="apply-org-site"
+              className="input"
+              value={newOrg.website}
+              placeholder="rafid.ma"
+              onChange={(e) => setNewOrg((o) => ({ ...o, website: e.target.value }))}
+            />
+            <div className="hint">Its page is created with your application. You can complete it later, in your space.</div>
+          </div>
+        </>
+      )}
+      <p className="faint" style={{ margin: 0, fontSize: 12 }}>
+        {me.record.name} · {me.account.email}
+      </p>
+      {/* Nommées, pas cachées : une organisation absente de la liste sans
+          explication passe pour un bug. */}
+      {notHere.length > 0 && (
+        <div className="hint">
+          {notHere.map((o) => o.record.name).join(', ')} {notHere.length === 1 ? 'has' : 'have'} already applied to
+          this call.
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <ApplyCard

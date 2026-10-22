@@ -246,6 +246,63 @@ export async function linkRecords(input: {
 }
 
 /**
+ * Une organisation nommée par quelqu'un : la sienne, nouvelle ou déjà connue.
+ *
+ * Une seule règle pour les deux endroits où l'on en nomme une — la page de son
+ * espace, et le formulaire de candidature. Une organisation que CEED connaît
+ * déjà gagne un contact plutôt qu'un double ; qui ouvre une page la tient,
+ * qui en rejoint une existante n'en est que membre. Et qui la tient déjà ne
+ * la rejoint pas une seconde fois : la rejoindre réécrirait son accès, et un
+ * administrateur qui retape le nom de sa propre société deviendrait membre.
+ */
+export async function openOrganisation(
+  personId: string,
+  input: {
+    name: string;
+    roles?: string[];
+    emails?: string[];
+    phones?: string[];
+    places?: DirectoryRecord['places'];
+    website?: string;
+    bio?: string;
+    myRole?: string;
+  },
+): Promise<{ org: DirectoryRecord; joined: boolean }> {
+  const found = await findByName('org', input.name);
+  const org =
+    found ??
+    (await createRecord({
+      kind: 'org',
+      name: input.name.trim(),
+      roles: input.roles ?? ['Startup'],
+      emails: input.emails ?? [],
+      phones: input.phones ?? [],
+      places: input.places ?? [],
+      website: input.website ?? '',
+      bio: input.bio ?? '',
+      origin: 'signup',
+    }));
+  if (found) {
+    await updateRecord(found.id, {
+      /* Les adresses aussi : une page que CEED connaissait déjà a souvent
+         un contact@, et la fondatrice donne la sienne. */
+      emails: [...new Set([...found.emails, ...(input.emails ?? [])])],
+      /* Les numéros et les lieux s'ajoutent plutôt que de s'écraser : une
+         page que CEED connaissait déjà a souvent le standard, et la
+         fondatrice donne le sien. */
+      phones: [...new Set([...found.phones, ...(input.phones ?? [])])],
+      places: found.places.length ? found.places : (input.places ?? []),
+      website: found.website || (input.website ?? ''),
+      bio: found.bio || (input.bio ?? ''),
+    });
+  }
+  if (!(await accessOf(personId, org.id))) {
+    await linkRecords({ personId, orgId: org.id, role: input.myRole ?? 'Founder', access: found ? 'member' : 'admin' });
+  }
+  return { org, joined: Boolean(found) };
+}
+
+/**
  * Attache une personne à une page si elle ne l'est pas déjà.
  *
  * Deliberately not `linkRecords`, which upserts: a founder already on the page

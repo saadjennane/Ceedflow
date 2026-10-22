@@ -312,46 +312,9 @@ export async function authRoutes(app: FastifyInstance) {
     const account = await require(req);
     const input = parse(myOrgInput, req.body);
 
-    // An organisation CEED already knows gains a contact rather than a twin.
-    const found = await dir.findByName('org', input.name);
-    const org =
-      found ??
-      (await dir.createRecord({
-        kind: 'org',
-        name: input.name,
-        roles: input.roles,
-        emails: input.emails,
-        phones: input.phones,
-        places: input.places,
-        website: input.website,
-        bio: input.bio,
-        origin: 'signup',
-      }));
-    if (found) {
-      await dir.updateRecord(found.id, {
-        /* Les adresses aussi : une page que CEED connaissait déjà a souvent
-           un contact@, et la fondatrice donne la sienne. */
-        emails: [...new Set([...found.emails, ...input.emails])],
-        /* Les numéros et les lieux s'ajoutent plutôt que de s'écraser : une
-           page que CEED connaissait déjà a souvent le standard, et la
-           fondatrice donne le sien. */
-        phones: [...new Set([...found.phones, ...input.phones])],
-        places: found.places.length ? found.places : input.places,
-        website: found.website || input.website,
-        bio: found.bio || input.bio,
-      });
-    }
-
-    // Whoever opens a page holds it. Joining one that already exists does not:
-    // that page has its own administrators, and they decide who gains what.
-    await dir.linkRecords({
-      personId: account.recordId,
-      orgId: org.id,
-      role: input.myRole,
-      access: found ? 'member' : 'admin',
-    });
+    const { org, joined } = await dir.openOrganisation(account.recordId, input);
     reply.code(201);
-    return { organisation: org, joined: Boolean(found) };
+    return { organisation: org, joined };
   });
 
   /* ---- The programmes CEED has published ---- */
