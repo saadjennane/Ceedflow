@@ -20,6 +20,17 @@ const COLS = `id, kind, name, first_name as "firstName", last_name as "lastName"
   logo_upload_id as "logoUploadId", pitch, sector, stage,
   created_by as "createdBy", created_by_name as "createdByName",
   founded_year as "foundedYear", team_size as "teamSize", linkedin,
+  org_type as "orgType", legal_status as "legalStatus", founded_on as "foundedOn", legal_form as "legalForm",
+  capital_amount as "capitalAmount", capital_currency as "capitalCurrency",
+  secondary_sectors as "secondarySectors", socials, maturity,
+  active_clients as "activeClients", mvp_users as "mvpUsers", patent, patent_details as "patentDetails",
+  signed_contracts as "signedContracts", contracts_count as "contractsCount", contracts_amount as "contractsAmount",
+  /* Le chiffre d'affaires avec la fiche, dans la même requête : l'annuaire en
+     liste des centaines, et chacune ne doit pas en faire une de plus. */
+  coalesce((select json_agg(json_build_object('year', v.year, 'amount', v.amount,
+                                              'unavailable', v.unavailable, 'currency', v.currency)
+                            order by v.year desc)
+              from org_revenues v where v.org_id = records.id), '[]'::json) as revenues,
   email, emails, phone, phones, city, country, places, website, bio, tags,
   created_at::text as "createdAt"`;
 
@@ -114,11 +125,13 @@ export async function createRecord(input: {
   origin?: string;
   emails?: string[];
   phones?: string[];
-  places?: { city: string; country: string }[];
+  places?: { city: string; country: string; address?: string }[];
   website?: string;
   bio?: string;
   tags?: string[];
   pitch?: string;
+  /** Le reste de la fiche, écrit juste après la ligne — ce que `updateRecord` sait faire. */
+  sheet?: Record<string, unknown>;
   sector?: string;
   stage?: string;
   foundedYear?: number | null;
@@ -167,6 +180,7 @@ export async function createRecord(input: {
       input.by?.name ?? '',
     ],
   );
+  if (input.sheet && Object.keys(input.sheet).length) await updateRecord(id, input.sheet);
   return (await getRecord(id))!;
 }
 
@@ -185,6 +199,26 @@ const FIELDS: Record<string, string> = {
   foundedYear: 'founded_year',
   teamSize: 'team_size',
   linkedin: 'linkedin',
+  orgType: 'org_type',
+  legalStatus: 'legal_status',
+  foundedOn: 'founded_on',
+  legalForm: 'legal_form',
+  capitalAmount: 'capital_amount',
+  capitalCurrency: 'capital_currency',
+  maturity: 'maturity',
+  activeClients: 'active_clients',
+  mvpUsers: 'mvp_users',
+  patent: 'patent',
+  signedContracts: 'signed_contracts',
+  contractsCount: 'contracts_count',
+  contractsAmount: 'contracts_amount',
+};
+
+/** Les listes et objets de la fiche, qui s'écrivent en jsonb. */
+const JSON_FIELDS: Record<string, string> = {
+  secondarySectors: 'secondary_sectors',
+  socials: 'socials',
+  patentDetails: 'patent_details',
 };
 
 export async function updateRecord(id: string, patch: Record<string, unknown>): Promise<DirectoryRecord | null> {
@@ -217,6 +251,17 @@ export async function updateRecord(id: string, patch: Record<string, unknown>): 
     params.push(patch[key]);
     sets.push(`${key} = $${params.length}::jsonb`);
   }
+  for (const [key, column] of Object.entries(JSON_FIELDS)) {
+    if (patch[key] === undefined) continue;
+    params.push(JSON.stringify(patch[key]));
+    sets.push(`${column} = $${params.length}::jsonb`);
+  }
+  /* L'année suit la date : le jury et l'annuaire lisent l'année, et une fiche
+     d'avant la date n'a que celle-là. Deux sources, mais une seule qu'on écrit. */
+  if (typeof patch.foundedOn === 'string' && patch.foundedOn && patch.foundedYear === undefined) {
+    params.push(Number(patch.foundedOn.slice(0, 4)));
+    sets.push(`founded_year = $${params.length}`);
+  }
   if (sets.length) await (await db()).query(`update records set ${sets.join(', ')} where id = $1`, params);
   return getRecord(id);
 }
@@ -243,6 +288,30 @@ export async function linkRecords(input: {
     `select ${AFF_COLS} from affiliations where person_id = $1 and org_id = $2`,
     [input.personId, input.orgId],
   ))!;
+}
+
+/**
+ * Écrit un exercice du chiffre d'affaires, ou l'efface quand il est vide.
+ *
+ * Une ligne par année et par organisation : l'exercice qui sort de la fenêtre
+ * des trois derniers reste dans l'historique, il n'est simplement plus demandé.
+ */
+export async function putRevenue(
+  orgId: string,
+  year: number,
+  input: { amount: number | null; unavailable: boolean; currency: string },
+): Promise<void> {
+  if (input.amount === null && !input.unavailable) {
+    await all('delete from org_revenues where org_id = $1 and year = $2', [orgId, year]);
+    return;
+  }
+  await all(
+    `insert into org_revenues (org_id, year, amount, unavailable, currency) values ($1,$2,$3,$4,$5)
+     on conflict (org_id, year) do update
+       set amount = excluded.amount, unavailable = excluded.unavailable,
+           currency = excluded.currency, updated_at = now()`,
+    [orgId, year, input.unavailable ? null : input.amount, input.unavailable, input.currency],
+  );
 }
 
 /**

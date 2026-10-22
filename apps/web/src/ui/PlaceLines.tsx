@@ -17,6 +17,8 @@ import { Icon } from './Icon';
 export interface Place {
   city: string;
   country: string;
+  /** Au siège d'une organisation seulement ; gardée telle quelle par cette liste. */
+  address?: string;
 }
 
 export function PlaceLines({

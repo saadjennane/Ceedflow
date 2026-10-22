@@ -1,46 +1,47 @@
 /**
- * La fiche d'une startup, des deux côtés du miroir.
+ * La fiche d'une organisation, des deux côtés du miroir.
  *
- * The same three pieces serve the founder filling it in, the staff chasing it
- * and the juror reading it, because they must agree: a bar that says 80 % while
+ * The same pieces serve the founder filling it in, the staff chasing it and
+ * the juror reading it, because they must agree: a bar that says 80 % while
  * the jury's pane shows a blank sector is worse than no bar at all.
  *
  *   ProfileBar    — how far along, and what is still missing, by name
- *   ProfileFacts  — the fiche as it is read
- *   ProfileFields — the fiche as it is filled in
+ *   ProfileFacts  — the fiche as it is read: only what is there
+ *   OrgSheet      — the fiche as it is filled in (OrgSheet.tsx)
  *
  * The words come from the member space's dictionary, so the founder reads it in
  * French and the workspace in English without two copies of the labels.
  */
 import {
+  LEGAL_FORMS,
+  LEGAL_STATUSES,
+  MATURITY_LEVELS,
   MAX_UPLOAD_BYTES,
-  ORG_STAGES,
+  ORG_TYPES,
+  SECTORS,
+  choiceLabel,
   profileDone,
   profileMissing,
   type OrgProfile,
   type ProfileAsk,
 } from '@ceed/shared';
-import { useState } from 'react';
-import { say, useLang, type Lang } from '../lib/lang';
+import { useState, type ReactNode } from 'react';
+import { say, useLang, type Lang, type Word } from '../lib/lang';
 import { Icon } from './Icon';
 
-export const ASK_WORD: Record<ProfileAsk, Parameters<typeof say>[0]> = {
-  logo: 'prof.ask.logo',
-  pitch: 'prof.ask.pitch',
-  sector: 'prof.ask.sector',
-  stage: 'prof.ask.stage',
-  founded: 'prof.ask.founded',
-  team: 'prof.ask.team',
-  city: 'prof.ask.city',
-  website: 'prof.ask.website',
-  linkedin: 'prof.ask.linkedin',
-  bio: 'prof.ask.bio',
-};
+export const ASK_WORD = Object.fromEntries(
+  (
+    [
+      'logo', 'pitch', 'orgType', 'legalStatus', 'founded', 'legalForm', 'capital', 'sector', 'website',
+      'linkedin', 'email', 'phone', 'city', 'address', 'bio', 'team', 'maturity', 'mvpUsers', 'revenues',
+      'clients', 'patent', 'patentDetails', 'contracts', 'contractsDetail',
+    ] as const satisfies readonly ProfileAsk[]
+  ).map((k) => [k, `prof.ask.${k}` as Word]),
+) as Record<ProfileAsk, Word>;
 
-const STAGE_WORD = {
-  idea: 'stage.idea', prototype: 'stage.prototype', mvp: 'stage.mvp',
-  customers: 'stage.customers', growing: 'stage.growing',
-} as const;
+/** A sum of money, the way a reader expects it in their language. */
+export const money = (amount: number, currency: string, lang: Lang) =>
+  `${new Intl.NumberFormat(lang === 'fr' ? 'fr-FR' : 'en-GB', { maximumFractionDigits: 0 }).format(amount)} ${currency}`;
 
 /** The language of this card: the one it is given, else the one around it. */
 const voice = (given: Lang | undefined, context: Lang): Lang => given ?? context;
@@ -83,7 +84,10 @@ export function ProfileBar({
       {missing.length > 0 && (
         /* Nommé, pas compté : « il reste 4 » n'envoie personne nulle part. */
         <p className="faint" style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5 }}>
-          {missing.map((ask) => t(ASK_WORD[ask])).join(', ')}
+          {/* Les cinq premiers : la fiche en demande vingt, et une ligne qui les
+              énumère tous se lit comme un reproche plutôt que comme une piste. */}
+          {missing.slice(0, 5).map((ask) => t(ASK_WORD[ask])).join(', ')}
+          {missing.length > 5 ? '…' : ''}
         </p>
       )}
     </>
@@ -94,16 +98,6 @@ export function ProfileBar({
     <button className="prof-bar stack as-row" onClick={onFill} style={{ width: '100%', textAlign: 'left' }}>
       {body}
     </button>
-  );
-}
-
-/** One fact, written as a value rather than an empty box. */
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="eyebrow">{label}</div>
-      <div style={{ fontSize: 13 }}>{value || <span className="faint">—</span>}</div>
-    </div>
   );
 }
 
@@ -122,7 +116,12 @@ export function Logo({ uploadId, name, size = 44 }: { uploadId: string | null; n
 
 /**
  * La fiche telle qu'on la lit — un juré avant de rencontrer, CEED avant de
- * relancer. Only what is there: a screen of dashes reads as a reproach.
+ * relancer, la startup qui se relit.
+ *
+ * Only what is there. No dashes, no "not given": a section with nothing in it
+ * does not appear, and a company that filled three sections has a page of
+ * three sections that reads as whole. What is missing is said elsewhere, to
+ * the people who can do something about it — never to a reader.
  */
 export function ProfileFacts({
   profile,
@@ -138,88 +137,182 @@ export function ProfileFacts({
 }) {
   const context = useLang();
   const l = voice(lang, context.lang);
-  const t = (w: Parameters<typeof say>[0]) => say(w, l);
-  const stage = ORG_STAGES.find((s) => s === profile.stage);
+  const t = (w: Word) => say(w, l);
+  const p = profile;
+
+  const founded = p.foundedOn
+    ? `${t('view.founded')} ${new Date(`${p.foundedOn}T12:00:00`).toLocaleDateString(l === 'fr' ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`
+    : p.foundedYear !== null
+      ? `${t('view.foundedIn')} ${p.foundedYear}`
+      : '';
+  const hq = p.places[0];
+  const badges = [
+    p.orgType && choiceLabel(ORG_TYPES, p.orgType, l),
+    p.maturity && choiceLabel(MATURITY_LEVELS, p.maturity, l),
+    p.sector && choiceLabel(SECTORS, p.sector, l),
+    ...p.secondarySectors.map((k) => choiceLabel(SECTORS, k, l)),
+    hq?.city && [hq.city, hq.country].filter(Boolean).join(', '),
+    founded,
+  ].filter(Boolean) as string[];
+
+  /* Les exercices renseignés, du plus récent au plus ancien ; le dernier qui
+     a un montant fait la tuile, avec son évolution quand le précédent existe. */
+  const years = [...p.revenues].sort((a, b) => b.year - a.year);
+  const priced = years.filter((r) => !r.unavailable && r.amount !== null);
+  const last = priced[0];
+  const before = last ? priced.find((r) => r.year === last.year - 1) : undefined;
+  const trend =
+    last && before && before.amount ? Math.round(((last.amount! - before.amount) / before.amount) * 100) : null;
+
+  const tiles: { label: string; value: string; hint?: string }[] = [];
+  if (last) {
+    tiles.push({
+      label: `${t('view.turnover')} ${last.year}`,
+      value: money(last.amount!, last.currency, l),
+      hint: trend === null ? undefined : `${trend > 0 ? '+' : ''}${trend} % / ${before!.year}`,
+    });
+  }
+  if (p.teamSize !== null) tiles.push({ label: t('view.team'), value: String(p.teamSize) });
+  if (p.activeClients !== null) tiles.push({ label: t('view.clients'), value: String(p.activeClients) });
+  if (p.signedContracts === 'yes' && p.contractsAmount !== null) {
+    tiles.push({
+      label: t('view.contracts'),
+      value: money(p.contractsAmount, p.capitalCurrency || 'MAD', l),
+      hint: p.contractsCount !== null ? `${p.contractsCount}` : undefined,
+    });
+  }
+
+  const legal = [
+    p.legalStatus && choiceLabel(LEGAL_STATUSES, p.legalStatus, l),
+    p.legalStatus === 'registered' && p.legalForm && choiceLabel(LEGAL_FORMS, p.legalForm, l),
+    p.legalStatus === 'registered' && p.capitalAmount !== null &&
+      `${t('view.capital')} ${money(p.capitalAmount, p.capitalCurrency, l)}`,
+  ].filter(Boolean) as string[];
+
+  const patent =
+    p.patent === 'yes'
+      ? [t('view.patentGranted'), p.patentDetails.number, p.patentDetails.country, p.patentDetails.office, p.patentDetails.date]
+          .filter(Boolean)
+          .join(' · ')
+      : p.patent === 'pending'
+        ? [t('view.patentPending'), p.patentDetails.procedure].filter(Boolean).join(' · ')
+        : '';
+  const performance = [
+    p.maturity === 'mvp' && p.mvpUsers === 'yes' && t('view.users'),
+    p.maturity === 'mvp' && p.mvpUsers === 'no' && t('view.noUsers'),
+    patent,
+  ].filter(Boolean) as string[];
+
+  const links = [
+    p.website && { href: p.website, label: p.website.replace(/^https?:\/\//, '') },
+    p.linkedin && { href: p.linkedin, label: 'LinkedIn' },
+    ...p.socials.map((s) => ({ href: s, label: s.replace(/^https?:\/\/(www\.)?/, '') })),
+  ].filter(Boolean) as { href: string; label: string }[];
+  const reach = [...p.emails, ...p.phones, hq?.address].filter(Boolean) as string[];
+  const elsewhere = p.places.slice(1).map((x) => [x.city, x.country].filter(Boolean).join(', ')).filter(Boolean);
 
   return (
-    <div className="stack" style={{ gap: 12 }}>
-      {lead && (profile.logoUploadId || profile.pitch) && (
+    <div className="stack" style={{ gap: 16 }}>
+      {lead && (p.logoUploadId || p.pitch) && (
         <div className="row" style={{ gap: 12, alignItems: 'flex-start' }}>
-          <Logo uploadId={profile.logoUploadId} name={name} size={52} />
-          {profile.pitch && (
-            <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.5, fontWeight: 600, flex: 1 }}>{profile.pitch}</p>
+          <Logo uploadId={p.logoUploadId} name={name} size={52} />
+          {p.pitch && (
+            <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.5, fontWeight: 600, flex: 1 }}>{p.pitch}</p>
           )}
         </div>
       )}
 
-      <div className="prof-facts">
-        <Fact label={t('prof.sector')} value={profile.sector} />
-        <Fact label={t('prof.stage')} value={stage ? t(STAGE_WORD[stage]) : profile.stage} />
-        <Fact label={t('prof.founded')} value={profile.foundedYear === null ? '' : String(profile.foundedYear)} />
-        <Fact
-          label={t('prof.team')}
-          value={profile.teamSize === null ? '' : `${profile.teamSize} ${t('prof.people')}`}
-        />
-        {/* Le pays seul ne dit pas où : « Morocco » s'affichait comme une
-            réponse alors que la barre comptait la ville comme manquante, et les
-            deux ne pouvaient pas avoir raison en même temps. */}
-        <Fact
-          label={t('prof.city')}
-          value={profile.city ? [profile.city, profile.country].filter(Boolean).join(', ') : ''}
-        />
-        {/* Cliquable : un juré qui veut voir le site le veut maintenant. */}
-        <div>
-          <div className="eyebrow">{t('prof.website')}</div>
-          <div style={{ fontSize: 13 }}>
-            {profile.website ? (
-              <a href={profile.website} target="_blank" rel="noreferrer">{profile.website}</a>
-            ) : (
-              <span className="faint">—</span>
-            )}
-          </div>
+      {badges.length > 0 && (
+        <div className="row wrap" style={{ gap: 6 }}>
+          {badges.map((b) => (
+            <span className="badge" key={b}>{b}</span>
+          ))}
         </div>
-      </div>
-
-      {profile.linkedin && (
-        <a className="btn ghost sm" href={profile.linkedin} target="_blank" rel="noreferrer"
-           style={{ alignSelf: 'flex-start' }}>
-          <Icon name="link" size={13} /> {t('prof.linkedin')}
-        </a>
       )}
 
-      {profile.bio && (
-        <div>
-          <div className="eyebrow">{t('prof.bio')}</div>
-          <p style={{ margin: '3px 0 0', fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{profile.bio}</p>
+      {tiles.length > 0 && (
+        <div className="view-tiles">
+          {tiles.map((tile) => (
+            <div className="view-tile" key={tile.label}>
+              <div className="eyebrow">{tile.label}</div>
+              <div className="view-tile-value num">{tile.value}</div>
+              {tile.hint && <div className="faint num" style={{ fontSize: 12 }}>{tile.hint}</div>}
+            </div>
+          ))}
         </div>
+      )}
+
+      {p.bio && (
+        <Block title={t('view.about')}>
+          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{p.bio}</p>
+        </Block>
+      )}
+
+      {(performance.length > 0 || years.length > 1) && (
+        <Block title={t('view.performance')}>
+          {performance.map((line) => (
+            <div key={line} style={{ fontSize: 13 }}>{line}</div>
+          ))}
+          {years.length > 1 && (
+            <table className="view-years">
+              <caption className="eyebrow">{t('view.byYear')}</caption>
+              <tbody>
+                {years.map((r) => (
+                  <tr key={r.year}>
+                    <th className="num">{r.year}</th>
+                    <td className="num">{r.unavailable || r.amount === null ? <span className="faint">{t('view.na')}</span> : money(r.amount, r.currency, l)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Block>
+      )}
+
+      {legal.length > 0 && (
+        <Block title={t('view.legal')}>
+          <div style={{ fontSize: 13 }}>{legal.join(' · ')}</div>
+        </Block>
+      )}
+
+      {(links.length > 0 || reach.length > 0 || elsewhere.length > 0) && (
+        <Block title={t('view.contact')}>
+          {links.length > 0 && (
+            <div className="row wrap" style={{ gap: 6 }}>
+              {/* Cliquables : un juré qui veut voir le site le veut maintenant. */}
+              {links.map((link) => (
+                <a className="btn ghost sm" key={link.href} href={link.href} target="_blank" rel="noreferrer">
+                  <Icon name="link" size={13} /> {link.label}
+                </a>
+              ))}
+            </div>
+          )}
+          {reach.length > 0 && <div className="faint" style={{ fontSize: 12.5 }}>{reach.join(' · ')}</div>}
+          {elsewhere.length > 0 && (
+            <div style={{ fontSize: 12.5 }}>
+              <span className="faint">{t('view.places')} · </span>
+              {elsewhere.join(' · ')}
+            </div>
+          )}
+        </Block>
       )}
     </div>
+  );
+}
+
+/** Un bloc de la fiche lue : un titre, et ce qu'il y a dessous. */
+function Block({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="stack" style={{ gap: 6 }}>
+      <div className="eyebrow">{title}</div>
+      {children}
+    </section>
   );
 }
 
 /* ------------------------------------------------------------------ */
 /* Filling it in                                                       */
 /* ------------------------------------------------------------------ */
-
-/** What the editor hands back — the same names the record uses. */
-export type ProfileDraft = Pick<
-  OrgProfile,
-  'logoUploadId' | 'pitch' | 'sector' | 'stage' | 'foundedYear' | 'teamSize' | 'linkedin'
->;
-
-/**
- * Un entier ou rien.
- *
- * An empty box is not a zero: a founder who clears the year meant "I do not
- * know", and `Number('')` is 0, which would put the company's founding in the
- * year nought and count the ask as answered.
- */
-const whole = (text: string): number | null => {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-  const n = Number(trimmed);
-  return Number.isFinite(n) ? Math.round(n) : null;
-};
 
 /**
  * L'image d'une fiche : un logo pour une société, une photo pour quelqu'un.
@@ -283,97 +376,5 @@ export function RecordImage({
       )}
       {problem && <div style={{ color: 'var(--stop)', fontSize: 12 }}>{problem}</div>}
     </div>
-  );
-}
-
-export function ProfileFields({
-  draft,
-  set,
-  name,
-  lang,
-}: {
-  draft: ProfileDraft;
-  set: (partial: Partial<ProfileDraft>) => void;
-  name: string;
-  lang?: Lang;
-}) {
-  const context = useLang();
-  const l = voice(lang, context.lang);
-  const t = (w: Parameters<typeof say>[0]) => say(w, l);
-  return (
-    <>
-      <RecordImage
-        label={t('prof.logo')}
-        uploadId={draft.logoUploadId}
-        name={name}
-        onChange={(v) => set({ logoUploadId: v })}
-      />
-
-      <div className="field">
-        <label>{t('prof.pitch')}</label>
-        <div className="help">{t('prof.pitchHelp')}</div>
-        <input
-          className="input"
-          value={draft.pitch}
-          maxLength={160}
-          onChange={(e) => set({ pitch: e.target.value })}
-        />
-      </div>
-
-      <div className="grid-2">
-        <div className="field">
-          <label>{t('prof.sector')}</label>
-          <input className="input" value={draft.sector} onChange={(e) => set({ sector: e.target.value })} />
-        </div>
-        <div className="field">
-          <label>{t('prof.founded')}</label>
-          <input
-            className="input"
-            type="number"
-            value={draft.foundedYear === null ? '' : draft.foundedYear}
-            onChange={(e) => set({ foundedYear: whole(e.target.value) })}
-          />
-        </div>
-      </div>
-
-      <div className="field">
-        <label>{t('prof.stage')}</label>
-        <div className="work-pick">
-          {ORG_STAGES.map((s) => (
-            <button
-              key={s}
-              type="button"
-              className={draft.stage === s ? 'track on' : 'track'}
-              /* Re-cliquer défait : c'est la seule façon de revenir à « je ne
-                 sais pas encore » sans un bouton « aucun » de plus. */
-              onClick={() => set({ stage: draft.stage === s ? '' : s })}
-            >
-              {t(STAGE_WORD[s])}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="grid-2">
-        <div className="field">
-          <label>{t('prof.team')}</label>
-          <input
-            className="input"
-            type="number"
-            value={draft.teamSize === null ? '' : draft.teamSize}
-            onChange={(e) => set({ teamSize: whole(e.target.value) })}
-          />
-        </div>
-        <div className="field">
-          <label>{t('prof.linkedin')}</label>
-          <input
-            className="input"
-            value={draft.linkedin}
-            placeholder="https://www.linkedin.com/company/…"
-            onChange={(e) => set({ linkedin: e.target.value })}
-          />
-        </div>
-      </div>
-    </>
   );
 }

@@ -27,11 +27,14 @@ import { TaskDrawer } from '../../ui/TaskDrawer';
 import { TaskModal } from '../../ui/TaskModal';
 import { Row as TaskRow } from '../TasksPage';
 import { ProfileBar, ProfileFacts, Logo } from '../../ui/OrgProfile';
+import { OrgSheet } from '../../ui/OrgSheet';
 
 export function RecordPage() {
   const { recordId = '' } = useParams();
   const detail = useAsync(() => api.get<RecordDetail>(`/api/records/${recordId}`), recordId);
   const [editing, setEditing] = useState(false);
+  /* La fiche en sections, à part de la fenêtre qui édite les coordonnées. */
+  const [filling, setFilling] = useState(false);
   const [linking, setLinking] = useState(false);
   const [unlinking, setUnlinking] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
@@ -136,7 +139,7 @@ export function RecordPage() {
                 <strong style={{ flex: 1, fontFamily: 'var(--display)', fontSize: 13.5 }}>
                   Profile the jury reads
                 </strong>
-                <button className="btn sm" onClick={() => setEditing(true)}>
+                <button className="btn sm" onClick={() => setFilling(true)}>
                   <Icon name="edit" size={13} /> {profileStarted(profileOf(record)) ? 'Edit' : 'Fill it in'}
                 </button>
               </div>
@@ -288,6 +291,19 @@ export function RecordPage() {
           onSaved={() => {
             setGiving(false);
             tasks.reload();
+          }}
+        />
+      )}
+
+      {filling && (
+        <OrgSheet
+          record={record}
+          lang="en"
+          routes={{ record: `/api/records/${record.id}`, revenue: (year) => `/api/records/${record.id}/revenues/${year}` }}
+          onChanged={() => {}}
+          onClose={() => {
+            setFilling(false);
+            detail.reload();
           }}
         />
       )}

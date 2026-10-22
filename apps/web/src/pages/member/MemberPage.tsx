@@ -2,7 +2,9 @@ import {
   ORG_ROLES,
   canEditOrg,
   profileOf,
+  profileStarted,
   type AffiliationView,
+  type DirectoryRecord,
   type Me,
   type OrgProfile,
   type Task,
@@ -25,10 +27,10 @@ import { Agenda, type AgendaEntry } from './Agenda';
 import { MemberHome, type CandidacyState } from './MemberHome';
 import { LangProvider, useLang } from '../../lib/lang';
 import { TeamModal } from './TeamPanel';
-import { EmailLines } from '../../ui/EmailLines';
 import { PhoneLines } from '../../ui/PhoneLines';
 import { PlaceLines } from '../../ui/PlaceLines';
-import { ProfileBar, ProfileFacts, ProfileFields, type ProfileDraft } from '../../ui/OrgProfile';
+import { ProfileBar, ProfileFacts } from '../../ui/OrgProfile';
+import { OrgSheet } from '../../ui/OrgSheet';
 
 /**
  * The member space: your profile, and the organisation pages you look after.
@@ -994,7 +996,8 @@ function Involvement({
 function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
   const { t } = useLang();
   const [creating, setCreating] = useState(false);
-  const [editing, setEditing] = useState<AffiliationView | null>(null);
+  /* La fiche ouverte : celle d'une page qu'on tient, ou celle qu'on vient de créer. */
+  const [editing, setEditing] = useState<DirectoryRecord | null>(null);
   const [team, setTeam] = useState<AffiliationView | null>(null);
 
   return (
@@ -1049,7 +1052,7 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
                 <Icon name="users" size={13} /> {t('org.team')}
               </button>
               {canEditOrg(link.affiliation.access) && (
-                <button className="btn sm" onClick={() => setEditing(link)}>
+                <button className="btn sm" onClick={() => setEditing(link.record)}>
                   <Icon name="edit" size={13} /> {t('my.edit')}
                 </button>
               )}
@@ -1057,7 +1060,11 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
               {/* Sous chaque page, où en est sa fiche — et la barre elle-même
                   ouvre le formulaire, pour qu'il n'y ait pas à chercher où. */}
               {canEditOrg(link.affiliation.access) && (
-                <ProfileBar profile={profileOf(link.record)} onFill={() => setEditing(link)} />
+                <ProfileBar profile={profileOf(link.record)} onFill={() => setEditing(link.record)} />
+              )}
+              {/* Sa fiche telle qu'un jury la lit : seulement ce qui est rempli. */}
+              {profileStarted(profileOf(link.record)) && (
+                <ProfileFacts profile={profileOf(link.record)} name={link.record.name} />
               )}
             </div>
           ))}
@@ -1067,18 +1074,26 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
       {creating && (
         <OrgModal
           onClose={() => setCreating(false)}
-          onSaved={() => {
+          onSaved={(created) => {
             setCreating(false);
             onChanged();
+            /* Une page qu'on vient d'ouvrir s'ouvre sur sa fiche : c'est le
+               moment où l'on a envie de la remplir. Une page rejointe a déjà
+               ses administrateurs, et pas de fiche à nous de remplir. */
+            if (created) setEditing(created);
           }}
         />
       )}
 
       {editing && (
-        <OrgModal
-          link={editing}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
+        <OrgSheet
+          record={editing}
+          routes={{
+            record: `/api/me/organisations/${editing.id}`,
+            revenue: (year) => `/api/me/organisations/${editing.id}/revenues/${year}`,
+          }}
+          onChanged={() => {}}
+          onClose={() => {
             setEditing(null);
             onChanged();
           }}
@@ -1090,33 +1105,22 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
   );
 }
 
+/**
+ * Ouvrir une page d'organisation : trois choses, et la fiche ensuite.
+ *
+ * S'inscrire doit être rapide. Le nom, ce qu'elle est, ce qu'on y fait — le
+ * reste se remplit dans la fiche, qui s'ouvre juste après, section par
+ * section, et se complète plus tard si l'on veut.
+ */
 function OrgModal({
-  link,
   onClose,
   onSaved,
 }: {
-  link?: AffiliationView;
   onClose: () => void;
-  onSaved: () => void;
+  /** La page créée, ou null quand on a rejoint une page qui existait déjà. */
+  onSaved: (created: DirectoryRecord | null) => void;
 }) {
-  const editing = Boolean(link);
-  const [draft, setDraft] = useState({
-    name: link?.record.name ?? '',
-    roles: link?.record.roles ?? ['Startup'],
-    emails: link?.record.emails ?? [],
-    phones: link?.record.phones ?? [],
-    places: link?.record.places ?? [],
-    website: link?.record.website ?? '',
-    bio: link?.record.bio ?? '',
-    myRole: link?.affiliation.role ?? 'Founder',
-    logoUploadId: link?.record.logoUploadId ?? null,
-    pitch: link?.record.pitch ?? '',
-    sector: link?.record.sector ?? '',
-    stage: link?.record.stage ?? '',
-    foundedYear: link?.record.foundedYear ?? null,
-    teamSize: link?.record.teamSize ?? null,
-    linkedin: link?.record.linkedin ?? '',
-  });
+  const [draft, setDraft] = useState({ name: '', roles: ['Startup'] as string[], myRole: 'Founder' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const toast = useToast();
@@ -1128,14 +1132,12 @@ function OrgModal({
     setSaving(true);
     setErrors({});
     try {
-      if (editing) {
-        await api.patch(`/api/me/organisations/${link!.record.id}`, draft);
-        toast(t('org.saved'));
-      } else {
-        const { joined } = await api.post<{ joined: boolean }>('/api/me/organisations', draft);
-        toast(joined ? t('org.joined') : t('org.created'));
-      }
-      onSaved();
+      const { organisation, joined } = await api.post<{ organisation: DirectoryRecord; joined: boolean }>(
+        '/api/me/organisations',
+        draft,
+      );
+      toast(joined ? t('org.joined') : t('org.created'));
+      onSaved(joined ? null : organisation);
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrors(err.fields);
       else toast((err as Error).message, true);
@@ -1146,8 +1148,8 @@ function OrgModal({
 
   return (
     <Modal
-      title={editing ? draft.name : t('org.createTitle')}
-      subtitle={editing ? undefined : t('org.createMore')}
+      title={t('org.createTitle')}
+      subtitle={t('org.createMore')}
       onClose={onClose}
       footer={
         <>
@@ -1155,18 +1157,11 @@ function OrgModal({
             {t('do.cancel')}
           </button>
           <button className="btn primary" disabled={saving || !draft.name.trim()} onClick={save}>
-            {saving ? t('do.saving') : editing ? t('do.save') : t('do.create')}
+            {saving ? t('do.saving') : t('do.create')}
           </button>
         </>
       }
     >
-      {/* En haut, et vivante : chaque champ rempli la fait monter pendant qu'on
-          écrit, ce qui est la seule raison d'avoir une barre plutôt qu'une
-          liste de champs. */}
-      {/* La barre lit un lieu, la fiche en tient plusieurs : c'est le premier
-          qui compte, comme partout où il n'y a de la place que pour un. */}
-      <ProfileBar profile={profileOf({ ...draft, city: draft.places[0]?.city ?? '', country: draft.places[0]?.country ?? '' })} />
-
       <Text label={t('org.name')} value={draft.name} error={errors.name} onChange={(v) => set({ name: v })} placeholder="Nakhla Bio" />
 
       <div className="field">
@@ -1186,19 +1181,6 @@ function OrgModal({
       </div>
 
       <Text label={t('org.myRole')} value={draft.myRole} onChange={(v) => set({ myRole: v })} placeholder="Fondateur" />
-
-      {/* Ce qu'un jury lit : le même formulaire, parce que c'est la même fiche.
-          Un second écran « profil » aurait fait deux endroits à tenir à jour. */}
-      <ProfileFields draft={draft as ProfileDraft} set={(partial) => set(partial)} name={draft.name} />
-
-      <EmailLines label={t('org.email')} values={draft.emails} onChange={(v) => set({ emails: v })} />
-      <PhoneLines label={t('my.phone')} values={draft.phones} onChange={(v) => set({ phones: v })} />
-      <PlaceLines label={t('org.city')} values={draft.places} onChange={(v) => set({ places: v })} />
-      <Text label={t('org.website')} value={draft.website} onChange={(v) => set({ website: v })} />
-      <div className="field">
-        <label>{t('prof.bio')}</label>
-        <textarea className="textarea" rows={3} value={draft.bio} onChange={(e) => set({ bio: e.target.value })} />
-      </div>
     </Modal>
   );
 }

@@ -104,15 +104,23 @@ export const phoneList = () =>
     .transform((list) => list.map((n) => n.trim()).filter(Boolean))
     .refine((list) => list.every((n) => !phoneProblem(n)), CONTACT_SAYS.phone);
 
-/** Un lieu : une ville, et le pays où elle est. */
+/**
+ * Un lieu : une ville, le pays où elle est, et l'adresse quand on la donne.
+ *
+ * L'adresse est facultative et ne se demande qu'au siège d'une organisation —
+ * le premier lieu. Une personne, ou une ville d'implantation, n'en a pas
+ * besoin, et l'exiger aurait fait une case vide de plus partout.
+ */
 export const placeList = () =>
   z
-    .array(z.object({ city: z.string().default(''), country: z.string().default('') }))
+    .array(
+      z.object({ city: z.string().default(''), country: z.string().default(''), address: z.string().default('') }),
+    )
     .default([])
     .transform((list) =>
       list
-        .map((p) => ({ city: p.city.trim(), country: p.country.trim() }))
-        .filter((p) => p.city || p.country),
+        .map((p) => ({ city: p.city.trim(), country: p.country.trim(), address: p.address.trim() }))
+        .filter((p) => p.city || p.country || p.address),
     );
 
 /** Plusieurs adresses, la première étant celle qu'on donne. */

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { emailList, phoneList, placeList } from './contact.js';
+import { CURRENCIES, LEGAL_FORMS, LEGAL_STATUSES, MATURITY_LEVELS, ORG_TYPES } from './profile.js';
 import { ORG_STAGES } from './profile.js';
 
 /**
@@ -54,6 +55,47 @@ export function listedInDirectory(
   return account?.state === 'claimed';
 }
 
+/**
+ * Les champs de la fiche en sections, tels qu'ils s'écrivent.
+ *
+ * Partagés par la fiche lue et par ce qu'on envoie pour l'écrire, pour que les
+ * deux ne puissent pas diverger. Une valeur hors liste est refusée ici : une
+ * forme juridique inventée par un client passerait sinon dans la base.
+ */
+const orgSheetFields = {
+  pitch: z.string().max(300, 'Three hundred characters at most.').default(''),
+  orgType: z.enum(['', ...ORG_TYPES.map((c) => c.key)] as [string, ...string[]]).default(''),
+  legalStatus: z.enum(['', ...LEGAL_STATUSES.map((c) => c.key)] as [string, ...string[]]).default(''),
+  foundedOn: z
+    .string()
+    .regex(/^(\d{4}-\d{2}-\d{2})?$/, 'A date, day by day.')
+    .default(''),
+  legalForm: z.enum(['', ...LEGAL_FORMS.map((c) => c.key)] as [string, ...string[]]).default(''),
+  capitalAmount: z.number().min(0, 'A capital cannot be negative.').nullable().default(null),
+  capitalCurrency: z.enum(CURRENCIES).default('MAD'),
+  secondarySectors: z.array(z.string()).default([]),
+  socials: z
+    .array(z.string())
+    .default([])
+    .transform((list) => list.map((s) => s.trim()).filter(Boolean)),
+  maturity: z.enum(['', ...MATURITY_LEVELS.map((c) => c.key)] as [string, ...string[]]).default(''),
+  mvpUsers: z.enum(['', 'yes', 'no']).default(''),
+  activeClients: z.number().int().min(0).nullable().default(null),
+  patent: z.enum(['', 'yes', 'no', 'pending']).default(''),
+  patentDetails: z
+    .object({
+      number: z.string().optional(),
+      date: z.string().optional(),
+      country: z.string().optional(),
+      office: z.string().optional(),
+      procedure: z.string().optional(),
+    })
+    .default({}),
+  signedContracts: z.enum(['', 'yes', 'no']).default(''),
+  contractsCount: z.number().int().min(0).nullable().default(null),
+  contractsAmount: z.number().min(0).nullable().default(null),
+};
+
 export const recordSchema = z.object({
   id: z.string(),
   kind: z.enum(RECORD_KINDS),
@@ -68,12 +110,17 @@ export const recordSchema = z.object({
   department: z.string().default(''),
   /* ---- Ce qu'une organisation est, et qu'un jury lit ---- */
   logoUploadId: z.string().nullable().default(null),
-  pitch: z.string().default(''),
   sector: z.string().default(''),
   stage: z.string().default(''),
   foundedYear: z.number().nullable().default(null),
   teamSize: z.number().nullable().default(null),
   linkedin: z.string().default(''),
+  /* ---- La fiche en sections (profile.ts dit ce qui s'applique) ---- */
+  ...orgSheetFields,
+  /** Le chiffre d'affaires, un exercice par ligne. */
+  revenues: z
+    .array(z.object({ year: z.number(), amount: z.number().nullable(), unavailable: z.boolean(), currency: z.string() }))
+    .default([]),
   origin: z.enum(RECORD_ORIGINS).default('manual'),
   /** Le collaborateur qui l'a ajoutée, par son nom au moment où il l'a fait. */
   createdBy: z.string().nullable().default(null),
@@ -84,7 +131,9 @@ export const recordSchema = z.object({
   /** Tous les numéros, dans l'ordre où ils ont été donnés. */
   phones: z.array(z.string()).default([]),
   /** Tous les lieux. Le premier est celui qu'on donne quand il n'y en a qu'un. */
-  places: z.array(z.object({ city: z.string().default(''), country: z.string().default('') })).default([]),
+  places: z
+    .array(z.object({ city: z.string().default(''), country: z.string().default(''), address: z.string().optional() }))
+    .default([]),
   /** Le premier de la liste. Calculé par la base : il ne peut pas en différer. */
   phone: z.string().default(''),
   city: z.string().default(''),
@@ -238,12 +287,12 @@ export const createRecordInput = z.object({
   jobTitle: z.string().default(''),
   department: z.string().default(''),
   logoUploadId: z.string().nullable().default(null),
-  pitch: z.string().default(''),
   sector: z.string().default(''),
   stage: z.string().default(''),
   foundedYear: z.number().nullable().default(null),
   teamSize: z.number().nullable().default(null),
   linkedin: z.string().default(''),
+  ...orgSheetFields,
   emails: emailList(),
   phones: phoneList(),
   places: placeList(),
@@ -449,6 +498,18 @@ export const profileInput = z.object({
 });
 
 /** An organisation page created from the member space. */
+/**
+ * Un exercice du chiffre d'affaires.
+ *
+ * Zéro est un montant ; « non disponible » est une réponse ; les deux vides
+ * effacent l'exercice — c'est ce que fait vider la case.
+ */
+export const revenueInput = z.object({
+  amount: z.number().min(0, 'A turnover cannot be negative.').nullable().default(null),
+  unavailable: z.boolean().default(false),
+  currency: z.enum(CURRENCIES).default('MAD'),
+});
+
 export const myOrgInput = z.object({
   name: z.string().min(1, 'Tell us the name of the organisation.'),
   roles: z.array(z.string()).default(['Startup']),
@@ -458,12 +519,12 @@ export const myOrgInput = z.object({
   website: z.string().default(''),
   bio: z.string().default(''),
   logoUploadId: z.string().nullable().default(null),
-  pitch: z.string().max(160, 'One sentence — 160 characters at most.').default(''),
   sector: z.string().default(''),
   stage: z.enum(['', ...ORG_STAGES]).default(''),
   foundedYear: z.number().int().min(1900).max(2100).nullable().default(null),
   teamSize: z.number().int().min(0).max(100000).nullable().default(null),
   linkedin: z.string().default(''),
+  ...orgSheetFields,
   /** What the member does there. */
   myRole: z.string().default('Founder'),
 });

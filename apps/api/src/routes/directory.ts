@@ -7,6 +7,7 @@ import {
   listedInDirectory,
   matchKey,
   parseRoles,
+  revenueInput,
   signupInput,
   suggestPassword,
   updateRecordInput,
@@ -155,6 +156,17 @@ export async function directoryRoutes(app: FastifyInstance) {
     const wanted = patch.emails?.[0];
     const login = wanted !== undefined && !same(wanted, current.email) ? await followRecordEmail(id, wanted) : 'none';
     return { ...saved, login };
+  });
+
+  /** Un exercice du chiffre d'affaires, saisi par CEED pour une organisation. */
+  app.put('/api/records/:id/revenues/:year', async (req, reply) => {
+    const { id, year } = req.params as { id: string; year: string };
+    const record = await dir.getRecord(id);
+    if (!record || record.kind !== 'org') return notFound(reply, 'Organisation not found.');
+    const y = Number(year);
+    if (!Number.isInteger(y) || y < 1900 || y > 2100) return notFound(reply, 'No such year.');
+    await dir.putRevenue(id, y, parse(revenueInput, req.body));
+    return dir.getRecord(id);
   });
 
   /**

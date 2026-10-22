@@ -12,6 +12,7 @@ import {
   profileInput,
   signupAccountInput,
   suggestPassword,
+  revenueInput,
   taskItemPatch,
   taskPatch,
   teamMemberInput,
@@ -572,6 +573,19 @@ export async function authRoutes(app: FastifyInstance) {
       throw new HttpError(403, 'Only an editor or an administrator can change this page.');
     }
     return dir.updateRecord(id, parse(myOrgInput.omit({ myRole: true }).partial(), req.body));
+  });
+
+  /** Un exercice du chiffre d'affaires, par qui peut modifier la page. */
+  app.put('/api/me/organisations/:id/revenues/:year', async (req, reply) => {
+    const { id, year } = req.params as { id: string; year: string };
+    const { access } = await accessTo(req, id);
+    if (!canEditOrg(access)) {
+      throw new HttpError(403, 'Only an editor or an administrator can change this page.');
+    }
+    const y = Number(year);
+    if (!Number.isInteger(y) || y < 1900 || y > 2100) return notFound(reply, 'No such year.');
+    await dir.putRevenue(id, y, parse(revenueInput, req.body));
+    return dir.getRecord(id);
   });
 
   /* ---- The team on an organisation page ---- */

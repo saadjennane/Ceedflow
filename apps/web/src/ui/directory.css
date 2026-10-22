@@ -532,3 +532,104 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
   border-color: var(--line-strong);
   background: var(--surface);
 }
+
+/* ------------------------------------------------------------------ */
+/* La fiche d'une organisation : lue, et remplie                       */
+/* ------------------------------------------------------------------ */
+
+/* Les chiffres connus, en tuiles : ce qu'on cherche d'abord sur une société,
+   et la seule partie de la fiche qui se lit d'un coup d'œil. */
+.view-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.view-tile {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--canvas);
+}
+
+.view-tile-value {
+  margin-top: 2px;
+  font-family: var(--display);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.view-years {
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.view-years caption {
+  text-align: left;
+  margin-bottom: 4px;
+}
+
+.view-years th,
+.view-years td {
+  padding: 3px 18px 3px 0;
+  text-align: left;
+  font-weight: 400;
+}
+
+.view-years th { color: var(--ink-3); }
+
+/* Ce qui n'apparaît que sous une condition, regroupé et un peu en retrait :
+   on voit d'où ça vient — « Immatriculée » a ouvert ces trois champs. */
+.sheet-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--blue-soft);
+  background: var(--canvas);
+  border-radius: 0 var(--r) var(--r) 0;
+}
+
+/* Les sept niveaux en marches : un ordre, et pas une liste à cocher. */
+.maturity-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 6px;
+}
+
+.maturity-step {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.maturity-step .num {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--wash);
+  font-size: 11px;
+}
+
+.maturity-step:hover { border-color: var(--line-strong); color: var(--ink); }
+
+.maturity-step.on {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  color: var(--ink);
+}
+
+.maturity-step.on .num { background: var(--blue); color: #fff; }

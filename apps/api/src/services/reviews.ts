@@ -15,6 +15,7 @@ import {
   type EvaluationMethod,
   type EvaluationScale,
   type FormField,
+  forEcosystem,
   profileOf,
   profileStarted,
   type OrgProfile,
@@ -134,7 +135,9 @@ export async function reviewsFor(recordId: string): Promise<ReviewPanel[]> {
     if (!orgId) return null;
     if (!profiles.has(orgId)) {
       const record = await dir.getRecord(orgId);
-      const profile = record ? profileOf(record) : null;
+      /* Ce qu'un juré lit de la société, pas comment la joindre : filtré ici,
+         avant que la réponse parte, et non caché par l'écran. */
+      const profile = record ? forEcosystem(profileOf(record)) : null;
       profiles.set(orgId, profile && profileStarted(profile) ? profile : null);
     }
     return profiles.get(orgId) ?? null;
