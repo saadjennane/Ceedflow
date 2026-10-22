@@ -282,7 +282,15 @@ async function copyStructure(fromEditionId: string, toEditionId: string): Promis
           block.type === 'application'
             // A copied form starts shut and with a fresh link: the old one
             // belongs to the edition it was published for.
-            ? { ...(block.config as object), visibility: 'closed', visibilitySetAt: null, publicToken: '' }
+            ? {
+                ...(block.config as object),
+                visibility: 'closed',
+                visibilitySetAt: null,
+                /* Un lien neuf, et non un lien vide : vide, aucun lien ne
+                   menait au formulaire copié, et l'adresse affichée dans le
+                   builder répondait « This form does not exist ». */
+                publicToken: newId('form').replace('form_', ''),
+              }
             : block.config;
         await conn.query('insert into blocks (id, phase_id, type, name, position, config) values ($1,$2,$3,$4,$5,$6)', [
           idOf.block(),
