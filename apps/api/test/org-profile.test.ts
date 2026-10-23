@@ -10,6 +10,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import {
+  prefillFor,
   documentsAsked,
   forPublic,
   forEcosystem,
@@ -354,5 +355,60 @@ describe('needs and documents, kept', { skip: skipWithoutServer }, () => {
 
     assert.equal(await dir.dropDocument(other.id, doc.id), false);
     assert.equal(await dir.dropDocument(org.id, doc.id), true);
+  });
+});
+
+describe('an application taking from the fiche', () => {
+  const p = profileOf({
+    sector: 'agritech', maturity: 'growth', targetMarkets: ['b2b', 'b2g'], teamSize: 12,
+    pitch: 'Des capteurs pour les oasis.', foundedOn: '2019-04-02',
+    documents: [{ id: 'd', kind: 'pitch_deck', year: null, label: '', uploadId: 'upl_deck', filename: 'deck.pdf', size: 900, mime: 'application/pdf', createdAt: '', createdByName: '' }],
+  });
+  const field = (type: string, fromProfile: string, options: string[] = []) => ({ type, fromProfile, options });
+
+  it('answers a choice only with an option the form offers, written either way, accents or not', () => {
+    assert.equal(prefillFor(field('select', 'sector', ['Santé', 'Agriculture & agritech']), p, 'X'), 'Agriculture & agritech');
+    assert.equal(prefillFor(field('select', 'maturity', ['Idea', 'Growth', 'Scale']), p, 'X'), 'Growth');
+    assert.equal(prefillFor(field('select', 'maturity', ['Croissance']), p, 'X'), 'Croissance');
+    assert.equal(prefillFor(field('select', 'sector', ['Fintech']), p, 'X'), undefined, 'no matching option, no answer');
+    assert.deepEqual(prefillFor(field('multiselect', 'targetMarkets', ['B2B', 'B2C', 'B2G']), p, 'X'), ['B2B', 'B2G']);
+  });
+
+  it('fills text, numbers and dates, and the name from the record', () => {
+    assert.equal(prefillFor(field('long_text', 'pitch'), p, 'X'), 'Des capteurs pour les oasis.');
+    assert.equal(prefillFor(field('number', 'teamSize'), p, 'X'), 12);
+    assert.equal(prefillFor(field('number', 'foundedYear'), p, 'X'), 2019);
+    assert.equal(prefillFor(field('short_text', 'name'), p, 'Nakhla Bio'), 'Nakhla Bio');
+    assert.equal(prefillFor(field('short_text', 'sector'), p, 'X'), 'Agriculture & Agritech', 'a choice into a text: the word, in French');
+  });
+
+  it('hands a file question the document already on the fiche', () => {
+    assert.deepEqual(prefillFor(field('file', 'pitchDeck'), p, 'X'), { uploadId: 'upl_deck', filename: 'deck.pdf', size: 900 });
+    assert.equal(prefillFor(field('file', 'rc'), p, 'X'), undefined);
+  });
+
+  it('takes nothing a question of that type cannot hold, and nothing the fiche does not have', () => {
+    assert.equal(prefillFor(field('number', 'pitch'), p, 'X'), undefined);
+    assert.equal(prefillFor(field('number', 'activeClients'), p, 'X'), undefined);
+    assert.equal(prefillFor(field('short_text', ''), p, 'X'), undefined);
+  });
+});
+
+describe('a document reused in an application, kept', { skip: skipWithoutServer }, () => {
+  it('stays the organisation’s, and is not taken by the candidacy', async () => {
+    const org = await dir.createRecord({ kind: 'org', name: `Reprise ${uniq()}`, origin: 'manual' });
+    const deck = await repo.saveUpload({ filename: 'deck.pdf', mime: 'application/pdf', bytes: Buffer.from('%PDF'), fieldId: 'document' });
+    await addOrgDocument(org.id, { kind: 'pitch_deck', uploadId: deck.id }, 'Karim');
+    const fresh = await repo.saveUpload({ filename: 'cv.pdf', mime: 'application/pdf', bytes: Buffer.from('%PDF'), fieldId: 'f' });
+
+    const program = await repo.createProgram({ name: `Appel ${uniq()}` });
+    const edition = await repo.createEdition(program.id, { name: '2026' });
+    const track = (await repo.getEditionDetail(edition.id))!.tracks[0]!;
+    const candidate = await repo.createCandidate({ editionId: edition.id, trackId: track.id, orgId: org.id, personId: null, originBlockId: null });
+    await repo.claimUploads(candidate.id, { deck: { uploadId: deck.id }, cv: { uploadId: fresh.id } });
+
+    assert.equal((await repo.getUpload(deck.id))?.candidateId, null, 'the fiche’s document is not the candidacy’s');
+    assert.equal((await repo.getUpload(fresh.id))?.candidateId, candidate.id, 'a file sent with the form is');
+    assert.equal((await repo.getUpload(deck.id))?.orgId, org.id);
   });
 });

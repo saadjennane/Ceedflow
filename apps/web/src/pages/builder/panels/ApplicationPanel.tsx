@@ -1,4 +1,5 @@
 import {
+  PROFILE_SOURCES,
   APPLICATION_VARIABLES,
   FIELD_TYPES,
   FIELD_TYPE_LABEL,
@@ -371,6 +372,11 @@ export function ApplicationSetup({
                         Column
                       </span>
                     )}
+                    {field.fromProfile && (
+                      <span className="badge ok" title="Prefilled from the organisation’s profile">
+                        Profile
+                      </span>
+                    )}
                     <button
                       className="btn ghost icon sm"
                       onClick={() => setOpenFieldId(openFieldId === field.id ? null : field.id)}
@@ -424,6 +430,26 @@ export function ApplicationSetup({
                           placeholder="Add an option"
                         />
                       )}
+                      {/* La fiche de l'organisation, reprise ici : la startup ne
+                          retape pas ce qu'elle a déjà dit, et garde la main pour
+                          le corriger dans cette candidature. */}
+                      <SelectField
+                        label="Prefill from the organisation’s profile"
+                        value={field.fromProfile ?? ''}
+                        onChange={(v) => setField(field.id, { fromProfile: v || undefined })}
+                        options={[
+                          { value: '', label: 'Nothing — the applicant types it' },
+                          ...PROFILE_SOURCES.filter((src) => (src.types as readonly string[]).includes(field.type)).map(
+                            (src) => ({ value: src.key, label: src.en }),
+                          ),
+                        ]}
+                      />
+                      {field.fromProfile &&
+                        !PROFILE_SOURCES.find((src) => src.key === field.fromProfile)?.types.includes(field.type as never) && (
+                          <div className="hint" style={{ color: 'var(--warn)' }}>
+                            This answer type cannot take that part of the profile — choose another, or none.
+                          </div>
+                        )}
                       <label className="check">
                         <input
                           type="checkbox"

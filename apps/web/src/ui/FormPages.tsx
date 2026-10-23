@@ -43,12 +43,15 @@ export function FormPageBody({
   onAnswer,
   /** Le nom de la page au-dessus, quand les pages sont nommées. */
   heading,
+  notes,
 }: {
   page: FormPageView;
   values: Record<string, unknown>;
   errors?: Record<string, string>;
   onAnswer: (fieldId: string, value: unknown) => void;
   heading?: boolean;
+  /** Une ligne sous une question — « repris de votre fiche ». */
+  notes?: Record<string, string>;
 }) {
   return (
     <>
@@ -59,13 +62,19 @@ export function FormPageBody({
         </p>
       )}
       {page.fields.map((field) => (
-        <FormFieldInput
-          key={field.id}
-          field={field}
-          value={values[field.id]}
-          onChange={(v) => onAnswer(field.id, v)}
-          error={errors?.[`answers.${field.id}`]}
-        />
+        <div key={field.id}>
+          <FormFieldInput
+            field={field}
+            value={values[field.id]}
+            onChange={(v) => onAnswer(field.id, v)}
+            error={errors?.[`answers.${field.id}`]}
+          />
+          {notes?.[field.id] && (
+            <div className="faint" style={{ fontSize: 11.5, marginTop: -6, marginBottom: 10 }}>
+              {notes[field.id]}
+            </div>
+          )}
+        </div>
       ))}
     </>
   );

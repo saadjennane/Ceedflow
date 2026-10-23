@@ -148,6 +148,11 @@ export const formFieldSchema = z.object({
   showInTable: z.boolean().default(false),
   /** Which page of the form the question sits on. Ignored on a one-page form. */
   pageId: z.string().default(''),
+  /**
+   * Le champ de la fiche d'organisation qui la préremplit, ou rien.
+   * Une clé de PROFILE_SOURCES (profile.ts).
+   */
+  fromProfile: z.string().optional(),
 });
 
 export type FormField = z.infer<typeof formFieldSchema>;

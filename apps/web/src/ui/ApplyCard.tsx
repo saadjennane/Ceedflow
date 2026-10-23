@@ -76,6 +76,7 @@ export function ApplyCard({
   applicant,
   /** La rangée du bas : envoyer, continuer, fermer. */
   actions,
+  notes,
 }: {
   data: PublicForm;
   values: Record<string, unknown>;
@@ -89,6 +90,8 @@ export function ApplyCard({
   onHeardFrom?: (id: string) => void;
   applicant: ReactNode;
   actions: ReactNode;
+  /** Une ligne sous certaines questions — celles reprises de la fiche. */
+  notes?: Record<string, string>;
 }) {
   const { gate, blockedByGate, hasEligibility, paged, steps } = formShape(data, ticked);
   const currentPage = paged ? (step === 0 ? null : data.pages[step - 1]) : null;
@@ -178,14 +181,14 @@ export function ApplyCard({
             step === 0 ? (
               start
             ) : (
-              <FormPageBody heading page={currentPage!} values={values} errors={errors} onAnswer={onAnswer} />
+              <FormPageBody heading page={currentPage!} values={values} errors={errors} onAnswer={onAnswer} notes={notes} />
             )
           ) : (
             <>
               {start}
               {data.pages.map((page) => (
                 <div key={page.id}>
-                  <FormPageBody page={page} values={values} errors={errors} onAnswer={onAnswer} />
+                  <FormPageBody page={page} values={values} errors={errors} onAnswer={onAnswer} notes={notes} />
                 </div>
               ))}
             </>

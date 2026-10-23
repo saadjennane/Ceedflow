@@ -820,3 +820,125 @@ export function teamProblems(
   }
   return out;
 }
+
+/* ------------------------------------------------------------------ */
+/* What an application form may take from the fiche                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Ce qu'une question d'un formulaire peut reprendre de la fiche.
+ *
+ * Relié dans le builder, une question à la fois : « Nom de la société » prend
+ * le nom, « Secteur » le secteur, « Pitch deck » le document déjà déposé. Le
+ * formulaire arrive prérempli et la startup garde la main — elle corrige pour
+ * cet appel sans toucher à sa fiche. Un document repris n'est pas redéposé.
+ *
+ * `types` dit à quelles questions la reprise a un sens : un nombre ne remplit
+ * pas une liste, un texte ne remplit pas un fichier.
+ */
+type AnswerType =
+  | 'short_text' | 'long_text' | 'email' | 'phone' | 'url' | 'number' | 'date' | 'select' | 'multiselect' | 'file';
+
+export interface ProfileLink {
+  key: string;
+  fr: string;
+  en: string;
+  types: readonly AnswerType[];
+  /** The answer, or undefined when the fiche has nothing to give. A list of words for a choice. */
+  value: (p: OrgProfile, name: string, lang: 'fr' | 'en') => unknown;
+}
+
+const nonEmpty = (v: string) => (v.trim() ? v : undefined);
+const num = (v: number | null) => (v === null ? undefined : v);
+const doc = (p: OrgProfile, kind: string) => {
+  const d = [...p.documents].filter((x) => x.kind === kind).sort((a, b) => (b.year ?? 0) - (a.year ?? 0))[0];
+  return d ? { uploadId: d.uploadId, filename: d.filename, size: d.size } : undefined;
+};
+/** A choice as words in both languages, so a form option written either way matches. */
+const said = (list: readonly Choice[], key: string) => {
+  const c = list.find((x) => x.key === key);
+  return c ? [c.fr, c.en, c.key] : key ? [key] : undefined;
+};
+const TEXT = ['short_text', 'long_text'] as const;
+
+export const PROFILE_SOURCES: readonly ProfileLink[] = [
+  { key: 'name', fr: 'Dénomination', en: 'Name', types: ['short_text'], value: (_p, name) => nonEmpty(name) },
+  { key: 'pitch', fr: 'Description courte', en: 'Short description', types: TEXT, value: (p) => nonEmpty(p.pitch) },
+  { key: 'bio', fr: 'Description de l’activité', en: 'What the business does', types: TEXT, value: (p) => nonEmpty(p.bio) },
+  { key: 'offering', fr: 'Produits et services principaux', en: 'Main products and services', types: TEXT, value: (p) => nonEmpty(p.mainOffering) },
+  { key: 'sector', fr: 'Secteur principal', en: 'Main sector', types: ['short_text', 'select'], value: (p) => said(SECTORS, p.sector) },
+  { key: 'maturity', fr: 'Niveau de maturité', en: 'Maturity level', types: ['short_text', 'select'], value: (p) => said(MATURITY_LEVELS, p.maturity) },
+  { key: 'orgType', fr: 'Type d’organisation', en: 'Type of organisation', types: ['short_text', 'select'], value: (p) => said(ORG_TYPES, p.orgType) },
+  { key: 'legalForm', fr: 'Forme juridique', en: 'Legal form', types: ['short_text', 'select'], value: (p) => said(LEGAL_FORMS, p.legalForm) },
+  {
+    key: 'targetMarkets', fr: 'Marché cible', en: 'Target market', types: ['short_text', 'multiselect'],
+    value: (p) => (p.targetMarkets.length ? p.targetMarkets.map((k) => said(TARGET_MARKETS, k)!) : undefined),
+  },
+  { key: 'city', fr: 'Ville du siège', en: 'Head office city', types: ['short_text', 'select'], value: (p) => nonEmpty(p.places[0]?.city ?? p.city) },
+  { key: 'website', fr: 'Site web', en: 'Website', types: ['url', 'short_text'], value: (p) => nonEmpty(p.website) },
+  { key: 'linkedin', fr: 'LinkedIn', en: 'LinkedIn', types: ['url', 'short_text'], value: (p) => nonEmpty(p.linkedin) },
+  { key: 'email', fr: 'Email professionnel', en: 'Work email', types: ['email'], value: (p) => p.emails[0] },
+  { key: 'phone', fr: 'Téléphone', en: 'Phone', types: ['phone'], value: (p) => p.phones[0] },
+  { key: 'foundedOn', fr: 'Date de création', en: 'Date founded', types: ['date'], value: (p) => nonEmpty(p.foundedOn) },
+  {
+    key: 'foundedYear', fr: 'Année de création', en: 'Year founded', types: ['number', 'short_text'],
+    value: (p) => (p.foundedOn ? Number(p.foundedOn.slice(0, 4)) : num(p.foundedYear)),
+  },
+  { key: 'foundersCount', fr: 'Nombre de fondateurs', en: 'Number of founders', types: ['number'], value: (p) => num(p.foundersCount) },
+  { key: 'teamSize', fr: 'Effectif', en: 'Headcount', types: ['number'], value: (p) => num(p.teamSize) },
+  { key: 'womenCount', fr: 'Nombre de femmes', en: 'Number of women', types: ['number'], value: (p) => num(p.womenCount) },
+  { key: 'activeClients', fr: 'Clients actifs', en: 'Active clients', types: ['number'], value: (p) => num(p.activeClients) },
+  { key: 'capital', fr: 'Capital social', en: 'Share capital', types: ['number'], value: (p) => num(p.capitalAmount) },
+  {
+    key: 'lastRevenue', fr: 'Dernier chiffre d’affaires', en: 'Latest turnover', types: ['number'],
+    value: (p) => num([...p.revenues].sort((a, b) => b.year - a.year).find((r) => !r.unavailable && r.amount !== null)?.amount ?? null),
+  },
+  {
+    key: 'equityRaised', fr: 'Total levé en capital', en: 'Total equity raised', types: ['number'],
+    value: (p) => {
+      const first = fundingTotals(p.fundings).find((t) => t.equity > 0);
+      return first ? first.equity : undefined;
+    },
+  },
+  { key: 'pitchDeck', fr: 'Pitch deck', en: 'Pitch deck', types: ['file'], value: (p) => doc(p, 'pitch_deck') },
+  { key: 'statutes', fr: 'Statuts', en: 'Articles of association', types: ['file'], value: (p) => doc(p, 'statutes') },
+  { key: 'rc', fr: 'Registre de commerce', en: 'Commercial register', types: ['file'], value: (p) => doc(p, 'rc') },
+  { key: 'financials', fr: 'Dernier bilan', en: 'Latest financial statements', types: ['file'], value: (p) => doc(p, 'financials') },
+  { key: 'catalogue', fr: 'Catalogue produits', en: 'Product catalogue', types: ['file'], value: (p) => doc(p, 'catalogue') },
+];
+
+/** Comparer deux mots sans tenir aux majuscules ni aux accents. */
+const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+
+/**
+ * La réponse qu'une question reliée reçoit de la fiche — ou rien.
+ *
+ * Pour une liste de choix, seulement une option que le formulaire propose
+ * vraiment : écrite en français ou en anglais, avec ou sans accent. Une valeur
+ * qui ne correspond à aucune option ne remplit rien, plutôt qu'une réponse que
+ * le formulaire ne sait pas afficher.
+ */
+export function prefillFor(
+  field: { type: string; options: string[]; fromProfile?: string },
+  p: OrgProfile,
+  name: string,
+  lang: 'fr' | 'en' = 'fr',
+): unknown {
+  const source = PROFILE_SOURCES.find((s) => s.key === field.fromProfile);
+  if (!source || !(source.types as readonly string[]).includes(field.type)) return undefined;
+  const raw = source.value(p, name, lang);
+  if (raw === undefined || raw === null) return undefined;
+  const words = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : [String(v)]);
+  const pick = (candidates: string[]) => field.options.find((o) => candidates.some((c) => fold(c) === fold(o)));
+  if (field.type === 'select') return pick(words(raw));
+  if (field.type === 'multiselect') {
+    const picked = (raw as unknown[]).map((one) => pick(words(one))).filter(Boolean) as string[];
+    return picked.length ? picked : undefined;
+  }
+  /* Une liste de mots vers un texte : le mot dans la langue du formulaire. */
+  if (Array.isArray(raw)) {
+    const first = (one: unknown) => (Array.isArray(one) ? String(one[lang === 'fr' ? 0 : 1] ?? one[0]) : String(one));
+    return Array.isArray(raw[0]) ? raw.map(first).join(', ') : first(raw);
+  }
+  return raw;
+}

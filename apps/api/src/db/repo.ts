@@ -1577,7 +1577,16 @@ export async function claimUploads(candidateId: string, answers: Record<string, 
      rule with nothing behind it. */
   const ids = uploadIdsIn(Object.values(answers));
   if (!ids.length) return;
-  await (await db()).query('update uploads set candidate_id = $1 where id = any($2::text[])', [candidateId, ids]);
+  /* Sauf un document de la fiche, repris dans la candidature : il reste à
+     l'organisation. Le rattacher à la candidature le ferait disparaître avec
+     elle — la clé supprime en cascade —, et une seconde candidature le
+     retirerait à la première. Le juré l'ouvre par les réponses qu'il lit. */
+  await (await db()).query(
+    `update uploads set candidate_id = $1
+      where id = any($2::text[])
+        and not exists (select 1 from org_documents d where d.upload_id = uploads.id)`,
+    [candidateId, ids],
+  );
 }
 
 export async function getUpload(id: string) {

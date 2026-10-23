@@ -1,4 +1,5 @@
 
+import { prefillFor, profileOf } from '@ceed/shared';
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError, api } from '../lib/api';
@@ -166,6 +167,26 @@ export function ApplyPage() {
   const notHere = me.organisations.filter((o) => already.has(o.record.id));
   const applyingAs = orgId === NEW ? NEW : open.some((o) => o.record.id === orgId) ? orgId : (open[0]?.record.id ?? NEW);
   const naming = applyingAs === NEW;
+
+  /* Ce que la fiche de l'organisation choisie dit déjà, pour les questions que
+     le builder a reliées. Affiché tant que la personne n'y a pas touché : dès
+     qu'elle écrit — ou vide la case —, sa réponse gagne. Changer d'organisation
+     change ce qui est repris, sans effacer ce qu'elle a tapé. */
+  const chosen = naming ? null : me.organisations.find((o) => o.record.id === applyingAs)?.record ?? null;
+  const prefilled: Record<string, unknown> = {};
+  if (chosen) {
+    const profile = profileOf(chosen);
+    for (const field of data.pages.flatMap((pg) => pg.fields)) {
+      const value = prefillFor(field, profile, chosen.name, 'fr');
+      if (value !== undefined) prefilled[field.id] = value;
+    }
+  }
+  const answers = { ...prefilled, ...values };
+  const notes = Object.fromEntries(
+    Object.keys(prefilled)
+      .filter((id) => !(id in values))
+      .map((id) => [id, `From ${chosen!.name}’s profile — change it if this call needs something else.`]),
+  );
   const { blockedByGate, paged, steps } = formShape(data, ticked);
   const currentPage = paged ? (step === 0 ? null : data.pages[step - 1]) : null;
   const last = !paged || step === steps.length - 1;
@@ -185,7 +206,7 @@ export function ApplyPage() {
     if (naming && (!paged || step === 0) && !newOrg.name.trim()) found.orgName = 'Tell us which organisation is applying.';
     const fields = paged ? (currentPage?.fields ?? []) : data.pages.flatMap((p) => p.fields);
     for (const field of fields) {
-      if (field.required && isEmpty(values[field.id])) found[`answers.${field.id}`] = 'This answer is required.';
+      if (field.required && isEmpty(answers[field.id])) found[`answers.${field.id}`] = 'This answer is required.';
     }
     return found;
   };
@@ -209,7 +230,7 @@ export function ApplyPage() {
         newOrg: naming ? newOrg : null,
         source: via || heardFrom,
         acknowledged: ticked,
-        answers: values,
+        answers,
       });
       setDone(result.confirmation);
       window.scrollTo({ top: 0 });
@@ -300,7 +321,8 @@ export function ApplyPage() {
   return (
     <ApplyCard
       data={data}
-      values={values}
+      values={answers}
+      notes={notes}
       errors={errors}
       ticked={ticked}
       step={step}

@@ -1,4 +1,5 @@
 import {
+  uploadIdsIn,
   blockStatus,
   brickClosedOn,
   newId,
@@ -545,7 +546,10 @@ export async function funnelRoutes(app: FastifyInstance) {
               (item.profile?.logoUploadId && item.profile.logoUploadId === id) ||
               /* L'image d'un produit, que la fiche lue lui montre. Jamais un
                  document : ceux-là restent à l'organisation et à CEED. */
-              (!upload.isDocument && item.profile?.products.some((p) => p.imageUploadId === id)),
+              (!upload.isDocument && item.profile?.products.some((p) => p.imageUploadId === id)) ||
+              /* Un document de la fiche que la startup a joint à cette
+                 candidature : il est dans les réponses que le juré lit. */
+              uploadIdsIn(item.answers.map((a) => a.value)).includes(id),
           ),
         );
       // The same answer as a missing file: whoever asked has no business
