@@ -12,12 +12,20 @@
  * date written down twice is a date that will disagree with itself.
  */
 import { orderedBlocks, type CommitteeConfig } from '@ceed/shared';
+import { all } from '../db/client.js';
 import * as repo from '../db/repo.js';
+
+/** « 10:00 » plus 45 minutes. */
+const clockPlus = (clock: string, minutes: number) => {
+  const [h, m] = clock.split(':').map(Number);
+  const total = (h || 0) * 60 + (m || 0) + minutes;
+  return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+};
 import { committeeView } from './committee.js';
 
 export interface AgendaEntry {
   /** What kind of thing it is, so a screen can say it in its own words. */
-  kind: 'committee';
+  kind: 'committee' | 'one_to_one';
   /** The sitting's own name — "Pitch day 1". */
   name: string;
   blockName: string;
@@ -26,6 +34,9 @@ export interface AgendaEntry {
   startsAt: string | null;
   endsAt: string | null;
   location: string;
+  /** For a meeting: who they meet, and where to answer or book. */
+  with?: string;
+  link?: string | null;
 }
 
 /** What is coming for one candidacy, soonest first. */
@@ -57,5 +68,33 @@ export async function agendaFor(candidateId: string): Promise<AgendaEntry[]> {
     }
   }
 
-  return out.sort((a, b) => (a.on ?? '').localeCompare(b.on ?? ''));
+  /* Leurs One to One : ceux qui ont une heure, et ceux qui attendent qu'elle
+     en choisisse une — avec le lien pour le faire. Jamais le compte rendu. */
+  for (const m of await all<{
+    blockName: string; heldOn: string | null; startTime: string | null; durationMinutes: number;
+    location: string; personName: string; token: string; invite: string; rsvpState: string;
+  }>(
+    `select b.name as "blockName", m.held_on::text as "heldOn", m.start_time as "startTime",
+            m.duration_minutes as "durationMinutes", m.location, p.name as "personName", m.token, m.invite,
+            m.rsvp_state as "rsvpState"
+       from one_to_one_meetings m join blocks b on b.id = m.block_id join records p on p.id = m.person_id
+      where m.candidate_id = $1 and m.status = 'planned'
+        and (m.held_on is null or m.held_on >= current_date)`,
+    [candidateId],
+  )) {
+    const asks = m.invite === 'slots' ? !m.heldOn : m.invite === 'confirm' && m.rsvpState === 'pending';
+    out.push({
+      kind: 'one_to_one',
+      name: m.personName,
+      blockName: m.blockName,
+      on: m.heldOn,
+      startsAt: m.startTime,
+      endsAt: m.startTime ? clockPlus(m.startTime, m.durationMinutes) : null,
+      location: m.location,
+      with: m.personName,
+      link: asks ? `/meet/${m.token}` : null,
+    });
+  }
+
+  return out.sort((a, b) => (a.on ?? '9999').localeCompare(b.on ?? '9999'));
 }

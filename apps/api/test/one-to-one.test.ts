@@ -8,11 +8,17 @@
  */
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { summarise, type FormField } from '@ceed/shared';
+import { freeSlots, seriesDates, summarise, type FormField } from '@ceed/shared';
+import { all } from '../src/db/client.js';
+import { letters } from '../src/services/mail.js';
+import { agendaFor } from '../src/services/agenda.js';
 import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
-import { changeMeeting, meetingFor, meetingsFor, oneToOneView, planMeetings, saveReport } from '../src/services/oneToOne.js';
+import {
+  addAvailability, bookSlot, bricksFor, cancelFollowing, changeMeeting, historyOf, invitationFor, meetingFor,
+  meetingsFor, oneToOneView, planMeetings, saveReport, tellMeeting,
+} from '../src/services/oneToOne.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
 const uniq = () => `${Date.now()}.${Math.random().toString(36).slice(2, 6)}`;
@@ -36,6 +42,24 @@ describe('what a report sums up to', () => {
     const field: FormField = { ...REPORT[1]!, id: 'n', type: 'number' };
     const s = summarise(field, [{ n: 2 }, { n: 4 }, { n: '' }]);
     assert.deepEqual(s.kind === 'number' && [s.answered, s.average, s.min, s.max], [2, 3, 2, 4]);
+  });
+});
+
+describe('free slots and series', () => {
+  it('cuts a stretch into slots, leaves out what is taken and what is past', () => {
+    const slots = freeSlots(
+      [{ onDate: '2026-11-10', startTime: '09:00', endTime: '11:00', slotMinutes: 45 }, { onDate: '2026-10-01', startTime: '09:00', endTime: '10:00', slotMinutes: 30 }],
+      [{ heldOn: '2026-11-10', startTime: '09:45' }],
+      '2026-10-30',
+    );
+    assert.deepEqual(slots.map((x) => x.startTime), ['09:00'], '09:45 is taken, 10:30 would run past 11:00, October is gone');
+  });
+
+  it('dates a series at its rhythm, never past its end, never past 52', () => {
+    assert.deepEqual(seriesDates('2026-11-03', 'weekly', { count: 3 }), ['2026-11-03', '2026-11-10', '2026-11-17']);
+    assert.deepEqual(seriesDates('2026-11-03', 'biweekly', { until: '2026-12-01' }), ['2026-11-03', '2026-11-17', '2026-12-01']);
+    assert.deepEqual(seriesDates('2026-01-31', 'monthly', { count: 3 }), ['2026-01-31', '2026-02-28', '2026-03-31'], 'a 31st falls back in a short month');
+    assert.equal(seriesDates('2026-01-05', 'weekly', { until: '2030-01-01' }).length, 52);
   });
 });
 
@@ -133,4 +157,74 @@ describe('a One to One', { skip: skipWithoutServer }, () => {
     await repo.updateEdition(edition.id, { status: 'Draft' });
     assert.deepEqual(await meetingsFor(mentor.id), [], 'a draft edition has no outside');
   });
+
+  it('plans a series whole or not at all, and cancels the following sessions without touching the past', async () => {
+    const { block, mentor, a, b } = await setUp();
+    await planMeetings(block.id, { candidateIds: [b.id], personId: mentor.id, invite: 'none', heldOn: '2030-01-15', startTime: '10:00' });
+    await assert.rejects(
+      planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, invite: 'none', heldOn: '2030-01-01', startTime: '10:00', repeat: { frequency: 'weekly', count: 4, until: null } }),
+      'the third session clashes: nothing is created',
+    );
+    assert.equal((await oneToOneView(block.id))!.meetings.filter((m) => m.candidateId === a.id).length, 0);
+
+    const made = await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, invite: 'none', heldOn: '2030-01-02', startTime: '10:00', repeat: { frequency: 'weekly', count: 4, until: null } });
+    assert.equal(made.length, 4);
+    assert.ok(made.every((m) => m.seriesId === made[0]!.seriesId));
+    await changeMeeting(made[0]!.id, { status: 'held' });
+    assert.equal(await cancelFollowing(made[2]!.id), 2);
+    const after = (await oneToOneView(block.id))!.meetings.filter((m) => m.seriesId === made[0]!.seriesId);
+    assert.deepEqual(after.map((m) => m.status), ['held', 'planned', 'cancelled', 'cancelled']);
+  });
+
+  it('lets a startup book from the interlocutor’s availability, and not a slot taken meanwhile', async () => {
+    const { block, mentor, a, b } = await setUp();
+    await addAvailability(block.id, mentor.id, { onDate: '2030-02-04', startTime: '09:00', endTime: '10:30', slotMinutes: 45 });
+    const [ma, mb] = await planMeetings(block.id, { candidateIds: [a.id, b.id], personId: mentor.id, invite: 'slots', heldOn: null, startTime: null });
+    const page = await invitationFor(ma!.token);
+    assert.deepEqual(page!.page.slots.map((x) => x.startTime), ['09:00', '09:45']);
+    await bookSlot(ma!.token, '2030-02-04', '09:00');
+    await assert.rejects(bookSlot(mb!.token, '2030-02-04', '09:00'), 'taken a moment ago');
+    assert.deepEqual((await invitationFor(mb!.token))!.page.slots.map((x) => x.startTime), ['09:45']);
+    const booked = (await oneToOneView(block.id))!.meetings.find((m) => m.id === ma!.id)!;
+    assert.deepEqual([booked.heldOn, booked.startTime, booked.rsvpState], ['2030-02-04', '09:00', 'confirmed']);
+    assert.ok((await bricksFor(mentor.id)).some((x) => x.blockId === block.id), 'the interlocutor may publish here');
+  });
+
+  it('writes to the startup with its own link, and to the interlocutor with the meeting', async () => {
+    /* L'adresse publique de l'app, que la production connaît par APP_URL. */
+    const before = process.env.APP_URL;
+    process.env.APP_URL = 'https://app.example.test';
+    after(() => {
+      if (before === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = before;
+    });
+    const { block, mentor, a } = await setUp();
+    const founder = `fondateur.${uniq()}@example.test`;
+    await all(`update records set emails = $2::jsonb where id = $1`, [mentor.id, [`nadia.${uniq()}@example.test`]]);
+    /* La startup s'écrit à son contact : la personne qui a candidaté pour elle. */
+    const contact = await dir.createRecord({ kind: 'person', name: `Karim ${uniq()}`, emails: [founder], origin: 'manual' });
+    await all(`update candidates set person_id = $2 where id = $1`, [a.id, contact.id]);
+    const [m] = await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, invite: 'confirm', heldOn: '2030-03-03', startTime: '14:00' });
+    const told = await tellMeeting(m!.id, { startup: true, person: true });
+    assert.equal(told.person, true);
+    const seen = (await oneToOneView(block.id))!.meetings.find((x) => x.id === m!.id)!;
+    assert.ok(seen.toldPersonAt);
+    assert.equal(told.startup, true);
+    const [letter] = await letters({ email: founder });
+    assert.ok(letter!.body.includes(`https://app.example.test/meet/${m!.token}`), 'the startup’s own link');
+    assert.ok(letter!.body.includes('14:00'));
+    assert.ok(letter!.body.startsWith('Bonjour Karim'), 'their contact, by first name');
+  });
+
+  it('puts what is coming in the startup’s agenda, and keeps the history', async () => {
+    const { block, mentor, a } = await setUp();
+    const [m] = await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, invite: 'confirm', heldOn: '2030-04-01', startTime: '11:00' });
+    const agenda = await agendaFor(a.id);
+    const entry = agenda.find((e) => e.kind === 'one_to_one');
+    assert.equal(entry?.with, mentor.name);
+    assert.equal(entry?.endsAt, '11:45');
+    assert.equal(entry?.link, `/meet/${m!.token}`, 'still waiting on their answer: the link is there');
+    assert.equal((await historyOf({ candidateId: a.id }))[0]?.blockName, 'Mentoring');
+  });
 });
+

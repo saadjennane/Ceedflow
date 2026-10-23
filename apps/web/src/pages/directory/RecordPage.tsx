@@ -28,6 +28,7 @@ import { TaskModal } from '../../ui/TaskModal';
 import { Row as TaskRow } from '../TasksPage';
 import { ProfileBar, ProfileFacts, Logo } from '../../ui/OrgProfile';
 import { OrgSheet } from '../../ui/OrgSheet';
+import { MeetingHistory } from '../../ui/MeetingHistory';
 
 export function RecordPage() {
   const { recordId = '' } = useParams();
@@ -259,10 +260,16 @@ export function RecordPage() {
 
           <div className="card card-pad stack" style={{ gap: 8 }}>
             <div className="eyebrow">Program history</div>
-            <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
-              Computed from the editions, never typed. It lights up once candidates and team members point at the
-              directory.
-            </p>
+            {/* Ses One to One, lus dans les rendez-vous : qui elle a vu, et si
+                le compte rendu est revenu. */}
+            {isOrg ? (
+              <MeetingHistory url={`/api/records/${record.id}/meetings`} empty="No One to One yet." />
+            ) : (
+              <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+                Computed from the editions, never typed. It lights up once candidates and team members point at the
+                directory.
+              </p>
+            )}
           </div>
 
           <button className="btn ghost" style={{ color: 'var(--stop)' }} onClick={() => setRemoving(true)}>

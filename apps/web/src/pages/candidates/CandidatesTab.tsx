@@ -26,6 +26,7 @@ import { Icon } from '../../ui/Icon';
 import { Linked } from '../../ui/Linked';
 import { SearchBox } from '../../ui/SearchBox';
 import { TaskModal } from '../../ui/TaskModal';
+import { MeetingHistory } from '../../ui/MeetingHistory';
 import { ConfirmDialog, Drawer, Modal, useToast } from '../../ui/Overlays';
 import { CohortTable } from './CohortTable';
 
@@ -739,6 +740,8 @@ function CandidateDrawer({
             <dd>{candidate.source || '—'}</dd>
           </dl>
         )}
+
+        <MeetingHistory url={`/api/candidates/${candidate.id}/meetings`} heading="One to One" />
 
         <h3 className="section-title">Application</h3>
 

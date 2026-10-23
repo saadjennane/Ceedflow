@@ -43,6 +43,9 @@ export interface OneToOneMeeting {
   reportSubmittedAt: string | null;
   reportByName: string;
   createdAt: string;
+  /** When each side was written to about it. Null: not yet. */
+  toldStartupAt: string | null;
+  toldPersonAt: string | null;
 }
 
 /** Where a meeting stands, for a badge: what the reader needs to know first. */
@@ -74,6 +77,10 @@ export const planMeetingsInput = z.object({
   startTime: clock.nullable().default(null),
   durationMinutes: z.number().int().min(5).max(480).optional(),
   location: z.string().optional(),
+  /** A series: one startup, the same time, at a rhythm, until an end. */
+  repeat: z.lazy(() => repeatInput).nullable().default(null),
+  /** Write to them now — the startup, and the interlocutor. */
+  tell: z.boolean().default(false),
 });
 
 export const meetingPatch = z.object({
@@ -133,3 +140,115 @@ export function summarise(field: FormField, reports: Record<string, unknown>[]):
   if (field.type === 'file') return { kind: 'file', field, answered: given.length };
   return { kind: 'text', field, answered: given.length, answers: given.map(String) };
 }
+
+/* ------------------------------------------------------------------ */
+/* Availability and booking                                            */
+/* ------------------------------------------------------------------ */
+
+/** A stretch of a day an interlocutor offers, cut into slots of `slotMinutes`. */
+export interface Availability {
+  id: string;
+  blockId: string;
+  personId: string;
+  onDate: string;
+  startTime: string;
+  endTime: string;
+  slotMinutes: number;
+}
+
+export interface FreeSlot {
+  onDate: string;
+  startTime: string;
+  endTime: string;
+}
+
+const minutes = (clock: string) => {
+  const [h, m] = clock.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+};
+const clockOf = (total: number) =>
+  `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+
+/**
+ * Les créneaux libres d'un interlocuteur.
+ *
+ * Never stored — the availability and the meetings already held are the
+ * truth, the committee's rule. A slot is gone when the same person has a
+ * meeting, in any brick, starting then; and a day already past offers nothing.
+ */
+export function freeSlots(
+  windows: readonly Pick<Availability, 'onDate' | 'startTime' | 'endTime' | 'slotMinutes'>[],
+  taken: readonly { heldOn: string | null; startTime: string | null }[],
+  today = new Date().toISOString().slice(0, 10),
+): FreeSlot[] {
+  const busy = new Set(taken.filter((t) => t.heldOn && t.startTime).map((t) => `${t.heldOn} ${t.startTime}`));
+  const out: FreeSlot[] = [];
+  for (const w of windows) {
+    if (w.onDate < today) continue;
+    const step = Math.max(5, w.slotMinutes);
+    for (let at = minutes(w.startTime); at + step <= minutes(w.endTime); at += step) {
+      const startTime = clockOf(at);
+      if (busy.has(`${w.onDate} ${startTime}`)) continue;
+      out.push({ onDate: w.onDate, startTime, endTime: clockOf(at + step) });
+    }
+  }
+  return out.sort((a, b) => (a.onDate + a.startTime).localeCompare(b.onDate + b.startTime));
+}
+
+export const availabilityInput = z
+  .object({
+    onDate: day,
+    startTime: clock,
+    endTime: clock,
+    slotMinutes: z.number().int().min(5).max(480).default(45),
+  })
+  .refine((a) => a.endTime > a.startTime, { message: 'The end comes after the start.', path: ['endTime'] });
+
+/* ------------------------------------------------------------------ */
+/* Recurrence                                                          */
+/* ------------------------------------------------------------------ */
+
+export const FREQUENCIES = ['weekly', 'biweekly', 'monthly'] as const;
+export type Frequency = (typeof FREQUENCIES)[number];
+export const FREQUENCY_LABEL: Record<Frequency, string> = {
+  weekly: 'Every week',
+  biweekly: 'Every two weeks',
+  monthly: 'Every month',
+};
+
+/** A series stops at this many sessions, whatever its end says. */
+export const MAX_SESSIONS = 52;
+
+/**
+ * Les dates d'une série : la première, puis au rythme choisi, jusqu'à sa fin.
+ *
+ * A month is the same day of the next month — and a 31st falls back to the
+ * last day of a shorter month rather than spilling into the one after.
+ */
+export function seriesDates(first: string, frequency: Frequency, end: { count?: number | null; until?: string | null }): string[] {
+  const cap = Math.min(MAX_SESSIONS, end.count && end.count > 0 ? end.count : MAX_SESSIONS);
+  const [y, m, d] = first.split('-').map(Number) as [number, number, number];
+  const out: string[] = [];
+  for (let i = 0; out.length < cap; i++) {
+    let date: Date;
+    if (frequency === 'monthly') {
+      const last = new Date(Date.UTC(y, m - 1 + i + 1, 0)).getUTCDate();
+      date = new Date(Date.UTC(y, m - 1 + i, Math.min(d, last)));
+    } else {
+      date = new Date(Date.UTC(y, m - 1, d + i * (frequency === 'weekly' ? 7 : 14)));
+    }
+    const iso = date.toISOString().slice(0, 10);
+    if (end.until && iso > end.until) break;
+    out.push(iso);
+    if (!end.count && !end.until && out.length >= cap) break;
+  }
+  return out;
+}
+
+export const repeatInput = z
+  .object({
+    frequency: z.enum(FREQUENCIES),
+    count: z.number().int().min(2).max(MAX_SESSIONS).nullable().default(null),
+    until: day.nullable().default(null),
+  })
+  .refine((r) => r.count !== null || r.until !== null, { message: 'Say when it ends.', path: ['count'] });

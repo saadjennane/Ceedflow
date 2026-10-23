@@ -782,3 +782,9 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
   border-radius: var(--r-sm);
   background: var(--canvas);
 }
+
+.oto-pick {
+  max-height: 240px;
+  overflow-y: auto;
+  gap: 4px;
+}

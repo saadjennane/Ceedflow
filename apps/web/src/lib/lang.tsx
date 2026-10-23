@@ -51,6 +51,9 @@ const WORDS = {
   'prog.todo': { fr: 'À faire', en: 'To do' },
   'prog.agenda': { fr: 'Activités', en: 'Activities' },
   'prog.back': { fr: 'Vos programmes', en: 'Your programmes' },
+  'prog.meeting': { fr: 'Rendez-vous avec', en: 'Meeting with' },
+  'prog.meetBook': { fr: 'Choisir un créneau', en: 'Pick a time' },
+  'prog.meetConfirm': { fr: 'Confirmer', en: 'Confirm' },
   'prog.noTodo': { fr: 'Rien ne vous est demandé pour l’instant.', en: 'Nothing is asked of you right now.' },
   'prog.noAgenda': {
     fr: 'Aucune date pour l’instant. Les séances et les ateliers apparaîtront ici.',

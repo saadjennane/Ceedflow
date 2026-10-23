@@ -25,7 +25,18 @@ import {
   type OrgProfile,
   type PersonRef,
   type TrackWithPhases,
+  type Availability,
+  type FreeSlot,
+  type Frequency,
+  fillTemplate,
+  firstNameOf,
+  freeSlots,
+  longDate,
+  seriesDates,
 } from '@ceed/shared';
+import { accessFor } from './invitations.js';
+import { post } from './mail.js';
+import { publicOrigin } from './platform.js';
 import { all, one } from '../db/client.js';
 import * as dir from '../db/directory.js';
 import { peopleByIds } from '../db/directory.js';
@@ -40,7 +51,8 @@ const COLS = `
   m.held_on::text as "heldOn", m.start_time as "startTime", m.duration_minutes as "durationMinutes",
   m.location, m.invite, m.token, m.rsvp_state as "rsvpState", m.responded_at::text as "respondedAt",
   m.status, m.report, m.report_submitted_at::text as "reportSubmittedAt", m.report_by_name as "reportByName",
-  m.created_at::text as "createdAt"
+  m.created_at::text as "createdAt",
+  m.told_startup_at::text as "toldStartupAt", m.told_person_at::text as "toldPersonAt"
   from one_to_one_meetings m
   join candidates c on c.id = m.candidate_id and c.deleted_at is null
   join records o on o.id = c.org_id
@@ -85,6 +97,7 @@ export interface OneToOneView {
   /** Every startup that reached this brick, with its assigned mentor, if any. */
   pool: { candidate: Candidate }[];
   interlocutors: PersonRef[];
+  availability: Availability[];
 }
 
 export async function oneToOneView(blockId: string): Promise<OneToOneView | null> {
@@ -98,6 +111,7 @@ export async function oneToOneView(blockId: string): Promise<OneToOneView | null
     meetings: (await listMeetings(blockId)).filter((m) => inPool.has(m.candidateId)),
     pool: ctx.intake.map((candidate) => ({ candidate })),
     interlocutors: await peopleByIds(ctx.config.interlocutors),
+    availability: await listAvailability(blockId),
   };
 }
 
@@ -130,6 +144,8 @@ export async function planMeetings(
     startTime: string | null;
     durationMinutes?: number;
     location?: string;
+    repeat?: { frequency: Frequency; count: number | null; until: string | null } | null;
+    tell?: boolean;
   },
 ): Promise<OneToOneMeeting[]> {
   const ctx = await brickContext(blockId);
@@ -137,45 +153,86 @@ export async function planMeetings(
   if (!ctx.config.interlocutors.includes(input.personId)) {
     throw new HttpError(422, 'Add this person to the brick’s interlocutors first.', { personId: 'Not an interlocutor here.' });
   }
+  const books = input.invite === 'slots';
   /* Proposer ou fixer un rendez-vous, c'est donner une heure ; laisser
      réserver, c'est la laisser vide. */
-  if (input.invite !== 'slots' && (!input.heldOn || !input.startTime)) {
+  if (!books && (!input.heldOn || !input.startTime)) {
     throw new HttpError(422, 'Give a date and a time.', { heldOn: 'A date and a time.' });
   }
   const inPool = new Set(ctx.intake.map((c) => c.id));
-  const stranger = input.candidateIds.find((id) => !inPool.has(id));
-  if (stranger) throw new HttpError(422, 'That startup has not reached this brick.');
+  if (input.candidateIds.some((id) => !inPool.has(id))) throw new HttpError(422, 'That startup has not reached this brick.');
   /* Plusieurs startups à la même heure avec la même personne : refusé, comme
-     un second rendez-vous par-dessus un premier. */
-  if (input.invite !== 'slots' && input.candidateIds.length > 1) {
+     un second rendez-vous par-dessus un premier. Laisser réserver, si : chacune
+     prendra son créneau. */
+  if (!books && input.candidateIds.length > 1) {
     throw new HttpError(422, 'One startup per time slot — plan them one by one, or let them book.');
   }
-  if (input.invite !== 'slots' && (await busy(input.personId, input.heldOn, input.startTime))) {
-    throw new HttpError(409, 'They already have a meeting at that time.', { startTime: 'Already taken.' });
+  if (input.repeat && (books || input.candidateIds.length > 1)) {
+    throw new HttpError(422, 'A series is one startup, at a set time.');
+  }
+
+  /* Les dates : une, ou toutes celles de la série. Une seule déjà prise, et
+     rien n'est créé — une série à trous se découvrirait séance après séance. */
+  const dates = !books && input.repeat
+    ? seriesDates(input.heldOn!, input.repeat.frequency, { count: input.repeat.count, until: input.repeat.until })
+    : [input.heldOn];
+  if (!books) {
+    const clashes: string[] = [];
+    for (const date of dates) if (await busy(input.personId, date, input.startTime)) clashes.push(date!);
+    if (clashes.length) {
+      throw new HttpError(409, `They already have a meeting at that time on ${clashes.join(', ')}.`, {
+        startTime: 'Already taken.',
+      });
+    }
+  }
+
+  const duration = input.durationMinutes ?? ctx.config.durationMinutes;
+  const location = input.location ?? ctx.config.location;
+  let seriesId: string | null = null;
+  if (!books && input.repeat) {
+    seriesId = newId('ser');
+    await all(
+      `insert into one_to_one_series (id, block_id, candidate_id, person_id, frequency, first_on, start_time,
+                                      until_on, count, duration_minutes, location)
+       values ($1,$2,$3,$4,$5,$6::date,$7,$8::date,$9,$10,$11)`,
+      [seriesId, blockId, input.candidateIds[0], input.personId, input.repeat.frequency, input.heldOn,
+        input.startTime, input.repeat.until, input.repeat.count, duration, location],
+    );
   }
 
   const made: OneToOneMeeting[] = [];
   for (const candidateId of input.candidateIds) {
-    const id = newId('oto');
-    await all(
-      `insert into one_to_one_meetings
-         (id, block_id, candidate_id, person_id, held_on, start_time, duration_minutes, location, invite, token, rsvp_state)
-       values ($1,$2,$3,$4,$5::date,$6,$7,$8,$9,$10,$11)`,
-      [
-        id, blockId, candidateId, input.personId,
-        input.invite === 'slots' ? null : input.heldOn,
-        input.invite === 'slots' ? null : input.startTime,
-        input.durationMinutes ?? ctx.config.durationMinutes,
-        input.location ?? ctx.config.location,
-        input.invite, newId('meet').replace('meet_', ''),
-        /* Fixé sans invitation : il n'y a pas de réponse à attendre. */
-        input.invite === 'none' ? 'confirmed' : 'pending',
-      ],
-    );
-    made.push((await getMeeting(id))!);
+    for (const date of dates) {
+      const id = newId('oto');
+      await all(
+        `insert into one_to_one_meetings
+           (id, block_id, candidate_id, person_id, series_id, held_on, start_time, duration_minutes, location,
+            invite, token, rsvp_state)
+         values ($1,$2,$3,$4,$5,$6::date,$7,$8,$9,$10,$11,$12)`,
+        [
+          id, blockId, candidateId, input.personId, seriesId,
+          books ? null : date, books ? null : input.startTime, duration, location,
+          input.invite, newId('meet').replace('meet_', ''),
+          /* Fixé sans invitation : il n'y a pas de réponse à attendre. */
+          input.invite === 'none' ? 'confirmed' : 'pending',
+        ],
+      );
+      made.push((await getMeeting(id))!);
+    }
+  }
+  /* Une série s'annonce une fois, par sa première séance, et dit son rythme :
+     cinquante-deux lettres pour un mentoring hebdomadaire, personne ne les lit. */
+  if (input.tell) {
+    const firsts = seriesId ? made.slice(0, 1) : made;
+    const rhythm = seriesId && input.repeat ? rhythmLine(input.repeat.frequency, dates[dates.length - 1]!) : '';
+    for (const m of firsts) await tellMeeting(m.id, { startup: true, person: true }, rhythm);
   }
   return made;
 }
+
+/** « Puis toutes les semaines, jusqu'au 15 décembre. » */
+const rhythmLine = (frequency: Frequency, last: string) =>
+  `Puis ${frequency === 'weekly' ? 'toutes les semaines' : frequency === 'biweekly' ? 'toutes les deux semaines' : 'tous les mois'}, jusqu’au ${longDate(last)}.`;
 
 export async function changeMeeting(
   id: string,
@@ -224,6 +281,22 @@ export async function changeMeeting(
 
 export const dropMeeting = async (id: string): Promise<boolean> =>
   (await all<{ id: string }>('delete from one_to_one_meetings where id = $1 returning id', [id])).length > 0;
+
+/**
+ * Cette séance et les suivantes d'une série : annulées, sans toucher aux
+ * passées — leurs comptes rendus sont l'histoire du mentoring.
+ */
+export async function cancelFollowing(id: string): Promise<number> {
+  const m = await getMeeting(id);
+  if (!m?.seriesId) return 0;
+  const rows = await all<{ id: string }>(
+    `update one_to_one_meetings set status = 'cancelled'
+      where series_id = $1 and status = 'planned' and (held_on is null or held_on >= $2::date)
+      returning id`,
+    [m.seriesId, m.heldOn],
+  );
+  return rows.length;
+}
 
 /* ------------------------------------------------------------------ */
 /* The report                                                          */
@@ -375,6 +448,8 @@ export interface MeetingInvitation {
   status: OneToOneMeeting['status'];
   /** Whether an answer may still be given. */
   open: boolean;
+  /** For a meeting the startup books: what is free with its interlocutor. */
+  slots: FreeSlot[];
 }
 
 /**
@@ -389,6 +464,12 @@ export async function invitationFor(token: string): Promise<{ meeting: OneToOneM
   const ctx = await repo.blockContext(meeting.blockId);
   const detail = ctx ? await repo.getEditionDetail(ctx.editionId) : null;
   if (!detail || !editionIsVisible(detail.status)) return null;
+  /* Répondre à une heure proposée, ou réserver la sienne — et rien quand la
+     séance est fixée, passée ou annulée, ou l'édition terminée. */
+  const open =
+    editionTakesInput(detail.status) &&
+    meeting.status === 'planned' &&
+    (meeting.invite === 'confirm' ? Boolean(meeting.heldOn) : meeting.invite === 'slots');
   return {
     meeting,
     page: {
@@ -404,11 +485,8 @@ export async function invitationFor(token: string): Promise<{ meeting: OneToOneM
       invite: meeting.invite,
       rsvpState: meeting.rsvpState,
       status: meeting.status,
-      open:
-        editionTakesInput(detail.status) &&
-        meeting.invite === 'confirm' &&
-        meeting.status === 'planned' &&
-        Boolean(meeting.heldOn),
+      open,
+      slots: open && meeting.invite === 'slots' ? await slotsFor(meeting) : [],
     },
   };
 }
@@ -423,4 +501,226 @@ export async function answerInvitation(token: string, accept: boolean): Promise<
     accept ? 'confirmed' : 'declined',
   ]);
   return (await invitationFor(token))!.page;
+}
+
+/* ------------------------------------------------------------------ */
+/* Letters                                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Écrire à la startup, à l'interlocuteur, ou aux deux, à propos d'un rendez-vous.
+ *
+ * Posted rather than sent, like every other letter: a mail provider having a
+ * bad minute does not undo a meeting. The startup is told what to do — book,
+ * confirm, or nothing — with its own link; the interlocutor where to open the
+ * meeting and write the report, and how to get in when they never have.
+ */
+export async function tellMeeting(
+  id: string,
+  who: { startup?: boolean; person?: boolean },
+  extra = '',
+): Promise<{ startup: boolean; person: boolean }> {
+  const m = await getMeeting(id);
+  if (!m) throw new HttpError(404, 'Meeting not found.');
+  const ctx = await repo.blockContext(m.blockId);
+  const detail = ctx ? await repo.getEditionDetail(ctx.editionId) : null;
+  const config = ctx?.block.config as OneToOneConfig | undefined;
+  if (!ctx || !detail || !config) throw new HttpError(404, 'Meeting not found.');
+  const origin = await publicOrigin();
+  const programme = `${detail.program.name} — ${detail.name}`;
+  const quand = [
+    m.heldOn ? `Le ${longDate(m.heldOn)}${m.startTime ? ` à ${m.startTime}` : ''}, pour ${m.durationMinutes} minutes.` : '',
+    extra,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const lieu = m.location ? `Lieu : ${m.location}.` : '';
+  const out = { startup: false, person: false };
+
+  if (who.startup) {
+    const candidate = await repo.getCandidate(m.candidateId);
+    const to = candidate?.email?.trim();
+    if (candidate && to) {
+      const link = origin ? `${origin}/meet/${m.token}` : '';
+      const action =
+        m.invite === 'slots'
+          ? `Choisissez votre créneau ici : ${link}`
+          : m.invite === 'confirm'
+            ? `Confirmez, ou dites-nous si l’heure ne convient pas : ${link}`
+            : '';
+      const values = {
+        prenom: firstNameOf(candidate.contactName, candidate.contactFirstName),
+        startup: m.orgName,
+        interlocuteur: m.personName,
+        programme,
+        quand: m.invite === 'slots' ? '' : quand,
+        lieu,
+        action,
+      };
+      const posted = await post({
+        kind: 'one_to_one_startup',
+        to,
+        toName: candidate.contactName,
+        recordId: candidate.personId,
+        blockId: m.blockId,
+        candidateId: m.candidateId,
+        subject: fillTemplate(config.messages.subjects.startup, values),
+        body: fillTemplate(config.messages.startup, values),
+      });
+      if (posted) {
+        await all('update one_to_one_meetings set told_startup_at = now() where id = $1', [id]);
+        out.startup = true;
+      }
+    }
+  }
+
+  if (who.person) {
+    const person = await dir.getRecord(m.personId);
+    const to = person?.email?.trim();
+    if (person && to) {
+      const values = {
+        prenom: firstNameOf(person.name, person.firstName),
+        startup: m.orgName,
+        programme,
+        quand: m.invite === 'slots' && !m.heldOn ? 'La startup choisira son créneau parmi vos disponibilités.' : quand,
+        lieu,
+        lien: origin ? `${origin}/meeting/${m.id}` : '',
+        acces: config.messages.person.includes('{{acces}}') ? await accessFor(m.personId, config.messages.access) : '',
+      };
+      const posted = await post({
+        kind: 'one_to_one_person',
+        to,
+        toName: person.name,
+        recordId: m.personId,
+        blockId: m.blockId,
+        candidateId: m.candidateId,
+        subject: fillTemplate(config.messages.subjects.person, values),
+        body: fillTemplate(config.messages.person, values),
+      });
+      if (posted) {
+        await all('update one_to_one_meetings set told_person_at = now() where id = $1', [id]);
+        out.person = true;
+      }
+    }
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* Availability and booking                                            */
+/* ------------------------------------------------------------------ */
+
+const AV_COLS = `id, block_id as "blockId", person_id as "personId", on_date::text as "onDate",
+  start_time as "startTime", end_time as "endTime", slot_minutes as "slotMinutes"`;
+
+export const listAvailability = (blockId: string) =>
+  all<Availability>(`select ${AV_COLS} from one_to_one_availability where block_id = $1 order by on_date, start_time`, [blockId]);
+
+export const availabilityOf = (personId: string) =>
+  all<Availability>(
+    `select ${AV_COLS} from one_to_one_availability where person_id = $1 and on_date >= current_date order by on_date, start_time`,
+    [personId],
+  );
+
+export async function addAvailability(
+  blockId: string,
+  personId: string,
+  input: { onDate: string; startTime: string; endTime: string; slotMinutes: number },
+): Promise<void> {
+  const ctx = await brickContext(blockId);
+  if (!ctx) throw new HttpError(404, 'One to One not found.');
+  if (!ctx.config.interlocutors.includes(personId)) throw new HttpError(422, 'Not an interlocutor of this brick.');
+  await all(
+    `insert into one_to_one_availability (id, block_id, person_id, on_date, start_time, end_time, slot_minutes)
+     values ($1,$2,$3,$4::date,$5,$6,$7)`,
+    [newId('ava'), blockId, personId, input.onDate, input.startTime, input.endTime, input.slotMinutes],
+  );
+}
+
+/** Retirer une plage — la sienne seulement, quand on passe par son espace. */
+export async function dropAvailability(id: string, personId?: string): Promise<boolean> {
+  const rows = await all<{ id: string }>(
+    `delete from one_to_one_availability where id = $1 and ($2::text is null or person_id = $2) returning id`,
+    [id, personId ?? null],
+  );
+  return rows.length > 0;
+}
+
+/** Ce qu'une startup peut réserver chez l'interlocuteur de ce rendez-vous, dans cette brique. */
+export async function slotsFor(meeting: OneToOneMeeting): Promise<FreeSlot[]> {
+  const windows = (await listAvailability(meeting.blockId)).filter((w) => w.personId === meeting.personId);
+  const taken = await all<{ heldOn: string | null; startTime: string | null }>(
+    `select held_on::text as "heldOn", start_time as "startTime" from one_to_one_meetings
+      where person_id = $1 and status <> 'cancelled' and id <> $2`,
+    [meeting.personId, meeting.id],
+  );
+  return freeSlots(windows, taken);
+}
+
+/**
+ * Réserver un créneau, par le lien de la startup.
+ *
+ * The slot has to be free at the moment of booking — two startups on the same
+ * page at once, the second one is told — and booking again moves the meeting
+ * rather than adding one.
+ */
+export async function bookSlot(token: string, onDate: string, startTime: string): Promise<MeetingInvitation> {
+  const found = await invitationFor(token);
+  if (!found) throw new HttpError(404, 'This invitation does not exist.');
+  if (found.meeting.invite !== 'slots' || !found.page.open) {
+    throw new HttpError(403, 'This meeting can no longer be booked here. Get in touch with the team.');
+  }
+  const free = await slotsFor(found.meeting);
+  if (!free.some((f) => f.onDate === onDate && f.startTime === startTime)) {
+    throw new HttpError(409, 'That time has just been taken. Pick another.');
+  }
+  await all(
+    `update one_to_one_meetings set held_on = $2::date, start_time = $3, rsvp_state = 'confirmed', responded_at = now()
+      where id = $1`,
+    [found.meeting.id, onDate, startTime],
+  );
+  return (await invitationFor(token))!.page;
+}
+
+/* ------------------------------------------------------------------ */
+/* The interlocutor's own availability                                 */
+/* ------------------------------------------------------------------ */
+
+/** Les briques où quelqu'un est interlocuteur, ouvertes, dans une édition visible. */
+export async function bricksFor(recordId: string): Promise<{ blockId: string; name: string; programName: string; durationMinutes: number }[]> {
+  const rows = await all<{ id: string }>(
+    `select id from blocks where type = 'one_to_one' and config->'interlocutors' @> to_jsonb($1::text)`,
+    [recordId],
+  );
+  const out = [];
+  for (const { id } of rows) {
+    const ctx = await repo.blockContext(id);
+    const detail = ctx ? await repo.getEditionDetail(ctx.editionId) : null;
+    if (!ctx || !detail || !editionIsVisible(detail.status) || blockStatus(ctx.block) !== 'live') continue;
+    out.push({
+      blockId: id,
+      name: ctx.block.name,
+      programName: `${detail.program.name} — ${detail.name}`,
+      durationMinutes: (ctx.block.config as OneToOneConfig).durationMinutes,
+    });
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* A startup's history                                                 */
+/* ------------------------------------------------------------------ */
+
+export interface MeetingLine extends OneToOneMeeting {
+  blockName: string;
+}
+
+/** Les rendez-vous d'une candidature, ou de toutes celles d'une organisation. */
+export async function historyOf(by: { candidateId?: string; orgId?: string }): Promise<MeetingLine[]> {
+  return all<MeetingLine>(
+    `select ${COLS.replace('from one_to_one_meetings m', ', b.name as "blockName" from one_to_one_meetings m join blocks b on b.id = m.block_id')}
+      where ${by.candidateId ? 'm.candidate_id = $1' : 'c.org_id = $1'}
+      order by m.held_on desc nulls first, m.created_at desc`,
+    [by.candidateId ?? by.orgId],
+  );
 }

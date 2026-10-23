@@ -1473,6 +1473,53 @@ export const deliverableOutcomes = (config: DeliverableConfig): BlockOutcome[] =
  * with. The door is the interlocutors': it says when they see their meetings
  * and may write the reports.
  */
+/** What a letter about a One to One may name. Each variable holds its whole line. */
+export const ONE_TO_ONE_STARTUP_VARIABLES = [
+  { name: 'prenom', label: 'First name', what: 'The first name of the startup’s contact', example: 'Karim' },
+  { name: 'startup', label: 'Startup', what: 'The startup’s name', example: 'Rafid Tech' },
+  { name: 'interlocuteur', label: 'Interlocutor', what: 'Who they meet', example: 'Nadia Berrada' },
+  { name: 'programme', label: 'Programme', what: 'The programme and its edition', example: 'Grow — 2026' },
+  { name: 'quand', label: 'When', what: 'The whole sentence — empty when the startup picks the time', example: 'Le mardi 3 novembre à 10:00, pour 45 minutes.' },
+  { name: 'lieu', label: 'Where', what: 'The whole sentence — empty when no place is set', example: 'Lieu : CEED, Casablanca.' },
+  { name: 'action', label: 'What to do', what: 'Book a time, or confirm the one proposed — with the link. Empty when nothing is asked', example: 'Choisissez votre créneau ici : https://www.ceedflow.com/meet/…' },
+] as const;
+
+export const ONE_TO_ONE_PERSON_VARIABLES = [
+  { name: 'prenom', label: 'First name', what: 'The interlocutor’s first name', example: 'Nadia' },
+  { name: 'startup', label: 'Startup', what: 'The startup they meet', example: 'Rafid Tech' },
+  { name: 'programme', label: 'Programme', what: 'The programme and its edition', example: 'Grow — 2026' },
+  { name: 'quand', label: 'When', what: 'The whole sentence — or that the startup will pick a time', example: 'Le mardi 3 novembre à 10:00, pour 45 minutes.' },
+  { name: 'lieu', label: 'Where', what: 'The whole sentence — empty when no place is set', example: 'Lieu : CEED, Casablanca.' },
+  { name: 'lien', label: 'Link', what: 'Where they open the meeting and write the report', example: 'https://www.ceedflow.com/meeting/…' },
+  { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody else', example: '' },
+] as const;
+
+export const ONE_TO_ONE_STARTUP_SUBJECT = 'Un rendez-vous avec {{interlocuteur}} — {{programme}}';
+export const ONE_TO_ONE_STARTUP_DEFAULT = `Bonjour {{prenom}},
+
+Dans le cadre de {{programme}}, {{startup}} a rendez-vous avec {{interlocuteur}}.
+
+{{quand}}
+
+{{lieu}}
+
+{{action}}
+
+À bientôt.`;
+
+export const ONE_TO_ONE_PERSON_SUBJECT = 'Rendez-vous avec {{startup}} — {{programme}}';
+export const ONE_TO_ONE_PERSON_DEFAULT = `Bonjour {{prenom}},
+
+Vous avez rendez-vous avec {{startup}}, dans le cadre de {{programme}}.
+
+{{quand}}
+
+{{lieu}}
+
+Vous retrouvez la startup et le compte rendu à remplir ici : {{lien}}
+
+{{acces}}`;
+
 export const oneToOneConfigSchema = z.object({
   ...brickWindowFields,
   invite: z.enum(RSVP_MODES).default('confirm'),
@@ -1480,6 +1527,20 @@ export const oneToOneConfigSchema = z.object({
   location: z.string().default(''),
   /** The people startups meet here, by directory record id. */
   interlocutors: z.array(z.string()).default([]),
+  /** The two letters: to the startup, and to the interlocutor. */
+  messages: z
+    .object({
+      startup: z.string().default(ONE_TO_ONE_STARTUP_DEFAULT),
+      person: z.string().default(ONE_TO_ONE_PERSON_DEFAULT),
+      subjects: z
+        .object({
+          startup: z.string().default(ONE_TO_ONE_STARTUP_SUBJECT),
+          person: z.string().default(ONE_TO_ONE_PERSON_SUBJECT),
+        })
+        .default({}),
+      access: z.string().default(ACCESS_DEFAULT),
+    })
+    .default({}),
   /** The report, as a form: one page or several. */
   report: z
     .object({

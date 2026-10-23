@@ -7,7 +7,11 @@
  * responses page does — then the responses themselves, and the export.
  */
 import {
+  FREQUENCIES,
+  FREQUENCY_LABEL,
+  MAX_SESSIONS,
   MEETING_STATUS_LABEL,
+  type Availability,
   formPages,
   meetingState,
   summarise,
@@ -36,6 +40,7 @@ interface View {
   meetings: OneToOneMeeting[];
   pool: { candidate: Candidate }[];
   interlocutors: PersonRef[];
+  availability: Availability[];
 }
 
 /** A badge per state: what the reader needs to know first. */
@@ -55,7 +60,7 @@ const when = (m: Pick<OneToOneMeeting, 'heldOn' | 'startTime'>) =>
 
 export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpenSetup: (id: string) => void }) {
   const view = useAsync(() => api.get<View>(`/api/blocks/${block.id}/one-to-one`), `oto:${block.id}`);
-  const [side, setSide] = useState<'planning' | 'reports'>('planning');
+  const [side, setSide] = useState<'planning' | 'availability' | 'reports'>('planning');
   const [planning, setPlanning] = useState<string[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -87,6 +92,9 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
           <button className={side === 'planning' ? 'on' : ''} onClick={() => setSide('planning')}>
             <Icon name="calendar" size={13} /> Planning
           </button>
+          <button className={side === 'availability' ? 'on' : ''} onClick={() => setSide('availability')}>
+            <Icon name="clock" size={13} /> Availability
+          </button>
           <button className={side === 'reports' ? 'on' : ''} onClick={() => setSide('reports')}>
             <Icon name="form" size={13} /> Reports
           </button>
@@ -101,6 +109,8 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
 
       {side === 'planning' ? (
         <Planning data={data} onOpen={setOpenId} onPlan={setPlanning} />
+      ) : side === 'availability' ? (
+        <AvailabilityView data={data} onChanged={view.reload} />
       ) : (
         <Reports data={data} onOpen={setOpenId} />
       )}
@@ -249,22 +259,48 @@ function PlanModal({
   const mentor = first?.mentorId && data.config.interlocutors.includes(first.mentorId) ? first.mentorId : '';
   const [picked, setPicked] = useState<string[]>(preselected);
   const [personId, setPersonId] = useState(mentor || data.interlocutors[0]?.id || '');
-  const [invite, setInvite] = useState<'confirm' | 'none' | 'slots'>(data.config.invite === 'slots' ? 'confirm' : data.config.invite);
+  const [invite, setInvite] = useState<'confirm' | 'none' | 'slots'>(data.config.invite);
   const [heldOn, setHeldOn] = useState('');
   const [startTime, setStartTime] = useState('');
+  const [repeats, setRepeats] = useState(false);
+  const [frequency, setFrequency] = useState<(typeof FREQUENCIES)[number]>('weekly');
+  const [count, setCount] = useState(6);
+  const [tell, setTell] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
-  const several = picked.length > 1;
-  const ready = picked.length > 0 && personId && heldOn && startTime && !several;
+  const books = invite === 'slots';
+  /* Laisser réserver : autant de startups qu'on veut, chacune prendra son
+     créneau. Une heure donnée : une startup, et une série possible. */
+  const ready = picked.length > 0 && personId && (books || (heldOn && startTime && picked.length === 1));
+  const freeFor = data.availability.filter((a) => a.personId === personId && a.onDate >= todayIso()).length;
+
+  const toggle = (id: string) =>
+    setPicked((p) => (books ? (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]) : [id]));
 
   const save = async () => {
     setSaving(true);
     setErrors({});
     try {
-      await api.post(`/api/blocks/${data.block.id}/meetings`, { candidateIds: picked, personId, invite, heldOn, startTime });
-      toast(invite === 'confirm' ? 'Proposed — waiting for their answer.' : 'In the diary.');
+      const made = await api.post<unknown[]>(`/api/blocks/${data.block.id}/meetings`, {
+        candidateIds: picked,
+        personId,
+        invite,
+        heldOn: books ? null : heldOn,
+        startTime: books ? null : startTime,
+        repeat: !books && repeats ? { frequency, count, until: null } : null,
+        tell,
+      });
+      toast(
+        books
+          ? `${made.length} invited to book.`
+          : repeats
+            ? `${made.length} sessions planned.`
+            : invite === 'confirm'
+              ? 'Proposed — waiting for their answer.'
+              : 'In the diary.',
+      );
       onDone();
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrors(err.fields);
@@ -282,27 +318,61 @@ function PlanModal({
         <>
           <button className="btn ghost" onClick={onClose}>Cancel</button>
           <button className="btn primary" disabled={saving || !ready} onClick={save}>
-            {saving ? 'Planning…' : invite === 'confirm' ? 'Propose it' : 'Fix it'}
+            {saving ? 'Planning…' : books ? 'Invite them to book' : invite === 'confirm' ? 'Propose it' : 'Fix it'}
           </button>
         </>
       }
     >
       <div className="field">
-        <label>Startup</label>
-        <select
-          className="input"
-          value={picked[0] ?? ''}
-          onChange={(e) => {
-            setPicked(e.target.value ? [e.target.value] : []);
-            const c = data.pool.find((p) => p.candidate.id === e.target.value)?.candidate;
-            if (c?.mentorId && data.config.interlocutors.includes(c.mentorId)) setPersonId(c.mentorId);
-          }}
-        >
-          <option value="">Pick a startup…</option>
-          {data.pool.map(({ candidate }) => (
-            <option key={candidate.id} value={candidate.id}>{candidate.orgName}</option>
+        <label>How it is set</label>
+        <div className="pick-list">
+          {(['confirm', 'none', 'slots'] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              className={invite === mode ? 'pick on' : 'pick'}
+              onClick={() => {
+                setInvite(mode);
+                if (mode !== 'slots') setPicked((p) => p.slice(0, 1));
+              }}
+            >
+              <Icon name={invite === mode ? 'check' : 'square'} />
+              <div>
+                <strong>{INVITE_WORDS[mode].title}</strong>
+                <span>{INVITE_WORDS[mode].line}</span>
+              </div>
+            </button>
           ))}
-        </select>
+        </div>
+      </div>
+
+      <div className="field">
+        <label>{books ? 'Startups' : 'Startup'}</label>
+        {books ? (
+          <div className="rows oto-pick">
+            {data.pool.map(({ candidate }) => (
+              <label className="check rowcard" style={{ padding: '7px 10px' }} key={candidate.id}>
+                <input type="checkbox" checked={picked.includes(candidate.id)} onChange={() => toggle(candidate.id)} />
+                <span style={{ fontSize: 13 }}>{candidate.orgName}</span>
+              </label>
+            ))}
+          </div>
+        ) : (
+          <select
+            className="input"
+            value={picked[0] ?? ''}
+            onChange={(e) => {
+              setPicked(e.target.value ? [e.target.value] : []);
+              const c = data.pool.find((p) => p.candidate.id === e.target.value)?.candidate;
+              if (c?.mentorId && data.config.interlocutors.includes(c.mentorId)) setPersonId(c.mentorId);
+            }}
+          >
+            <option value="">Pick a startup…</option>
+            {data.pool.map(({ candidate }) => (
+              <option key={candidate.id} value={candidate.id}>{candidate.orgName}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div className="field">
@@ -316,36 +386,72 @@ function PlanModal({
           ))}
         </select>
         {errors.personId && <div className="err">{errors.personId}</div>}
+        {books && (
+          <div className="hint" style={freeFor ? undefined : { color: 'var(--warn)' }}>
+            {freeFor
+              ? `${freeFor} stretch${freeFor === 1 ? '' : 'es'} of availability coming up — the startups pick from these.`
+              : 'No availability published yet — add some in the Availability view, or they will find nothing to book.'}
+          </div>
+        )}
       </div>
 
-      <div className="field">
-        <label>How it is set</label>
-        <div className="pick-list">
-          {(['confirm', 'none'] as const).map((mode) => (
-            <button key={mode} type="button" className={invite === mode ? 'pick on' : 'pick'} onClick={() => setInvite(mode)}>
-              <Icon name={invite === mode ? 'check' : 'square'} />
-              <div>
-                <strong>{INVITE_WORDS[mode].title}</strong>
-                <span>{INVITE_WORDS[mode].line}</span>
+      {!books && (
+        <>
+          <div className="grid-2">
+            <div className="field">
+              <label>{repeats ? 'First session' : 'Day'}</label>
+              <input className="input" type="date" value={heldOn} onChange={(e) => setHeldOn(e.target.value)} />
+              {errors.heldOn && <div className="err">{errors.heldOn}</div>}
+            </div>
+            <div className="field">
+              <label>Time</label>
+              <input className="input" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+              {errors.startTime && <div className="err">{errors.startTime}</div>}
+            </div>
+          </div>
+
+          <label className="check">
+            <input type="checkbox" checked={repeats} onChange={(e) => setRepeats(e.target.checked)} />
+            <span>It repeats — a weekly mentoring, for instance</span>
+          </label>
+          {repeats && (
+            <div className="sheet-group">
+              <div className="grid-2">
+                <div className="field">
+                  <label>How often</label>
+                  <select className="input" value={frequency} onChange={(e) => setFrequency(e.target.value as typeof frequency)}>
+                    {FREQUENCIES.map((f) => (
+                      <option key={f} value={f}>{FREQUENCY_LABEL[f]}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>How many sessions</label>
+                  <input
+                    className="input num"
+                    type="number"
+                    min={2}
+                    max={MAX_SESSIONS}
+                    value={count}
+                    onChange={(e) => setCount(Math.max(2, Math.min(MAX_SESSIONS, Number(e.target.value) || 2)))}
+                  />
+                </div>
               </div>
-            </button>
-          ))}
-        </div>
-        <div className="hint">Letting the startup book from the interlocutor’s availability comes next.</div>
-      </div>
+              <p className="hint" style={{ margin: 0 }}>
+                Each session is a meeting of its own, with its own report — moved or cancelled on its own.
+              </p>
+            </div>
+          )}
+        </>
+      )}
 
-      <div className="grid-2">
-        <div className="field">
-          <label>Day</label>
-          <input className="input" type="date" value={heldOn} onChange={(e) => setHeldOn(e.target.value)} />
-          {errors.heldOn && <div className="err">{errors.heldOn}</div>}
-        </div>
-        <div className="field">
-          <label>Time</label>
-          <input className="input" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-          {errors.startTime && <div className="err">{errors.startTime}</div>}
-        </div>
-      </div>
+      <label className="check">
+        <input type="checkbox" checked={tell} onChange={(e) => setTell(e.target.checked)} />
+        <span>
+          Tell them by email — the startup{books ? ', with its link to book' : invite === 'confirm' ? ', with its link to confirm' : ''}, and
+          the interlocutor
+        </span>
+      </label>
       <p className="faint" style={{ margin: 0, fontSize: 12 }}>
         {data.config.durationMinutes} minutes{data.config.location ? ` · ${data.config.location}` : ''} — set in the brick, and
         changeable on the meeting.
@@ -411,6 +517,24 @@ function MeetingDrawer({
 
   const moved = heldOn !== (meeting.heldOn ?? '') || startTime !== (meeting.startTime ?? '') || personId !== meeting.personId;
 
+  const tell = async (who: { startup?: boolean; person?: boolean }) => {
+    setBusy(true);
+    try {
+      const sent = await api.post<{ startup: boolean; person: boolean }>(`/api/meetings/${meeting.id}/tell`, who);
+      toast(
+        sent.startup || sent.person
+          ? 'Written to.'
+          : 'Nobody could be written to — no email address on file.',
+        !(sent.startup || sent.person),
+      );
+      onChanged();
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <>
       <Drawer
@@ -440,6 +564,28 @@ function MeetingDrawer({
 
         {/* La réponse de la startup, et le lien pour la donner — en attendant
             que la lettre l'emporte. */}
+        {meeting.invite === 'slots' && meeting.status === 'planned' && (
+          <div className="callout">
+            <Icon name="link" size={15} />
+            <div style={{ flex: 1 }}>
+              {meeting.heldOn ? 'The startup booked this time.' : 'Waiting for the startup to book a time. Their link:'}
+              {!meeting.heldOn && (
+                <div className="row" style={{ gap: 6, marginTop: 6 }}>
+                  <code className="public-link">{link}</code>
+                  <button
+                    className="btn sm"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(link);
+                      toast('Link copied.');
+                    }}
+                  >
+                    <Icon name="copy" size={13} /> Copy
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {meeting.invite === 'confirm' && meeting.status === 'planned' && (
           <div className="callout">
             <Icon name="link" size={15} />
@@ -511,6 +657,26 @@ function MeetingDrawer({
               {MEETING_STATUS_LABEL.no_show}
             </button>
           )}
+          {meeting.status !== 'cancelled' && meeting.seriesId && (
+            <button
+              className="btn sm"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await api.patch(`/api/meetings/${meeting.id}?scope=following`, { status: 'cancelled' });
+                  toast('This session and the following ones are cancelled.');
+                  onChanged();
+                } catch (err) {
+                  toast((err as Error).message, true);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Cancel this and the following
+            </button>
+          )}
           {meeting.status !== 'cancelled' ? (
             <button className="btn sm" disabled={busy} onClick={() => change({ status: 'cancelled' }, 'Cancelled.')}>
               Cancel
@@ -520,6 +686,21 @@ function MeetingDrawer({
               Restore
             </button>
           )}
+        </div>
+
+        {/* Qui a été prévenu, et quand : une lettre partie avant un changement
+            d'heure dit l'ancienne heure. */}
+        <div className="row wrap" style={{ gap: 6 }}>
+          <span className="faint" style={{ fontSize: 12, flex: 1 }}>
+            Startup {meeting.toldStartupAt ? `told ${formatDate(meeting.toldStartupAt)}` : 'not told'} · Interlocutor{' '}
+            {meeting.toldPersonAt ? `told ${formatDate(meeting.toldPersonAt)}` : 'not told'}
+          </span>
+          <button className="btn ghost sm" disabled={busy} onClick={() => tell({ startup: true })}>
+            <Icon name="send" size={12} /> Write to the startup
+          </button>
+          <button className="btn ghost sm" disabled={busy} onClick={() => tell({ person: true })}>
+            <Icon name="send" size={12} /> Write to {meeting.personName}
+          </button>
         </div>
 
         {/* Le compte rendu, que CEED peut écrire à la place de l'interlocuteur
@@ -738,5 +919,112 @@ function SummaryCard({ summary: s, total }: { summary: QuestionSummary; total: n
       )}
       {s.kind === 'file' && <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{s.answered} file(s) attached.</p>}
     </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Availability                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Les plages que chaque interlocuteur offre, et dans lesquelles les startups
+ * réservent. L'interlocuteur les publie depuis son espace ; CEED peut les
+ * saisir pour lui — un mentor qui envoie ses dispos par message.
+ */
+function AvailabilityView({ data, onChanged }: { data: View; onChanged: () => void }) {
+  const [personId, setPersonId] = useState(data.interlocutors[0]?.id ?? '');
+  const [onDate, setOnDate] = useState('');
+  const [startTime, setStartTime] = useState('09:00');
+  const [endTime, setEndTime] = useState('12:00');
+  const [slotMinutes, setSlotMinutes] = useState(data.config.durationMinutes);
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+  const today = todayIso();
+  const theirs = data.availability.filter((a) => a.personId === personId && a.onDate >= today);
+  const booked = (a: Availability) =>
+    data.meetings.filter(
+      (m) => m.personId === a.personId && m.heldOn === a.onDate && m.startTime && m.startTime >= a.startTime && m.startTime < a.endTime && m.status !== 'cancelled',
+    ).length;
+
+  const add = async () => {
+    setBusy(true);
+    try {
+      await api.post(`/api/blocks/${data.block.id}/availability`, { personId, onDate, startTime, endTime, slotMinutes });
+      toast('Availability added.');
+      onChanged();
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="stack" style={{ gap: 12 }}>
+      <div className="row wrap" style={{ gap: 8 }}>
+        <select className="status-select" value={personId} onChange={(e) => setPersonId(e.target.value)} aria-label="Interlocutor">
+          {data.interlocutors.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+        <span className="faint" style={{ fontSize: 12.5 }}>
+          They can publish these themselves from their space, under Meetings.
+        </span>
+      </div>
+
+      <section className="card card-pad stack" style={{ gap: 10 }}>
+        <strong style={{ fontSize: 13.5 }}>Add a stretch</strong>
+        <div className="row wrap" style={{ gap: 8, alignItems: 'flex-end' }}>
+          <div className="field" style={{ margin: 0 }}>
+            <label>Day</label>
+            <input className="input" type="date" min={today} value={onDate} onChange={(e) => setOnDate(e.target.value)} />
+          </div>
+          <div className="field" style={{ margin: 0 }}>
+            <label>From</label>
+            <input className="input" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+          </div>
+          <div className="field" style={{ margin: 0 }}>
+            <label>To</label>
+            <input className="input" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+          </div>
+          <div className="field" style={{ margin: 0, width: 120 }}>
+            <label>Slots of (min)</label>
+            <input className="input num" type="number" min={5} value={slotMinutes} onChange={(e) => setSlotMinutes(Number(e.target.value) || 45)} />
+          </div>
+          <button className="btn primary sm" disabled={busy || !personId || !onDate || endTime <= startTime} onClick={add}>
+            <Icon name="plus" size={13} /> Add
+          </button>
+        </div>
+      </section>
+
+      {!theirs.length ? (
+        <div className="empty" style={{ padding: 20 }}>
+          <p style={{ margin: 0 }}>No availability coming up for this interlocutor.</p>
+        </div>
+      ) : (
+        <div className="rows">
+          {theirs.map((a) => (
+            <div className="rowcard row" key={a.id} style={{ gap: 10, padding: '9px 12px' }}>
+              <Icon name="clock" size={14} />
+              <span style={{ flex: 1, fontSize: 13 }}>
+                <strong>{formatDate(a.onDate)}</strong> · {a.startTime}–{a.endTime}
+                <span className="faint"> · slots of {a.slotMinutes} min</span>
+              </span>
+              <span className="badge num">{booked(a)} booked</span>
+              <button
+                className="btn ghost icon sm"
+                aria-label="Remove"
+                onClick={async () => {
+                  await api.del(`/api/availability/${a.id}`);
+                  onChanged();
+                }}
+              >
+                <Icon name="trash" size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

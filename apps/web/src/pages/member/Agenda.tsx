@@ -1,17 +1,19 @@
 /**
  * Ce qui vient, pour une startup.
  *
- * One kind of entry today — the morning they pitch — because that is the only
- * one the platform knows. Workshops and mentoring are bricks nobody has built;
- * when they are, they add entries to this list rather than a second screen: a
- * founder asks what is coming, not which brick holds it.
+ * The morning they pitch, and their One to One meetings — one list rather
+ * than a screen per brick: a founder asks what is coming, not which brick
+ * holds it. A meeting still waiting on them carries its link: book a time,
+ * or confirm the one proposed.
  */
 import { longDate } from '@ceed/shared';
 import { useLang } from '../../lib/lang';
 import { Icon } from '../../ui/Icon';
 
 export interface AgendaEntry {
-  kind: 'committee';
+  kind: 'committee' | 'one_to_one';
+  with?: string;
+  link?: string | null;
   name: string;
   blockName: string;
   on: string | null;
@@ -34,16 +36,23 @@ export function Agenda({ entries }: { entries: AgendaEntry[] }) {
   return (
     <div className="rows">
       {entries.map((entry) => (
-        <div className="rowcard row" key={`${entry.blockName}-${entry.name}`} style={{ padding: '11px 13px', gap: 11 }}>
-          <Icon name="calendar" size={15} />
+        <div className="rowcard row" key={`${entry.kind}-${entry.blockName}-${entry.name}-${entry.on}-${entry.startsAt}`} style={{ padding: '11px 13px', gap: 11 }}>
+          <Icon name={entry.kind === 'one_to_one' ? 'users' : 'calendar'} size={15} />
           <span style={{ flex: 1, minWidth: 0 }}>
-            <strong style={{ fontSize: 13.5 }}>{t('prog.jury')}</strong>
+            <strong style={{ fontSize: 13.5 }}>
+              {entry.kind === 'one_to_one' ? `${t('prog.meeting')} ${entry.with}` : t('prog.jury')}
+            </strong>
             <span className="faint" style={{ display: 'block', fontSize: 12.5 }}>
               {[entry.blockName, entry.name].filter(Boolean).join(' · ')}
             </span>
           </span>
           <span style={{ fontSize: 12.5, textAlign: 'right' }}>
-            {entry.on ? longDate(entry.on) : '—'}
+            {entry.on ? longDate(entry.on) : entry.link ? '' : '—'}
+            {entry.link && (
+              <a className="btn primary sm" href={entry.link} style={{ display: 'inline-flex', marginTop: entry.on ? 4 : 0 }}>
+                {entry.on ? t('prog.meetConfirm') : t('prog.meetBook')}
+              </a>
+            )}
             {entry.startsAt && (
               <span className="faint" style={{ display: 'block' }}>
                 {t('prog.at')} {entry.startsAt}

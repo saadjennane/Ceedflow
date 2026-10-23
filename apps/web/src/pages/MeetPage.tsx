@@ -27,6 +27,7 @@ interface Invitation {
   rsvpState: 'pending' | 'confirmed' | 'declined';
   status: 'planned' | 'held' | 'cancelled' | 'no_show';
   open: boolean;
+  slots: { onDate: string; startTime: string; endTime: string }[];
 }
 
 export function MeetPage() {
@@ -35,6 +36,7 @@ export function MeetPage() {
   const [answered, setAnswered] = useState<Invitation | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
 
   if (page.loading) {
     return (
@@ -60,6 +62,24 @@ export function MeetPage() {
   }
 
   const data = answered ?? page.data;
+  const book = async () => {
+    if (!picked) return;
+    const [onDate, startTime] = picked.split(' ');
+    setSending(true);
+    setError(null);
+    try {
+      setAnswered(await api.post<Invitation>(`/api/public/meet/${token}`, { onDate, startTime }));
+      setPicked(null);
+    } catch (err) {
+      setError((err as Error).message);
+      page.reload();
+    } finally {
+      setSending(false);
+    }
+  };
+  /* Les créneaux par jour : on choisit un jour avant une heure. */
+  const days = [...new Set(data.slots.map((x) => x.onDate))];
+
   const answer = async (accept: boolean) => {
     setSending(true);
     setError(null);
@@ -116,7 +136,45 @@ export function MeetPage() {
             </div>
           )}
 
-          {data.open && (
+          {data.open && data.invite === 'slots' && (
+            <div className="stack" style={{ gap: 10 }}>
+              <strong style={{ fontSize: 14 }}>{data.heldOn ? 'Pick another time' : 'Pick a time'}</strong>
+              {!days.length && (
+                <p className="faint" style={{ margin: 0, fontSize: 13 }}>
+                  No time is free yet. {data.personName} will publish their availability — come back to this link.
+                </p>
+              )}
+              {days.map((day) => (
+                <div key={day} className="stack" style={{ gap: 6 }}>
+                  <div className="eyebrow">{formatDate(day)}</div>
+                  <div className="row wrap" style={{ gap: 6 }}>
+                    {data.slots
+                      .filter((x) => x.onDate === day)
+                      .map((x) => {
+                        const key = `${x.onDate} ${x.startTime}`;
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            className={picked === key ? 'track on' : 'track'}
+                            onClick={() => setPicked(key)}
+                          >
+                            {x.startTime}
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              ))}
+              {days.length > 0 && (
+                <button className="btn primary" style={{ alignSelf: 'flex-start' }} disabled={!picked || sending} onClick={book}>
+                  <Icon name="check" size={14} /> {sending ? 'Booking…' : 'Book this time'}
+                </button>
+              )}
+            </div>
+          )}
+
+          {data.open && data.invite === 'confirm' && (
             <div className="row" style={{ gap: 8 }}>
               <button className="btn primary" disabled={sending} onClick={() => answer(true)}>
                 <Icon name="check" size={14} /> {data.rsvpState === 'confirmed' ? 'Still confirmed' : 'Confirm'}
