@@ -305,7 +305,10 @@ export async function updateRecord(id: string, patch: Record<string, unknown>): 
   }
   for (const [key, column] of Object.entries(JSON_FIELDS)) {
     if (patch[key] === undefined) continue;
-    params.push(JSON.stringify(patch[key]));
+    /* La valeur telle quelle, comme les listes ci-dessus : le client Postgres
+       l'encode lui-même. Une chaîne déjà encodée le serait deux fois, et
+       l'objet deviendrait une chaîne — ce que PGlite ne montre pas. */
+    params.push(patch[key]);
     sets.push(`${column} = $${params.length}::jsonb`);
   }
   /* L'année suit la date : le jury et l'annuaire lisent l'année, et une fiche
@@ -448,7 +451,7 @@ export async function putNeed(
        active = coalesce($4, org_needs.active),
        deselected_at = case when $4 = false then now() when $4 = true then null else org_needs.deselected_at end,
        updated_at = now()`,
-    [orgId, need, input.data === undefined ? null : JSON.stringify(input.data), input.active ?? null],
+    [orgId, need, input.data === undefined ? null : input.data, input.active ?? null],
   );
 }
 
