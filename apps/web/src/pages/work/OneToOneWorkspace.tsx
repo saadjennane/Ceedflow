@@ -14,6 +14,7 @@ import {
   MEETING_STATUS_LABEL,
   daySlots,
   formPages,
+  mentorsOf,
   meetingState,
   summarise,
   type Block,
@@ -43,6 +44,7 @@ interface View {
   pool: { candidate: Candidate }[];
   interlocutors: PersonRef[];
   days: OneToOneDay[];
+  reach: { upstream: number; track: number; from: string | null };
 }
 
 /** A badge per state: what the reader needs to know first. */
@@ -59,6 +61,21 @@ const STATE_BADGE: Record<ReturnType<typeof meetingState>, { label: string; tone
 
 const when = (m: Pick<OneToOneMeeting, 'heldOn' | 'startTime'>) =>
   m.heldOn ? `${formatDate(m.heldOn)}${m.startTime ? ` · ${m.startTime}` : ''}` : 'No time yet';
+
+/**
+ * Ceux qu'une startup doit encore voir : ses mentors sans rendez-vous avec
+ * elle — ou, sans mentor, quelqu'un (null) tant qu'elle n'en a aucun.
+ */
+function stillToMeet(
+  config: OneToOneConfig,
+  live: OneToOneMeeting[],
+  candidate: Candidate,
+): (string | null)[] {
+  const theirs = live.filter((m) => m.candidateId === candidate.id);
+  const mine = mentorsOf(config, candidate);
+  if (!mine.length) return theirs.length ? [] : [null];
+  return mine.filter((id) => !theirs.some((m) => m.personId === id));
+}
 
 /** What is being dragged: a placed meeting, or a startup with none yet. */
 type Dragged = { kind: 'meeting'; meeting: OneToOneMeeting } | { kind: 'startup'; candidate: Candidate };
@@ -101,9 +118,10 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
     );
   }
 
-  /* Le rail, comme au comité : ce qui attend sur cette journée, puis le vivier. */
-  const met = new Set(live.map((m) => m.candidateId));
-  const unplaced = pool.filter((p) => !met.has(p.candidate.id));
+  /* Le rail, comme au comité : ce qui attend sur cette journée, puis le vivier.
+     Une startup y reste tant qu'il lui manque un rendez-vous — avec l'un de
+     ses mentors quand elle en a, avec quiconque sinon. */
+  const unplaced = pool.filter((p) => stillToMeet(config, live, p.candidate).length > 0);
   const booking = live.filter((m) => m.invite === 'slots' && !m.heldOn);
   const noTime = live.filter((m) => m.invite !== 'slots' && !m.heldOn);
   const onDay = current ? live.filter((m) => m.dayId === current.id) : [];
@@ -406,16 +424,30 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
                 <span className="num faint">{unplaced.length}</span>
               </div>
               {unplaced.length ? (
-                unplaced.map(({ candidate }) =>
-                  chip(
+                unplaced.map(({ candidate }) => {
+                  const mine = mentorsOf(config, candidate);
+                  return chip(
                     candidate,
-                    candidate.mentorId && config.interlocutors.includes(candidate.mentorId) ? (
-                      <span className="badge" title="Their mentor">{name(candidate.mentorId)}</span>
+                    mine.length ? (
+                      <span className="badge" title="Their mentors">{mine.map(name).join(', ')}</span>
                     ) : null,
-                  ),
-                )
-              ) : (
+                  );
+                })
+              ) : pool.length ? (
                 <p className="faint" style={{ margin: 0, fontSize: 12 }}>Every startup has a meeting.</p>
+              ) : (
+                /* Personne ici : dire pourquoi, plutôt que « tout le monde a un rendez-vous ». */
+                <div className="stack" style={{ gap: 6 }}>
+                  <p className="faint" style={{ margin: 0, fontSize: 12 }}>
+                    No startup reaches this brick yet.
+                    {config.intake === 'upstream' && data.reach.from
+                      ? ` It takes those who passed “${data.reach.from}”, and nobody has so far.`
+                      : ''}
+                  </p>
+                  <button className="btn sm" onClick={() => onOpenSetup(block.id)}>
+                    <Icon name="settings" size={12} /> Which startups
+                  </button>
+                </div>
               )}
             </aside>
           </div>
@@ -462,7 +494,7 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
                 <div>
                   <strong>{candidate.orgName}</strong>
                   <span>
-                    {candidate.mentorId === placing.personId ? 'Their mentor' : candidate.contactName}
+                    {mentorsOf(config, candidate).includes(placing.personId) ? 'Their mentor' : candidate.contactName}
                   </span>
                 </div>
               </button>
@@ -516,10 +548,9 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
  */
 function InviteModal({ data, onClose, onDone }: { data: View; onClose: () => void; onDone: () => void }) {
   const live = data.meetings.filter((m) => m.status !== 'cancelled');
-  const met = new Set(live.map((m) => m.candidateId));
-  const unplaced = data.pool.filter((p) => !met.has(p.candidate.id));
+  const unplaced = data.pool.filter((p) => stillToMeet(data.config, live, p.candidate).length > 0);
   const [picked, setPicked] = useState<string[]>(unplaced.map((p) => p.candidate.id));
-  const [who, setWho] = useState<string>('mentor');
+  const [who, setWho] = useState<string>('mentors');
   const [tell, setTell] = useState(true);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
@@ -527,11 +558,15 @@ function InviteModal({ data, onClose, onDone }: { data: View; onClose: () => voi
     .filter((d) => (d.heldOn ?? '') >= todayIso())
     .reduce((n, d) => n + daySlots(d).length * d.interlocutors.length, 0);
 
-  /** Chez qui chacune réserve : son mentor, une personne choisie, ou n'importe qui. */
-  const personFor = (c: Candidate): string | null => {
-    if (who === 'anyone') return null;
-    if (who === 'mentor') return c.mentorId && data.config.interlocutors.includes(c.mentorId) ? c.mentorId : null;
-    return who;
+  /**
+   * Chez qui chacune réserve : un rendez-vous avec chacun de ses mentors — ou,
+   * sans mentor, chez qui elle veut —, chez n'importe qui, ou chez une
+   * personne choisie.
+   */
+  const peopleFor = (c: Candidate): (string | null)[] => {
+    if (who === 'anyone') return [null];
+    if (who === 'mentors') return stillToMeet(data.config, live, c);
+    return [who];
   };
 
   const send = async () => {
@@ -540,8 +575,7 @@ function InviteModal({ data, onClose, onDone }: { data: View; onClose: () => voi
       /* Regroupées par interlocuteur : une demande par groupe, chacune prévenue. */
       const groups = new Map<string | null, string[]>();
       for (const { candidate } of unplaced.filter((p) => picked.includes(p.candidate.id))) {
-        const key = personFor(candidate);
-        groups.set(key, [...(groups.get(key) ?? []), candidate.id]);
+        for (const key of peopleFor(candidate)) groups.set(key, [...(groups.get(key) ?? []), candidate.id]);
       }
       let count = 0;
       for (const [personId, candidateIds] of groups) {
@@ -581,7 +615,7 @@ function InviteModal({ data, onClose, onDone }: { data: View; onClose: () => voi
       <div className="field">
         <label>Who they book with</label>
         <select className="input" value={who} onChange={(e) => setWho(e.target.value)}>
-          <option value="mentor">Their mentor when they have one — otherwise anyone</option>
+          <option value="mentors">A meeting with each of their mentors — anyone when they have none</option>
           <option value="anyone">Anyone receiving on the days</option>
           {data.interlocutors.map((p) => (
             <option key={p.id} value={p.id}>Only {p.name}</option>
@@ -609,6 +643,13 @@ function InviteModal({ data, onClose, onDone }: { data: View; onClose: () => voi
                 }
               />
               <span style={{ flex: 1, fontSize: 13 }}>{candidate.orgName}</span>
+              {who === 'mentors' && (
+                <span className="faint" style={{ fontSize: 12 }}>
+                  {mentorsOf(data.config, candidate)
+                    .map((id) => data.interlocutors.find((p) => p.id === id)?.name ?? '')
+                    .join(', ') || 'anyone'}
+                </span>
+              )}
             </label>
           ))}
         </div>

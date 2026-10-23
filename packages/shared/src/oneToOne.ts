@@ -265,3 +265,16 @@ export const repeatInput = z
     until: day.nullable().default(null),
   })
   .refine((r) => r.count !== null || r.until !== null, { message: 'Say when it ends.', path: ['count'] });
+
+/**
+ * Les mentors d'une startup dans cette brique : ceux qu'on lui a attribués,
+ * sinon celui que la cohorte lui a donné s'il reçoit ici, sinon personne.
+ */
+export function mentorsOf(
+  config: { interlocutors: string[]; mentors: Record<string, string[]> },
+  candidate: { id: string; mentorId?: string | null },
+): string[] {
+  const given = config.mentors[candidate.id];
+  if (given) return given.filter((id) => config.interlocutors.includes(id));
+  return candidate.mentorId && config.interlocutors.includes(candidate.mentorId) ? [candidate.mentorId] : [];
+}

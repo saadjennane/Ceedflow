@@ -8,7 +8,7 @@
  */
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { freeCells, seriesDates, summarise, type FormField, type OneToOneDay } from '@ceed/shared';
+import { freeCells, mentorsOf, seriesDates, summarise, type FormField, type OneToOneDay } from '@ceed/shared';
 import { all } from '../src/db/client.js';
 import { letters } from '../src/services/mail.js';
 import { agendaFor } from '../src/services/agenda.js';
@@ -66,6 +66,15 @@ describe('free slots and series', () => {
     assert.deepEqual(seriesDates('2026-11-03', 'biweekly', { until: '2026-12-01' }), ['2026-11-03', '2026-11-17', '2026-12-01']);
     assert.deepEqual(seriesDates('2026-01-31', 'monthly', { count: 3 }), ['2026-01-31', '2026-02-28', '2026-03-31'], 'a 31st falls back in a short month');
     assert.equal(seriesDates('2026-01-05', 'weekly', { until: '2030-01-01' }).length, 52);
+  });
+});
+
+describe('a startup’s mentors', () => {
+  it('are those given here, else the cohort’s mentor if they receive here, and only interlocutors', () => {
+    const config = { interlocutors: ['nadia', 'omar'], mentors: { a: ['omar', 'gone'] } };
+    assert.deepEqual(mentorsOf(config, { id: 'a', mentorId: 'nadia' }), ['omar'], 'given here wins; a non-interlocutor is dropped');
+    assert.deepEqual(mentorsOf(config, { id: 'b', mentorId: 'nadia' }), ['nadia'], 'the cohort’s mentor, by default');
+    assert.deepEqual(mentorsOf(config, { id: 'c', mentorId: 'stranger' }), []);
   });
 });
 
@@ -257,6 +266,19 @@ describe('a One to One', { skip: skipWithoutServer }, () => {
     assert.equal(entry?.endsAt, '11:45');
     assert.equal(entry?.link, `/meet/${m!.token}`, 'still waiting on their answer: the link is there');
     assert.equal((await historyOf({ candidateId: a.id }))[0]?.blockName, 'Mentoring');
+  });
+
+  it('takes every startup of the track when asked, and says what the selection before it lets through', async () => {
+    const { block, track, a, b } = await setUp();
+    const selection = await repo.createBlock(track.phases[0]!.id, 'selection', 'Shortlist', 0);
+    let view = await oneToOneView(block.id);
+    assert.equal(view!.reach.from, 'Shortlist');
+    assert.equal(view!.pool.length, 0, 'nobody passed the shortlist yet');
+    assert.equal(view!.reach.track, 2);
+    await repo.updateBlock(block.id, { config: { intake: 'track' } });
+    view = await oneToOneView(block.id);
+    assert.deepEqual(view!.pool.map((p) => p.candidate.id).sort(), [a.id, b.id].sort());
+    assert.ok(selection);
   });
 });
 

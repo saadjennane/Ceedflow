@@ -10,7 +10,9 @@ import {
   ONE_TO_ONE_STARTUP_VARIABLES,
   RSVP_MODES,
   daySlots,
+  mentorsOf,
   type Block,
+  type Candidate,
   type OneToOneConfig,
   type OneToOneDay,
   type PersonRef,
@@ -26,7 +28,7 @@ import { NumberField, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
 import { QuestionsEditor } from '../../../ui/QuestionsEditor';
 
-export const ONE_TO_ONE_TABS = ['Overview', 'Interlocutors', 'Days', 'Report', 'Messages'] as const;
+export const ONE_TO_ONE_TABS = ['Overview', 'Interlocutors', 'Startups', 'Days', 'Report', 'Messages'] as const;
 export type OneToOneTab = (typeof ONE_TO_ONE_TABS)[number];
 
 /** The three ways a meeting is set, in the words of the person setting it. */
@@ -57,6 +59,7 @@ export function OneToOneSetup({
   tab?: OneToOneTab;
 }) {
   if (tab === 'Days') return <DaysTab block={block} />;
+  if (tab === 'Startups') return <StartupsTab block={block} config={config} patch={patch} />;
 
   if (tab === 'Interlocutors') {
     return (
@@ -135,6 +138,8 @@ export function OneToOneSetup({
 
   return (
     <>
+      <IntakeChoice block={block} config={config} patch={patch} />
+
       <div className="field">
         <label>How a new meeting is set</label>
         <div className="help">The default for this brick — each meeting can still be set another way.</div>
@@ -450,5 +455,146 @@ function DayEditor({
         </button>
       </div>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Which startups, and their mentors                                   */
+/* ------------------------------------------------------------------ */
+
+interface BrickView {
+  pool: { candidate: Candidate }[];
+  interlocutors: PersonRef[];
+  reach: { upstream: number; track: number; from: string | null };
+}
+
+/**
+ * Quelles startups la brique reçoit, avec les nombres : sans eux, un vivier
+ * vide ne dit pas s'il l'est parce que personne n'a passé la sélection, ou
+ * parce qu'elle n'a encore rien décidé.
+ */
+function IntakeChoice({
+  block,
+  config,
+  patch,
+}: {
+  block: Block;
+  config: OneToOneConfig;
+  patch: (partial: Partial<OneToOneConfig>) => void;
+}) {
+  const view = useAsync(() => api.get<BrickView>(`/api/blocks/${block.id}/one-to-one`), `reach:${block.id}`);
+  const reach = view.data?.reach;
+  return (
+    <div className="field">
+      <label>Which startups</label>
+      <div className="pick-list">
+        <button type="button" className={config.intake === 'upstream' ? 'pick on' : 'pick'} onClick={() => patch({ intake: 'upstream' })}>
+          <Icon name={config.intake === 'upstream' ? 'check' : 'square'} />
+          <div>
+            <strong>
+              Those who passed {reach?.from ? `“${reach.from}”` : 'the selection before'}
+              {reach && <span className="faint" style={{ fontWeight: 400 }}> · {reach.upstream}</span>}
+            </strong>
+            <span>
+              {reach && !reach.from
+                ? 'There is no selection before this brick: every startup of the track comes in.'
+                : 'The rule of every brick: who moves on there comes here. Nobody yet means the selection has not let anybody through.'}
+            </span>
+          </div>
+        </button>
+        <button type="button" className={config.intake === 'track' ? 'pick on' : 'pick'} onClick={() => patch({ intake: 'track' })}>
+          <Icon name={config.intake === 'track' ? 'check' : 'square'} />
+          <div>
+            <strong>
+              Every startup in the track
+              {reach && <span className="faint" style={{ fontWeight: 400 }}> · {reach.track}</span>}
+            </strong>
+            <span>For meetings that wait on no selection — office hours open to all, for instance.</span>
+          </div>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Les mentors de chaque startup : un ou plusieurs, parmi les interlocuteurs.
+ * Inviter une startup, c'est alors lui donner un rendez-vous avec chacun.
+ */
+function StartupsTab({
+  block,
+  config,
+  patch,
+}: {
+  block: Block;
+  config: OneToOneConfig;
+  patch: (partial: Partial<OneToOneConfig>) => void;
+}) {
+  const view = useAsync(() => api.get<BrickView>(`/api/blocks/${block.id}/one-to-one`), `startups:${block.id}`);
+  if (view.error) return <div className="empty">{view.error}</div>;
+  if (!view.data) return <div className="empty">Loading…</div>;
+  const { pool, interlocutors, reach } = view.data;
+  const people = interlocutors.filter((p) => config.interlocutors.includes(p.id));
+
+  const toggle = (candidate: Candidate, personId: string) => {
+    const now = mentorsOf(config, candidate);
+    const next = now.includes(personId) ? now.filter((id) => id !== personId) : [...now, personId];
+    patch({ mentors: { ...config.mentors, [candidate.id]: next } });
+  };
+
+  return (
+    <>
+      <div className="callout">
+        <Icon name="users" size={15} />
+        <div>
+          Who each startup meets. Inviting a startup gives it a meeting with each of its mentors, and the timetable says
+          whose mentor is whose. The mentor the cohort gave it is suggested until you change it.
+        </div>
+      </div>
+
+      {!pool.length ? (
+        <div className="empty" style={{ padding: 22 }}>
+          <p style={{ margin: 0 }}>
+            No startup reaches this brick yet.{' '}
+            {config.intake === 'upstream' && reach.from
+              ? `It takes those who passed “${reach.from}” — nobody has, so far. Or choose every startup of the track, in Overview.`
+              : ''}
+          </p>
+        </div>
+      ) : !people.length ? (
+        <div className="callout warn">
+          <Icon name="alert" size={15} />
+          <div>Name the interlocutors first, in the Interlocutors tab — and save.</div>
+        </div>
+      ) : (
+        <div className="rows">
+          {pool.map(({ candidate }) => {
+            const mine = mentorsOf(config, candidate);
+            const suggested = !config.mentors[candidate.id] && mine.length > 0;
+            return (
+              <div className="rowcard card-pad stack" key={candidate.id} style={{ gap: 6 }}>
+                <div className="row">
+                  <strong style={{ flex: 1, fontSize: 13 }}>{candidate.orgName}</strong>
+                  {suggested && <span className="faint" style={{ fontSize: 11.5 }}>the cohort’s mentor</span>}
+                  {!mine.length && <span className="badge">No mentor</span>}
+                </div>
+                <div className="work-pick">
+                  {people.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={mine.includes(p.id) ? 'track on' : 'track'}
+                      onClick={() => toggle(candidate, p.id)}
+                    >
+                      {p.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
   );
 }

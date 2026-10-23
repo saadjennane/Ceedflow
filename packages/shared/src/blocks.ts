@@ -1528,6 +1528,18 @@ export const oneToOneConfigSchema = z.object({
   location: z.string().default(''),
   /** The people startups meet here, by directory record id. */
   interlocutors: z.array(z.string()).default([]),
+  /**
+   * Quelles startups la brique reçoit : celles qui ont passé la sélection
+   * placée avant elle — la règle de toute brique —, ou toutes celles de la
+   * piste, pour un One to One qui n'attend aucune sélection.
+   */
+  intake: z.enum(['upstream', 'track']).default('upstream'),
+  /**
+   * Les mentors de chaque startup, parmi les interlocuteurs : un ou plusieurs.
+   * Une startup absente de la liste reprend le mentor que la cohorte lui a
+   * donné, s'il reçoit ici.
+   */
+  mentors: z.record(z.array(z.string())).default({}),
   /** The two letters: to the startup, and to the interlocutor. */
   messages: z
     .object({

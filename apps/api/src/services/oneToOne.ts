@@ -77,6 +77,8 @@ interface BrickContext {
   track: TrackWithPhases;
   /** Who reached this brick, withdrawals excluded. */
   intake: Candidate[];
+  /** What the brick could take either way, to say it out loud. */
+  reach: { upstream: number; track: number; from: string | null };
 }
 
 async function brickContext(blockId: string): Promise<BrickContext | null> {
@@ -85,9 +87,22 @@ async function brickContext(blockId: string): Promise<BrickContext | null> {
   const detail = await repo.getEditionDetail(context.editionId);
   const track = detail ? trackOf(detail.tracks, blockId) : null;
   if (!track) return null;
-  const everyone = await repo.listCandidates(context.editionId, track.id);
-  const intake = (await intakeFor(track, blockId, everyone)).filter((c) => c.status !== 'Withdrawn');
-  return { block: context.block, config: context.block.config as OneToOneConfig, editionId: context.editionId, track, intake };
+  const config = context.block.config as OneToOneConfig;
+  const everyone = (await repo.listCandidates(context.editionId, track.id)).filter((c) => c.status !== 'Withdrawn');
+  const upstream = await intakeFor(track, blockId, everyone);
+  /* La sélection d'où viennent les startups, nommée : sans elle, un vivier
+     vide ne dit pas pourquoi il l'est. */
+  const ordered = orderedBlocks(track);
+  const at = ordered.findIndex((b) => b.id === blockId);
+  const from = ordered.slice(0, at === -1 ? ordered.length : at).filter((b) => b.type === 'selection').pop()?.name ?? null;
+  return {
+    block: context.block,
+    config,
+    editionId: context.editionId,
+    track,
+    intake: config.intake === 'track' ? everyone : upstream,
+    reach: { upstream: upstream.length, track: everyone.length, from },
+  };
 }
 
 export interface OneToOneView {
@@ -98,6 +113,7 @@ export interface OneToOneView {
   pool: { candidate: Candidate }[];
   interlocutors: PersonRef[];
   days: OneToOneDay[];
+  reach: BrickContext['reach'];
 }
 
 export async function oneToOneView(blockId: string): Promise<OneToOneView | null> {
@@ -112,6 +128,7 @@ export async function oneToOneView(blockId: string): Promise<OneToOneView | null
     pool: ctx.intake.map((candidate) => ({ candidate })),
     interlocutors: await peopleByIds(ctx.config.interlocutors),
     days: await listDays(blockId),
+    reach: ctx.reach,
   };
 }
 
