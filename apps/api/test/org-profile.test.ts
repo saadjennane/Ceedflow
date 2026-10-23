@@ -11,6 +11,8 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import {
   forEcosystem,
+  fundingTotals,
+  teamProblems,
   profileAsks,
   profileDone,
   profileMissing,
@@ -20,7 +22,11 @@ import {
 } from '@ceed/shared';
 import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
+import * as repo from '../src/db/repo.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
+
+before(migrate);
+after(closeDb);
 
 const uniq = () => `${Date.now()}.${Math.random().toString(36).slice(2, 6)}`;
 
@@ -77,6 +83,9 @@ describe('what the fiche asks', () => {
       emails: ['contact@x.ma'], phones: ['+212600000000'],
       places: [{ city: 'Agadir', country: 'Morocco', address: '12 rue des Palmiers' }],
       bio: 'Ce qu’elle fait.', teamSize: 2, maturity: 'ideation', patent: 'no',
+      activityNature: 'product', targetMarkets: ['b2b'], mainOffering: 'Un capteur.', salesZone: 'morocco',
+      products: [{ id: 'p', name: 'Capteur', description: '', imageUploadId: null, status: '', price: '', position: 0 }],
+      foundersCount: 2, womenCount: 1, hasFunding: 'no', pastPrograms: 'no', currentPrograms: 'no',
     });
     assert.deepEqual(profileMissing(p), []);
     assert.equal(profileDone(p), 100);
@@ -102,8 +111,6 @@ describe('what the fiche asks', () => {
 });
 
 describe('a startup’s fiche, kept', { skip: skipWithoutServer }, () => {
-  before(migrate);
-  after(closeDb);
 
   it('keeps everything the first fiche asked for, and gives it back', async () => {
     const org = await dir.createRecord({
@@ -167,5 +174,91 @@ describe('a startup’s fiche, kept', { skip: skipWithoutServer }, () => {
     assert.equal(person.maturity, '');
     assert.equal(person.teamSize, null);
     assert.deepEqual(person.revenues, []);
+  });
+});
+
+describe('the second half of the fiche', () => {
+  it('asks for countries only when it sells abroad', () => {
+    assert.ok(!profileAsks(profileOf({ salesZone: 'morocco' })).includes('salesCountries'));
+    assert.ok(profileAsks(profileOf({ salesZone: 'both' })).includes('salesCountries'));
+  });
+
+  it('asks for the rounds only once it says it was funded, and the programmes once it says it was accompanied', () => {
+    assert.ok(!profileAsks(profileOf({ hasFunding: 'no' })).includes('fundings'));
+    assert.ok(profileAsks(profileOf({ hasFunding: 'yes' })).includes('fundings'));
+    assert.ok(!profileAsks(profileOf({ pastPrograms: 'no', currentPrograms: 'no' })).includes('programs'));
+    const now = profileOf({ currentPrograms: 'yes', ceedPrograms: [{ editionId: 'e', program: 'Grow', edition: '2026', startsOn: null, endsOn: null, done: false }] });
+    assert.ok(!profileMissing(now).includes('programs'), 'a programme followed here counts');
+  });
+
+  it('never adds a loan or a grant to what was raised, nor dirhams to euros', () => {
+    const totals = fundingTotals([
+      { id: '1', onDate: '', amount: 500000, currency: 'MAD', nature: 'equity', funderName: '', funderId: null },
+      { id: '2', onDate: '', amount: 200000, currency: 'MAD', nature: 'grant', funderName: '', funderId: null },
+      { id: '3', onDate: '', amount: 100000, currency: 'MAD', nature: 'honour_loan', funderName: '', funderId: null },
+      { id: '4', onDate: '', amount: 50000, currency: 'EUR', nature: 'equity', funderName: '', funderId: null },
+      { id: '5', onDate: '', amount: null, currency: 'MAD', nature: 'debt', funderName: '', funderId: null },
+    ]);
+    assert.deepEqual(totals, [
+      { currency: 'MAD', equity: 500000, grant: 200000, other: 100000, total: 800000 },
+      { currency: 'EUR', equity: 50000, grant: 0, other: 0, total: 50000 },
+    ]);
+  });
+
+  it('refuses more women than people', () => {
+    assert.ok(teamProblems(profileOf({ teamSize: 4, womenCount: 5 })).womenCount);
+    assert.deepEqual(teamProblems(profileOf({ teamSize: 4, womenCount: 4 })), {});
+    assert.deepEqual(teamProblems(profileOf({ womenCount: 3 })), {}, 'nothing to compare with yet');
+  });
+});
+
+describe('the fiche’s lists, kept', { skip: skipWithoutServer }, () => {
+  it('adds, changes and removes a product, a round and a programme — on its own page only', async () => {
+    const org = await dir.createRecord({ kind: 'org', name: `Listes ${uniq()}`, origin: 'manual' });
+    const other = await dir.createRecord({ kind: 'org', name: `Autre ${uniq()}`, origin: 'manual' });
+    await dir.addSheetItem('products', org.id, { name: 'Datte Medjool', status: 'commercialised', price: '120 MAD/kg' });
+    await dir.addSheetItem('products', org.id, { name: 'Pâte de dattes' });
+    await dir.addSheetItem('fundings', org.id, { amount: 300000, currency: 'MAD', nature: 'grant', funderName: 'Innov Invest' });
+    await dir.addSheetItem('programs', org.id, { name: 'Accélérateur X', status: 'done' });
+
+    let p = profileOf((await dir.getRecord(org.id))!);
+    assert.deepEqual(p.products.map((x) => x.name), ['Datte Medjool', 'Pâte de dattes'], 'in the order they were added');
+    assert.equal(p.fundings[0]?.amount, 300000);
+    assert.equal(p.programs[0]?.name, 'Accélérateur X');
+
+    const first = p.products[0]!.id;
+    assert.equal(await dir.changeSheetItem('products', other.id, first, { name: 'Volé' }), false, 'not through another page');
+    assert.equal(await dir.changeSheetItem('products', org.id, first, { price: '130 MAD/kg' }), true);
+    assert.equal(await dir.dropSheetItem('products', other.id, first), false);
+    assert.equal(await dir.dropSheetItem('fundings', org.id, p.fundings[0]!.id), true);
+
+    p = profileOf((await dir.getRecord(org.id))!);
+    assert.equal(p.products[0]?.price, '130 MAD/kg');
+    assert.equal(p.fundings.length, 0);
+  });
+
+  it('reads the programmes followed here from the applications that were kept, and only those', async () => {
+    const org = await dir.createRecord({ kind: 'org', name: `Retenue ${uniq()}`, origin: 'manual' });
+    const program = await repo.createProgram({ name: `Grow ${uniq()}` });
+    const edition = await repo.createEdition(program.id, { name: '2026' });
+    const track = (await repo.getEditionDetail(edition.id))!.tracks[0]!;
+    const candidate = await repo.createCandidate({ editionId: edition.id, trackId: track.id, orgId: org.id, personId: null, originBlockId: null });
+    assert.deepEqual(profileOf((await dir.getRecord(org.id))!).ceedPrograms, [], 'applying is not taking part');
+    await repo.updateCandidate(candidate.id, { status: 'Selected' });
+    const kept = profileOf((await dir.getRecord(org.id))!).ceedPrograms;
+    assert.equal(kept.length, 1);
+    assert.equal(kept[0]?.program, program.name);
+  });
+
+  it('has one main contact at most', async () => {
+    const org = await dir.createRecord({ kind: 'org', name: `Contact ${uniq()}`, origin: 'manual' });
+    const a = await dir.createRecord({ kind: 'person', name: `Amal ${uniq()}`, origin: 'manual' });
+    const b = await dir.createRecord({ kind: 'person', name: `Badr ${uniq()}`, origin: 'manual' });
+    const la = await dir.linkRecords({ personId: a.id, orgId: org.id, role: 'founder' });
+    const lb = await dir.linkRecords({ personId: b.id, orgId: org.id, role: 'ceo' });
+    await dir.setAffiliation(la.id, { primary: true });
+    await dir.setAffiliation(lb.id, { primary: true });
+    const team = await dir.teamOf(org.id);
+    assert.deepEqual(team.filter((m) => m.primary).map((m) => m.person.id), [b.id]);
   });
 });

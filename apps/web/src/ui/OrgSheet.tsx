@@ -16,8 +16,22 @@
  * editor for the founder and for CEED: they only differ by where it saves.
  */
 import {
+  ACTIVITY_NATURES,
+  AFFILIATION_ROLES,
   COUNTRIES,
   CURRENCIES,
+  FUNDING_NATURES,
+  PRODUCT_STATUSES,
+  PROGRAM_STATUSES,
+  SALES_ZONES,
+  TARGET_MARKETS,
+  abroad,
+  accompanied,
+  choiceLabel,
+  digital,
+  fundingTotals,
+  isFounderRole,
+  teamProblems,
   LEGAL_FORMS,
   LEGAL_STATUSES,
   MATURITY_LEVELS,
@@ -38,13 +52,16 @@ import {
   type DirectoryRecord,
   type ProfileSection,
   type Revenue,
+  type SheetList,
+  type TeamMember,
 } from '@ceed/shared';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ApiError, api } from '../lib/api';
 import { say, useLang, type Lang, type Word } from '../lib/lang';
 import { EmailLines } from './EmailLines';
 import { Icon } from './Icon';
-import { ASK_WORD, ProfileBar, RecordImage } from './OrgProfile';
+import { PeoplePicker } from '../pages/directory/PeoplePicker';
+import { ASK_WORD, ProfileBar, RecordImage, money } from './OrgProfile';
 import { Drawer, useToast } from './Overlays';
 import { PhoneLines } from './PhoneLines';
 import { PlaceLines } from './PlaceLines';
@@ -57,13 +74,30 @@ const SECTION_WORD: Record<ProfileSection, Word> = {
   activity: 'sheet.s.activity',
   team: 'sheet.s.team',
   maturity: 'sheet.s.maturity',
+  funding: 'sheet.s.funding',
 };
 
 /** Where this editor writes: the founder's routes, or CEED's. */
 export interface SheetRoutes {
   record: string;
   revenue: (year: number) => string;
+  /** One line of a list: the list itself to add, or one of its lines. */
+  list: (list: SheetList, itemId?: string) => string;
+  /** Who is on the page, and how one of them is changed. */
+  team: string;
+  affiliation: (affiliationId: string) => string;
+  /**
+   * How somebody joins the page. A founder names a person — found again by
+   * their address if the directory knows them — and never searches the whole
+   * directory; CEED picks from it.
+   */
+  join: { kind: 'member'; url: string } | { kind: 'staff'; orgId: string };
+  /** Whether this reader may change roles and the main contact. */
+  manageTeam: boolean;
 }
+
+/** Les listes que le serveur renvoie avec la fiche, et que l'écran reprend telles quelles. */
+const SERVER_LISTS = ['revenues', 'products', 'fundings', 'programs', 'ceedPrograms'] as const;
 
 /** Un entier ou rien : une case vidée veut dire « je ne sais pas », pas zéro. */
 const numberOrNull = (text: string, whole = false): number | null => {
@@ -109,16 +143,22 @@ export function OrgSheet({
   const profile = profileOf(draft);
 
   /** Sends one change, and keeps what the server answered. */
-  const send = async (url: string, body: unknown, key: string, method: 'patch' | 'put') => {
+  const send = async (url: string, body: unknown, key: string, method: 'patch' | 'put' | 'post' | 'del') => {
     setPending((n) => n + 1);
     try {
       const saved =
-        method === 'patch' ? await api.patch<DirectoryRecord>(url, body) : await api.put<DirectoryRecord>(url, body);
+        method === 'patch'
+          ? await api.patch<DirectoryRecord>(url, body)
+          : method === 'put'
+            ? await api.put<DirectoryRecord>(url, body)
+            : method === 'post'
+              ? await api.post<DirectoryRecord>(url, body)
+              : await api.del<DirectoryRecord>(url);
       setErrors(({ [key]: _gone, ...rest }) => rest);
       /* Le chiffre d'affaires vient du serveur ; le reste, de ce qu'on tape —
          une réponse lente ne doit pas réécrire un champ qu'on a continué à
          remplir pendant ce temps. */
-      setDraft((d) => ({ ...d, revenues: saved.revenues }));
+      setDraft((d) => ({ ...d, ...Object.fromEntries(SERVER_LISTS.map((k) => [k, saved[k]])) }));
       setSavedOnce(true);
       onChanged(saved);
     } catch (err) {
@@ -166,6 +206,22 @@ export function OrgSheet({
     if (!wait) return void go();
     queued.current[key] = go;
     timers.current[key] = setTimeout(() => void go(), PAUSE);
+  };
+
+  /** One line of a list: added, changed after a pause, or removed. */
+  const lines: Lines = {
+    add: (list, input) => send(routes.list(list), input, `${list}:new`, 'post'),
+    change: (list, id, patch) => {
+      const key = `${list}:${id}`;
+      clearTimeout(timers.current[key]);
+      const go = () => {
+        delete queued.current[key];
+        return send(routes.list(list, id), patch, key, 'patch');
+      };
+      queued.current[key] = go;
+      timers.current[key] = setTimeout(() => void go(), PAUSE);
+    },
+    drop: (list, id) => send(routes.list(list, id), undefined, `${list}:${id}`, 'del'),
   };
 
   /** Ce qui attend sa pause part tout de suite : on change de section, ou on s'en va. */
@@ -236,24 +292,9 @@ export function OrgSheet({
       {section === 'identity' && (
         <Identity draft={draft} put={put} errors={errors} t={t} l={l} />
       )}
-      {section === 'activity' && (
-        <>
-          <Area label={t('sheet.bio')} value={draft.bio} rows={6} error={errors.bio} onChange={(v) => put({ bio: v }, { wait: true })} />
-          <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{t('sheet.soon')}</p>
-        </>
-      )}
-      {section === 'team' && (
-        <>
-          <NumberInput
-            label={t('sheet.team')}
-            value={draft.teamSize}
-            whole
-            error={errors.teamSize}
-            onChange={(v) => put({ teamSize: v }, { wait: true })}
-          />
-          <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{t('sheet.soon')}</p>
-        </>
-      )}
+      {section === 'activity' && <Activity draft={draft} put={put} lines={lines} errors={errors} t={t} l={l} />}
+      {section === 'team' && <Team draft={draft} put={put} routes={routes} errors={errors} t={t} l={l} />}
+      {section === 'funding' && <FundingSection draft={draft} put={put} lines={lines} t={t} l={l} />}
       {section === 'maturity' && (
         <MaturitySection draft={draft} put={put} putRevenue={putRevenue} errors={errors} t={t} l={l} />
       )}
@@ -271,6 +312,12 @@ export function OrgSheet({
 
 /* Les valeurs viennent des listes de profile.ts ; le serveur les revérifie. */
 type Put = (patch: { [K in keyof DirectoryRecord]?: unknown }, opts?: { wait?: boolean }) => void;
+
+interface Lines {
+  add: (list: SheetList, input: Record<string, unknown>) => Promise<void>;
+  change: (list: SheetList, id: string, patch: Record<string, unknown>) => void;
+  drop: (list: SheetList, id: string) => Promise<void>;
+}
 type T = (w: Word) => string;
 
 /* ------------------------------------------------------------------ */
@@ -617,6 +664,594 @@ function MaturitySection({
         <Line label={t('sheet.patentProcedure')} value={details.procedure ?? ''} onChange={(v) => setPatent({ procedure: v })} />
       )}
     </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Section 2 — Activité & produits                                     */
+/* ------------------------------------------------------------------ */
+
+function Activity({
+  draft,
+  put,
+  lines,
+  errors,
+  t,
+  l,
+}: {
+  draft: DirectoryRecord;
+  put: Put;
+  lines: Lines;
+  errors: Record<string, string>;
+  t: T;
+  l: Lang;
+}) {
+  const p = profileOf(draft);
+  const toggleMarket = (key: string) =>
+    put({
+      targetMarkets: draft.targetMarkets.includes(key)
+        ? draft.targetMarkets.filter((k) => k !== key)
+        : [...draft.targetMarkets, key],
+    });
+
+  return (
+    <>
+      <Area label={t('sheet.bio')} value={draft.bio} rows={5} error={errors.bio} onChange={(v) => put({ bio: v }, { wait: true })} />
+
+      <Pick label={t('sheet.nature')} list={ACTIVITY_NATURES} value={draft.activityNature} l={l} onChange={(v) => put({ activityNature: v })} />
+
+      <div className="field">
+        <label>{t('sheet.markets')}</label>
+        <div className="work-pick">
+          {TARGET_MARKETS.map((m) => (
+            <button
+              key={m.key}
+              type="button"
+              className={draft.targetMarkets.includes(m.key) ? 'track on' : 'track'}
+              onClick={() => toggleMarket(m.key)}
+            >
+              {m[l]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <Area label={t('sheet.offering')} value={draft.mainOffering} rows={3} onChange={(v) => put({ mainOffering: v }, { wait: true })} />
+
+      <div className="grid-2">
+        <Line label={`${t('sheet.catalogue')} · ${t('sheet.optional')}`} value={draft.catalogueUrl} placeholder="https://" onChange={(v) => put({ catalogueUrl: v }, { wait: true })} />
+        {digital(p) && (
+          <Line label={`${t('sheet.demo')} · ${t('sheet.optional')}`} value={draft.demoUrl} placeholder="https://" onChange={(v) => put({ demoUrl: v }, { wait: true })} />
+        )}
+      </div>
+
+      <Pick label={t('sheet.zone')} list={SALES_ZONES} value={draft.salesZone} l={l} onChange={(v) => put({ salesZone: v })} />
+      {abroad(p) && (
+        <div className="sheet-group">
+          <div className="field">
+            <label>{t('sheet.countries')}</label>
+            {draft.salesCountries.length > 0 && (
+              <div className="row wrap" style={{ gap: 5, marginBottom: 6 }}>
+                {draft.salesCountries.map((c) => (
+                  <span className="badge" key={c}>
+                    {c}{' '}
+                    <button
+                      className="linkish"
+                      aria-label={`${t('sheet.remove')} ${c}`}
+                      onClick={() => put({ salesCountries: draft.salesCountries.filter((x) => x !== c) })}
+                    >
+                      <Icon name="x" size={10} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <select
+              className="input"
+              value=""
+              onChange={(e) => e.target.value && put({ salesCountries: [...draft.salesCountries, e.target.value] })}
+            >
+              <option value="">{t('sheet.countryAdd')}</option>
+              {COUNTRIES.filter((c) => !draft.salesCountries.includes(c)).map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      <div className="field">
+        <label>{t('sheet.products')}</label>
+        <div className="stack" style={{ gap: 8 }}>
+          {draft.products.map((product) => (
+            <ProductCard key={product.id} product={product} lines={lines} t={t} l={l} />
+          ))}
+        </div>
+        <NewLine
+          label={t('sheet.productAdd')}
+          placeholder={t('sheet.productName')}
+          t={t}
+          onAdd={(name) => lines.add('products', { name })}
+        />
+      </div>
+    </>
+  );
+}
+
+/** Un produit : ce qu'on y tape reste à l'écran, et part après une pause. */
+function ProductCard({ product, lines, t, l }: { product: DirectoryRecord['products'][number]; lines: Lines; t: T; l: Lang }) {
+  const [p, setP] = useState(product);
+  const set = (patch: Partial<typeof p>) => {
+    setP((x) => ({ ...x, ...patch }));
+    lines.change('products', product.id, patch);
+  };
+  return (
+    <div className="rowcard card-pad stack" style={{ gap: 10 }}>
+      <div className="row" style={{ gap: 8 }}>
+        <input
+          className="input"
+          style={{ flex: 1, fontWeight: 600 }}
+          value={p.name}
+          aria-label={t('sheet.productName')}
+          onChange={(e) => {
+            setP((x) => ({ ...x, name: e.target.value }));
+            if (e.target.value.trim()) lines.change('products', product.id, { name: e.target.value });
+          }}
+        />
+        <Remove t={t} onRemove={() => lines.drop('products', product.id)} />
+      </div>
+      <textarea
+        className="textarea"
+        rows={2}
+        placeholder={t('sheet.productDesc')}
+        value={p.description}
+        onChange={(e) => set({ description: e.target.value })}
+      />
+      <div className="grid-2">
+        <div className="field">
+          <label>{t('sheet.productStatus')}</label>
+          <select className="input" value={p.status} onChange={(e) => set({ status: e.target.value })}>
+            <option value="">{t('sheet.choose')}</option>
+            {PRODUCT_STATUSES.map((c) => (
+              <option key={c.key} value={c.key}>{c[l]}</option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label>{t('sheet.productPrice')} · {t('sheet.optional')}</label>
+          <input className="input" value={p.price} placeholder="200 MAD / mois" onChange={(e) => set({ price: e.target.value })} />
+        </div>
+      </div>
+      <RecordImage
+        label={`${t('sheet.productImage')} · ${t('sheet.optional')}`}
+        uploadId={p.imageUploadId}
+        name={p.name}
+        onChange={(v) => {
+          setP((x) => ({ ...x, imageUploadId: v }));
+          lines.change('products', product.id, { imageUploadId: v });
+        }}
+      />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Section 3 — Équipe                                                  */
+/* ------------------------------------------------------------------ */
+
+function Team({
+  draft,
+  put,
+  routes,
+  errors,
+  t,
+  l,
+}: {
+  draft: DirectoryRecord;
+  put: Put;
+  routes: SheetRoutes;
+  errors: Record<string, string>;
+  t: T;
+  l: Lang;
+}) {
+  const [team, setTeam] = useState<TeamMember[] | null>(null);
+  const [adding, setAdding] = useState(false);
+  const toast = useToast();
+  const load = () => void api.get<TeamMember[]>(routes.team).then(setTeam).catch(() => setTeam([]));
+  useEffect(load, [routes.team]);
+
+  /* L'incohérence se dit avant l'envoi : le serveur la refusera de toute façon. */
+  const wrong = teamProblems(profileOf(draft));
+  const linked = (team ?? []).filter((m) => isFounderRole(m.role)).length;
+  const gap = team !== null && draft.foundersCount !== null && linked > 0 && linked !== draft.foundersCount;
+
+  const change = async (member: TeamMember, patch: { role?: string; primary?: boolean }) => {
+    try {
+      const next = await api.patch<TeamMember[] | unknown>(routes.affiliation(member.affiliationId), patch);
+      if (Array.isArray(next)) setTeam(next as TeamMember[]);
+      else load();
+    } catch (err) {
+      toast((err as Error).message, true);
+    }
+  };
+
+  return (
+    <>
+      <div className="grid-3">
+        <NumberInput label={t('sheet.founders')} value={draft.foundersCount} whole onChange={(v) => put({ foundersCount: v }, { wait: true })} />
+        <NumberInput label={t('sheet.team')} value={draft.teamSize} whole error={errors.teamSize} onChange={(v) => put({ teamSize: v }, { wait: true })} />
+        <NumberInput
+          label={t('sheet.women')}
+          value={draft.womenCount}
+          whole
+          error={wrong.womenCount ?? errors.womenCount}
+          onChange={(v) => put({ womenCount: v }, { wait: true })}
+        />
+      </div>
+
+      {gap && (
+        <p className="hint" style={{ margin: 0 }}>
+          <Icon name="alert" size={12} /> {t('sheet.foundersGap')} {draft.foundersCount} / {linked} {t('sheet.foundersLinked')}.
+        </p>
+      )}
+
+      <div className="field">
+        <label>{t('sheet.people')}</label>
+        <div className="help">{t('sheet.peopleHelp')}</div>
+        <div className="stack" style={{ gap: 6, marginTop: 4 }}>
+          {(team ?? []).map((member) => {
+            const known = AFFILIATION_ROLES.some((r) => r.key === member.role);
+            return (
+              <div className="rowcard row" key={member.affiliationId} style={{ gap: 8, padding: '8px 10px' }}>
+                {member.person.logoUploadId ? (
+                  <img className="rec-photo" src={`/api/uploads/${member.person.logoUploadId}`} alt="" />
+                ) : (
+                  <span className="rec-mark">{member.person.name.slice(0, 2).toUpperCase()}</span>
+                )}
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600 }}>{member.person.name}</span>
+                {routes.manageTeam ? (
+                  <select
+                    className="input"
+                    style={{ width: 150, flex: 'none' }}
+                    aria-label={`${t('sheet.role')} — ${member.person.name}`}
+                    value={member.role}
+                    onChange={(e) => change(member, { role: e.target.value })}
+                  >
+                    <option value="">{t('sheet.role')}…</option>
+                    {/* Un rôle d'avant la liste reste lisible tel quel. */}
+                    {!known && member.role && <option value={member.role}>{member.role}</option>}
+                    {AFFILIATION_ROLES.map((r) => (
+                      <option key={r.key} value={r.key}>{r[l]}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="faint" style={{ fontSize: 12.5 }}>{choiceLabel(AFFILIATION_ROLES, member.role, l)}</span>
+                )}
+                <label className="check" style={{ whiteSpace: 'nowrap', fontSize: 12 }}>
+                  <input
+                    type="radio"
+                    name="primary-contact"
+                    checked={member.primary}
+                    disabled={!routes.manageTeam}
+                    onChange={() => change(member, { primary: true })}
+                  />
+                  <span>{t('sheet.primary')}</span>
+                </label>
+              </div>
+            );
+          })}
+        </div>
+        {!routes.manageTeam && <p className="faint" style={{ margin: '6px 0 0', fontSize: 12 }}>{t('sheet.onlyAdmin')}</p>}
+        {routes.manageTeam &&
+          (adding ? (
+            <JoinPerson
+              routes={routes}
+              t={t}
+              l={l}
+              onDone={(changed) => {
+                setAdding(false);
+                if (changed) load();
+              }}
+            />
+          ) : (
+            <button className="btn sm" style={{ alignSelf: 'flex-start', marginTop: 8 }} onClick={() => setAdding(true)}>
+              <Icon name="plus" size={13} /> {t('sheet.personAdd')}
+            </button>
+          ))}
+      </div>
+    </>
+  );
+}
+
+/**
+ * Associer quelqu'un : par son adresse côté startup, par l'annuaire côté CEED.
+ *
+ * Jamais une seconde fiche pour la même personne — la startup la retrouve par
+ * son email, CEED la choisit dans l'annuaire — et le lien porte le rôle, pas
+ * la personne : on peut être fondatrice ici et mentor ailleurs.
+ */
+function JoinPerson({ routes, t, l, onDone }: { routes: SheetRoutes; t: T; l: Lang; onDone: (changed: boolean) => void }) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [picked, setPicked] = useState<string[]>([]);
+  const [role, setRole] = useState('employee');
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      if (routes.join.kind === 'member') {
+        await api.post(routes.join.url, { name, emails: email ? [email] : [], role, access: 'member' });
+      } else {
+        for (const personId of picked) await api.post('/api/affiliations', { personId, orgId: routes.join.orgId, role });
+      }
+      onDone(true);
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="sheet-group" style={{ marginTop: 8 }}>
+      {routes.join.kind === 'member' ? (
+        <>
+          <div className="grid-2">
+            <div className="field">
+              <label>{t('sheet.personName')}</label>
+              <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>{t('sheet.personEmail')}</label>
+              <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </div>
+          </div>
+          <p className="hint" style={{ margin: 0 }}>{t('sheet.personFound')}</p>
+        </>
+      ) : (
+        <PeoplePicker label={t('sheet.personName')} value={picked} onChange={setPicked} />
+      )}
+      <div className="row" style={{ gap: 8 }}>
+        <select className="input" style={{ width: 170, flex: 'none' }} aria-label={t('sheet.role')} value={role} onChange={(e) => setRole(e.target.value)}>
+          {AFFILIATION_ROLES.map((r) => (
+            <option key={r.key} value={r.key}>{r[l]}</option>
+          ))}
+        </select>
+        <div className="spacer" />
+        <button className="btn ghost sm" onClick={() => onDone(false)}>{t('sheet.cancel')}</button>
+        <button
+          className="btn primary sm"
+          disabled={busy || (routes.join.kind === 'member' ? !name.trim() : !picked.length)}
+          onClick={save}
+        >
+          {t('sheet.add')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Section 5 — Financement & accompagnement                            */
+/* ------------------------------------------------------------------ */
+
+function FundingSection({
+  draft,
+  put,
+  lines,
+  t,
+  l,
+}: {
+  draft: DirectoryRecord;
+  put: Put;
+  lines: Lines;
+  t: T;
+  l: Lang;
+}) {
+  const p = profileOf(draft);
+  const totals = fundingTotals(draft.fundings);
+  return (
+    <>
+      <Pick label={t('sheet.hasFunding')} list={YES_NO} value={draft.hasFunding} l={l} onChange={(v) => put({ hasFunding: v })} />
+      {draft.hasFunding === 'yes' && (
+        <div className="sheet-group">
+          <div className="field">
+            <label>{t('sheet.fundings')}</label>
+            <div className="stack" style={{ gap: 8 }}>
+              {draft.fundings.map((f) => (
+                <FundingCard key={f.id} funding={f} lines={lines} t={t} l={l} />
+              ))}
+            </div>
+            <button
+              className="btn sm"
+              style={{ alignSelf: 'flex-start', marginTop: 8 }}
+              onClick={() => lines.add('fundings', { currency: draft.capitalCurrency || 'MAD' })}
+            >
+              <Icon name="plus" size={13} /> {t('sheet.fundingAdd')}
+            </button>
+          </div>
+          {/* Par devise et par nature : le capital, les subventions et le reste
+              ne s'additionnent jamais entre eux sous un seul mot. */}
+          {totals.length > 0 && (
+            <div className="field">
+              <label>{t('sheet.totals')}</label>
+              {totals.map((row) => (
+                <div className="view-tiles" key={row.currency} style={{ marginTop: 4 }}>
+                  {(
+                    [
+                      ['sheet.totalEquity', row.equity],
+                      ['sheet.totalGrant', row.grant],
+                      ['sheet.totalOther', row.other],
+                      ['sheet.totalAll', row.total],
+                    ] as const
+                  ).map(([word, amount]) => (
+                    <div className="view-tile" key={word}>
+                      <div className="eyebrow">{t(word)}</div>
+                      <div className="view-tile-value num" style={{ fontSize: 15 }}>{money(amount, row.currency, l)}</div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <Pick label={t('sheet.pastPrograms')} list={YES_NO} value={draft.pastPrograms} l={l} onChange={(v) => put({ pastPrograms: v })} />
+      <Pick label={t('sheet.currentPrograms')} list={YES_NO} value={draft.currentPrograms} l={l} onChange={(v) => put({ currentPrograms: v })} />
+
+      {(accompanied(p) || draft.ceedPrograms.length > 0) && (
+        <div className="sheet-group">
+          {draft.ceedPrograms.length > 0 && (
+            <div className="field">
+              <label>{t('sheet.ceedPrograms')}</label>
+              <div className="help">{t('sheet.ceedProgramsHelp')}</div>
+              {draft.ceedPrograms.map((c) => (
+                <div key={c.editionId} style={{ fontSize: 13 }}>
+                  <strong>{c.program}</strong> · {c.edition}{' '}
+                  <span className={c.done ? 'badge' : 'badge ok'}>{choiceLabel(PROGRAM_STATUSES, c.done ? 'done' : 'ongoing', l)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {accompanied(p) && (
+            <div className="field">
+              <label>{t('sheet.programs')}</label>
+              <div className="stack" style={{ gap: 8 }}>
+                {draft.programs.map((g) => (
+                  <ProgramCard key={g.id} program={g} lines={lines} t={t} l={l} />
+                ))}
+              </div>
+              <NewLine label={t('sheet.programAdd')} placeholder={t('sheet.programName')} t={t} onAdd={(name) => lines.add('programs', { name })} />
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+function FundingCard({ funding, lines, t, l }: { funding: DirectoryRecord['fundings'][number]; lines: Lines; t: T; l: Lang }) {
+  const [f, setF] = useState(funding);
+  const set = (patch: Partial<typeof f>) => {
+    setF((x) => ({ ...x, ...patch }));
+    lines.change('fundings', funding.id, patch);
+  };
+  return (
+    <div className="rowcard card-pad stack" style={{ gap: 8 }}>
+      <div className="row" style={{ gap: 8 }}>
+        <select className="input" style={{ flex: 1 }} aria-label={t('sheet.fundingNature')} value={f.nature} onChange={(e) => set({ nature: e.target.value })}>
+          <option value="">{t('sheet.fundingNature')}…</option>
+          {FUNDING_NATURES.map((c) => (
+            <option key={c.key} value={c.key}>{c[l]}</option>
+          ))}
+        </select>
+        <input className="input" type="date" style={{ width: 160, flex: 'none' }} aria-label={t('sheet.fundingDate')} value={f.onDate} onChange={(e) => set({ onDate: e.target.value })} />
+        <Remove t={t} onRemove={() => lines.drop('fundings', funding.id)} />
+      </div>
+      <div className="row" style={{ gap: 8 }}>
+        <NumberBox label={t('sheet.fundingAmount')} value={f.amount} onChange={(v) => set({ amount: v })} />
+        <Currency value={f.currency} onChange={(v) => set({ currency: v })} />
+        <input
+          className="input"
+          style={{ flex: 2, minWidth: 0 }}
+          placeholder={t('sheet.funder')}
+          aria-label={t('sheet.funder')}
+          value={f.funderName}
+          onChange={(e) => set({ funderName: e.target.value })}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ProgramCard({ program, lines, t, l }: { program: DirectoryRecord['programs'][number]; lines: Lines; t: T; l: Lang }) {
+  const [g, setG] = useState(program);
+  const set = (patch: Partial<typeof g>) => {
+    setG((x) => ({ ...x, ...patch }));
+    lines.change('programs', program.id, patch);
+  };
+  return (
+    <div className="rowcard card-pad stack" style={{ gap: 8 }}>
+      <div className="row" style={{ gap: 8 }}>
+        <input
+          className="input"
+          style={{ flex: 1, fontWeight: 600 }}
+          aria-label={t('sheet.programName')}
+          value={g.name}
+          onChange={(e) => {
+            setG((x) => ({ ...x, name: e.target.value }));
+            if (e.target.value.trim()) lines.change('programs', program.id, { name: e.target.value });
+          }}
+        />
+        <Remove t={t} onRemove={() => lines.drop('programs', program.id)} />
+      </div>
+      <div className="row wrap" style={{ gap: 8 }}>
+        <input className="input" style={{ flex: 2, minWidth: 140 }} placeholder={t('sheet.programOrg')} aria-label={t('sheet.programOrg')} value={g.organisation} onChange={(e) => set({ organisation: e.target.value })} />
+        <input className="input" type="date" style={{ flex: 1, minWidth: 130 }} aria-label={t('sheet.programStart')} value={g.startsOn} onChange={(e) => set({ startsOn: e.target.value })} />
+        <input className="input" type="date" style={{ flex: 1, minWidth: 130 }} aria-label={t('sheet.programEnd')} value={g.endsOn} onChange={(e) => set({ endsOn: e.target.value })} />
+        <select className="input" style={{ flex: 1, minWidth: 120 }} aria-label={t('sheet.programStatus')} value={g.status} onChange={(e) => set({ status: e.target.value })}>
+          <option value="">{t('sheet.programStatus')}…</option>
+          {PROGRAM_STATUSES.map((c) => (
+            <option key={c.key} value={c.key}>{c[l]}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+/** Une ligne de plus : un nom, Entrée, et elle existe. Le reste se remplit dans sa carte. */
+function NewLine({ label, placeholder, t, onAdd }: { label: string; placeholder: string; t: T; onAdd: (name: string) => Promise<void> }) {
+  const [name, setName] = useState('');
+  const [open, setOpen] = useState(false);
+  const add = async () => {
+    if (!name.trim()) return;
+    await onAdd(name.trim());
+    setName('');
+    setOpen(false);
+  };
+  if (!open) {
+    return (
+      <button className="btn sm" style={{ alignSelf: 'flex-start', marginTop: 8 }} onClick={() => setOpen(true)}>
+        <Icon name="plus" size={13} /> {label}
+      </button>
+    );
+  }
+  return (
+    <div className="row" style={{ gap: 6, marginTop: 8 }}>
+      <input
+        className="input"
+        autoFocus
+        value={name}
+        placeholder={placeholder}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && void add()}
+      />
+      <button className="btn ghost sm" onClick={() => setOpen(false)}>{t('sheet.cancel')}</button>
+      <button className="btn primary sm" disabled={!name.trim()} onClick={() => void add()}>{t('sheet.add')}</button>
+    </div>
+  );
+}
+
+/** Retirer, en deux temps : une ligne effacée ne revient pas. */
+function Remove({ t, onRemove }: { t: T; onRemove: () => void }) {
+  const [sure, setSure] = useState(false);
+  if (!sure) {
+    return (
+      <button className="btn ghost icon sm" aria-label={t('sheet.remove')} title={t('sheet.remove')} onClick={() => setSure(true)}>
+        <Icon name="trash" size={13} />
+      </button>
+    );
+  }
+  return (
+    <span className="row" style={{ gap: 4 }}>
+      <span className="faint" style={{ fontSize: 12 }}>{t('sheet.removeSure')}</span>
+      <button className="btn danger sm" onClick={onRemove}>{t('sheet.remove')}</button>
+      <button className="btn ghost sm" onClick={() => setSure(false)}>{t('sheet.cancel')}</button>
+    </span>
   );
 }
 

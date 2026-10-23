@@ -1,5 +1,6 @@
 import {
   idOf,
+  newId,
   matchKey,
   splitName,
   type Affiliation,
@@ -31,10 +32,38 @@ const COLS = `id, kind, name, first_name as "firstName", last_name as "lastName"
                                               'unavailable', v.unavailable, 'currency', v.currency)
                             order by v.year desc)
               from org_revenues v where v.org_id = records.id), '[]'::json) as revenues,
+  activity_nature as "activityNature", target_markets as "targetMarkets", main_offering as "mainOffering",
+  catalogue_url as "catalogueUrl", sales_zone as "salesZone", sales_countries as "salesCountries",
+  demo_url as "demoUrl", founders_count as "foundersCount", women_count as "womenCount",
+  has_funding as "hasFunding", past_programs as "pastPrograms", current_programs as "currentPrograms",
+  coalesce((select json_agg(json_build_object('id', x.id, 'name', x.name, 'description', x.description,
+                                              'imageUploadId', x.image_upload_id, 'status', x.status,
+                                              'price', x.price, 'position', x.position)
+                            order by x.position, x.created_at)
+              from org_products x where x.org_id = records.id), '[]'::json) as products,
+  coalesce((select json_agg(json_build_object('id', f.id, 'onDate', f.on_date, 'amount', f.amount,
+                                              'currency', f.currency, 'nature', f.nature,
+                                              'funderName', f.funder_name, 'funderId', f.funder_id)
+                            order by f.on_date desc, f.created_at)
+              from org_fundings f where f.org_id = records.id), '[]'::json) as fundings,
+  coalesce((select json_agg(json_build_object('id', g.id, 'name', g.name, 'organisation', g.organisation,
+                                              'startsOn', g.starts_on, 'endsOn', g.ends_on, 'status', g.status)
+                            order by g.starts_on desc, g.created_at)
+              from org_programs g where g.org_id = records.id), '[]'::json) as programs,
+  /* Les programmes suivis ici : les candidatures retenues, lues et jamais
+     recopiées, pour qu'un changement de statut s'y voie tout de suite. */
+  coalesce((select json_agg(json_build_object('editionId', e.id, 'program', pr.name, 'edition', e.name,
+                                              'startsOn', e.starts_on::text, 'endsOn', e.ends_on::text,
+                                              'done', e.status = 'Completed')
+                            order by e.starts_on desc nulls last)
+              from candidates c join editions e on e.id = c.edition_id and e.deleted_at is null
+              join programs pr on pr.id = e.program_id and pr.deleted_at is null
+             where c.org_id = records.id and c.status = 'Selected' and c.deleted_at is null), '[]'::json)
+    as "ceedPrograms",
   email, emails, phone, phones, city, country, places, website, bio, tags,
   created_at::text as "createdAt"`;
 
-const AFF_COLS = `id, person_id as "personId", org_id as "orgId", role, access, since`;
+const AFF_COLS = `id, person_id as "personId", org_id as "orgId", role, access, since, primary_contact as "primary"`;
 
 async function all<T>(sql: string, params: unknown[] = []): Promise<T[]> {
   return (await db()).query<T>(sql, params);
@@ -212,6 +241,16 @@ const FIELDS: Record<string, string> = {
   signedContracts: 'signed_contracts',
   contractsCount: 'contracts_count',
   contractsAmount: 'contracts_amount',
+  activityNature: 'activity_nature',
+  mainOffering: 'main_offering',
+  catalogueUrl: 'catalogue_url',
+  salesZone: 'sales_zone',
+  demoUrl: 'demo_url',
+  foundersCount: 'founders_count',
+  womenCount: 'women_count',
+  hasFunding: 'has_funding',
+  pastPrograms: 'past_programs',
+  currentPrograms: 'current_programs',
 };
 
 /** Les listes et objets de la fiche, qui s'écrivent en jsonb. */
@@ -219,6 +258,8 @@ const JSON_FIELDS: Record<string, string> = {
   secondarySectors: 'secondary_sectors',
   socials: 'socials',
   patentDetails: 'patent_details',
+  targetMarkets: 'target_markets',
+  salesCountries: 'sales_countries',
 };
 
 export async function updateRecord(id: string, patch: Record<string, unknown>): Promise<DirectoryRecord | null> {
@@ -288,6 +329,87 @@ export async function linkRecords(input: {
     `select ${AFF_COLS} from affiliations where person_id = $1 and org_id = $2`,
     [input.personId, input.orgId],
   ))!;
+}
+
+/* ------------------------------------------------------------------ */
+/* Les listes de la fiche : produits, financements, programmes         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Une table par liste, et les colonnes qu'on y écrit.
+ *
+ * Écrites ici seulement, une ligne à la fois : chaque produit, chaque
+ * opération, chaque programme se modifie ou se retire seul, et garde sa date
+ * d'entrée — c'est ce qui fait un historique plutôt qu'un champ qu'on écrase.
+ */
+const SHEET_TABLES = {
+  products: {
+    table: 'org_products',
+    prefix: 'prd',
+    columns: { name: 'name', description: 'description', imageUploadId: 'image_upload_id', status: 'status', price: 'price' },
+  },
+  fundings: {
+    table: 'org_fundings',
+    prefix: 'fnd',
+    columns: {
+      onDate: 'on_date', amount: 'amount', currency: 'currency', nature: 'nature',
+      funderName: 'funder_name', funderId: 'funder_id',
+    },
+  },
+  programs: {
+    table: 'org_programs',
+    prefix: 'opg',
+    columns: { name: 'name', organisation: 'organisation', startsOn: 'starts_on', endsOn: 'ends_on', status: 'status' },
+  },
+} as const;
+
+export type SheetListName = keyof typeof SHEET_TABLES;
+
+export async function addSheetItem(list: SheetListName, orgId: string, input: Record<string, unknown>): Promise<void> {
+  const { table, prefix, columns } = SHEET_TABLES[list];
+  const keys = Object.keys(columns).filter((k) => input[k] !== undefined) as (keyof typeof columns)[];
+  const cols = ['id', 'org_id', ...keys.map((k) => columns[k])];
+  const params: unknown[] = [newId(prefix), orgId, ...keys.map((k) => input[k])];
+  /* Un produit de plus va à la fin de la liste, dans l'ordre où on les ajoute. */
+  if (list === 'products') {
+    cols.push('position');
+    const last = await one<{ n: number }>(`select coalesce(max(position), -1)::int as n from org_products where org_id = $1`, [orgId]);
+    params.push((last?.n ?? -1) + 1);
+  }
+  await all(
+    `insert into ${table} (${cols.join(', ')}) values (${cols.map((_, i) => `$${i + 1}`).join(', ')})`,
+    params,
+  );
+}
+
+/** Change one line — only if it belongs to this organisation. False when it does not. */
+export async function changeSheetItem(
+  list: SheetListName,
+  orgId: string,
+  itemId: string,
+  patch: Record<string, unknown>,
+): Promise<boolean> {
+  const { table, columns } = SHEET_TABLES[list];
+  const sets: string[] = [];
+  const params: unknown[] = [itemId, orgId];
+  for (const [key, column] of Object.entries(columns)) {
+    if (patch[key] === undefined) continue;
+    params.push(patch[key]);
+    sets.push(`${column} = $${params.length}`);
+  }
+  const touched = await all<{ id: string }>(
+    sets.length
+      ? `update ${table} set ${sets.join(', ')} where id = $1 and org_id = $2 returning id`
+      : `select id from ${table} where id = $1 and org_id = $2`,
+    params,
+  );
+  return touched.length > 0;
+}
+
+export async function dropSheetItem(list: SheetListName, orgId: string, itemId: string): Promise<boolean> {
+  const { table } = SHEET_TABLES[list];
+  return (await all<{ id: string }>(`delete from ${table} where id = $1 and org_id = $2 returning id`, [itemId, orgId]))
+    .length > 0;
 }
 
 /**
@@ -429,8 +551,20 @@ export const affiliationById = (id: string) =>
 
 export async function setAffiliation(
   id: string,
-  patch: { role?: string; access?: OrgAccess },
+  patch: { role?: string; access?: OrgAccess; primary?: boolean },
 ): Promise<void> {
+  /* Un seul contact principal par organisation : le nommer retire l'autre,
+     dans l'ordre, pour qu'il n'y en ait jamais deux le temps d'une requête. */
+  if (patch.primary === true) {
+    await (await db()).query(
+      `update affiliations set primary_contact = false
+        where org_id = (select org_id from affiliations where id = $1) and id <> $1`,
+      [id],
+    );
+  }
+  if (patch.primary !== undefined) {
+    await (await db()).query('update affiliations set primary_contact = $2 where id = $1', [id, patch.primary]);
+  }
   const sets: string[] = [];
   const params: unknown[] = [id];
   for (const [key, column] of [
@@ -471,6 +605,7 @@ export async function teamOf(orgId: string): Promise<TeamMember[]> {
       person,
       role: affiliation.role,
       access: affiliation.access,
+      primary: affiliation.primary,
       account: accounts.get(person.id) ?? null,
     });
   }

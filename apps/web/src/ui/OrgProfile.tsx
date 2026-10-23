@@ -13,6 +13,13 @@
  * French and the workspace in English without two copies of the labels.
  */
 import {
+  ACTIVITY_NATURES,
+  FUNDING_NATURES,
+  PRODUCT_STATUSES,
+  PROGRAM_STATUSES,
+  SALES_ZONES,
+  TARGET_MARKETS,
+  fundingTotals,
   LEGAL_FORMS,
   LEGAL_STATUSES,
   MATURITY_LEVELS,
@@ -172,7 +179,20 @@ export function ProfileFacts({
       hint: trend === null ? undefined : `${trend > 0 ? '+' : ''}${trend} % / ${before!.year}`,
     });
   }
-  if (p.teamSize !== null) tiles.push({ label: t('view.team'), value: String(p.teamSize) });
+  if (p.teamSize !== null) {
+    tiles.push({
+      label: t('view.team'),
+      value: String(p.teamSize),
+      hint: [
+        p.womenCount !== null && p.teamSize > 0
+          ? `${t('view.women')} ${p.womenCount} ${t('view.womenWord')} (${Math.round((p.womenCount / p.teamSize) * 100)} %)`
+          : null,
+        p.foundersCount !== null ? `${p.foundersCount} ${t('view.founders')}` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ') || undefined,
+    });
+  }
   if (p.activeClients !== null) tiles.push({ label: t('view.clients'), value: String(p.activeClients) });
   if (p.signedContracts === 'yes' && p.contractsAmount !== null) {
     tiles.push({
@@ -209,6 +229,22 @@ export function ProfileFacts({
     ...p.socials.map((s) => ({ href: s, label: s.replace(/^https?:\/\/(www\.)?/, '') })),
   ].filter(Boolean) as { href: string; label: string }[];
   const reach = [...p.emails, ...p.phones, hq?.address].filter(Boolean) as string[];
+
+  const activity = [
+    p.activityNature && choiceLabel(ACTIVITY_NATURES, p.activityNature, l),
+    p.targetMarkets.length > 0 && p.targetMarkets.map((m) => choiceLabel(TARGET_MARKETS, m, l)).join(', '),
+    p.salesZone &&
+      `${t('view.sells')} : ${choiceLabel(SALES_ZONES, p.salesZone, l)}${p.salesCountries.length ? ` (${p.salesCountries.join(', ')})` : ''}`,
+  ].filter(Boolean) as string[];
+  const activityLinks = [
+    p.demoUrl && { href: p.demoUrl, label: t('view.demo') },
+    p.catalogueUrl && { href: p.catalogueUrl, label: t('view.catalogue') },
+  ].filter(Boolean) as { href: string; label: string }[];
+  const totals = fundingTotals(p.fundings);
+  const programs = [
+    ...p.ceedPrograms.map((c) => ({ key: c.editionId, name: `${c.program} · ${c.edition}`, by: 'CEED', done: c.done })),
+    ...p.programs.map((g) => ({ key: g.id, name: g.name, by: g.organisation, done: g.status === 'done' })),
+  ];
   const elsewhere = p.places.slice(1).map((x) => [x.city, x.country].filter(Boolean).join(', ')).filter(Boolean);
 
   return (
@@ -248,6 +284,46 @@ export function ProfileFacts({
         </Block>
       )}
 
+      {(activity.length > 0 || activityLinks.length > 0 || p.mainOffering) && (
+        <Block title={t('view.about')}>
+          {activity.length > 0 && <div style={{ fontSize: 13 }}>{activity.join(' · ')}</div>}
+          {p.mainOffering && (
+            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{p.mainOffering}</p>
+          )}
+          {activityLinks.length > 0 && (
+            <div className="row wrap" style={{ gap: 6 }}>
+              {activityLinks.map((link) => (
+                <a className="btn ghost sm" key={link.href} href={link.href} target="_blank" rel="noreferrer">
+                  <Icon name="link" size={13} /> {link.label}
+                </a>
+              ))}
+            </div>
+          )}
+        </Block>
+      )}
+
+      {p.products.length > 0 && (
+        <Block title={t('view.offer')}>
+          <div className="view-products">
+            {p.products.map((product) => (
+              <div className="view-product" key={product.id}>
+                {product.imageUploadId && (
+                  <img className="view-product-img" src={`/api/uploads/${product.imageUploadId}`} alt="" />
+                )}
+                <div className="stack" style={{ gap: 3, minWidth: 0 }}>
+                  <strong style={{ fontSize: 13 }}>{product.name}</strong>
+                  <div className="row wrap" style={{ gap: 5 }}>
+                    {product.status && <span className="badge">{choiceLabel(PRODUCT_STATUSES, product.status, l)}</span>}
+                    {product.price && <span className="faint" style={{ fontSize: 12 }}>{product.price}</span>}
+                  </div>
+                  {product.description && <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5 }}>{product.description}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Block>
+      )}
+
       {(performance.length > 0 || years.length > 1) && (
         <Block title={t('view.performance')}>
           {performance.map((line) => (
@@ -266,6 +342,45 @@ export function ProfileFacts({
               </tbody>
             </table>
           )}
+        </Block>
+      )}
+
+      {(totals.length > 0 || p.fundings.length > 0) && (
+        <Block title={t('view.funding')}>
+          {totals.map((row) => (
+            <div className="row wrap" key={row.currency} style={{ gap: 14, fontSize: 13 }}>
+              {row.equity > 0 && <span><span className="faint">{t('view.raised')}</span> <strong className="num">{money(row.equity, row.currency, l)}</strong></span>}
+              {row.grant > 0 && <span><span className="faint">{t('view.grants')}</span> <strong className="num">{money(row.grant, row.currency, l)}</strong></span>}
+              {row.other > 0 && <span><span className="faint">{t('view.otherFunding')}</span> <strong className="num">{money(row.other, row.currency, l)}</strong></span>}
+            </div>
+          ))}
+          {/* La frise : chaque opération, la plus récente en haut. */}
+          <ul className="view-timeline">
+            {p.fundings.map((f) => (
+              <li key={f.id}>
+                <span className="faint num">{f.onDate ? f.onDate.slice(0, 7) : ''}</span>{' '}
+                {[
+                  f.nature && choiceLabel(FUNDING_NATURES, f.nature, l),
+                  f.amount !== null && money(f.amount, f.currency, l),
+                  f.funderName,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </li>
+            ))}
+          </ul>
+        </Block>
+      )}
+
+      {programs.length > 0 && (
+        <Block title={t('view.programs')}>
+          {programs.map((g) => (
+            <div key={g.key} style={{ fontSize: 13 }}>
+              <strong>{g.name}</strong>
+              {g.by && <span className="faint"> · {g.by}</span>}{' '}
+              <span className={g.done ? 'badge' : 'badge ok'}>{choiceLabel(PROGRAM_STATUSES, g.done ? 'done' : 'ongoing', l)}</span>
+            </div>
+          ))}
         </Block>
       )}
 

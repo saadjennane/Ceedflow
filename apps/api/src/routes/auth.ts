@@ -13,6 +13,10 @@ import {
   signupAccountInput,
   suggestPassword,
   revenueInput,
+  profileOf,
+  SHEET_LISTS,
+  sheetListInput,
+  teamProblems,
   taskItemPatch,
   taskPatch,
   teamMemberInput,
@@ -572,8 +576,42 @@ export async function authRoutes(app: FastifyInstance) {
     if (!canEditOrg(access)) {
       throw new HttpError(403, 'Only an editor or an administrator can change this page.');
     }
-    return dir.updateRecord(id, parse(myOrgInput.omit({ myRole: true }).partial(), req.body));
+    const patch = parse(myOrgInput.omit({ myRole: true }).partial(), req.body);
+    /* Ce qui ne peut pas être vrai à la fois est refusé ici, contre la fiche
+       telle qu'elle sera : le champ envoyé seul ne dit rien de l'autre. */
+    const current = await dir.getRecord(id);
+    const wrong = teamProblems(profileOf({ ...current!, ...patch }));
+    if (Object.keys(wrong).length) throw new HttpError(422, Object.values(wrong)[0]!, wrong);
+    return dir.updateRecord(id, patch);
   });
+
+  /* Les listes de la fiche — produits, financements, programmes suivis
+     ailleurs — une ligne à la fois, par qui peut modifier la page. Chaque route
+     rend la fiche entière, comme le chiffre d'affaires. */
+  for (const list of SHEET_LISTS) {
+    const editable = async (req: FastifyRequest, id: string) => {
+      const { access } = await accessTo(req, id);
+      if (!canEditOrg(access)) throw new HttpError(403, 'Only an editor or an administrator can change this page.');
+    };
+    app.post(`/api/me/organisations/:id/${list}`, async (req, reply) => {
+      const { id } = req.params as { id: string };
+      await editable(req, id);
+      await dir.addSheetItem(list, id, parse(sheetListInput[list], req.body));
+      reply.code(201);
+      return dir.getRecord(id);
+    });
+    app.patch(`/api/me/organisations/:id/${list}/:itemId`, async (req, reply) => {
+      const { id, itemId } = req.params as { id: string; itemId: string };
+      await editable(req, id);
+      const done = await dir.changeSheetItem(list, id, itemId, parse(sheetListInput[list].partial(), req.body));
+      return done ? dir.getRecord(id) : notFound(reply, 'Not on this page.');
+    });
+    app.delete(`/api/me/organisations/:id/${list}/:itemId`, async (req, reply) => {
+      const { id, itemId } = req.params as { id: string; itemId: string };
+      await editable(req, id);
+      return (await dir.dropSheetItem(list, id, itemId)) ? dir.getRecord(id) : notFound(reply, 'Not on this page.');
+    });
+  }
 
   /** Un exercice du chiffre d'affaires, par qui peut modifier la page. */
   app.put('/api/me/organisations/:id/revenues/:year', async (req, reply) => {

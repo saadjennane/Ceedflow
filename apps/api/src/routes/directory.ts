@@ -8,6 +8,10 @@ import {
   matchKey,
   parseRoles,
   revenueInput,
+  profileOf,
+  SHEET_LISTS,
+  sheetListInput,
+  teamProblems,
   signupInput,
   suggestPassword,
   updateRecordInput,
@@ -146,6 +150,8 @@ export async function directoryRoutes(app: FastifyInstance) {
     if (current.kind === 'person' && (patch.firstName !== undefined || patch.lastName !== undefined)) {
       patch.name = fullName(patch.firstName ?? current.firstName, patch.lastName ?? current.lastName);
     }
+    const wrong = teamProblems(profileOf({ ...current, ...patch }));
+    if (Object.keys(wrong).length) throw new HttpError(422, Object.values(wrong)[0]!, wrong);
     const saved = await dir.updateRecord(id, patch);
     /* L'identifiant suit l'adresse tant que personne ne tient de lettre qui
        nomme l'ancienne : sans ça, la fiche dit une adresse, le compte en
@@ -157,6 +163,40 @@ export async function directoryRoutes(app: FastifyInstance) {
     const login = wanted !== undefined && !same(wanted, current.email) ? await followRecordEmail(id, wanted) : 'none';
     return { ...saved, login };
   });
+
+  /** L'équipe d'une organisation, telle que sa fiche la montre. */
+  app.get('/api/records/:id/team', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const record = await dir.getRecord(id);
+    if (!record || record.kind !== 'org') return notFound(reply, 'Organisation not found.');
+    return dir.teamOf(id);
+  });
+
+  /* Les listes de la fiche, saisies par CEED pour une organisation. */
+  for (const list of SHEET_LISTS) {
+    const org = async (id: string) => {
+      const record = await dir.getRecord(id);
+      if (!record || record.kind !== 'org') throw new HttpError(404, 'Organisation not found.');
+    };
+    app.post(`/api/records/:id/${list}`, async (req, reply) => {
+      const { id } = req.params as { id: string };
+      await org(id);
+      await dir.addSheetItem(list, id, parse(sheetListInput[list], req.body));
+      reply.code(201);
+      return dir.getRecord(id);
+    });
+    app.patch(`/api/records/:id/${list}/:itemId`, async (req, reply) => {
+      const { id, itemId } = req.params as { id: string; itemId: string };
+      await org(id);
+      const done = await dir.changeSheetItem(list, id, itemId, parse(sheetListInput[list].partial(), req.body));
+      return done ? dir.getRecord(id) : notFound(reply, 'Not on this page.');
+    });
+    app.delete(`/api/records/:id/${list}/:itemId`, async (req, reply) => {
+      const { id, itemId } = req.params as { id: string; itemId: string };
+      await org(id);
+      return (await dir.dropSheetItem(list, id, itemId)) ? dir.getRecord(id) : notFound(reply, 'Not on this page.');
+    });
+  }
 
   /** Un exercice du chiffre d'affaires, saisi par CEED pour une organisation. */
   app.put('/api/records/:id/revenues/:year', async (req, reply) => {
@@ -392,7 +432,10 @@ export async function directoryRoutes(app: FastifyInstance) {
    */
   app.patch('/api/affiliations/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const input = parse(z.object({ role: z.string().optional(), access: z.enum(ORG_ACCESS).optional() }), req.body);
+    const input = parse(
+      z.object({ role: z.string().optional(), access: z.enum(ORG_ACCESS).optional(), primary: z.boolean().optional() }),
+      req.body,
+    );
     const found = await dir.affiliationById(id);
     if (!found) return notFound(reply, 'That link no longer exists.');
     await dir.setAffiliation(id, input);

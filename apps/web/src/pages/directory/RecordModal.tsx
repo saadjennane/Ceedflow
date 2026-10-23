@@ -60,7 +60,14 @@ export function RecordModal({
       /* The name every screen shows follows from the two fields rather than
          living beside them: two sources for one string is how a directory ends
          up listing somebody under a name their own page does not use. */
-      const body = isOrg ? draft : { ...draft, name: fullName(draft.firstName, draft.lastName) };
+      /* Une organisation qu'on modifie : son nom, ses rôles, ses tags. Le reste
+         est dans sa fiche, et l'écrire aussi d'ici ferait deux endroits qui se
+         contredisent — la dernière fenêtre fermée gagnerait. */
+      const body = isOrg
+        ? editing
+          ? { name: draft.name, roles: draft.roles, tags: draft.tags }
+          : draft
+        : { ...draft, name: fullName(draft.firstName, draft.lastName) };
       const saved = editing
         ? await api.patch<DirectoryRecord & { login?: 'moved' | 'kept' | 'taken' | 'none' }>(
             `/api/records/${record!.id}`,
@@ -193,16 +200,25 @@ export function RecordModal({
         />
       )}
 
-      <EmailLines label="Email" values={draft.emails} onChange={(v) => set({ emails: v })} />
-      <PhoneLines label="Phone" values={draft.phones} onChange={(v) => set({ phones: v })} />
-      <PlaceLines label="Where" values={draft.places} onChange={(v) => set({ places: v })} />
-      {isOrg && <TextField label="Website" value={draft.website} onChange={(v) => set({ website: v })} />}
-      <TextArea
-        label={isOrg ? 'What they do' : 'About'}
-        value={draft.bio}
-        onChange={(v) => set({ bio: v })}
-        rows={3}
-      />
+      {!(isOrg && editing) && (
+        <>
+          <EmailLines label="Email" values={draft.emails} onChange={(v) => set({ emails: v })} />
+          <PhoneLines label="Phone" values={draft.phones} onChange={(v) => set({ phones: v })} />
+          <PlaceLines label="Where" values={draft.places} onChange={(v) => set({ places: v })} />
+          {isOrg && <TextField label="Website" value={draft.website} onChange={(v) => set({ website: v })} />}
+          <TextArea
+            label={isOrg ? 'What they do' : 'About'}
+            value={draft.bio}
+            onChange={(v) => set({ bio: v })}
+            rows={3}
+          />
+        </>
+      )}
+      {isOrg && editing && (
+        <p className="hint" style={{ margin: 0 }}>
+          Contact details, description and everything else are in the organisation’s profile.
+        </p>
+      )}
       <TagField label="Tags" values={draft.tags} onChange={(v) => set({ tags: v })} placeholder="Add a tag" />
 
     </Modal>

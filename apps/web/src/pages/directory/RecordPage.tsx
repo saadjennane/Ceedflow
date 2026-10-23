@@ -299,7 +299,15 @@ export function RecordPage() {
         <OrgSheet
           record={record}
           lang="en"
-          routes={{ record: `/api/records/${record.id}`, revenue: (year) => `/api/records/${record.id}/revenues/${year}` }}
+          routes={{
+            record: `/api/records/${record.id}`,
+            revenue: (year) => `/api/records/${record.id}/revenues/${year}`,
+            list: (list, itemId) => `/api/records/${record.id}/${list}${itemId ? `/${itemId}` : ''}`,
+            team: `/api/records/${record.id}/team`,
+            affiliation: (aid) => `/api/affiliations/${aid}`,
+            join: { kind: 'staff', orgId: record.id },
+            manageTeam: true,
+          }}
           onChanged={() => {}}
           onClose={() => {
             setFilling(false);

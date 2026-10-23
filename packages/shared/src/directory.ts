@@ -1,6 +1,26 @@
 import { z } from 'zod';
 import { emailList, phoneList, placeList } from './contact.js';
-import { CURRENCIES, LEGAL_FORMS, LEGAL_STATUSES, MATURITY_LEVELS, ORG_TYPES } from './profile.js';
+import {
+  ACTIVITY_NATURES,
+  CURRENCIES,
+  FUNDING_NATURES,
+  LEGAL_FORMS,
+  LEGAL_STATUSES,
+  MATURITY_LEVELS,
+  ORG_TYPES,
+  PRODUCT_STATUSES,
+  PROGRAM_STATUSES,
+  SALES_ZONES,
+  TARGET_MARKETS,
+  type CeedProgram,
+  type ExternalProgram,
+  type Funding,
+  type Product,
+} from './profile.js';
+
+/** A key from one of profile.ts's lists, or nothing. */
+const oneOf = (list: readonly { key: string }[]) =>
+  z.enum(['', ...list.map((c) => c.key)] as [string, ...string[]]).default('');
 import { ORG_STAGES } from './profile.js';
 
 /**
@@ -94,7 +114,51 @@ const orgSheetFields = {
   signedContracts: z.enum(['', 'yes', 'no']).default(''),
   contractsCount: z.number().int().min(0).nullable().default(null),
   contractsAmount: z.number().min(0).nullable().default(null),
+  activityNature: oneOf(ACTIVITY_NATURES),
+  targetMarkets: z.array(z.enum(TARGET_MARKETS.map((c) => c.key) as [string, ...string[]])).default([]),
+  mainOffering: z.string().default(''),
+  catalogueUrl: z.string().trim().default(''),
+  salesZone: oneOf(SALES_ZONES),
+  salesCountries: z.array(z.string()).default([]),
+  demoUrl: z.string().trim().default(''),
+  foundersCount: z.number().int().min(0).nullable().default(null),
+  womenCount: z.number().int().min(0).nullable().default(null),
+  hasFunding: z.enum(['', 'yes', 'no']).default(''),
+  pastPrograms: z.enum(['', 'yes', 'no']).default(''),
+  currentPrograms: z.enum(['', 'yes', 'no']).default(''),
 };
+
+/* ---- Les listes de la fiche, une ligne à la fois ---- */
+
+export const productInput = z.object({
+  name: z.string().trim().min(1, 'Name the product or service.'),
+  description: z.string().default(''),
+  imageUploadId: z.string().nullable().default(null),
+  status: oneOf(PRODUCT_STATUSES),
+  price: z.string().default(''),
+});
+
+export const fundingInput = z.object({
+  onDate: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/, 'A date, day by day.').default(''),
+  amount: z.number().min(0, 'An amount cannot be negative.').nullable().default(null),
+  currency: z.enum(CURRENCIES).default('MAD'),
+  nature: oneOf(FUNDING_NATURES),
+  funderName: z.string().default(''),
+  funderId: z.string().nullable().default(null),
+});
+
+export const externalProgramInput = z.object({
+  name: z.string().trim().min(1, 'Name the programme.'),
+  organisation: z.string().default(''),
+  startsOn: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/, 'A date, day by day.').default(''),
+  endsOn: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/, 'A date, day by day.').default(''),
+  status: oneOf(PROGRAM_STATUSES),
+});
+
+/** Which list of the fiche a route writes to, and the table behind it. */
+export const SHEET_LISTS = ['products', 'fundings', 'programs'] as const;
+export type SheetList = (typeof SHEET_LISTS)[number];
+export const sheetListInput = { products: productInput, fundings: fundingInput, programs: externalProgramInput };
 
 export const recordSchema = z.object({
   id: z.string(),
@@ -117,6 +181,11 @@ export const recordSchema = z.object({
   linkedin: z.string().default(''),
   /* ---- La fiche en sections (profile.ts dit ce qui s'applique) ---- */
   ...orgSheetFields,
+  products: z.array(z.custom<Product>()).default([]),
+  fundings: z.array(z.custom<Funding>()).default([]),
+  programs: z.array(z.custom<ExternalProgram>()).default([]),
+  /** Lus dans les candidatures retenues : jamais écrits par la fiche. */
+  ceedPrograms: z.array(z.custom<CeedProgram>()).default([]),
   /** Le chiffre d'affaires, un exercice par ligne. */
   revenues: z
     .array(z.object({ year: z.number(), amount: z.number().nullable(), unavailable: z.boolean(), currency: z.string() }))
@@ -191,6 +260,8 @@ export const affiliationSchema = z.object({
   /** The permission, which nobody reads off the title. */
   access: z.enum(ORG_ACCESS).default('member'),
   since: z.string().default(''),
+  /** The person to reach for this organisation — one at most. */
+  primary: z.boolean().default(false),
 });
 
 export type Affiliation = z.infer<typeof affiliationSchema>;
@@ -342,7 +413,13 @@ export const teamMemberInput = z.object({
   access: z.enum(ORG_ACCESS).default('member'),
 });
 
-export const teamMemberPatch = teamMemberInput.pick({ role: true, access: true }).partial();
+export const teamMemberPatch = teamMemberInput
+  .pick({ role: true, access: true })
+  .extend({
+    /** La personne à joindre pour l'organisation. Une seule : la nommer retire l'autre. */
+    primary: z.boolean().optional(),
+  })
+  .partial();
 
 /** One row of an organisation's team, as its administrator sees it. */
 export interface TeamMember {
@@ -350,6 +427,8 @@ export interface TeamMember {
   person: DirectoryRecord;
   role: string;
   access: OrgAccess;
+  /** The one person to reach for the organisation. */
+  primary: boolean;
   /** Null while nobody has opened a way in for them. */
   account: RecordAccount | null;
 }

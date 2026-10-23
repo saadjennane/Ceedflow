@@ -126,6 +126,71 @@ export const YES_NO = choices([
   { key: 'no', fr: 'Non', en: 'No' },
 ] as const);
 
+export const ACTIVITY_NATURES = choices([
+  { key: 'product', fr: 'Produit', en: 'Product' },
+  { key: 'service', fr: 'Service', en: 'Service' },
+  { key: 'platform', fr: 'Plateforme', en: 'Platform' },
+  { key: 'mixed', fr: 'Mixte', en: 'Mixed' },
+] as const);
+
+export const TARGET_MARKETS = choices([
+  { key: 'b2b', fr: 'B2B', en: 'B2B' },
+  { key: 'b2c', fr: 'B2C', en: 'B2C' },
+  { key: 'b2g', fr: 'B2G', en: 'B2G' },
+  { key: 'b2b2c', fr: 'B2B2C', en: 'B2B2C' },
+] as const);
+
+export const SALES_ZONES = choices([
+  { key: 'morocco', fr: 'Maroc', en: 'Morocco' },
+  { key: 'international', fr: 'International', en: 'International' },
+  { key: 'both', fr: 'Les deux', en: 'Both' },
+] as const);
+
+export const PRODUCT_STATUSES = choices([
+  { key: 'in_development', fr: 'En développement', en: 'In development' },
+  { key: 'available', fr: 'Disponible', en: 'Available' },
+  { key: 'commercialised', fr: 'Commercialisé', en: 'On the market' },
+] as const);
+
+/**
+ * La nature d'un financement — et la raison pour laquelle on ne les additionne
+ * jamais ensemble : une subvention n'est pas une levée, un prêt d'honneur non
+ * plus, et un total qui les mélange dit d'une société qu'elle a levé ce
+ * qu'elle a emprunté.
+ */
+export const FUNDING_NATURES = choices([
+  { key: 'equity', fr: 'Investissement en capital', en: 'Equity investment' },
+  { key: 'debt', fr: 'Dette', en: 'Debt' },
+  { key: 'grant', fr: 'Subvention', en: 'Grant' },
+  { key: 'honour_loan', fr: 'Prêt d’honneur', en: 'Honour loan' },
+  { key: 'other', fr: 'Autre', en: 'Other' },
+] as const);
+
+export const PROGRAM_STATUSES = choices([
+  { key: 'ongoing', fr: 'En cours', en: 'Ongoing' },
+  { key: 'done', fr: 'Terminé', en: 'Completed' },
+] as const);
+
+/**
+ * Ce que quelqu'un est dans l'organisation.
+ *
+ * Proposé et non imposé : le rôle d'une affiliation a toujours été un texte,
+ * et ceux d'avant la liste — « Founder », « Directrice technique » — restent
+ * lisibles tels quels.
+ */
+export const AFFILIATION_ROLES = choices([
+  { key: 'founder', fr: 'Fondateur', en: 'Founder' },
+  { key: 'cofounder', fr: 'Cofondateur', en: 'Co-founder' },
+  { key: 'ceo', fr: 'CEO', en: 'CEO' },
+  { key: 'employee', fr: 'Collaborateur', en: 'Team member' },
+  { key: 'other', fr: 'Autre', en: 'Other' },
+] as const);
+
+/** A founder whatever the word: the key from the list, or the words people typed before it. */
+export const isFounderRole = (role: string): boolean =>
+  ['founder', 'cofounder', 'fondateur', 'fondatrice', 'cofondateur', 'cofondatrice', 'co-founder', 'co-fondateur']
+    .includes(role.trim().toLowerCase().replace(/\s+/g, ' '));
+
 /** The word for a stored key, or the stored value itself when it is from before the list. */
 export const choiceLabel = (list: readonly Choice[], key: string, lang: 'fr' | 'en'): string =>
   list.find((c) => c.key === key)?.[lang] ?? key;
@@ -150,6 +215,46 @@ export interface PatentDetails {
   office?: string;
   /** For a pending one: where the procedure is. */
   procedure?: string;
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  description: string;
+  imageUploadId: string | null;
+  status: string;
+  price: string;
+  position: number;
+}
+
+export interface Funding {
+  id: string;
+  onDate: string;
+  amount: number | null;
+  currency: string;
+  nature: string;
+  funderName: string;
+  funderId: string | null;
+}
+
+/** A programme followed elsewhere, typed by the company. */
+export interface ExternalProgram {
+  id: string;
+  name: string;
+  organisation: string;
+  startsOn: string;
+  endsOn: string;
+  status: string;
+}
+
+/** A programme followed here, read from a candidacy that was kept — never typed. */
+export interface CeedProgram {
+  editionId: string;
+  program: string;
+  edition: string;
+  startsOn: string | null;
+  endsOn: string | null;
+  done: boolean;
 }
 
 export interface Place {
@@ -196,6 +301,22 @@ export interface OrgProfile {
   contractsCount: number | null;
   contractsAmount: number | null;
   revenues: Revenue[];
+  activityNature: string;
+  targetMarkets: string[];
+  mainOffering: string;
+  catalogueUrl: string;
+  salesZone: string;
+  salesCountries: string[];
+  demoUrl: string;
+  products: Product[];
+  foundersCount: number | null;
+  womenCount: number | null;
+  hasFunding: string;
+  fundings: Funding[];
+  pastPrograms: string;
+  currentPrograms: string;
+  programs: ExternalProgram[];
+  ceedPrograms: CeedProgram[];
 }
 
 /** Anything with these fields on it — the directory record, mostly. */
@@ -233,6 +354,22 @@ export const profileOf = (record: ProfileSource): OrgProfile => ({
   contractsCount: record.contractsCount ?? null,
   contractsAmount: record.contractsAmount ?? null,
   revenues: record.revenues ?? [],
+  activityNature: record.activityNature ?? '',
+  targetMarkets: record.targetMarkets ?? [],
+  mainOffering: record.mainOffering ?? '',
+  catalogueUrl: record.catalogueUrl ?? '',
+  salesZone: record.salesZone ?? '',
+  salesCountries: record.salesCountries ?? [],
+  demoUrl: record.demoUrl ?? '',
+  products: record.products ?? [],
+  foundersCount: record.foundersCount ?? null,
+  womenCount: record.womenCount ?? null,
+  hasFunding: record.hasFunding ?? '',
+  fundings: record.fundings ?? [],
+  pastPrograms: record.pastPrograms ?? '',
+  currentPrograms: record.currentPrograms ?? '',
+  programs: record.programs ?? [],
+  ceedPrograms: record.ceedPrograms ?? [],
 });
 
 /* ------------------------------------------------------------------ */
@@ -246,6 +383,17 @@ export const isRegistered = (p: Pick<OrgProfile, 'legalStatus'>) => p.legalStatu
 
 /** Selling already: turnover, clients and contracts are worth asking. */
 export const sells = (p: Pick<OrgProfile, 'maturity'>) => rank(p.maturity) >= rank('commercialisation');
+
+/** Sold abroad: which countries is worth asking. */
+export const abroad = (p: Pick<OrgProfile, 'salesZone'>) => p.salesZone === 'international' || p.salesZone === 'both';
+
+/** Something one can try online: a demo link is worth offering. */
+export const digital = (p: Pick<OrgProfile, 'activityNature'>) =>
+  p.activityNature === 'platform' || p.activityNature === 'mixed';
+
+/** Accompanied before, or now: the programmes are worth listing. */
+export const accompanied = (p: Pick<OrgProfile, 'pastPrograms' | 'currentPrograms'>) =>
+  p.pastPrograms === 'yes' || p.currentPrograms === 'yes';
 
 /** At MVP, the one commercial question is whether anybody uses it yet. */
 export const atMvp = (p: Pick<OrgProfile, 'maturity'>) => p.maturity === 'mvp';
@@ -271,7 +419,7 @@ export function revenueYears(p: Pick<OrgProfile, 'foundedOn' | 'foundedYear'>, t
  * The sections, in the order the fiche shows them. Later lots add their own;
  * a section with no ask yet does not exist on screen.
  */
-export const PROFILE_SECTIONS = ['identity', 'activity', 'team', 'maturity'] as const;
+export const PROFILE_SECTIONS = ['identity', 'activity', 'team', 'maturity', 'funding'] as const;
 export type ProfileSection = (typeof PROFILE_SECTIONS)[number];
 
 interface Ask {
@@ -306,7 +454,15 @@ const ASKS = {
   city: { section: 'identity', level: 1, filled: (p) => text(p.places[0]?.city ?? p.city) },
   address: { section: 'identity', level: 1, filled: (p) => text(p.places[0]?.address ?? '') },
   bio: { section: 'activity', level: 2, filled: (p) => text(p.bio) },
+  activityNature: { section: 'activity', level: 2, filled: (p) => text(p.activityNature) },
+  targetMarkets: { section: 'activity', level: 2, filled: (p) => p.targetMarkets.length > 0 },
+  offering: { section: 'activity', level: 2, filled: (p) => text(p.mainOffering) },
+  salesZone: { section: 'activity', level: 2, filled: (p) => text(p.salesZone) },
+  salesCountries: { section: 'activity', level: 2, applies: abroad, filled: (p) => p.salesCountries.length > 0 },
+  products: { section: 'activity', level: 2, filled: (p) => p.products.length > 0 },
+  foundersCount: { section: 'team', level: 2, filled: (p) => number(p.foundersCount) },
   team: { section: 'team', level: 2, filled: (p) => number(p.teamSize) },
+  womenCount: { section: 'team', level: 2, filled: (p) => number(p.womenCount) },
   maturity: { section: 'maturity', level: 1, filled: (p) => text(p.maturity) },
   mvpUsers: { section: 'maturity', level: 2, applies: atMvp, filled: (p) => text(p.mvpUsers) },
   revenues: {
@@ -329,6 +485,16 @@ const ASKS = {
   contractsDetail: {
     section: 'maturity', level: 2, applies: (p) => sells(p) && p.signedContracts === 'yes',
     filled: (p) => number(p.contractsCount) && number(p.contractsAmount),
+  },
+  hasFunding: { section: 'funding', level: 2, filled: (p) => text(p.hasFunding) },
+  fundings: {
+    section: 'funding', level: 2, applies: (p) => p.hasFunding === 'yes', filled: (p) => p.fundings.length > 0,
+  },
+  pastPrograms: { section: 'funding', level: 2, filled: (p) => text(p.pastPrograms) },
+  currentPrograms: { section: 'funding', level: 2, filled: (p) => text(p.currentPrograms) },
+  programs: {
+    section: 'funding', level: 2, applies: accompanied,
+    filled: (p) => p.programs.length > 0 || p.ceedPrograms.length > 0,
   },
 } satisfies Record<string, Ask>;
 
@@ -383,3 +549,53 @@ export const forEcosystem = (p: OrgProfile): OrgProfile => ({
   phones: [],
   places: p.places.map(({ city, country }) => ({ city, country })),
 });
+
+/* ------------------------------------------------------------------ */
+/* Sums and checks                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Les totaux déclarés, par devise et par nature.
+ *
+ * Par devise, parce que des dirhams et des euros ne s'additionnent pas sans un
+ * taux que personne n'a choisi. Par nature, parce que le capital levé, les
+ * subventions et le reste sont trois réponses à trois questions différentes.
+ */
+export interface FundingTotal {
+  currency: string;
+  equity: number;
+  grant: number;
+  other: number;
+  total: number;
+}
+
+export function fundingTotals(fundings: readonly Funding[]): FundingTotal[] {
+  const by = new Map<string, FundingTotal>();
+  for (const f of fundings) {
+    if (f.amount === null || !Number.isFinite(f.amount)) continue;
+    const row = by.get(f.currency) ?? { currency: f.currency, equity: 0, grant: 0, other: 0, total: 0 };
+    if (f.nature === 'equity') row.equity += f.amount;
+    else if (f.nature === 'grant') row.grant += f.amount;
+    else row.other += f.amount;
+    row.total += f.amount;
+    by.set(f.currency, row);
+  }
+  return [...by.values()].sort((a, b) => b.total - a.total);
+}
+
+/**
+ * Ce qui ne peut pas être vrai à la fois.
+ *
+ * Refusé par le serveur et dit par l'écran : plus de femmes que de
+ * collaborateurs, ou plus de fondateurs que de monde, est une faute de frappe
+ * qu'on veut voir avant qu'un rapport la reprenne.
+ */
+export function teamProblems(
+  p: Pick<OrgProfile, 'teamSize' | 'womenCount' | 'foundersCount'>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (p.teamSize !== null && p.womenCount !== null && p.womenCount > p.teamSize) {
+    out.womenCount = 'There cannot be more women than people in the team.';
+  }
+  return out;
+}

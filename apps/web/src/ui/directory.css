@@ -633,3 +633,47 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
 }
 
 .maturity-step.on .num { background: var(--blue); color: #fff; }
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 620px) {
+  .grid-3 { grid-template-columns: 1fr; }
+}
+
+/* Les produits en cartes : une image quand il y en a, le nom, son statut. */
+.view-products {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.view-product {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+
+.view-product-img {
+  width: 52px;
+  height: 52px;
+  flex: none;
+  border-radius: var(--r-sm);
+  object-fit: cover;
+  background: var(--wash);
+}
+
+.view-timeline {
+  margin: 4px 0 0;
+  padding: 0 0 0 14px;
+  border-left: 2px solid var(--line);
+  list-style: none;
+  font-size: 13px;
+}
+
+.view-timeline li { padding: 3px 0; }

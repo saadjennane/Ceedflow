@@ -1,6 +1,7 @@
 import {
   ORG_ROLES,
   canEditOrg,
+  canManageTeam,
   profileOf,
   profileStarted,
   type AffiliationView,
@@ -997,7 +998,7 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
   const { t } = useLang();
   const [creating, setCreating] = useState(false);
   /* La fiche ouverte : celle d'une page qu'on tient, ou celle qu'on vient de créer. */
-  const [editing, setEditing] = useState<DirectoryRecord | null>(null);
+  const [editing, setEditing] = useState<{ record: DirectoryRecord; manage: boolean } | null>(null);
   const [team, setTeam] = useState<AffiliationView | null>(null);
 
   return (
@@ -1052,7 +1053,10 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
                 <Icon name="users" size={13} /> {t('org.team')}
               </button>
               {canEditOrg(link.affiliation.access) && (
-                <button className="btn sm" onClick={() => setEditing(link.record)}>
+                <button
+                  className="btn sm"
+                  onClick={() => setEditing({ record: link.record, manage: canManageTeam(link.affiliation.access) })}
+                >
                   <Icon name="edit" size={13} /> {t('my.edit')}
                 </button>
               )}
@@ -1060,7 +1064,10 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
               {/* Sous chaque page, où en est sa fiche — et la barre elle-même
                   ouvre le formulaire, pour qu'il n'y ait pas à chercher où. */}
               {canEditOrg(link.affiliation.access) && (
-                <ProfileBar profile={profileOf(link.record)} onFill={() => setEditing(link.record)} />
+                <ProfileBar
+                  profile={profileOf(link.record)}
+                  onFill={() => setEditing({ record: link.record, manage: canManageTeam(link.affiliation.access) })}
+                />
               )}
               {/* Sa fiche telle qu'un jury la lit : seulement ce qui est rempli. */}
               {profileStarted(profileOf(link.record)) && (
@@ -1080,17 +1087,22 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
             /* Une page qu'on vient d'ouvrir s'ouvre sur sa fiche : c'est le
                moment où l'on a envie de la remplir. Une page rejointe a déjà
                ses administrateurs, et pas de fiche à nous de remplir. */
-            if (created) setEditing(created);
+            if (created) setEditing({ record: created, manage: true });
           }}
         />
       )}
 
       {editing && (
         <OrgSheet
-          record={editing}
+          record={editing.record}
           routes={{
-            record: `/api/me/organisations/${editing.id}`,
-            revenue: (year) => `/api/me/organisations/${editing.id}/revenues/${year}`,
+            record: `/api/me/organisations/${editing.record.id}`,
+            revenue: (year) => `/api/me/organisations/${editing.record.id}/revenues/${year}`,
+            list: (list, itemId) => `/api/me/organisations/${editing.record.id}/${list}${itemId ? `/${itemId}` : ''}`,
+            team: `/api/me/organisations/${editing.record.id}/team`,
+            affiliation: (aid) => `/api/me/organisations/${editing.record.id}/team/${aid}`,
+            join: { kind: 'member', url: `/api/me/organisations/${editing.record.id}/team` },
+            manageTeam: editing.manage,
           }}
           onChanged={() => {}}
           onClose={() => {
