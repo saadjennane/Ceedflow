@@ -14,6 +14,15 @@
  */
 import {
   ACTIVITY_NATURES,
+  DOCUMENT_KINDS,
+  HORIZONS,
+  MARKET_GOALS,
+  MENTORING_DOMAINS,
+  NEEDS,
+  PARTNER_KINDS,
+  PRODUCT_AREAS,
+  RAISE_TYPES,
+  SUPPORT_KINDS,
   FUNDING_NATURES,
   PRODUCT_STATUSES,
   PROGRAM_STATUSES,
@@ -241,6 +250,7 @@ export function ProfileFacts({
     p.catalogueUrl && { href: p.catalogueUrl, label: t('view.catalogue') },
   ].filter(Boolean) as { href: string; label: string }[];
   const totals = fundingTotals(p.fundings);
+  const activeNeeds = p.needs.filter((n) => n.active);
   const programs = [
     ...p.ceedPrograms.map((c) => ({ key: c.editionId, name: `${c.program} · ${c.edition}`, by: 'CEED', done: c.done })),
     ...p.programs.map((g) => ({ key: g.id, name: g.name, by: g.organisation, done: g.status === 'done' })),
@@ -384,6 +394,36 @@ export function ProfileFacts({
         </Block>
       )}
 
+      {activeNeeds.length > 0 && (
+        <Block title={t('view.needs')}>
+          <div className="view-needs">
+            {activeNeeds.map((n) => (
+              <div className="view-need" key={n.need}>
+                <strong style={{ fontSize: 13 }}>{choiceLabel(NEEDS, n.need, l)}</strong>
+                {needSummary(n.need, n.data, l) && (
+                  <div className="faint" style={{ fontSize: 12.5 }}>{needSummary(n.need, n.data, l)}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </Block>
+      )}
+
+      {/* Privés : seuls l'organisation et CEED les reçoivent du serveur — un
+          juré n'en a pas la liste, et ce bloc n'existe donc pas pour lui. */}
+      {p.documents.length > 0 && (
+        <Block title={`${t('view.documents')} · ${t('view.private')}`}>
+          <div className="row wrap" style={{ gap: 6 }}>
+            {p.documents.map((d) => (
+              <a className="btn ghost sm" key={d.id} href={`/api/uploads/${d.uploadId}`} target="_blank" rel="noreferrer">
+                <Icon name="file" size={13} />{' '}
+                {d.kind === 'other' ? d.label || d.filename : `${choiceLabel(DOCUMENT_KINDS, d.kind, l)}${d.year ? ` ${d.year}` : ''}`}
+              </a>
+            ))}
+          </div>
+        </Block>
+      )}
+
       {legal.length > 0 && (
         <Block title={t('view.legal')}>
           <div style={{ fontSize: 13 }}>{legal.join(' · ')}</div>
@@ -413,6 +453,24 @@ export function ProfileFacts({
       )}
     </div>
   );
+}
+
+/** Ce qu'un besoin dit, en une ligne : les réponses données, dans la langue du lecteur. */
+function needSummary(need: string, data: Record<string, unknown>, l: Lang): string {
+  const list = (key: string, choices: readonly { key: string; fr: string; en: string }[]) =>
+    Array.isArray(data[key]) ? (data[key] as string[]).map((k) => choiceLabel(choices, k, l)).join(', ') : '';
+  const str = (key: string) => (typeof data[key] === 'string' ? (data[key] as string) : '');
+  const amount = typeof data.amount === 'number' ? money(data.amount, str('currency') || 'MAD', l) : '';
+  const parts: Record<string, string[]> = {
+    fundraising: [amount, list('types', RAISE_TYPES), str('horizon') && choiceLabel(HORIZONS, str('horizon'), l), str('use')],
+    markets: [list('clients', TARGET_MARKETS), Array.isArray(data.zones) ? (data.zones as string[]).join(', ') : '', list('goals', MARKET_GOALS), str('sectors')],
+    mentoring: [list('domains', MENTORING_DOMAINS), str('other')],
+    product: [list('areas', PRODUCT_AREAS), str('other')],
+    partners: [list('kinds', PARTNER_KINDS), str('other')],
+    hiring: [str('profiles'), typeof data.count === 'number' ? `× ${data.count}` : '', str('horizon') && choiceLabel(HORIZONS, str('horizon'), l)],
+    support: [list('kinds', SUPPORT_KINDS)],
+  };
+  return (parts[need] ?? []).filter(Boolean).join(' · ');
 }
 
 /** Un bloc de la fiche lue : un titre, et ce qu'il y a dessous. */

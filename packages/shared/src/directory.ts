@@ -12,6 +12,18 @@ import {
   PROGRAM_STATUSES,
   SALES_ZONES,
   TARGET_MARKETS,
+  DOCUMENT_KINDS,
+  HORIZONS,
+  MARKET_GOALS,
+  MENTORING_DOMAINS,
+  NEEDS,
+  PARTNER_KINDS,
+  PRODUCT_AREAS,
+  RAISE_TYPES,
+  SUPPORT_KINDS,
+  type NeedKey,
+  type Need,
+  type OrgDocument,
   type CeedProgram,
   type ExternalProgram,
   type Funding,
@@ -155,6 +167,61 @@ export const externalProgramInput = z.object({
   status: oneOf(PROGRAM_STATUSES),
 });
 
+/* ---- Les besoins : une clé, et des réponses prises dans des listes ---- */
+
+const keysOf = (list: readonly { key: string }[]) =>
+  z.array(z.enum(list.map((c) => c.key) as [string, ...string[]])).default([]);
+
+/**
+ * Ce que chaque besoin peut contenir. Des listes fermées autant que possible :
+ * c'est ce qui permettra un jour de rapprocher une société d'un programme ou
+ * d'un investisseur sans relire chaque fiche à la main.
+ */
+export const NEED_SCHEMAS: Record<NeedKey, z.ZodTypeAny> = {
+  fundraising: z.object({
+    amount: z.number().min(0).nullable().default(null),
+    currency: z.enum(CURRENCIES).default('MAD'),
+    types: keysOf(RAISE_TYPES),
+    horizon: oneOf(HORIZONS),
+    use: z.string().default(''),
+  }),
+  markets: z.object({
+    clients: keysOf(TARGET_MARKETS),
+    zones: z.array(z.string()).default([]),
+    goals: keysOf(MARKET_GOALS),
+    sectors: z.string().default(''),
+  }),
+  mentoring: z.object({ domains: keysOf(MENTORING_DOMAINS), other: z.string().default('') }),
+  product: z.object({ areas: keysOf(PRODUCT_AREAS), other: z.string().default('') }),
+  partners: z.object({ kinds: keysOf(PARTNER_KINDS), other: z.string().default('') }),
+  hiring: z.object({
+    profiles: z.string().default(''),
+    count: z.number().int().min(0).nullable().default(null),
+    horizon: oneOf(HORIZONS),
+  }),
+  support: z.object({ kinds: keysOf(SUPPORT_KINDS) }),
+};
+
+export const NEED_KEYS = NEEDS.map((n) => n.key) as NeedKey[];
+
+/** Sélectionner, désélectionner, ou répondre — un besoin à la fois. */
+export const needInput = z.object({
+  active: z.boolean().optional(),
+  data: z.record(z.unknown()).optional(),
+});
+
+/* ---- Les documents ---- */
+
+export const documentInput = z.object({
+  kind: z.enum(DOCUMENT_KINDS.map((d) => d.key) as [string, ...string[]]),
+  year: z.number().int().min(1900).max(2100).nullable().default(null),
+  label: z.string().default(''),
+  uploadId: z.string().min(1, 'Attach the file first.'),
+});
+
+/** Remplacer le fichier, ou corriger l'exercice ou le nom. */
+export const documentPatch = documentInput.omit({ kind: true }).partial();
+
 /** Which list of the fiche a route writes to, and the table behind it. */
 export const SHEET_LISTS = ['products', 'fundings', 'programs'] as const;
 export type SheetList = (typeof SHEET_LISTS)[number];
@@ -186,6 +253,9 @@ export const recordSchema = z.object({
   programs: z.array(z.custom<ExternalProgram>()).default([]),
   /** Lus dans les candidatures retenues : jamais écrits par la fiche. */
   ceedPrograms: z.array(z.custom<CeedProgram>()).default([]),
+  needs: z.array(z.custom<Need>()).default([]),
+  /** Privés : seuls l'organisation et CEED les reçoivent. */
+  documents: z.array(z.custom<OrgDocument>()).default([]),
   /** Le chiffre d'affaires, un exercice par ligne. */
   revenues: z
     .array(z.object({ year: z.number(), amount: z.number().nullable(), unavailable: z.boolean(), currency: z.string() }))

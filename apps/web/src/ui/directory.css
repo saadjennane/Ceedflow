@@ -677,3 +677,47 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
 }
 
 .view-timeline li { padding: 3px 0; }
+
+/* « Comment pouvons-nous vous accompagner ? » : des cartes qu'on coche. */
+.need-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.need-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.need-card span { flex: 1; }
+.need-card:hover { border-color: var(--line-strong); color: var(--ink); }
+.need-card.on { border-color: var(--blue); background: var(--blue-soft); color: var(--ink); }
+
+.view-needs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.view-need {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--blue);
+  border-radius: var(--r);
+  background: var(--surface);
+}

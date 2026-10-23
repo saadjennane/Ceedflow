@@ -23,6 +23,7 @@ import {
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import * as dir from '../db/directory.js';
+import { addOrgDocument, changeOrgDocument, saveNeed } from '../services/orgSheet.js';
 import {
   accountOfRecord,
   accountStatesByRecord,
@@ -170,6 +171,40 @@ export async function directoryRoutes(app: FastifyInstance) {
     const record = await dir.getRecord(id);
     if (!record || record.kind !== 'org') return notFound(reply, 'Organisation not found.');
     return dir.teamOf(id);
+  });
+
+  /* Les besoins et les documents, saisis par CEED pour une organisation. */
+  const orgOnly = async (id: string) => {
+    const record = await dir.getRecord(id);
+    if (!record || record.kind !== 'org') throw new HttpError(404, 'Organisation not found.');
+  };
+  app.put('/api/records/:id/needs/:need', async (req) => {
+    const { id, need } = req.params as { id: string; need: string };
+    await orgOnly(id);
+    await saveNeed(id, need, req.body);
+    return dir.getRecord(id);
+  });
+  app.delete('/api/records/:id/needs/:need', async (req, reply) => {
+    const { id, need } = req.params as { id: string; need: string };
+    await orgOnly(id);
+    return (await dir.dropNeed(id, need)) ? dir.getRecord(id) : notFound(reply, 'No such need on this page.');
+  });
+  app.post('/api/records/:id/documents', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    await orgOnly(id);
+    await addOrgDocument(id, req.body, (await actor(req))?.name ?? '');
+    reply.code(201);
+    return dir.getRecord(id);
+  });
+  app.patch('/api/records/:id/documents/:docId', async (req, reply) => {
+    const { id, docId } = req.params as { id: string; docId: string };
+    await orgOnly(id);
+    return (await changeOrgDocument(id, docId, req.body)) ? dir.getRecord(id) : notFound(reply, 'Not on this page.');
+  });
+  app.delete('/api/records/:id/documents/:docId', async (req, reply) => {
+    const { id, docId } = req.params as { id: string; docId: string };
+    await orgOnly(id);
+    return (await dir.dropDocument(id, docId)) ? dir.getRecord(id) : notFound(reply, 'Not on this page.');
   });
 
   /* Les listes de la fiche, saisies par CEED pour une organisation. */

@@ -542,7 +542,10 @@ export async function funnelRoutes(app: FastifyInstance) {
           panel.items.some(
             (item) =>
               (upload.candidateId && item.candidate.id === upload.candidateId) ||
-              (item.profile?.logoUploadId && item.profile.logoUploadId === id),
+              (item.profile?.logoUploadId && item.profile.logoUploadId === id) ||
+              /* L'image d'un produit, que la fiche lue lui montre. Jamais un
+                 document : ceux-là restent à l'organisation et à CEED. */
+              (!upload.isDocument && item.profile?.products.some((p) => p.imageUploadId === id)),
           ),
         );
       // The same answer as a missing file: whoever asked has no business

@@ -1103,6 +1103,8 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
             affiliation: (aid) => `/api/me/organisations/${editing.record.id}/team/${aid}`,
             join: { kind: 'member', url: `/api/me/organisations/${editing.record.id}/team` },
             manageTeam: editing.manage,
+            need: (need) => `/api/me/organisations/${editing.record.id}/needs/${need}`,
+            documents: (docId) => `/api/me/organisations/${editing.record.id}/documents${docId ? `/${docId}` : ''}`,
           }}
           onChanged={() => {}}
           onClose={() => {

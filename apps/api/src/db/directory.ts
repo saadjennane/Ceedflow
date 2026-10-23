@@ -60,6 +60,17 @@ const COLS = `id, kind, name, first_name as "firstName", last_name as "lastName"
               join programs pr on pr.id = e.program_id and pr.deleted_at is null
              where c.org_id = records.id and c.status = 'Selected' and c.deleted_at is null), '[]'::json)
     as "ceedPrograms",
+  coalesce((select json_agg(json_build_object('need', n.need, 'data', n.data, 'active', n.active,
+                                              'updatedAt', n.updated_at::text, 'deselectedAt', n.deselected_at::text)
+                            order by n.created_at)
+              from org_needs n where n.org_id = records.id), '[]'::json) as needs,
+  coalesce((select json_agg(json_build_object('id', d.id, 'kind', d.kind, 'year', d.year, 'label', d.label,
+                                              'uploadId', d.upload_id, 'filename', u.filename, 'size', u.size,
+                                              'mime', u.mime, 'createdAt', d.created_at::text,
+                                              'createdByName', d.created_by_name)
+                            order by d.kind, d.year desc nulls last, d.created_at)
+              from org_documents d join uploads u on u.id = d.upload_id
+             where d.org_id = records.id), '[]'::json) as documents,
   email, emails, phone, phones, city, country, places, website, bio, tags,
   created_at::text as "createdAt"`;
 
@@ -409,6 +420,89 @@ export async function changeSheetItem(
 export async function dropSheetItem(list: SheetListName, orgId: string, itemId: string): Promise<boolean> {
   const { table } = SHEET_TABLES[list];
   return (await all<{ id: string }>(`delete from ${table} where id = $1 and org_id = $2 returning id`, [itemId, orgId]))
+    .length > 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Les besoins                                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Sélectionne, désélectionne ou met à jour un besoin.
+ *
+ * Désélectionner n'efface rien : le besoin passe inactif, ses réponses
+ * restent, et sa date de désélection le dit. Chaque écriture date le besoin,
+ * lui seul — les autres gardent la leur.
+ */
+export async function putNeed(
+  orgId: string,
+  need: string,
+  input: { active?: boolean; data?: Record<string, unknown> },
+): Promise<void> {
+  await all(
+    `insert into org_needs (org_id, need, data, active, deselected_at)
+     values ($1, $2, coalesce($3::jsonb, '{}'::jsonb), coalesce($4, true),
+             case when $4 = false then now() end)
+     on conflict (org_id, need) do update set
+       data = coalesce($3::jsonb, org_needs.data),
+       active = coalesce($4, org_needs.active),
+       deselected_at = case when $4 = false then now() when $4 = true then null else org_needs.deselected_at end,
+       updated_at = now()`,
+    [orgId, need, input.data === undefined ? null : JSON.stringify(input.data), input.active ?? null],
+  );
+}
+
+/** La suppression définitive, demandée et confirmée — la seule qui retire les réponses. */
+export async function dropNeed(orgId: string, need: string): Promise<boolean> {
+  return (await all<{ need: string }>('delete from org_needs where org_id = $1 and need = $2 returning need', [orgId, need]))
+    .length > 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Les documents                                                       */
+/* ------------------------------------------------------------------ */
+
+/** What an upload is, without loading its bytes. */
+export const uploadMeta = (id: string) =>
+  one<{ mime: string; size: number }>('select mime, size from uploads where id = $1', [id]);
+
+export async function addDocument(
+  orgId: string,
+  input: { kind: string; year: number | null; label: string; uploadId: string },
+  byName: string,
+): Promise<void> {
+  await all(
+    `insert into org_documents (id, org_id, kind, year, label, upload_id, created_by_name)
+     values ($1,$2,$3,$4,$5,$6,$7)`,
+    [newId('doc'), orgId, input.kind, input.year, input.label.trim(), input.uploadId, byName],
+  );
+}
+
+/** Replace the file, or correct the year or the name — on this organisation's own documents only. */
+export async function changeDocument(
+  orgId: string,
+  id: string,
+  patch: { year?: number | null; label?: string; uploadId?: string },
+): Promise<{ kind: string } | null> {
+  const sets: string[] = [];
+  const params: unknown[] = [id, orgId];
+  for (const [key, column] of [['year', 'year'], ['label', 'label'], ['uploadId', 'upload_id']] as const) {
+    if (patch[key] === undefined) continue;
+    params.push(patch[key]);
+    sets.push(`${column} = $${params.length}`);
+  }
+  /* Un fichier remplacé est un nouveau dépôt : la date dit le fichier qu'on lit. */
+  if (patch.uploadId !== undefined) sets.push('created_at = now()');
+  return one<{ kind: string }>(
+    sets.length
+      ? `update org_documents set ${sets.join(', ')} where id = $1 and org_id = $2 returning kind`
+      : 'select kind from org_documents where id = $1 and org_id = $2',
+    params,
+  );
+}
+
+export async function dropDocument(orgId: string, id: string): Promise<boolean> {
+  return (await all<{ id: string }>('delete from org_documents where id = $1 and org_id = $2 returning id', [id, orgId]))
     .length > 0;
 }
 

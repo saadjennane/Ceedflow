@@ -1588,12 +1588,19 @@ export async function getUpload(id: string) {
      page — so the join finds its owner the other way round. Without that, a
      founder could not re-open the logo they had just put up: the rule above
      reads the org off the candidacy, and there is no candidacy. */
-  return one<{ filename: string; mime: string; bytes: Buffer; candidateId: string | null; orgId: string | null }>(
+  return one<{
+    filename: string; mime: string; bytes: Buffer; candidateId: string | null; orgId: string | null; isDocument: boolean;
+  }>(
     `select u.filename, u.mime, u.bytes, u.candidate_id as "candidateId",
-            coalesce(c.org_id, r.id) as "orgId"
+            coalesce(c.org_id, r.id, d.org_id, pr.org_id) as "orgId",
+            d.org_id is not null as "isDocument"
        from uploads u
        left join candidates c on c.id = u.candidate_id
        left join records r on r.logo_upload_id = u.id
+       /* Un document de la fiche, ou l'image d'un produit : à l'organisation
+          qui l'a déposé, comme son logo. */
+       left join org_documents d on d.upload_id = u.id
+       left join org_products pr on pr.image_upload_id = u.id
       where u.id = $1`,
     [id],
   );

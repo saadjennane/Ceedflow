@@ -32,6 +32,7 @@ import { z } from 'zod';
 import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { changeItem, changeTask, getTask, listTasks } from '../services/tasks.js';
+import { addOrgDocument, changeOrgDocument, saveNeed } from '../services/orgSheet.js';
 import { agendaFor } from '../services/agenda.js';
 import { deliverablesFor } from '../services/deliverables.js';
 import { panelFor, reviewsFor, whyNoPanel } from '../services/reviews.js';
@@ -583,6 +584,44 @@ export async function authRoutes(app: FastifyInstance) {
     const wrong = teamProblems(profileOf({ ...current!, ...patch }));
     if (Object.keys(wrong).length) throw new HttpError(422, Object.values(wrong)[0]!, wrong);
     return dir.updateRecord(id, patch);
+  });
+
+  /* Les besoins et les documents, par qui peut modifier la page. Les
+     documents sont privés : la fiche entière qu'on rend ici ne part qu'à
+     quelqu'un de l'organisation. */
+  const canEdit = async (req: FastifyRequest, id: string) => {
+    const { account, access } = await accessTo(req, id);
+    if (!canEditOrg(access)) throw new HttpError(403, 'Only an editor or an administrator can change this page.');
+    return account;
+  };
+  app.put('/api/me/organisations/:id/needs/:need', async (req) => {
+    const { id, need } = req.params as { id: string; need: string };
+    await canEdit(req, id);
+    await saveNeed(id, need, req.body);
+    return dir.getRecord(id);
+  });
+  app.delete('/api/me/organisations/:id/needs/:need', async (req, reply) => {
+    const { id, need } = req.params as { id: string; need: string };
+    await canEdit(req, id);
+    return (await dir.dropNeed(id, need)) ? dir.getRecord(id) : notFound(reply, 'No such need on this page.');
+  });
+  app.post('/api/me/organisations/:id/documents', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const account = await canEdit(req, id);
+    const who = await dir.getRecord(account.recordId);
+    await addOrgDocument(id, req.body, who?.name ?? '');
+    reply.code(201);
+    return dir.getRecord(id);
+  });
+  app.patch('/api/me/organisations/:id/documents/:docId', async (req, reply) => {
+    const { id, docId } = req.params as { id: string; docId: string };
+    await canEdit(req, id);
+    return (await changeOrgDocument(id, docId, req.body)) ? dir.getRecord(id) : notFound(reply, 'Not on this page.');
+  });
+  app.delete('/api/me/organisations/:id/documents/:docId', async (req, reply) => {
+    const { id, docId } = req.params as { id: string; docId: string };
+    await canEdit(req, id);
+    return (await dir.dropDocument(id, docId)) ? dir.getRecord(id) : notFound(reply, 'Not on this page.');
   });
 
   /* Les listes de la fiche — produits, financements, programmes suivis

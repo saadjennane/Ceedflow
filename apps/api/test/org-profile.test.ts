@@ -10,6 +10,8 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import {
+  documentsAsked,
+  forPublic,
   forEcosystem,
   fundingTotals,
   teamProblems,
@@ -23,6 +25,7 @@ import {
 import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
+import { addOrgDocument, changeOrgDocument, saveNeed } from '../src/services/orgSheet.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
 before(migrate);
@@ -86,6 +89,8 @@ describe('what the fiche asks', () => {
       activityNature: 'product', targetMarkets: ['b2b'], mainOffering: 'Un capteur.', salesZone: 'morocco',
       products: [{ id: 'p', name: 'Capteur', description: '', imageUploadId: null, status: '', price: '', position: 0 }],
       foundersCount: 2, womenCount: 1, hasFunding: 'no', pastPrograms: 'no', currentPrograms: 'no',
+      needs: [{ need: 'mentoring', data: { domains: ['finance'] }, active: true, updatedAt: '', deselectedAt: null }],
+      documents: [{ id: 'd', kind: 'pitch_deck', year: null, label: '', uploadId: 'u', filename: 'deck.pdf', size: 1, mime: 'application/pdf', createdAt: '', createdByName: '' }],
     });
     assert.deepEqual(profileMissing(p), []);
     assert.equal(profileDone(p), 100);
@@ -260,5 +265,94 @@ describe('the fiche’s lists, kept', { skip: skipWithoutServer }, () => {
     await dir.setAffiliation(lb.id, { primary: true });
     const team = await dir.teamOf(org.id);
     assert.deepEqual(team.filter((m) => m.primary).map((m) => m.person.id), [b.id]);
+  });
+});
+
+describe('needs and documents', () => {
+  it('counts a need answered only once its main answer is given', () => {
+    const half = profileOf({ needs: [{ need: 'fundraising', data: { horizon: '6m' }, active: true, updatedAt: '', deselectedAt: null }] });
+    assert.ok(profileMissing(half).includes('needsDetail'));
+    const done = profileOf({ needs: [{ need: 'fundraising', data: { amount: 0 }, active: true, updatedAt: '', deselectedAt: null }] });
+    assert.ok(!profileMissing(done).includes('needsDetail'), 'zero is an amount');
+    const gone = profileOf({ needs: [{ need: 'mentoring', data: {}, active: false, updatedAt: '', deselectedAt: '' }] });
+    assert.ok(profileMissing(gone).includes('needs'), 'a deselected need is not a need');
+  });
+
+  it('asks a company being registered for no legal paper, and a startup for its deck', () => {
+    assert.deepEqual(documentsAsked(profileOf({ legalStatus: 'in_creation', orgType: 'pme' })), []);
+    assert.deepEqual(documentsAsked(profileOf({ legalStatus: 'registered', orgType: 'startup' })), ['statutes', 'rc', 'pitch_deck']);
+    const selling = profileOf({ legalStatus: 'registered', maturity: 'growth', foundedYear: 2015 });
+    assert.ok(documentsAsked(selling).includes('financials'));
+  });
+
+  it('gives the ecosystem the company, and the public less still', () => {
+    const p = profileOf({
+      emails: ['a@x.ma'], documents: [{ id: 'd', kind: 'rc', year: null, label: '', uploadId: 'u', filename: 'rc.pdf', size: 1, mime: 'application/pdf', createdAt: '', createdByName: '' }],
+      revenues: [{ year: 2025, amount: 10, unavailable: false, currency: 'MAD' }], sector: 'fintech',
+      places: [{ city: 'Fès', country: 'Morocco', address: 'rue X' }],
+    });
+    const eco = forEcosystem(p);
+    assert.deepEqual(eco.documents, [], 'documents are private');
+    assert.deepEqual(eco.emails, []);
+    assert.equal(eco.revenues.length, 1, 'figures are for the ecosystem');
+    const pub = forPublic(p);
+    assert.deepEqual(pub.revenues, [], 'but not for the public');
+    assert.equal(pub.sector, 'fintech');
+    assert.deepEqual(pub.places, []);
+  });
+});
+
+describe('needs and documents, kept', { skip: skipWithoutServer }, () => {
+  it('keeps a deselected need’s answers, brings them back, and erases them only when asked', async () => {
+    const org = await dir.createRecord({ kind: 'org', name: `Besoins ${uniq()}`, origin: 'manual' });
+    await saveNeed(org.id, 'fundraising', { active: true });
+    await saveNeed(org.id, 'fundraising', { data: { amount: 2000000, types: ['equity'] } });
+    await saveNeed(org.id, 'fundraising', { data: { horizon: '6m' } });
+    let need = (await dir.getRecord(org.id))!.needs.find((n) => n.need === 'fundraising')!;
+    assert.deepEqual([need.data.amount, need.data.types, need.data.horizon], [2000000, ['equity'], '6m'], 'answers add up');
+
+    await saveNeed(org.id, 'fundraising', { active: false });
+    need = (await dir.getRecord(org.id))!.needs.find((n) => n.need === 'fundraising')!;
+    assert.equal(need.active, false);
+    assert.ok(need.deselectedAt);
+    assert.equal(need.data.amount, 2000000, 'deselecting kept the answers');
+
+    await saveNeed(org.id, 'fundraising', { active: true });
+    need = (await dir.getRecord(org.id))!.needs.find((n) => n.need === 'fundraising')!;
+    assert.equal(need.active, true);
+    assert.equal(need.deselectedAt, null);
+    assert.equal(need.data.amount, 2000000, 'and selecting again finds them');
+
+    await assert.rejects(saveNeed(org.id, 'fundraising', { data: { types: ['crowdfunding'] } }), 'a value off the list');
+    await assert.rejects(saveNeed(org.id, 'lottery', { active: true }), 'a need that does not exist');
+
+    assert.equal(await dir.dropNeed(org.id, 'fundraising'), true);
+    assert.equal((await dir.getRecord(org.id))!.needs.length, 0);
+  });
+
+  it('takes a document in its expected format, on its own page only, and replaces it', async () => {
+    const org = await dir.createRecord({ kind: 'org', name: `Docs ${uniq()}`, origin: 'manual' });
+    const other = await dir.createRecord({ kind: 'org', name: `Ailleurs ${uniq()}`, origin: 'manual' });
+    const pdf = await repo.saveUpload({ filename: 'rc.pdf', mime: 'application/pdf', bytes: Buffer.from('%PDF'), fieldId: 'document' });
+    const png = await repo.saveUpload({ filename: 'rc.png', mime: 'image/png', bytes: Buffer.from('png'), fieldId: 'document' });
+
+    await assert.rejects(addOrgDocument(org.id, { kind: 'rc', uploadId: png.id }, 'Karim'), 'an image is not a register');
+    await addOrgDocument(org.id, { kind: 'rc', uploadId: pdf.id }, 'Karim');
+    let doc = (await dir.getRecord(org.id))!.documents[0]!;
+    assert.equal(doc.filename, 'rc.pdf');
+    assert.equal(doc.createdByName, 'Karim');
+
+    assert.equal(await changeOrgDocument(other.id, doc.id, { label: 'x' }), false, 'not through another page');
+    const again = await repo.saveUpload({ filename: 'rc-2026.pdf', mime: 'application/pdf', bytes: Buffer.from('%PDF2'), fieldId: 'document' });
+    assert.equal(await changeOrgDocument(org.id, doc.id, { uploadId: again.id }), true);
+    doc = (await dir.getRecord(org.id))!.documents[0]!;
+    assert.equal(doc.filename, 'rc-2026.pdf');
+
+    const upload = await repo.getUpload(again.id);
+    assert.equal(upload?.orgId, org.id, 'the file belongs to the organisation, for who may open it');
+    assert.equal(upload?.isDocument, true);
+
+    assert.equal(await dir.dropDocument(other.id, doc.id), false);
+    assert.equal(await dir.dropDocument(org.id, doc.id), true);
   });
 });

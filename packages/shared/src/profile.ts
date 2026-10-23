@@ -186,6 +186,122 @@ export const AFFILIATION_ROLES = choices([
   { key: 'other', fr: 'Autre', en: 'Other' },
 ] as const);
 
+/* ---- Les besoins : « Comment pouvons-nous vous accompagner ? » ---- */
+
+export const NEEDS = choices([
+  { key: 'fundraising', fr: 'Lever des fonds', en: 'Raise funds' },
+  { key: 'markets', fr: 'Accéder à de nouveaux marchés', en: 'Reach new markets' },
+  { key: 'mentoring', fr: 'Bénéficier de mentorat', en: 'Get mentoring' },
+  { key: 'product', fr: 'Développer mon produit', en: 'Build my product' },
+  { key: 'partners', fr: 'Trouver des partenaires', en: 'Find partners' },
+  { key: 'hiring', fr: 'Recruter des talents', en: 'Hire talent' },
+  { key: 'support', fr: 'Intégrer un programme d’accompagnement', en: 'Join a support programme' },
+] as const);
+export type NeedKey = (typeof NEEDS)[number]['key'];
+
+export const RAISE_TYPES = choices([
+  { key: 'equity', fr: 'Equity', en: 'Equity' },
+  { key: 'debt', fr: 'Dette', en: 'Debt' },
+  { key: 'grant', fr: 'Subvention', en: 'Grant' },
+  { key: 'other', fr: 'Autre', en: 'Other' },
+] as const);
+
+export const HORIZONS = choices([
+  { key: 'now', fr: 'Immédiat', en: 'Now' },
+  { key: '3m', fr: '3 mois', en: '3 months' },
+  { key: '6m', fr: '6 mois', en: '6 months' },
+  { key: '12m', fr: '12 mois', en: '12 months' },
+] as const);
+
+export const MARKET_GOALS = choices([
+  { key: 'clients', fr: 'Nouveaux clients', en: 'New clients' },
+  { key: 'distributors', fr: 'Distributeurs', en: 'Distributors' },
+  { key: 'tenders', fr: 'Appels d’offres et marchés', en: 'Tenders and public contracts' },
+  { key: 'other', fr: 'Autre', en: 'Other' },
+] as const);
+
+export const MENTORING_DOMAINS = choices([
+  { key: 'strategy', fr: 'Stratégie', en: 'Strategy' },
+  { key: 'finance', fr: 'Finance', en: 'Finance' },
+  { key: 'sales', fr: 'Marketing et vente', en: 'Marketing and sales' },
+  { key: 'legal', fr: 'Juridique', en: 'Legal' },
+  { key: 'tech', fr: 'Technologie', en: 'Technology' },
+  { key: 'hr', fr: 'Ressources humaines', en: 'People' },
+  { key: 'other', fr: 'Autre', en: 'Other' },
+] as const);
+
+export const PRODUCT_AREAS = choices([
+  { key: 'mvp', fr: 'Développement MVP', en: 'Building an MVP' },
+  { key: 'software', fr: 'Développement logiciel', en: 'Software development' },
+  { key: 'uxui', fr: 'UX/UI', en: 'UX/UI' },
+  { key: 'ai', fr: 'Intelligence artificielle', en: 'Artificial intelligence' },
+  { key: 'cloud', fr: 'Infrastructure / Cloud', en: 'Infrastructure / Cloud' },
+  { key: 'other', fr: 'Autre', en: 'Other' },
+] as const);
+
+export const PARTNER_KINDS = choices([
+  { key: 'commercial', fr: 'Partenaires commerciaux', en: 'Commercial partners' },
+  { key: 'tech', fr: 'Partenaires technologiques', en: 'Technology partners' },
+  { key: 'industrial', fr: 'Partenaires industriels', en: 'Industrial partners' },
+  { key: 'distribution', fr: 'Partenaires de distribution', en: 'Distribution partners' },
+  { key: 'other', fr: 'Autre', en: 'Other' },
+] as const);
+
+export const SUPPORT_KINDS = choices([
+  { key: 'incubation', fr: 'Incubation', en: 'Incubation' },
+  { key: 'acceleration', fr: 'Accélération', en: 'Acceleration' },
+  { key: 'venture_building', fr: 'Venture building', en: 'Venture building' },
+  { key: 'international', fr: 'Internationalisation', en: 'Going international' },
+  { key: 'sector', fr: 'Accompagnement sectoriel', en: 'Sector-specific support' },
+] as const);
+
+/**
+ * Ce que chaque besoin demande, et ce qui le dit rempli.
+ *
+ * Le champ `key` est la réponse sans laquelle le besoin ne dit rien : un
+ * montant pour une levée, des domaines pour du mentorat. C'est lui qui compte,
+ * et c'est lui qu'un rapprochement lira d'abord.
+ */
+export const NEED_KEY_FIELD: Record<NeedKey, string> = {
+  fundraising: 'amount',
+  markets: 'clients',
+  mentoring: 'domains',
+  product: 'areas',
+  partners: 'kinds',
+  hiring: 'profiles',
+  support: 'kinds',
+};
+
+/* ---- Les documents ---- */
+
+/** What a file may be, by what it is for. */
+const PDF = ['application/pdf'];
+const DECK = [
+  ...PDF,
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+];
+const ANY_DOC = [
+  ...DECK,
+  'image/png', 'image/jpeg', 'image/webp',
+  'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/csv',
+];
+
+export const DOCUMENT_KINDS = [
+  { key: 'statutes', fr: 'Statuts juridiques', en: 'Articles of association', mimes: PDF, accept: '.pdf' },
+  { key: 'rc', fr: 'Registre de commerce (RC)', en: 'Commercial register (RC)', mimes: PDF, accept: '.pdf' },
+  { key: 'financials', fr: 'Bilan', en: 'Financial statements', mimes: PDF, accept: '.pdf' },
+  { key: 'pitch_deck', fr: 'Pitch deck', en: 'Pitch deck', mimes: DECK, accept: '.pdf,.ppt,.pptx' },
+  { key: 'catalogue', fr: 'Catalogue produits', en: 'Product catalogue', mimes: PDF, accept: '.pdf' },
+  {
+    key: 'other', fr: 'Autre document', en: 'Other document', mimes: ANY_DOC,
+    accept: '.pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.csv,.png,.jpg,.jpeg,.webp',
+  },
+] as const;
+export type DocumentKind = (typeof DOCUMENT_KINDS)[number]['key'];
+
 /** A founder whatever the word: the key from the list, or the words people typed before it. */
 export const isFounderRole = (role: string): boolean =>
   ['founder', 'cofounder', 'fondateur', 'fondatrice', 'cofondateur', 'cofondatrice', 'co-founder', 'co-fondateur']
@@ -257,6 +373,29 @@ export interface CeedProgram {
   done: boolean;
 }
 
+/** A need, its answers, and when it last changed. Inactive: deselected, answers kept. */
+export interface Need {
+  need: string;
+  data: Record<string, unknown>;
+  active: boolean;
+  updatedAt: string;
+  deselectedAt: string | null;
+}
+
+/** A document on the organisation's own page. Private: it never leaves the organisation and CEED. */
+export interface OrgDocument {
+  id: string;
+  kind: string;
+  year: number | null;
+  label: string;
+  uploadId: string;
+  filename: string;
+  size: number;
+  mime: string;
+  createdAt: string;
+  createdByName: string;
+}
+
 export interface Place {
   city: string;
   country: string;
@@ -317,6 +456,8 @@ export interface OrgProfile {
   currentPrograms: string;
   programs: ExternalProgram[];
   ceedPrograms: CeedProgram[];
+  needs: Need[];
+  documents: OrgDocument[];
 }
 
 /** Anything with these fields on it — the directory record, mostly. */
@@ -370,6 +511,8 @@ export const profileOf = (record: ProfileSource): OrgProfile => ({
   currentPrograms: record.currentPrograms ?? '',
   programs: record.programs ?? [],
   ceedPrograms: record.ceedPrograms ?? [],
+  needs: record.needs ?? [],
+  documents: record.documents ?? [],
 });
 
 /* ------------------------------------------------------------------ */
@@ -419,13 +562,13 @@ export function revenueYears(p: Pick<OrgProfile, 'foundedOn' | 'foundedYear'>, t
  * The sections, in the order the fiche shows them. Later lots add their own;
  * a section with no ask yet does not exist on screen.
  */
-export const PROFILE_SECTIONS = ['identity', 'activity', 'team', 'maturity', 'funding'] as const;
+export const PROFILE_SECTIONS = ['identity', 'activity', 'team', 'maturity', 'funding', 'needs', 'documents'] as const;
 export type ProfileSection = (typeof PROFILE_SECTIONS)[number];
 
 interface Ask {
   section: ProfileSection;
-  /** 1: the first profile; 2: the enriched one. What is asked first is level 1. */
-  level: 1 | 2;
+  /** 1: the first profile; 2: the enriched one; 3: the complete file, documents included. */
+  level: 1 | 2 | 3;
   applies?: (p: OrgProfile) => boolean;
   filled: (p: OrgProfile) => boolean;
 }
@@ -496,6 +639,29 @@ const ASKS = {
     section: 'funding', level: 2, applies: accompanied,
     filled: (p) => p.programs.length > 0 || p.ceedPrograms.length > 0,
   },
+  needs: { section: 'needs', level: 2, filled: (p) => p.needs.some((n) => n.active) },
+  needsDetail: {
+    section: 'needs', level: 2, applies: (p) => p.needs.some((n) => n.active),
+    filled: (p) => p.needs.filter((n) => n.active).every(needAnswered),
+  },
+  docStatutes: {
+    section: 'documents', level: 3, applies: (p) => documentsAsked(p).includes('statutes'),
+    filled: (p) => hasDoc(p, 'statutes'),
+  },
+  docRc: {
+    section: 'documents', level: 3, applies: (p) => documentsAsked(p).includes('rc'),
+    filled: (p) => hasDoc(p, 'rc'),
+  },
+  docPitch: {
+    section: 'documents', level: 3, applies: (p) => documentsAsked(p).includes('pitch_deck'),
+    filled: (p) => hasDoc(p, 'pitch_deck'),
+  },
+  /* Le bilan du dernier exercice clos : les précédents se proposent, celui-là
+     seul se demande. */
+  docFinancials: {
+    section: 'documents', level: 3, applies: (p) => documentsAsked(p).includes('financials'),
+    filled: (p) => hasDoc(p, 'financials', revenueYears(p)[0]),
+  },
 } satisfies Record<string, Ask>;
 
 export type ProfileAsk = keyof typeof ASKS;
@@ -503,12 +669,28 @@ export const PROFILE_ASKS = Object.keys(ASKS) as ProfileAsk[];
 
 const ask = (key: ProfileAsk): Ask => ASKS[key];
 
+/** Is a need's main answer given? A list with something in it, a number, a text. */
+export const needAnswered = (n: Pick<Need, 'need' | 'data'>): boolean => {
+  const v = n.data[NEED_KEY_FIELD[n.need as NeedKey] ?? ''];
+  return Array.isArray(v) ? v.length > 0 : typeof v === 'number' ? Number.isFinite(v) : typeof v === 'string' && v.trim() !== '';
+};
+
+/** The documents a company of this kind is offered — and asked for, in the complete file. */
+export const documentsAsked = (p: OrgProfile): DocumentKind[] => [
+  ...(isRegistered(p) ? (['statutes', 'rc'] as const) : []),
+  ...(p.orgType === 'startup' ? (['pitch_deck'] as const) : []),
+  ...(isRegistered(p) && sells(p) && revenueYears(p).length ? (['financials'] as const) : []),
+];
+
+const hasDoc = (p: OrgProfile, kind: DocumentKind, year?: number) =>
+  p.documents.some((d) => d.kind === kind && (year === undefined || d.year === year));
+
 /** What applies to this company — the only asks it can be asked, or counted on. */
 export const profileAsks = (p: OrgProfile, section?: ProfileSection): ProfileAsk[] =>
   PROFILE_ASKS.filter((k) => (!section || ask(k).section === section) && (ask(k).applies?.(p) ?? true));
 
 export const askSection = (key: ProfileAsk): ProfileSection => ask(key).section;
-export const askLevel = (key: ProfileAsk): 1 | 2 => ask(key).level;
+export const askLevel = (key: ProfileAsk): 1 | 2 | 3 => ask(key).level;
 export const askFilled = (p: OrgProfile, key: ProfileAsk): boolean => ask(key).filled(p);
 
 /** What is still missing, in the order the fiche asks it. */
@@ -529,26 +711,65 @@ export const profileDone = (p: OrgProfile, section?: ProfileSection): number => 
  * does exist as a row while being an empty sheet. Showing it would put an
  * empty card in front of a juror and read as a fault of the startup's.
  */
-export const profileStarted = (p: OrgProfile): boolean => PROFILE_ASKS.some((k) => askFilled(p, k));
+export const profileStarted = (p: OrgProfile): boolean => profileAsks(p).some((k) => askFilled(p, k));
 
 /* ------------------------------------------------------------------ */
 /* Who reads what                                                      */
 /* ------------------------------------------------------------------ */
 
 /**
+ * Qui lit quoi, champ par champ.
+ *
+ *   public     — what a public directory may show, the day there is one
+ *   ecosystem  — what a juror or a mentor of its programmes reads
+ *   private    — the organisation and CEED, nobody else
+ *
+ * Fixed here rather than chosen per company: three levels a founder can trust
+ * because they are the same for everybody. Legal and financial documents are
+ * private, and so is how to reach the company — a juror's work is the company,
+ * not its phone number.
+ */
+export const VISIBILITY: Record<keyof OrgProfile, 'public' | 'ecosystem' | 'private'> = {
+  logoUploadId: 'public', pitch: 'public', orgType: 'public', sector: 'public', secondarySectors: 'public',
+  website: 'public', linkedin: 'public', socials: 'public', city: 'public', country: 'public',
+  maturity: 'public', stage: 'public', activityNature: 'public', targetMarkets: 'public', products: 'public',
+  legalStatus: 'ecosystem', foundedOn: 'ecosystem', foundedYear: 'ecosystem', legalForm: 'ecosystem',
+  capitalAmount: 'ecosystem', capitalCurrency: 'ecosystem', bio: 'ecosystem', mainOffering: 'ecosystem',
+  catalogueUrl: 'ecosystem', salesZone: 'ecosystem', salesCountries: 'ecosystem', demoUrl: 'ecosystem',
+  teamSize: 'ecosystem', foundersCount: 'ecosystem', womenCount: 'ecosystem', mvpUsers: 'ecosystem',
+  activeClients: 'ecosystem', patent: 'ecosystem', patentDetails: 'ecosystem', signedContracts: 'ecosystem',
+  contractsCount: 'ecosystem', contractsAmount: 'ecosystem', revenues: 'ecosystem', hasFunding: 'ecosystem',
+  fundings: 'ecosystem', pastPrograms: 'ecosystem', currentPrograms: 'ecosystem', programs: 'ecosystem',
+  ceedPrograms: 'ecosystem', needs: 'ecosystem',
+  /* Les lieux sont lisibles par l'écosystème, sauf l'adresse — retirée plus bas. */
+  places: 'ecosystem',
+  emails: 'private', phones: 'private', documents: 'private',
+};
+
+const RANK = { public: 0, ecosystem: 1, private: 2 } as const;
+
+/** The fiche with everything above this level emptied — done on the server, before the answer leaves it. */
+function upTo(p: OrgProfile, level: 'public' | 'ecosystem'): OrgProfile {
+  const empty = profileOf({});
+  const out = { ...p } as Record<string, unknown>;
+  for (const [key, seen] of Object.entries(VISIBILITY)) {
+    if (RANK[seen] > RANK[level]) out[key] = (empty as unknown as Record<string, unknown>)[key];
+  }
+  /* L'adresse du siège reste avec l'organisation ; la ville et le pays, non. */
+  out.places = level === 'ecosystem' ? p.places.map(({ city, country }) => ({ city, country })) : [];
+  return out as unknown as OrgProfile;
+}
+
+/**
  * La fiche telle que l'écosystème la lit — un juré, un mentor.
  *
- * Their work is the company, not reaching it: the addresses, the numbers and
- * the street of the head office stay with the organisation and with CEED.
- * Done on the server, before the answer leaves it — a field the screen merely
- * hides is a field anybody can read in the network tab.
+ * A field the screen merely hides is a field anybody can read in the network
+ * tab, so what is private never leaves the server for these readers.
  */
-export const forEcosystem = (p: OrgProfile): OrgProfile => ({
-  ...p,
-  emails: [],
-  phones: [],
-  places: p.places.map(({ city, country }) => ({ city, country })),
-});
+export const forEcosystem = (p: OrgProfile): OrgProfile => upTo(p, 'ecosystem');
+
+/** La fiche telle qu'un annuaire public la montrerait. */
+export const forPublic = (p: OrgProfile): OrgProfile => upTo(p, 'public');
 
 /* ------------------------------------------------------------------ */
 /* Sums and checks                                                     */

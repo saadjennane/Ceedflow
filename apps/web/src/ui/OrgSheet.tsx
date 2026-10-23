@@ -18,6 +18,17 @@
 import {
   ACTIVITY_NATURES,
   AFFILIATION_ROLES,
+  DOCUMENT_KINDS,
+  HORIZONS,
+  MARKET_GOALS,
+  MAX_UPLOAD_BYTES,
+  MENTORING_DOMAINS,
+  NEEDS,
+  PARTNER_KINDS,
+  PRODUCT_AREAS,
+  RAISE_TYPES,
+  SUPPORT_KINDS,
+  documentsAsked,
   COUNTRIES,
   CURRENCIES,
   FUNDING_NATURES,
@@ -56,6 +67,7 @@ import {
   type TeamMember,
 } from '@ceed/shared';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { formatDate } from '../lib/format';
 import { ApiError, api } from '../lib/api';
 import { say, useLang, type Lang, type Word } from '../lib/lang';
 import { EmailLines } from './EmailLines';
@@ -75,6 +87,8 @@ const SECTION_WORD: Record<ProfileSection, Word> = {
   team: 'sheet.s.team',
   maturity: 'sheet.s.maturity',
   funding: 'sheet.s.funding',
+  needs: 'sheet.s.needs',
+  documents: 'sheet.s.documents',
 };
 
 /** Where this editor writes: the founder's routes, or CEED's. */
@@ -94,10 +108,14 @@ export interface SheetRoutes {
   join: { kind: 'member'; url: string } | { kind: 'staff'; orgId: string };
   /** Whether this reader may change roles and the main contact. */
   manageTeam: boolean;
+  /** One need, selected, answered, or deleted for good. */
+  need: (need: string) => string;
+  /** The documents, or one of them. */
+  documents: (docId?: string) => string;
 }
 
 /** Les listes que le serveur renvoie avec la fiche, et que l'écran reprend telles quelles. */
-const SERVER_LISTS = ['revenues', 'products', 'fundings', 'programs', 'ceedPrograms'] as const;
+const SERVER_LISTS = ['revenues', 'products', 'fundings', 'programs', 'ceedPrograms', 'needs', 'documents'] as const;
 
 /** Un entier ou rien : une case vidée veut dire « je ne sais pas », pas zéro. */
 const numberOrNull = (text: string, whole = false): number | null => {
@@ -224,6 +242,28 @@ export function OrgSheet({
     drop: (list, id) => send(routes.list(list, id), undefined, `${list}:${id}`, 'del'),
   };
 
+  /** A need: selected or not at once, its answers after a pause. */
+  const needs: Needs = {
+    toggle: (need, active) => send(routes.need(need), { active }, `need:${need}`, 'put'),
+    answer: (need, data) => {
+      const key = `need:${need}:data`;
+      clearTimeout(timers.current[key]);
+      const go = () => {
+        delete queued.current[key];
+        return send(routes.need(need), { data }, key, 'put');
+      };
+      queued.current[key] = go;
+      timers.current[key] = setTimeout(() => void go(), PAUSE);
+    },
+    erase: (need) => send(routes.need(need), undefined, `need:${need}`, 'del'),
+  };
+
+  const docs: Docs = {
+    add: (input) => send(routes.documents(), input, 'documents', 'post'),
+    change: (id, patch) => send(routes.documents(id), patch, `document:${id}`, 'patch'),
+    drop: (id) => send(routes.documents(id), undefined, `document:${id}`, 'del'),
+  };
+
   /** Ce qui attend sa pause part tout de suite : on change de section, ou on s'en va. */
   const flush = async () => {
     for (const [key, go] of Object.entries(queued.current)) {
@@ -295,6 +335,8 @@ export function OrgSheet({
       {section === 'activity' && <Activity draft={draft} put={put} lines={lines} errors={errors} t={t} l={l} />}
       {section === 'team' && <Team draft={draft} put={put} routes={routes} errors={errors} t={t} l={l} />}
       {section === 'funding' && <FundingSection draft={draft} put={put} lines={lines} t={t} l={l} />}
+      {section === 'needs' && <NeedsSection draft={draft} needs={needs} t={t} l={l} />}
+      {section === 'documents' && <DocumentsSection draft={draft} docs={docs} errors={errors} t={t} l={l} />}
       {section === 'maturity' && (
         <MaturitySection draft={draft} put={put} putRevenue={putRevenue} errors={errors} t={t} l={l} />
       )}
@@ -312,6 +354,18 @@ export function OrgSheet({
 
 /* Les valeurs viennent des listes de profile.ts ; le serveur les revérifie. */
 type Put = (patch: { [K in keyof DirectoryRecord]?: unknown }, opts?: { wait?: boolean }) => void;
+
+interface Needs {
+  toggle: (need: string, active: boolean) => Promise<void>;
+  answer: (need: string, data: Record<string, unknown>) => void;
+  erase: (need: string) => Promise<void>;
+}
+
+interface Docs {
+  add: (input: { kind: string; year?: number | null; label?: string; uploadId: string }) => Promise<void>;
+  change: (id: string, patch: { uploadId?: string; label?: string; year?: number | null }) => Promise<void>;
+  drop: (id: string) => Promise<void>;
+}
 
 interface Lines {
   add: (list: SheetList, input: Record<string, unknown>) => Promise<void>;
@@ -1252,6 +1306,489 @@ function Remove({ t, onRemove }: { t: T; onRemove: () => void }) {
       <button className="btn danger sm" onClick={onRemove}>{t('sheet.remove')}</button>
       <button className="btn ghost sm" onClick={() => setSure(false)}>{t('sheet.cancel')}</button>
     </span>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Section 6 — Besoins & opportunités                                  */
+/* ------------------------------------------------------------------ */
+
+/** Une icône par besoin : la carte se reconnaît avant d'être lue. */
+const NEED_ICON: Record<string, string> = {
+  fundraising: 'star',
+  markets: 'compass',
+  mentoring: 'users',
+  product: 'settings',
+  partners: 'link',
+  hiring: 'megaphone',
+  support: 'presentation',
+};
+
+function NeedsSection({ draft, needs, t, l }: { draft: DirectoryRecord; needs: Needs; t: T; l: Lang }) {
+  const of = (key: string) => draft.needs.find((n) => n.need === key);
+  return (
+    <>
+      <div>
+        <h3 style={{ margin: 0, fontSize: 15 }}>{t('sheet.needsTitle')}</h3>
+        <p className="faint" style={{ margin: '3px 0 0', fontSize: 12.5 }}>{t('sheet.needsHelp')}</p>
+      </div>
+
+      <div className="need-cards">
+        {NEEDS.map((n) => {
+          const on = Boolean(of(n.key)?.active);
+          return (
+            <button
+              key={n.key}
+              type="button"
+              aria-pressed={on}
+              className={on ? 'need-card on' : 'need-card'}
+              onClick={() => needs.toggle(n.key, !on)}
+            >
+              <Icon name={NEED_ICON[n.key] ?? 'star'} size={18} />
+              <span>{n[l]}</span>
+              {on && <Icon name="check" size={13} />}
+            </button>
+          );
+        })}
+      </div>
+
+      {NEEDS.map((n) => {
+        const need = of(n.key);
+        if (!need) return null;
+        if (!need.active) {
+          /* Désélectionné : rien n'est perdu. Effacer est un second geste,
+             demandé et confirmé. */
+          return (
+            <div className="rowcard row" key={n.key} style={{ gap: 8, padding: '8px 12px' }}>
+              <span style={{ flex: 1, fontSize: 13 }}>
+                <strong>{n[l]}</strong> <span className="faint">· {t('sheet.needKept')}</span>
+              </span>
+              <EraseNeed t={t} onErase={() => needs.erase(n.key)} />
+            </div>
+          );
+        }
+        return (
+          <div className="rowcard card-pad stack" key={n.key} style={{ gap: 12 }}>
+            <div className="row" style={{ gap: 8 }}>
+              <Icon name={NEED_ICON[n.key] ?? 'star'} size={15} />
+              <strong style={{ flex: 1, fontSize: 13.5 }}>{n[l]}</strong>
+              <span className="faint" style={{ fontSize: 11.5 }}>
+                {t('sheet.updated')} {formatDate(need.updatedAt.slice(0, 10))}
+              </span>
+            </div>
+            <NeedForm need={n.key} data={need.data} onAnswer={(patch) => needs.answer(n.key, patch)} t={t} l={l} />
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/** Les réponses d'un besoin : elles vivent ici pendant qu'on écrit, et partent après une pause. */
+function NeedForm({
+  need,
+  data: initial,
+  onAnswer,
+  t,
+  l,
+}: {
+  need: string;
+  data: Record<string, unknown>;
+  onAnswer: (patch: Record<string, unknown>) => void;
+  t: T;
+  l: Lang;
+}) {
+  const [data, setData] = useState(initial);
+  const set = (key: string, value: unknown) => {
+    setData((d) => ({ ...d, [key]: value }));
+    onAnswer({ [key]: value });
+  };
+  const list = (key: string) => (Array.isArray(data[key]) ? (data[key] as string[]) : []);
+  const str = (key: string) => (typeof data[key] === 'string' ? (data[key] as string) : '');
+  const num = (key: string) => (typeof data[key] === 'number' ? (data[key] as number) : null);
+
+  const other = (key: string) =>
+    list(key).includes('other') && (
+      <Line label={t('sheet.otherDetail')} value={str('other')} onChange={(v) => set('other', v)} />
+    );
+
+  switch (need) {
+    case 'fundraising':
+      return (
+        <>
+          <div className="field">
+            <label>{t('sheet.raiseAmount')}</label>
+            <div className="row" style={{ gap: 6 }}>
+              <NumberBox label={t('sheet.raiseAmount')} value={num('amount')} onChange={(v) => set('amount', v)} />
+              <Currency value={str('currency') || 'MAD'} onChange={(v) => set('currency', v)} />
+            </div>
+          </div>
+          <Multi label={t('sheet.raiseTypes')} list={RAISE_TYPES} value={list('types')} l={l} onChange={(v) => set('types', v)} />
+          <Pick label={t('sheet.horizon')} list={HORIZONS} value={str('horizon')} l={l} onChange={(v) => set('horizon', v)} />
+          <Area label={t('sheet.raiseUse')} value={str('use')} rows={2} onChange={(v) => set('use', v)} />
+        </>
+      );
+    case 'markets':
+      return (
+        <>
+          <Multi label={t('sheet.mClients')} list={TARGET_MARKETS} value={list('clients')} l={l} onChange={(v) => set('clients', v)} />
+          <Countries label={t('sheet.mZones')} add={t('sheet.mZoneAdd')} value={list('zones')} t={t} onChange={(v) => set('zones', v)} />
+          <Multi label={t('sheet.mGoals')} list={MARKET_GOALS} value={list('goals')} l={l} onChange={(v) => set('goals', v)} />
+          <Line label={`${t('sheet.mSectors')} · ${t('sheet.optional')}`} value={str('sectors')} onChange={(v) => set('sectors', v)} />
+        </>
+      );
+    case 'mentoring':
+      return (
+        <>
+          <Multi label={t('sheet.mentorDomains')} list={MENTORING_DOMAINS} value={list('domains')} l={l} onChange={(v) => set('domains', v)} />
+          {other('domains')}
+        </>
+      );
+    case 'product':
+      return (
+        <>
+          <Multi label={t('sheet.productAreas')} list={PRODUCT_AREAS} value={list('areas')} l={l} onChange={(v) => set('areas', v)} />
+          {other('areas')}
+        </>
+      );
+    case 'partners':
+      return (
+        <>
+          <Multi label={t('sheet.partnerKinds')} list={PARTNER_KINDS} value={list('kinds')} l={l} onChange={(v) => set('kinds', v)} />
+          {other('kinds')}
+        </>
+      );
+    case 'hiring':
+      return (
+        <>
+          <Area label={t('sheet.hireProfiles')} value={str('profiles')} rows={2} onChange={(v) => set('profiles', v)} />
+          <div className="grid-2">
+            <NumberInput label={t('sheet.hireCount')} value={num('count')} whole onChange={(v) => set('count', v)} />
+            <Pick label={t('sheet.horizon')} list={HORIZONS} value={str('horizon')} l={l} onChange={(v) => set('horizon', v)} />
+          </div>
+        </>
+      );
+    case 'support':
+      return <Multi label={t('sheet.supportKinds')} list={SUPPORT_KINDS} value={list('kinds')} l={l} onChange={(v) => set('kinds', v)} />;
+    default:
+      return null;
+  }
+}
+
+function EraseNeed({ t, onErase }: { t: T; onErase: () => void }) {
+  const [sure, setSure] = useState(false);
+  if (!sure) {
+    return (
+      <button className="btn ghost sm" onClick={() => setSure(true)}>
+        <Icon name="trash" size={12} /> {t('sheet.needDelete')}
+      </button>
+    );
+  }
+  return (
+    <span className="row" style={{ gap: 4 }}>
+      <span className="faint" style={{ fontSize: 12 }}>{t('sheet.needDeleteSure')}</span>
+      <button className="btn danger sm" onClick={onErase}>{t('sheet.needDelete')}</button>
+      <button className="btn ghost sm" onClick={() => setSure(false)}>{t('sheet.cancel')}</button>
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Section 7 — Documents                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Les documents de l'organisation, déposés une fois.
+ *
+ * Ce qui est proposé suit la société : les pièces juridiques une fois
+ * immatriculée — facultatives avant —, le pitch deck pour une startup, un
+ * bilan par exercice clos pour qui vend. Tout est privé : la fiche lue par un
+ * juré ne les reçoit pas.
+ */
+function DocumentsSection({
+  draft,
+  docs,
+  errors,
+  t,
+  l,
+}: {
+  draft: DirectoryRecord;
+  docs: Docs;
+  errors: Record<string, string>;
+  t: T;
+  l: Lang;
+}) {
+  const p = profileOf(draft);
+  const asked = documentsAsked(p);
+  const kind = (key: string) => DOCUMENT_KINDS.find((d) => d.key === key)!;
+  const first = (key: string, year?: number) =>
+    draft.documents.find((d) => d.kind === key && (year === undefined || d.year === year));
+  /* Un bilan par exercice demandé, et ceux déjà déposés pour d'autres années. */
+  const years = [
+    ...new Set([
+      ...(asked.includes('financials') ? revenueYears(p) : []),
+      ...draft.documents.filter((d) => d.kind === 'financials' && d.year !== null).map((d) => d.year!),
+    ]),
+  ].sort((a, b) => b - a);
+  const legalNote = draft.legalStatus === 'in_creation' ? t('sheet.docOptional') : undefined;
+  const errorsHere = Object.entries(errors).filter(([k]) => k.startsWith('document'));
+
+  return (
+    <>
+      <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+        <Icon name="eye" size={12} /> {t('sheet.docsHelp')}
+      </p>
+
+      <DocRow label={kind('statutes')[l]} required={asked.includes('statutes')} note={legalNote} kind="statutes" doc={first('statutes')} docs={docs} t={t} />
+      <DocRow label={kind('rc')[l]} required={asked.includes('rc')} note={legalNote} kind="rc" doc={first('rc')} docs={docs} t={t} />
+      <DocRow label={kind('pitch_deck')[l]} required={asked.includes('pitch_deck')} kind="pitch_deck" doc={first('pitch_deck')} docs={docs} t={t} />
+      <DocRow label={kind('catalogue')[l]} kind="catalogue" doc={first('catalogue')} docs={docs} t={t} />
+      {years.map((year, i) => (
+        <DocRow
+          key={year}
+          label={`${kind('financials')[l]} ${year}`}
+          required={asked.includes('financials') && i === 0 && year === revenueYears(p)[0]}
+          kind="financials"
+          year={year}
+          doc={first('financials', year)}
+          docs={docs}
+          t={t}
+        />
+      ))}
+
+      <div className="field">
+        <label>{t('sheet.docOthers')}</label>
+        <div className="stack" style={{ gap: 6 }}>
+          {draft.documents
+            .filter((d) => d.kind === 'other')
+            .map((d) => (
+              <DocRow key={d.id} label={d.label || d.filename} kind="other" doc={d} docs={docs} t={t} />
+            ))}
+        </div>
+        <OtherDocument docs={docs} t={t} />
+      </div>
+
+      {errorsHere.map(([k, m]) => (
+        <div className="err" key={k}>{m}</div>
+      ))}
+    </>
+  );
+}
+
+/** Envoie un fichier, contrôlé avant de partir : la taille ici, le format au serveur. */
+async function uploadFile(file: File, t: T): Promise<string> {
+  if (file.size > MAX_UPLOAD_BYTES) throw new Error(t('sheet.docTooBig'));
+  const body = new FormData();
+  body.append('fieldId', 'document');
+  body.append('file', file);
+  const res = await fetch('/api/public/uploads', { method: 'POST', body });
+  if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? 'Upload failed.');
+  return ((await res.json()) as { id: string }).id;
+}
+
+function DocRow({
+  label,
+  required,
+  note,
+  kind,
+  year,
+  doc,
+  docs,
+  t,
+}: {
+  label: string;
+  required?: boolean;
+  note?: string;
+  kind: string;
+  year?: number;
+  doc?: DirectoryRecord['documents'][number];
+  docs: Docs;
+  t: T;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState('');
+  const accept = DOCUMENT_KINDS.find((d) => d.key === kind)?.accept;
+
+  const put = async (file: File) => {
+    setBusy(true);
+    setProblem('');
+    try {
+      const uploadId = await uploadFile(file, t);
+      if (doc) await docs.change(doc.id, { uploadId });
+      else await docs.add({ kind, year: year ?? null, uploadId });
+    } catch (err) {
+      setProblem((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const picker = (word: string) => (
+    <label className="btn sm" style={{ cursor: busy ? 'wait' : 'pointer' }}>
+      <input
+        type="file"
+        accept={accept}
+        hidden
+        disabled={busy}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (file) void put(file);
+        }}
+      />
+      <Icon name="file" size={13} /> {busy ? t('sheet.docSending') : word}
+    </label>
+  );
+
+  return (
+    <div className="rowcard row wrap" style={{ gap: 8, padding: '9px 12px' }}>
+      <span style={{ flex: 1, minWidth: 180 }}>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>
+          {label}
+          {required && <span style={{ color: 'var(--stop)' }}> *</span>}
+        </span>
+        {doc ? (
+          <span className="faint" style={{ display: 'block', fontSize: 12 }}>
+            {doc.filename} · {Math.max(1, Math.round(doc.size / 1024))} KB · {t('sheet.docAdded')}{' '}
+            {formatDate(doc.createdAt.slice(0, 10))}
+          </span>
+        ) : (
+          note && <span className="faint" style={{ display: 'block', fontSize: 12 }}>{note}</span>
+        )}
+        {problem && <span style={{ display: 'block', color: 'var(--stop)', fontSize: 12 }}>{problem}</span>}
+      </span>
+      {doc ? (
+        <>
+          <a className="btn ghost sm" href={`/api/uploads/${doc.uploadId}`} target="_blank" rel="noreferrer">
+            <Icon name="eye" size={13} /> {t('sheet.docOpen')}
+          </a>
+          {picker(t('sheet.docReplace'))}
+          <Remove t={t} onRemove={() => docs.drop(doc.id)} />
+        </>
+      ) : (
+        picker(t('sheet.docUpload'))
+      )}
+    </div>
+  );
+}
+
+/** Un autre document : un nom, puis le fichier. */
+function OtherDocument({ docs, t }: { docs: Docs; t: T }) {
+  const [label, setLabel] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState('');
+  const accept = DOCUMENT_KINDS.find((d) => d.key === 'other')?.accept;
+  return (
+    <div className="row wrap" style={{ gap: 6, marginTop: 8 }}>
+      <input
+        className="input"
+        style={{ flex: 1, minWidth: 180 }}
+        placeholder={t('sheet.docOtherLabel')}
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+      />
+      <label className="btn sm" style={{ cursor: 'pointer' }}>
+        <input
+          type="file"
+          hidden
+          accept={accept}
+          disabled={busy}
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (!file) return;
+            setBusy(true);
+            setProblem('');
+            try {
+              const uploadId = await uploadFile(file, t);
+              await docs.add({ kind: 'other', label: label || file.name, uploadId });
+              setLabel('');
+            } catch (err) {
+              setProblem((err as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+        <Icon name="plus" size={13} /> {busy ? t('sheet.docSending') : t('sheet.docUpload')}
+      </label>
+      {problem && <div className="err" style={{ width: '100%' }}>{problem}</div>}
+    </div>
+  );
+}
+
+/** Plusieurs réponses dans une liste fermée. */
+function Multi({
+  label,
+  list,
+  value,
+  l,
+  onChange,
+}: {
+  label: string;
+  list: readonly Choice[];
+  value: string[];
+  l: Lang;
+  onChange: (v: string[]) => void;
+}) {
+  return (
+    <div className="field">
+      <label>{label}</label>
+      <div className="work-pick">
+        {list.map((c) => {
+          const on = value.includes(c.key);
+          return (
+            <button
+              key={c.key}
+              type="button"
+              className={on ? 'track on' : 'track'}
+              onClick={() => onChange(on ? value.filter((k) => k !== c.key) : [...value, c.key])}
+            >
+              {c[l]}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Des pays, ajoutés un à un et retirés d'un clic. */
+function Countries({
+  label,
+  add,
+  value,
+  t,
+  onChange,
+}: {
+  label: string;
+  add: string;
+  value: string[];
+  t: T;
+  onChange: (v: string[]) => void;
+}) {
+  return (
+    <div className="field">
+      <label>{label}</label>
+      {value.length > 0 && (
+        <div className="row wrap" style={{ gap: 5, marginBottom: 6 }}>
+          {value.map((c) => (
+            <span className="badge" key={c}>
+              {c}{' '}
+              <button className="linkish" aria-label={`${t('sheet.remove')} ${c}`} onClick={() => onChange(value.filter((x) => x !== c))}>
+                <Icon name="x" size={10} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <select className="input" value="" onChange={(e) => e.target.value && onChange([...value, e.target.value])}>
+        <option value="">{add}</option>
+        {COUNTRIES.filter((c) => !value.includes(c)).map((c) => (
+          <option key={c} value={c}>{c}</option>
+        ))}
+      </select>
+    </div>
   );
 }
 

@@ -307,6 +307,8 @@ export function RecordPage() {
             affiliation: (aid) => `/api/affiliations/${aid}`,
             join: { kind: 'staff', orgId: record.id },
             manageTeam: true,
+            need: (need) => `/api/records/${record.id}/needs/${need}`,
+            documents: (docId) => `/api/records/${record.id}/documents${docId ? `/${docId}` : ''}`,
           }}
           onChanged={() => {}}
           onClose={() => {
