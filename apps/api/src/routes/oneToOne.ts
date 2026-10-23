@@ -5,16 +5,18 @@
  * interlocuteur qui l'a dicté. L'interlocuteur, lui, passe par son espace
  * (/api/me/meetings, dans auth.ts) et ne voit que ses rendez-vous.
  */
-import { availabilityInput, meetingPatch, planMeetingsInput, reportInput } from '@ceed/shared';
+import { dayInput, meetingPatch, planMeetingsInput, reportInput } from '@ceed/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import * as dir from '../db/directory.js';
 import { z } from 'zod';
 import {
-  addAvailability,
   answerInvitation,
   bookSlot,
   cancelFollowing,
-  dropAvailability,
+  createDay,
+  deleteDay,
+  informAll,
+  updateDay,
   historyOf,
   invitationFor,
   tellMeeting,
@@ -71,19 +73,30 @@ export async function oneToOneRoutes(app: FastifyInstance) {
     return tellMeeting(id, who);
   });
 
-  /* Les disponibilités d'un interlocuteur, saisies par CEED pour lui. */
-  app.post('/api/blocks/:id/availability', async (req, reply) => {
+  /* Les journées de la brique : comme les séances d'un comité. */
+  app.post('/api/blocks/:id/days', async (req, reply) => {
     const { id } = req.params as { id: string };
-    const { personId, ...input } = parse(availabilityInput.and(z.object({ personId: z.string() })), req.body);
-    await addAvailability(id, personId, input);
+    const day = await createDay(id, parse(dayInput, req.body));
     reply.code(201);
-    return { ok: true };
+    return day;
   });
 
-  app.delete('/api/availability/:id', async (req, reply) => {
+  app.patch('/api/one-to-one-days/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
-    if (!(await dropAvailability(id))) return notFound(reply, 'Not found.');
+    return (await updateDay(id, parse(dayInput.partial(), req.body))) ?? notFound(reply, 'Day not found.');
+  });
+
+  app.delete('/api/one-to-one-days/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!(await deleteDay(id))) return notFound(reply, 'Day not found.');
     reply.code(204);
+  });
+
+  /** Prévenir tous ceux d'une journée (ou de la brique) qui ne l'ont pas été. */
+  app.post('/api/blocks/:id/one-to-one/inform', async (req) => {
+    const { id } = req.params as { id: string };
+    const { dayId } = parse(z.object({ dayId: z.string().nullable().default(null) }), req.body);
+    return informAll(id, dayId);
   });
 
   /* L'histoire des rendez-vous d'une startup : une candidature, ou toute l'organisation. */
@@ -127,13 +140,16 @@ export async function oneToOnePublicRoutes(app: FastifyInstance) {
     const body = parse(
       z.object({
         accept: z.boolean().optional(),
-        onDate: z.string().optional(),
+        dayId: z.string().optional(),
         startTime: z.string().optional(),
+        personId: z.string().optional(),
       }),
       req.body,
     );
-    /* Un créneau choisi, ou un oui ou non à l'heure proposée. */
-    if (body.onDate && body.startTime) return bookSlot(token, body.onDate, body.startTime);
+    /* Une case choisie, ou un oui ou non à l'heure proposée. */
+    if (body.dayId && body.startTime && body.personId) {
+      return bookSlot(token, { dayId: body.dayId, startTime: body.startTime, personId: body.personId });
+    }
     if (body.accept === undefined) throw new HttpError(422, 'Pick a time, or answer.');
     return answerInvitation(token, body.accept);
   });

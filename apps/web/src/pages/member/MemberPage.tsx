@@ -98,13 +98,7 @@ function MemberSpace({ preview }: { preview?: MemberPreview }) {
     async () => (preview ? [] : api.get<MyMeeting[]>('/api/me/meetings')),
     preview ? 'preview-meetings' : 'my-meetings',
   );
-  /* Et les briques où l'on est interlocuteur : on y publie ses disponibilités
-     avant d'avoir le moindre rendez-vous. */
-  const offering = useAsync<MyAvailability>(
-    async () => (preview ? { bricks: [], windows: [] } : api.get<MyAvailability>('/api/me/availability')),
-    preview ? 'preview-availability' : 'my-availability',
-  );
-  const meets = (meetings.data?.length ?? 0) > 0 || (offering.data?.bricks.length ?? 0) > 0;
+  const meets = (meetings.data?.length ?? 0) > 0;
   /* Settings holds a password and a way out of the account — neither means
      anything about somebody else's page. */
   const tabs = MEMBER_TABS.filter(
@@ -329,11 +323,7 @@ function MemberSpace({ preview }: { preview?: MemberPreview }) {
           ))}
         {tab === 'Jury' && <Jury panels={panels.data ?? []} />}
         {tab === 'Meetings' && (
-          <Meetings
-            meetings={meetings.data ?? []}
-            offering={offering.data ?? { bricks: [], windows: [] }}
-            onOffering={(next) => offering.set(next)}
-          />
+          <Meetings meetings={meetings.data ?? []} />
         )}
         {tab === 'Settings' && !preview && <Settings me={me!} />}
       </div>
@@ -764,20 +754,7 @@ interface MyMeeting extends OneToOneMeeting {
   state: 'open' | 'closed';
 }
 
-interface MyAvailability {
-  bricks: { blockId: string; name: string; programName: string; durationMinutes: number }[];
-  windows: { id: string; blockId: string; onDate: string; startTime: string; endTime: string; slotMinutes: number }[];
-}
-
-function Meetings({
-  meetings,
-  offering,
-  onOffering,
-}: {
-  meetings: MyMeeting[];
-  offering: MyAvailability;
-  onOffering: (next: MyAvailability) => void;
-}) {
+function Meetings({ meetings }: { meetings: MyMeeting[] }) {
   const { lang } = useLang();
   const today = new Date().toISOString().slice(0, 10);
   const upcoming = meetings.filter((m) => !m.heldOn || m.heldOn >= today);
@@ -818,86 +795,7 @@ function Meetings({
           {past.map(row)}
         </section>
       )}
-      {offering.bricks.length > 0 && <MyAvailabilityCard offering={offering} onChange={onOffering} />}
     </div>
-  );
-}
-
-/**
- * Mes disponibilités : les plages où une startup peut réserver un rendez-vous
- * avec moi. Coupées en créneaux de la durée d'un rendez-vous de la brique.
- */
-function MyAvailabilityCard({ offering, onChange }: { offering: MyAvailability; onChange: (next: MyAvailability) => void }) {
-  const { lang } = useLang();
-  const fr = lang === 'fr';
-  const [blockId, setBlockId] = useState(offering.bricks[0]?.blockId ?? '');
-  const [onDate, setOnDate] = useState('');
-  const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('12:00');
-  const [busy, setBusy] = useState(false);
-  const toast = useToast();
-  const today = new Date().toISOString().slice(0, 10);
-  const brick = offering.bricks.find((b) => b.blockId === blockId);
-
-  const add = async () => {
-    setBusy(true);
-    try {
-      const { windows } = await api.post<{ windows: MyAvailability['windows'] }>('/api/me/availability', {
-        blockId, onDate, startTime, endTime, slotMinutes: brick?.durationMinutes ?? 45,
-      });
-      onChange({ ...offering, windows });
-    } catch (err) {
-      toast((err as Error).message, true);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section className="card card-pad stack" style={{ gap: 10 }}>
-      <div>
-        <div className="eyebrow">{fr ? 'Mes disponibilités' : 'My availability'}</div>
-        <p className="faint" style={{ margin: '3px 0 0', fontSize: 12.5 }}>
-          {fr
-            ? 'Les startups qu’on vous attribue réservent un créneau dans ces plages.'
-            : 'The startups you are given book a time within these.'}
-        </p>
-      </div>
-      {offering.bricks.length > 1 && (
-        <select className="input" value={blockId} onChange={(e) => setBlockId(e.target.value)}>
-          {offering.bricks.map((b) => (
-            <option key={b.blockId} value={b.blockId}>{b.programName} · {b.name}</option>
-          ))}
-        </select>
-      )}
-      <div className="row wrap" style={{ gap: 8, alignItems: 'flex-end' }}>
-        <input className="input" type="date" min={today} style={{ width: 160 }} value={onDate} onChange={(e) => setOnDate(e.target.value)} aria-label={fr ? 'Jour' : 'Day'} />
-        <input className="input" type="time" style={{ width: 110 }} value={startTime} onChange={(e) => setStartTime(e.target.value)} aria-label={fr ? 'De' : 'From'} />
-        <input className="input" type="time" style={{ width: 110 }} value={endTime} onChange={(e) => setEndTime(e.target.value)} aria-label={fr ? 'À' : 'To'} />
-        <button className="btn primary sm" disabled={busy || !blockId || !onDate || endTime <= startTime} onClick={add}>
-          <Icon name="plus" size={13} /> {fr ? 'Ajouter' : 'Add'}
-        </button>
-      </div>
-      {offering.windows.map((w) => (
-        <div className="rowcard row" key={w.id} style={{ gap: 8, padding: '8px 11px' }}>
-          <Icon name="clock" size={13} />
-          <span style={{ flex: 1, fontSize: 13 }}>
-            {formatDate(w.onDate)} · {w.startTime}–{w.endTime}
-            <span className="faint"> · {w.slotMinutes} min</span>
-          </span>
-          <button
-            className="btn ghost icon sm"
-            aria-label={fr ? 'Retirer' : 'Remove'}
-            onClick={async () => {
-              const { windows } = await api.del<{ windows: MyAvailability['windows'] }>(`/api/me/availability/${w.id}`);
-              onChange({ ...offering, windows });
-            }}
-          >
-            <Icon name="trash" size={13} />
-          </button>
-        </div>
-      ))}
-    </section>
   );
 }
 

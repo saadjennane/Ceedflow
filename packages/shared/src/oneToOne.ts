@@ -7,7 +7,7 @@
  * startup: it is between the interlocutor and CEED.
  */
 import { z } from 'zod';
-import { RSVP_MODES, type FormField } from './blocks.js';
+import { RSVP_MODES, sessionSlots, timeWindowSchema, type FormField, type TimeWindow } from './blocks.js';
 
 export const MEETING_STATUSES = ['planned', 'held', 'cancelled', 'no_show'] as const;
 export type MeetingStatus = (typeof MEETING_STATUSES)[number];
@@ -24,9 +24,12 @@ export interface OneToOneMeeting {
   blockId: string;
   candidateId: string;
   orgName: string;
-  personId: string;
+  /** Null while a startup invited to book has not picked whom, nor when. */
+  personId: string | null;
   personName: string;
   seriesId: string | null;
+  /** The day it sits in, when it sits in one. */
+  dayId: string | null;
   /** 'YYYY-MM-DD' and 'HH:MM', local to the edition — the committee's convention. Null until set or booked. */
   heldOn: string | null;
   startTime: string | null;
@@ -68,10 +71,82 @@ export function meetingState(m: Pick<OneToOneMeeting, 'status' | 'heldOn' | 'inv
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'A date, day by day.');
 const clock = z.string().regex(/^\d{2}:\d{2}$/, 'A time, HH:MM.');
 
+/* ------------------------------------------------------------------ */
+/* Days                                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Une journée de One to One : une date, des plages, la durée d'un rendez-vous,
+ * et qui reçoit. Comme une séance de comité — sauf que chaque interlocuteur
+ * reçoit à part, si bien que chaque créneau est une case par interlocuteur.
+ */
+export interface OneToOneDay {
+  id: string;
+  blockId: string;
+  name: string;
+  heldOn: string | null;
+  windows: TimeWindow[];
+  minutesPerMeeting: number;
+  location: string;
+  interlocutors: string[];
+  position: number;
+}
+
+export const dayInput = z.object({
+  name: z.string().default(''),
+  heldOn: day.nullable().default(null),
+  windows: z.array(timeWindowSchema).min(1, 'Give at least one stretch of the day.').default([{ startsAt: '09:00', endsAt: '12:30' }]),
+  minutesPerMeeting: z.number().int().min(5).max(480).default(45),
+  location: z.string().default(''),
+  interlocutors: z.array(z.string()).default([]),
+});
+
+/** The slots of a day — computed, never stored, the committee's rule. */
+export const daySlots = (d: Pick<OneToOneDay, 'windows' | 'minutesPerMeeting'>) =>
+  sessionSlots({ windows: d.windows, minutesPerStartup: d.minutesPerMeeting });
+
+/** A free place in a day: a time, with somebody. */
+export interface FreeCell {
+  dayId: string;
+  onDate: string;
+  startTime: string;
+  endTime: string;
+  personId: string;
+}
+
+/**
+ * Les cases libres des journées : chaque créneau, chez chaque interlocuteur
+ * du jour, que personne n'occupe — dans cette brique ou une autre, un
+ * interlocuteur n'est pas à deux endroits à la fois. Une journée passée n'en
+ * offre plus ; `only` restreint à un interlocuteur.
+ */
+export function freeCells(
+  days: readonly OneToOneDay[],
+  taken: readonly { personId: string | null; heldOn: string | null; startTime: string | null }[],
+  only: string | null = null,
+  today = new Date().toISOString().slice(0, 10),
+): FreeCell[] {
+  const busy = new Set(taken.filter((t) => t.personId && t.heldOn && t.startTime).map((t) => `${t.personId} ${t.heldOn} ${t.startTime}`));
+  const out: FreeCell[] = [];
+  for (const d of days) {
+    if (!d.heldOn || d.heldOn < today) continue;
+    for (const slot of daySlots(d)) {
+      for (const personId of d.interlocutors) {
+        if (only && personId !== only) continue;
+        if (busy.has(`${personId} ${d.heldOn} ${slot.startsAt}`)) continue;
+        out.push({ dayId: d.id, onDate: d.heldOn, startTime: slot.startsAt, endTime: slot.endsAt, personId });
+      }
+    }
+  }
+  return out.sort((a, b) => (a.onDate + a.startTime).localeCompare(b.onDate + b.startTime));
+}
+
 /** Plan one meeting per startup named, all with the same interlocutor. */
 export const planMeetingsInput = z.object({
   candidateIds: z.array(z.string()).min(1, 'Pick at least one startup.'),
-  personId: z.string().min(1, 'Who are they meeting?'),
+  /** Empty only when the startup is invited to book and may pick whom. */
+  personId: z.string().nullable().default(null),
+  dayId: z.string().nullable().default(null),
   invite: z.enum(RSVP_MODES),
   heldOn: day.nullable().default(null),
   startTime: clock.nullable().default(null),
@@ -85,6 +160,7 @@ export const planMeetingsInput = z.object({
 
 export const meetingPatch = z.object({
   personId: z.string().optional(),
+  dayId: z.string().nullable().optional(),
   heldOn: day.nullable().optional(),
   startTime: clock.nullable().optional(),
   durationMinutes: z.number().int().min(5).max(480).optional(),
@@ -140,69 +216,6 @@ export function summarise(field: FormField, reports: Record<string, unknown>[]):
   if (field.type === 'file') return { kind: 'file', field, answered: given.length };
   return { kind: 'text', field, answered: given.length, answers: given.map(String) };
 }
-
-/* ------------------------------------------------------------------ */
-/* Availability and booking                                            */
-/* ------------------------------------------------------------------ */
-
-/** A stretch of a day an interlocutor offers, cut into slots of `slotMinutes`. */
-export interface Availability {
-  id: string;
-  blockId: string;
-  personId: string;
-  onDate: string;
-  startTime: string;
-  endTime: string;
-  slotMinutes: number;
-}
-
-export interface FreeSlot {
-  onDate: string;
-  startTime: string;
-  endTime: string;
-}
-
-const minutes = (clock: string) => {
-  const [h, m] = clock.split(':').map(Number);
-  return (h || 0) * 60 + (m || 0);
-};
-const clockOf = (total: number) =>
-  `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
-
-/**
- * Les créneaux libres d'un interlocuteur.
- *
- * Never stored — the availability and the meetings already held are the
- * truth, the committee's rule. A slot is gone when the same person has a
- * meeting, in any brick, starting then; and a day already past offers nothing.
- */
-export function freeSlots(
-  windows: readonly Pick<Availability, 'onDate' | 'startTime' | 'endTime' | 'slotMinutes'>[],
-  taken: readonly { heldOn: string | null; startTime: string | null }[],
-  today = new Date().toISOString().slice(0, 10),
-): FreeSlot[] {
-  const busy = new Set(taken.filter((t) => t.heldOn && t.startTime).map((t) => `${t.heldOn} ${t.startTime}`));
-  const out: FreeSlot[] = [];
-  for (const w of windows) {
-    if (w.onDate < today) continue;
-    const step = Math.max(5, w.slotMinutes);
-    for (let at = minutes(w.startTime); at + step <= minutes(w.endTime); at += step) {
-      const startTime = clockOf(at);
-      if (busy.has(`${w.onDate} ${startTime}`)) continue;
-      out.push({ onDate: w.onDate, startTime, endTime: clockOf(at + step) });
-    }
-  }
-  return out.sort((a, b) => (a.onDate + a.startTime).localeCompare(b.onDate + b.startTime));
-}
-
-export const availabilityInput = z
-  .object({
-    onDate: day,
-    startTime: clock,
-    endTime: clock,
-    slotMinutes: z.number().int().min(5).max(480).default(45),
-  })
-  .refine((a) => a.endTime > a.startTime, { message: 'The end comes after the start.', path: ['endTime'] });
 
 /* ------------------------------------------------------------------ */
 /* Recurrence                                                          */

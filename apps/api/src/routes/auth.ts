@@ -14,7 +14,6 @@ import {
   suggestPassword,
   revenueInput,
   reportInput,
-  availabilityInput,
   profileOf,
   SHEET_LISTS,
   sheetListInput,
@@ -35,7 +34,7 @@ import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { changeItem, changeTask, getTask, listTasks } from '../services/tasks.js';
 import { addOrgDocument, changeOrgDocument, saveNeed } from '../services/orgSheet.js';
-import { addAvailability, availabilityOf, bricksFor, dropAvailability, meetingFor, meetingsFor, saveReport } from '../services/oneToOne.js';
+import { meetingFor, meetingsFor, saveReport } from '../services/oneToOne.js';
 import { agendaFor } from '../services/agenda.js';
 import { deliverablesFor } from '../services/deliverables.js';
 import { panelFor, reviewsFor, whyNoPanel } from '../services/reviews.js';
@@ -471,31 +470,6 @@ export async function authRoutes(app: FastifyInstance) {
     const { answers, submit } = parse(reportInput, req.body);
     const who = await dir.getRecord(account.recordId);
     return saveReport(id, answers, submit, { id: account.recordId, name: who?.name ?? '' });
-  });
-
-  /* ---- Mes disponibilités, pour qu'une startup réserve ---- */
-
-  app.get('/api/me/availability', async (req) => {
-    const account = await require(req);
-    return { bricks: await bricksFor(account.recordId), windows: await availabilityOf(account.recordId) };
-  });
-
-  app.post('/api/me/availability', async (req, reply) => {
-    const account = await require(req);
-    const { blockId, ...input } = parse(availabilityInput.and(z.object({ blockId: z.string() })), req.body);
-    if (!(await bricksFor(account.recordId)).some((b) => b.blockId === blockId)) {
-      return notFound(reply, 'No such meetings for you.');
-    }
-    await addAvailability(blockId, account.recordId, input);
-    reply.code(201);
-    return { windows: await availabilityOf(account.recordId) };
-  });
-
-  app.delete('/api/me/availability/:id', async (req, reply) => {
-    const account = await require(req);
-    const { id } = req.params as { id: string };
-    if (!(await dropAvailability(id, account.recordId))) return notFound(reply, 'Not found.');
-    return { windows: await availabilityOf(account.recordId) };
   });
 
   app.get('/api/me/programs', async (req) => {

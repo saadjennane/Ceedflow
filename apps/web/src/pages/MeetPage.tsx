@@ -27,7 +27,7 @@ interface Invitation {
   rsvpState: 'pending' | 'confirmed' | 'declined';
   status: 'planned' | 'held' | 'cancelled' | 'no_show';
   open: boolean;
-  slots: { onDate: string; startTime: string; endTime: string }[];
+  slots: { dayId: string; onDate: string; startTime: string; endTime: string; personId: string; personName: string }[];
 }
 
 export function MeetPage() {
@@ -64,11 +64,11 @@ export function MeetPage() {
   const data = answered ?? page.data;
   const book = async () => {
     if (!picked) return;
-    const [onDate, startTime] = picked.split(' ');
+    const [dayId, startTime, personId] = picked.split('|');
     setSending(true);
     setError(null);
     try {
-      setAnswered(await api.post<Invitation>(`/api/public/meet/${token}`, { onDate, startTime }));
+      setAnswered(await api.post<Invitation>(`/api/public/meet/${token}`, { dayId, startTime, personId }));
       setPicked(null);
     } catch (err) {
       setError((err as Error).message);
@@ -77,8 +77,10 @@ export function MeetPage() {
       setSending(false);
     }
   };
-  /* Les créneaux par jour : on choisit un jour avant une heure. */
+  /* Les créneaux par jour : on choisit un jour avant une heure — et, quand
+     plusieurs personnes reçoivent, chez qui. */
   const days = [...new Set(data.slots.map((x) => x.onDate))];
+  const several = new Set(data.slots.map((x) => x.personId)).size > 1;
 
   const answer = async (accept: boolean) => {
     setSending(true);
@@ -100,7 +102,7 @@ export function MeetPage() {
           <div className="eyebrow">
             {data.programName} · {data.editionName}
           </div>
-          <h1>A meeting with {data.personName}</h1>
+          <h1>{data.personName ? `A meeting with ${data.personName}` : 'Book your meeting'}</h1>
           <p className="public-intro">For {data.orgName}.</p>
 
           {data.status === 'cancelled' ? (
@@ -141,7 +143,7 @@ export function MeetPage() {
               <strong style={{ fontSize: 14 }}>{data.heldOn ? 'Pick another time' : 'Pick a time'}</strong>
               {!days.length && (
                 <p className="faint" style={{ margin: 0, fontSize: 13 }}>
-                  No time is free yet. {data.personName} will publish their availability — come back to this link.
+                  No time is free at the moment. The team will open more — come back to this link.
                 </p>
               )}
               {days.map((day) => (
@@ -151,7 +153,7 @@ export function MeetPage() {
                     {data.slots
                       .filter((x) => x.onDate === day)
                       .map((x) => {
-                        const key = `${x.onDate} ${x.startTime}`;
+                        const key = `${x.dayId}|${x.startTime}|${x.personId}`;
                         return (
                           <button
                             key={key}
@@ -160,6 +162,7 @@ export function MeetPage() {
                             onClick={() => setPicked(key)}
                           >
                             {x.startTime}
+                            {several && <span className="faint" style={{ fontWeight: 400 }}> · {x.personName}</span>}
                           </button>
                         );
                       })}

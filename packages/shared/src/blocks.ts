@@ -1482,6 +1482,7 @@ export const ONE_TO_ONE_STARTUP_VARIABLES = [
   { name: 'quand', label: 'When', what: 'The whole sentence — empty when the startup picks the time', example: 'Le mardi 3 novembre à 10:00, pour 45 minutes.' },
   { name: 'lieu', label: 'Where', what: 'The whole sentence — empty when no place is set', example: 'Lieu : CEED, Casablanca.' },
   { name: 'action', label: 'What to do', what: 'Book a time, or confirm the one proposed — with the link. Empty when nothing is asked', example: 'Choisissez votre créneau ici : https://www.ceedflow.com/meet/…' },
+  { name: 'lien', label: 'Link', what: 'The startup’s own page: the free slots to book from, or the time to confirm', example: 'https://www.ceedflow.com/meet/…' },
 ] as const;
 
 export const ONE_TO_ONE_PERSON_VARIABLES = [

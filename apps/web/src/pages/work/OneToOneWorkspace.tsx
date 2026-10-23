@@ -1,17 +1,18 @@
 /**
- * Les One to One d'une brique : les planifier, les suivre, lire ce qui s'en écrit.
+ * Les One to One d'une brique, comme les séances d'un comité.
  *
- * Two views. The planning: who meets whom and when, what is waiting on an
- * answer, which startups have not met anybody yet. The reports: every
- * answer of every report, summed up question by question the way a form's
- * responses page does — then the responses themselves, and the export.
+ * A day at a time: its interlocutors side by side, each with their column of
+ * slots, and the startups on the right — dragged onto a slot, or invited to
+ * book one themselves. Clicking a startup opens its meeting and the report.
+ * The Reporting view sums the reports up, question by question or startup
+ * by startup.
  */
 import {
   FREQUENCIES,
   FREQUENCY_LABEL,
   MAX_SESSIONS,
   MEETING_STATUS_LABEL,
-  type Availability,
+  daySlots,
   formPages,
   meetingState,
   summarise,
@@ -19,11 +20,12 @@ import {
   type Candidate,
   type FormField,
   type OneToOneConfig,
+  type OneToOneDay,
   type OneToOneMeeting,
   type PersonRef,
   type QuestionSummary,
 } from '@ceed/shared';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { ApiError, api } from '../../lib/api';
 import { formatDate, todayIso } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
@@ -40,7 +42,7 @@ interface View {
   meetings: OneToOneMeeting[];
   pool: { candidate: Candidate }[];
   interlocutors: PersonRef[];
-  availability: Availability[];
+  days: OneToOneDay[];
 }
 
 /** A badge per state: what the reader needs to know first. */
@@ -58,71 +60,436 @@ const STATE_BADGE: Record<ReturnType<typeof meetingState>, { label: string; tone
 const when = (m: Pick<OneToOneMeeting, 'heldOn' | 'startTime'>) =>
   m.heldOn ? `${formatDate(m.heldOn)}${m.startTime ? ` · ${m.startTime}` : ''}` : 'No time yet';
 
+/** What is being dragged: a placed meeting, or a startup with none yet. */
+type Dragged = { kind: 'meeting'; meeting: OneToOneMeeting } | { kind: 'startup'; candidate: Candidate };
+
 export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpenSetup: (id: string) => void }) {
   const view = useAsync(() => api.get<View>(`/api/blocks/${block.id}/one-to-one`), `oto:${block.id}`);
-  const [side, setSide] = useState<'planning' | 'availability' | 'reports'>('planning');
-  const [planning, setPlanning] = useState<string[] | null>(null);
+  const [side, setSide] = useState<'planning' | 'reporting'>('planning');
+  const [dayId, setDayId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [placing, setPlacing] = useState<{ day: OneToOneDay; personId: string; startTime: string } | null>(null);
+  const [inviting, setInviting] = useState(false);
+  const [planning, setPlanning] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [over, setOver] = useState<string | null>(null);
+  const drag = useRef<Dragged | null>(null);
+  const toast = useToast();
 
   if (view.error) return <div className="empty">{view.error}</div>;
   if (!view.data) return <div className="empty">Loading…</div>;
   const data = view.data;
-  const opened = data.meetings.find((m) => m.id === openId) ?? null;
+  const { config, days, meetings, pool, interlocutors } = data;
+  const opened = meetings.find((m) => m.id === openId) ?? null;
+  const current = days.find((d) => d.id === dayId) ?? days.find((d) => (d.heldOn ?? '') >= todayIso()) ?? days[0] ?? null;
+  const name = (id: string | null) => interlocutors.find((p) => p.id === id)?.name ?? '';
+  const live = meetings.filter((m) => m.status !== 'cancelled');
 
-  if (!data.config.interlocutors.length || !data.config.report.fields.length) {
+  if (!config.interlocutors.length || !config.report.fields.length) {
     return (
       <div className="empty" style={{ padding: 26 }}>
-        <h3>{data.config.interlocutors.length ? 'The report has no question yet' : 'Nobody to meet yet'}</h3>
+        <h3>{config.interlocutors.length ? 'The report has no question yet' : 'Nobody to meet yet'}</h3>
         <p>
-          {data.config.interlocutors.length
+          {config.interlocutors.length
             ? 'Write what an interlocutor fills in after each meeting, then plan the meetings here.'
-            : 'Name the mentors and experts the startups will meet, and write the report they fill in.'}
+            : 'Name the mentors and experts the startups will meet, set the days, and write the report they fill in.'}
         </p>
         <button className="btn primary" onClick={() => onOpenSetup(block.id)}>
-          <Icon name="settings" size={14} /> Set it up
+          <Icon name="settings" size={14} /> Open the setup
         </button>
       </div>
     );
   }
 
+  /* Le rail, comme au comité : ce qui attend sur cette journée, puis le vivier. */
+  const met = new Set(live.map((m) => m.candidateId));
+  const unplaced = pool.filter((p) => !met.has(p.candidate.id));
+  const booking = live.filter((m) => m.invite === 'slots' && !m.heldOn);
+  const noTime = live.filter((m) => m.invite !== 'slots' && !m.heldOn);
+  const onDay = current ? live.filter((m) => m.dayId === current.id) : [];
+  const capacity = current ? daySlots(current).length * current.interlocutors.length : 0;
+
+  const refresh = async () => view.set(await api.get<View>(`/api/blocks/${block.id}/one-to-one`));
+
+  /** Une startup posée sur une case : un rendez-vous de plus, ou un rendez-vous déplacé. */
+  const dropOn = async (day: OneToOneDay, personId: string, startTime: string) => {
+    const payload = drag.current;
+    drag.current = null;
+    setOver(null);
+    if (!payload) return;
+    setBusy(true);
+    try {
+      if (payload.kind === 'startup') {
+        await api.post(`/api/blocks/${block.id}/meetings`, {
+          candidateIds: [payload.candidate.id],
+          personId,
+          dayId: day.id,
+          /* Placée par l'équipe : proposée ou fixée, selon la brique — jamais
+             « à réserver », puisque l'heure est déjà choisie. */
+          invite: config.invite === 'slots' ? 'none' : config.invite,
+          heldOn: day.heldOn,
+          startTime,
+        });
+      } else {
+        await api.patch(`/api/meetings/${payload.meeting.id}`, { personId, dayId: day.id, heldOn: day.heldOn, startTime });
+      }
+      await refresh();
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Hors de la case, pas hors du programme : le rendez-vous reste, sans heure. */
+  const clearTime = async (m: OneToOneMeeting) => {
+    setBusy(true);
+    try {
+      await api.patch(`/api/meetings/${m.id}`, { heldOn: null, startTime: null, dayId: null });
+      await refresh();
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const inform = async () => {
+    setBusy(true);
+    try {
+      const sent = await api.post<{ startups: number; people: number }>(`/api/blocks/${block.id}/one-to-one/inform`, {
+        dayId: current?.id ?? null,
+      });
+      toast(
+        sent.startups || sent.people
+          ? `Written to ${sent.startups} startup${sent.startups === 1 ? '' : 's'} and ${sent.people} interlocutor${sent.people === 1 ? '' : 's'}.`
+          : 'Everybody on this day has already been told.',
+      );
+      await refresh();
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const chip = (candidate: Candidate, extra?: ReactNode, meeting?: OneToOneMeeting) => (
+    <div
+      className="pool-chip"
+      key={meeting?.id ?? candidate.id}
+      draggable={!busy}
+      onDragStart={() => {
+        drag.current = meeting ? { kind: 'meeting', meeting } : { kind: 'startup', candidate };
+      }}
+    >
+      <span className="grip">
+        <Icon name="drag" size={12} />
+      </span>
+      <span className="chip-name">{candidate.orgName}</span>
+      {extra}
+    </div>
+  );
+
   return (
-    <div className="stack" style={{ gap: 14 }}>
-      <div className="row">
+    <>
+      {/* ---- which day, and what to do with it ---- */}
+      <div className="work-head">
         <div className="seg" role="group" aria-label="View">
           <button className={side === 'planning' ? 'on' : ''} onClick={() => setSide('planning')}>
             <Icon name="calendar" size={13} /> Planning
           </button>
-          <button className={side === 'availability' ? 'on' : ''} onClick={() => setSide('availability')}>
-            <Icon name="clock" size={13} /> Availability
-          </button>
-          <button className={side === 'reports' ? 'on' : ''} onClick={() => setSide('reports')}>
-            <Icon name="form" size={13} /> Reports
+          <button className={side === 'reporting' ? 'on' : ''} onClick={() => setSide('reporting')}>
+            <Icon name="form" size={13} /> Reporting
           </button>
         </div>
+        {side === 'planning' && (
+          <div className="work-pick">
+            {days.map((d) => (
+              <button key={d.id} className={d.id === current?.id ? 'track on' : 'track'} onClick={() => setDayId(d.id)}>
+                {d.name || 'Day'}
+                <span className="faint" style={{ fontWeight: 400 }}>
+                  {' '}
+                  · {formatDate(d.heldOn)} · {live.filter((m) => m.dayId === d.id).length}/
+                  {daySlots(d).length * d.interlocutors.length}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="spacer" />
         {side === 'planning' && (
-          <button className="btn primary sm" onClick={() => setPlanning([])}>
-            <Icon name="plus" size={13} /> Plan a meeting
-          </button>
+          <>
+            {/* Inviter : les startups choisissent leur créneau elles-mêmes. */}
+            {config.invite === 'slots' && (
+              <button className="btn primary sm" disabled={busy || !unplaced.length} onClick={() => setInviting(true)}>
+                <Icon name="send" size={13} /> Invite
+              </button>
+            )}
+            <button className="btn sm" disabled={busy || !current} onClick={inform} title="Write to everyone on this day not told yet">
+              <Icon name="send" size={13} /> Inform
+            </button>
+            <button className="btn ghost sm" onClick={() => setPlanning(true)} title="A meeting outside the days — or a series">
+              <Icon name="plus" size={13} /> Meeting
+            </button>
+          </>
         )}
       </div>
 
-      {side === 'planning' ? (
-        <Planning data={data} onOpen={setOpenId} onPlan={setPlanning} />
-      ) : side === 'availability' ? (
-        <AvailabilityView data={data} onChanged={view.reload} />
-      ) : (
+      {side === 'reporting' ? (
         <Reports data={data} onOpen={setOpenId} />
+      ) : !current ? (
+        <div className="empty">
+          <h3>No day yet</h3>
+          <p>
+            The days the meetings happen on — date, hours, who receives — are set on the block, in the <strong>Days</strong>{' '}
+            tab of its setup.
+          </p>
+          <button className="btn primary" onClick={() => onOpenSetup(block.id)}>
+            <Icon name="settings" /> Open the setup
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="row wrap" style={{ fontSize: 12.5 }}>
+            <span className="faint">
+              {formatDate(current.heldOn)} · {current.windows.map((w) => `${w.startsAt}–${w.endsAt}`).join(' + ')} ·{' '}
+              <span className="num">{current.minutesPerMeeting}</span> min each
+              {current.location && ` · ${current.location}`}
+            </span>
+            <span className={onDay.length > capacity ? 'badge stop num' : 'badge num'}>
+              {onDay.length}/{capacity}
+            </span>
+            <span className="badge">{INVITE_WORDS[config.invite].title}</span>
+          </div>
+
+          <div className="day-split">
+            <div className="day-stage">
+              {/* Une colonne par interlocuteur du jour : c'est chez lui qu'on
+                  pose la startup. */}
+              <div className="day">
+                {current.interlocutors.map((personId) => (
+                  <section className="day-col" key={personId}>
+                    <header>
+                      <span className="eyebrow">{name(personId) || 'Interlocutor'}</span>
+                      <span className="num faint">
+                        {live.filter((m) => m.dayId === current.id && m.personId === personId).length}/{daySlots(current).length}
+                      </span>
+                    </header>
+                    <div className="day-slots">
+                      {daySlots(current).map((slot) => {
+                        const m = onDay.find((x) => x.personId === personId && x.startTime === slot.startsAt);
+                        const key = `${personId}:${slot.startsAt}`;
+                        const state = m ? STATE_BADGE[meetingState(m)] : null;
+                        return (
+                          <div
+                            key={slot.index}
+                            className={`slot-row${over === key ? ' over' : ''}${m ? '' : ' free'}`}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              setOver(key);
+                            }}
+                            onDragLeave={() => setOver((o) => (o === key ? null : o))}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              void dropOn(current, personId, slot.startsAt);
+                            }}
+                          >
+                            <span className="slot-time num">{slot.startsAt}</span>
+                            {m ? (
+                              <div
+                                className="seated"
+                                draggable={!busy}
+                                onDragStart={() => {
+                                  drag.current = { kind: 'meeting', meeting: m };
+                                }}
+                              >
+                                <span className="grip">
+                                  <Icon name="drag" size={13} />
+                                </span>
+                                <button className="seated-main oto-seat" onClick={() => setOpenId(m.id)} title="Open the meeting and its report">
+                                  <div className="seated-name">{m.orgName}</div>
+                                  <div className="seated-meta">{state && <span className={state.tone}>{state.label}</span>}</div>
+                                </button>
+                                <div className="seat-actions">
+                                  <button
+                                    className="btn ghost icon sm"
+                                    disabled={busy}
+                                    onClick={() => clearTime(m)}
+                                    title="Free this time — the meeting goes back to No time yet"
+                                    aria-label="Free this time"
+                                  >
+                                    <Icon name="x" size={13} />
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                className="slot-free"
+                                disabled={busy || (!unplaced.length && !noTime.length)}
+                                onClick={() => setPlacing({ day: current, personId, startTime: slot.startsAt })}
+                                title="Put a startup here"
+                              >
+                                free
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
+                {!current.interlocutors.length && (
+                  <div className="empty">Nobody receives on this day — add interlocutors to it in the setup.</div>
+                )}
+              </div>
+            </div>
+
+            {/* ---- the rail ---- */}
+            <aside
+              className={`pool-rail day-rail${over === 'rail' ? ' over' : ''}`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setOver('rail');
+              }}
+              onDragLeave={() => setOver((o) => (o === 'rail' ? null : o))}
+              onDrop={(e) => {
+                e.preventDefault();
+                const payload = drag.current;
+                drag.current = null;
+                setOver(null);
+                if (payload?.kind === 'meeting') void clearTime(payload.meeting);
+              }}
+            >
+              {noTime.length > 0 && (
+                <>
+                  <div className="rail-head">
+                    <span className="eyebrow">No time yet</span>
+                    <span className="num faint">{noTime.length}</span>
+                  </div>
+                  {noTime.map((m) => {
+                    const c = pool.find((p) => p.candidate.id === m.candidateId)?.candidate;
+                    return c ? chip(c, m.personName ? <span className="badge">{m.personName}</span> : null, m) : null;
+                  })}
+                  <div className="public-sep" style={{ margin: '12px 0 6px' }} />
+                </>
+              )}
+
+              {booking.length > 0 && (
+                <>
+                  <div className="rail-head">
+                    <span className="eyebrow">Invited to book</span>
+                    <span className="num faint">{booking.length}</span>
+                  </div>
+                  {booking.map((m) => (
+                    <div className="pool-chip" key={m.id}>
+                      <span className="chip-name">{m.orgName}</span>
+                      {m.personName && <span className="badge">{m.personName}</span>}
+                      <button
+                        className="chip-x"
+                        title="Copy their link to book"
+                        aria-label={`Copy ${m.orgName}’s link`}
+                        onClick={() => {
+                          navigator.clipboard?.writeText(`${window.location.origin}/meet/${m.token}`);
+                          toast('Link copied.');
+                        }}
+                      >
+                        <Icon name="link" size={11} />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="public-sep" style={{ margin: '12px 0 6px' }} />
+                </>
+              )}
+
+              <div className="rail-head">
+                <span className="eyebrow">No meeting yet</span>
+                <span className="num faint">{unplaced.length}</span>
+              </div>
+              {unplaced.length ? (
+                unplaced.map(({ candidate }) =>
+                  chip(
+                    candidate,
+                    candidate.mentorId && config.interlocutors.includes(candidate.mentorId) ? (
+                      <span className="badge" title="Their mentor">{name(candidate.mentorId)}</span>
+                    ) : null,
+                  ),
+                )
+              ) : (
+                <p className="faint" style={{ margin: 0, fontSize: 12 }}>Every startup has a meeting.</p>
+              )}
+            </aside>
+          </div>
+        </>
+      )}
+
+      {placing && (
+        <Modal
+          title={`Who meets ${name(placing.personId)} at ${placing.startTime}?`}
+          subtitle={`${placing.day.name || 'Day'} · ${formatDate(placing.day.heldOn)}`}
+          onClose={() => setPlacing(null)}
+        >
+          {/* Les mêmes listes que le rail, dans le même ordre — la voie qui
+              marche au clavier, et sur un écran trop étroit pour les deux. */}
+          <div className="rows">
+            {noTime.map((m) => (
+              <button
+                className="pick"
+                key={m.id}
+                onClick={async () => {
+                  drag.current = { kind: 'meeting', meeting: m };
+                  await dropOn(placing.day, placing.personId, placing.startTime);
+                  setPlacing(null);
+                }}
+              >
+                <Icon name="plus" size={14} />
+                <div>
+                  <strong>{m.orgName}</strong>
+                  <span>A meeting with no time yet</span>
+                </div>
+              </button>
+            ))}
+            {unplaced.map(({ candidate }) => (
+              <button
+                className="pick"
+                key={candidate.id}
+                onClick={async () => {
+                  drag.current = { kind: 'startup', candidate };
+                  await dropOn(placing.day, placing.personId, placing.startTime);
+                  setPlacing(null);
+                }}
+              >
+                <Icon name="plus" size={14} />
+                <div>
+                  <strong>{candidate.orgName}</strong>
+                  <span>
+                    {candidate.mentorId === placing.personId ? 'Their mentor' : candidate.contactName}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
+
+      {inviting && (
+        <InviteModal
+          data={data}
+          onClose={() => setInviting(false)}
+          onDone={() => {
+            setInviting(false);
+            void refresh();
+          }}
+        />
       )}
 
       {planning && (
         <PlanModal
           data={data}
-          preselected={planning}
-          onClose={() => setPlanning(null)}
+          preselected={[]}
+          onClose={() => setPlanning(false)}
           onDone={() => {
-            setPlanning(null);
-            view.reload();
+            setPlanning(false);
+            void refresh();
           }}
         />
       )}
@@ -133,112 +500,125 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
           meeting={opened}
           data={data}
           onClose={() => setOpenId(null)}
-          onChanged={view.reload}
+          onChanged={refresh}
         />
       )}
-    </div>
+    </>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Planning                                                            */
-/* ------------------------------------------------------------------ */
+/**
+ * Inviter des startups à réserver.
+ *
+ * Chacune reçoit son lien : les créneaux libres des journées, chez son mentor
+ * quand elle en a un parmi les interlocuteurs, chez qui elle veut sinon — ou
+ * chez la personne qu'on choisit ici.
+ */
+function InviteModal({ data, onClose, onDone }: { data: View; onClose: () => void; onDone: () => void }) {
+  const live = data.meetings.filter((m) => m.status !== 'cancelled');
+  const met = new Set(live.map((m) => m.candidateId));
+  const unplaced = data.pool.filter((p) => !met.has(p.candidate.id));
+  const [picked, setPicked] = useState<string[]>(unplaced.map((p) => p.candidate.id));
+  const [who, setWho] = useState<string>('mentor');
+  const [tell, setTell] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+  const cells = data.days
+    .filter((d) => (d.heldOn ?? '') >= todayIso())
+    .reduce((n, d) => n + daySlots(d).length * d.interlocutors.length, 0);
 
-function Planning({
-  data,
-  onOpen,
-  onPlan,
-}: {
-  data: View;
-  onOpen: (id: string) => void;
-  onPlan: (candidateIds: string[]) => void;
-}) {
-  const [person, setPerson] = useState('');
-  const [showPast, setShowPast] = useState(false);
-  const today = todayIso();
-  const shown = data.meetings.filter(
-    (m) => (!person || m.personId === person) && (showPast || !m.heldOn || m.heldOn >= today || meetingState(m) === 'to_report'),
-  );
-  /* Par jour, et ce qui n'a pas encore d'heure en tête : c'est ce qui attend quelqu'un. */
-  const days = [...new Set(shown.map((m) => m.heldOn ?? ''))].sort((a, b) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b)));
-  const met = new Set(data.meetings.filter((m) => m.status !== 'cancelled').map((m) => m.candidateId));
-  const waiting = data.pool.filter((p) => !met.has(p.candidate.id));
+  /** Chez qui chacune réserve : son mentor, une personne choisie, ou n'importe qui. */
+  const personFor = (c: Candidate): string | null => {
+    if (who === 'anyone') return null;
+    if (who === 'mentor') return c.mentorId && data.config.interlocutors.includes(c.mentorId) ? c.mentorId : null;
+    return who;
+  };
+
+  const send = async () => {
+    setBusy(true);
+    try {
+      /* Regroupées par interlocuteur : une demande par groupe, chacune prévenue. */
+      const groups = new Map<string | null, string[]>();
+      for (const { candidate } of unplaced.filter((p) => picked.includes(p.candidate.id))) {
+        const key = personFor(candidate);
+        groups.set(key, [...(groups.get(key) ?? []), candidate.id]);
+      }
+      let count = 0;
+      for (const [personId, candidateIds] of groups) {
+        const made = await api.post<unknown[]>(`/api/blocks/${data.block.id}/meetings`, {
+          candidateIds, personId, invite: 'slots', heldOn: null, startTime: null, tell,
+        });
+        count += made.length;
+      }
+      toast(`${count} invited to book${tell ? ' — and written to' : ''}.`);
+      onDone();
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
-    <div className="oto-layout">
-      <div className="stack" style={{ gap: 12, minWidth: 0 }}>
-        <div className="row wrap" style={{ gap: 8 }}>
-          <select className="status-select" value={person} onChange={(e) => setPerson(e.target.value)} aria-label="Interlocutor">
-            <option value="">Every interlocutor</option>
-            {data.interlocutors.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-          <label className="check">
-            <input type="checkbox" checked={showPast} onChange={(e) => setShowPast(e.target.checked)} />
-            <span>Show past meetings</span>
-          </label>
+    <Modal
+      title="Invite to book"
+      subtitle="Each startup gets its own link to the free slots of the days."
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn ghost" onClick={onClose}>Cancel</button>
+          <button className="btn primary" disabled={busy || !picked.length} onClick={send}>
+            {busy ? 'Inviting…' : `Invite ${picked.length}`}
+          </button>
+        </>
+      }
+    >
+      {!cells && (
+        <div className="callout warn">
+          <Icon name="alert" size={15} /> No day coming up — add one in the setup, or they will find nothing to book.
         </div>
-
-        {!shown.length && (
-          <div className="empty" style={{ padding: 22 }}>
-            <p style={{ margin: 0 }}>No meeting {showPast ? '' : 'coming up '}yet. Plan one from the list of startups.</p>
-          </div>
-        )}
-
-        {days.map((day) => (
-          <section className="card" key={day || 'none'}>
-            <div className="rowcard-head" style={{ padding: '10px 14px' }}>
-              <strong style={{ flex: 1, fontFamily: 'var(--display)', fontSize: 13.5 }}>
-                {day ? formatDate(day) : 'Waiting for a time'}
-              </strong>
-              <span className="badge num">{shown.filter((m) => (m.heldOn ?? '') === day).length}</span>
-            </div>
-            <div className="rows" style={{ padding: 10 }}>
-              {shown
-                .filter((m) => (m.heldOn ?? '') === day)
-                .map((m) => {
-                  const state = STATE_BADGE[meetingState(m)];
-                  return (
-                    <button
-                      key={m.id}
-                      className="rowcard row"
-                      style={{ gap: 10, padding: '9px 12px', width: '100%', textAlign: 'left' }}
-                      onClick={() => onOpen(m.id)}
-                    >
-                      <span className="num faint" style={{ width: 44, fontSize: 12.5 }}>{m.startTime ?? '—'}</span>
-                      <span style={{ flex: 1, minWidth: 0 }}>
-                        <strong style={{ fontSize: 13 }}>{m.orgName}</strong>
-                        <span className="faint" style={{ fontSize: 12 }}> · {m.personName}</span>
-                      </span>
-                      <span className={state.tone}>{state.label}</span>
-                      <Icon name="chevronRight" size={13} />
-                    </button>
-                  );
-                })}
-            </div>
-          </section>
-        ))}
+      )}
+      <div className="field">
+        <label>Who they book with</label>
+        <select className="input" value={who} onChange={(e) => setWho(e.target.value)}>
+          <option value="mentor">Their mentor when they have one — otherwise anyone</option>
+          <option value="anyone">Anyone receiving on the days</option>
+          {data.interlocutors.map((p) => (
+            <option key={p.id} value={p.id}>Only {p.name}</option>
+          ))}
+        </select>
       </div>
-
-      {/* Ceux qui n'ont encore vu personne : c'est la liste qu'on vient
-          vider en planifiant. */}
-      <aside className="card card-pad stack" style={{ gap: 8, alignSelf: 'start' }}>
+      <div className="field">
         <div className="row">
-          <strong style={{ flex: 1, fontSize: 13 }}>No meeting yet</strong>
-          <span className="badge num">{waiting.length}</span>
+          <label style={{ flex: 1 }}>Startups</label>
+          <button
+            className="linkish"
+            onClick={() => setPicked(picked.length === unplaced.length ? [] : unplaced.map((p) => p.candidate.id))}
+          >
+            {picked.length === unplaced.length ? 'None' : 'All'}
+          </button>
         </div>
-        {!waiting.length && <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>Every startup has a meeting.</p>}
-        {waiting.map(({ candidate }) => (
-          <div className="row" key={candidate.id} style={{ gap: 6 }}>
-            <span style={{ flex: 1, minWidth: 0, fontSize: 13 }}>{candidate.orgName}</span>
-            <button className="btn ghost sm" onClick={() => onPlan([candidate.id])} aria-label={`Plan for ${candidate.orgName}`}>
-              <Icon name="plus" size={12} />
-            </button>
-          </div>
-        ))}
-      </aside>
-    </div>
+        <div className="rows oto-pick">
+          {unplaced.map(({ candidate }) => (
+            <label className="check rowcard" style={{ padding: '7px 10px' }} key={candidate.id}>
+              <input
+                type="checkbox"
+                checked={picked.includes(candidate.id)}
+                onChange={() =>
+                  setPicked((p) => (p.includes(candidate.id) ? p.filter((x) => x !== candidate.id) : [...p, candidate.id]))
+                }
+              />
+              <span style={{ flex: 1, fontSize: 13 }}>{candidate.orgName}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+      <label className="check">
+        <input type="checkbox" checked={tell} onChange={(e) => setTell(e.target.checked)} />
+        <span>Write to them now, with their link — the letter is in the setup’s Messages tab</span>
+      </label>
+      <p className="faint" style={{ margin: 0, fontSize: 12 }}>{cells} slots free across the days coming up.</p>
+    </Modal>
   );
 }
 
@@ -259,7 +639,7 @@ function PlanModal({
   const mentor = first?.mentorId && data.config.interlocutors.includes(first.mentorId) ? first.mentorId : '';
   const [picked, setPicked] = useState<string[]>(preselected);
   const [personId, setPersonId] = useState(mentor || data.interlocutors[0]?.id || '');
-  const [invite, setInvite] = useState<'confirm' | 'none' | 'slots'>(data.config.invite);
+  const [invite, setInvite] = useState<'confirm' | 'none' | 'slots'>(data.config.invite === 'slots' ? 'confirm' : data.config.invite);
   const [heldOn, setHeldOn] = useState('');
   const [startTime, setStartTime] = useState('');
   const [repeats, setRepeats] = useState(false);
@@ -274,7 +654,6 @@ function PlanModal({
   /* Laisser réserver : autant de startups qu'on veut, chacune prendra son
      créneau. Une heure donnée : une startup, et une série possible. */
   const ready = picked.length > 0 && personId && (books || (heldOn && startTime && picked.length === 1));
-  const freeFor = data.availability.filter((a) => a.personId === personId && a.onDate >= todayIso()).length;
 
   const toggle = (id: string) =>
     setPicked((p) => (books ? (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]) : [id]));
@@ -312,7 +691,8 @@ function PlanModal({
 
   return (
     <Modal
-      title="Plan a meeting"
+      title="A meeting outside the days"
+      subtitle="At a time of its own — or a series, a weekly mentoring for instance."
       onClose={onClose}
       footer={
         <>
@@ -326,14 +706,14 @@ function PlanModal({
       <div className="field">
         <label>How it is set</label>
         <div className="pick-list">
-          {(['confirm', 'none', 'slots'] as const).map((mode) => (
+          {(['confirm', 'none'] as const).map((mode) => (
             <button
               key={mode}
               type="button"
               className={invite === mode ? 'pick on' : 'pick'}
               onClick={() => {
                 setInvite(mode);
-                if (mode !== 'slots') setPicked((p) => p.slice(0, 1));
+                setPicked((p) => p.slice(0, 1));
               }}
             >
               <Icon name={invite === mode ? 'check' : 'square'} />
@@ -386,13 +766,6 @@ function PlanModal({
           ))}
         </select>
         {errors.personId && <div className="err">{errors.personId}</div>}
-        {books && (
-          <div className="hint" style={freeFor ? undefined : { color: 'var(--warn)' }}>
-            {freeFor
-              ? `${freeFor} stretch${freeFor === 1 ? '' : 'es'} of availability coming up — the startups pick from these.`
-              : 'No availability published yet — add some in the Availability view, or they will find nothing to book.'}
-          </div>
-        )}
       </div>
 
       {!books && (
@@ -477,7 +850,7 @@ function MeetingDrawer({
 }) {
   const [heldOn, setHeldOn] = useState(meeting.heldOn ?? '');
   const [startTime, setStartTime] = useState(meeting.startTime ?? '');
-  const [personId, setPersonId] = useState(meeting.personId);
+  const [personId, setPersonId] = useState(meeting.personId ?? '');
   const [answers, setAnswers] = useState<Record<string, unknown>>(meeting.report);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -515,7 +888,8 @@ function MeetingDrawer({
     }
   };
 
-  const moved = heldOn !== (meeting.heldOn ?? '') || startTime !== (meeting.startTime ?? '') || personId !== meeting.personId;
+  const moved =
+    heldOn !== (meeting.heldOn ?? '') || startTime !== (meeting.startTime ?? '') || personId !== (meeting.personId ?? '');
 
   const tell = async (who: { startup?: boolean; person?: boolean }) => {
     setBusy(true);
@@ -540,7 +914,7 @@ function MeetingDrawer({
       <Drawer
         wide
         title={meeting.orgName}
-        subtitle={`${meeting.personName} · ${when(meeting)}`}
+        subtitle={`${meeting.personName || 'Interlocutor not chosen yet'} · ${when(meeting)}`}
         onClose={onClose}
         footer={
           <>
@@ -625,6 +999,7 @@ function MeetingDrawer({
           <div className="field">
             <label>Meets</label>
             <select className="input" value={personId} onChange={(e) => setPersonId(e.target.value)}>
+              {!personId && <option value="">Not chosen yet</option>}
               {data.interlocutors.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
@@ -638,7 +1013,7 @@ function MeetingDrawer({
               disabled={busy}
               onClick={() =>
                 change(
-                  { heldOn: heldOn || null, startTime: startTime || null, personId },
+                  { heldOn: heldOn || null, startTime: startTime || null, ...(personId ? { personId } : {}) },
                   meeting.invite === 'confirm' ? 'Moved — they are asked again.' : 'Moved.',
                 )
               }
@@ -698,9 +1073,11 @@ function MeetingDrawer({
           <button className="btn ghost sm" disabled={busy} onClick={() => tell({ startup: true })}>
             <Icon name="send" size={12} /> Write to the startup
           </button>
-          <button className="btn ghost sm" disabled={busy} onClick={() => tell({ person: true })}>
-            <Icon name="send" size={12} /> Write to {meeting.personName}
-          </button>
+          {meeting.personId && (
+            <button className="btn ghost sm" disabled={busy} onClick={() => tell({ person: true })}>
+              <Icon name="send" size={12} /> Write to {meeting.personName}
+            </button>
+          )}
         </div>
 
         {/* Le compte rendu, que CEED peut écrire à la place de l'interlocuteur
@@ -756,7 +1133,7 @@ const asText = (v: unknown): string => {
 };
 
 function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void }) {
-  const [tab, setTab] = useState<'summary' | 'responses'>('summary');
+  const [tab, setTab] = useState<'summary' | 'startups' | 'responses'>('summary');
   const [person, setPerson] = useState('');
   const [startup, setStartup] = useState('');
   const [from, setFrom] = useState('');
@@ -795,7 +1172,8 @@ function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void })
     <div className="stack" style={{ gap: 12 }}>
       <div className="row wrap" style={{ gap: 8 }}>
         <div className="seg" role="group" aria-label="Reports view">
-          <button className={tab === 'summary' ? 'on' : ''} onClick={() => setTab('summary')}>Summary</button>
+          <button className={tab === 'summary' ? 'on' : ''} onClick={() => setTab('summary')}>By question</button>
+          <button className={tab === 'startups' ? 'on' : ''} onClick={() => setTab('startups')}>By startup</button>
           <button className={tab === 'responses' ? 'on' : ''} onClick={() => setTab('responses')}>
             Responses <span className="num">{sent.length}</span>
           </button>
@@ -824,6 +1202,8 @@ function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void })
         <div className="empty" style={{ padding: 24 }}>
           <p style={{ margin: 0 }}>No report sent{person || startup || from || to ? ' for this selection' : ' yet'}.</p>
         </div>
+      ) : tab === 'startups' ? (
+        <ByStartup meetings={sent} fields={fields} onOpen={onOpen} />
       ) : tab === 'summary' ? (
         <div className="stack" style={{ gap: 10 }}>
           {summaries.map((s) => (
@@ -922,109 +1302,58 @@ function SummaryCard({ summary: s, total }: { summary: QuestionSummary; total: n
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Availability                                                        */
-/* ------------------------------------------------------------------ */
 
 /**
- * Les plages que chaque interlocuteur offre, et dans lesquelles les startups
- * réservent. L'interlocuteur les publie depuis son espace ; CEED peut les
- * saisir pour lui — un mentor qui envoie ses dispos par message.
+ * Les comptes rendus d'une startup, l'un sous l'autre : ce que chaque
+ * interlocuteur en a dit, du plus récent au plus ancien.
  */
-function AvailabilityView({ data, onChanged }: { data: View; onChanged: () => void }) {
-  const [personId, setPersonId] = useState(data.interlocutors[0]?.id ?? '');
-  const [onDate, setOnDate] = useState('');
-  const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('12:00');
-  const [slotMinutes, setSlotMinutes] = useState(data.config.durationMinutes);
-  const [busy, setBusy] = useState(false);
-  const toast = useToast();
-  const today = todayIso();
-  const theirs = data.availability.filter((a) => a.personId === personId && a.onDate >= today);
-  const booked = (a: Availability) =>
-    data.meetings.filter(
-      (m) => m.personId === a.personId && m.heldOn === a.onDate && m.startTime && m.startTime >= a.startTime && m.startTime < a.endTime && m.status !== 'cancelled',
-    ).length;
-
-  const add = async () => {
-    setBusy(true);
-    try {
-      await api.post(`/api/blocks/${data.block.id}/availability`, { personId, onDate, startTime, endTime, slotMinutes });
-      toast('Availability added.');
-      onChanged();
-    } catch (err) {
-      toast((err as Error).message, true);
-    } finally {
-      setBusy(false);
-    }
-  };
-
+function ByStartup({
+  meetings,
+  fields,
+  onOpen,
+}: {
+  meetings: OneToOneMeeting[];
+  fields: FormField[];
+  onOpen: (id: string) => void;
+}) {
+  const startups = [...new Map(meetings.map((m) => [m.candidateId, m.orgName])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
   return (
     <div className="stack" style={{ gap: 12 }}>
-      <div className="row wrap" style={{ gap: 8 }}>
-        <select className="status-select" value={personId} onChange={(e) => setPersonId(e.target.value)} aria-label="Interlocutor">
-          {data.interlocutors.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
-        <span className="faint" style={{ fontSize: 12.5 }}>
-          They can publish these themselves from their space, under Meetings.
-        </span>
-      </div>
-
-      <section className="card card-pad stack" style={{ gap: 10 }}>
-        <strong style={{ fontSize: 13.5 }}>Add a stretch</strong>
-        <div className="row wrap" style={{ gap: 8, alignItems: 'flex-end' }}>
-          <div className="field" style={{ margin: 0 }}>
-            <label>Day</label>
-            <input className="input" type="date" min={today} value={onDate} onChange={(e) => setOnDate(e.target.value)} />
-          </div>
-          <div className="field" style={{ margin: 0 }}>
-            <label>From</label>
-            <input className="input" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-          </div>
-          <div className="field" style={{ margin: 0 }}>
-            <label>To</label>
-            <input className="input" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-          </div>
-          <div className="field" style={{ margin: 0, width: 120 }}>
-            <label>Slots of (min)</label>
-            <input className="input num" type="number" min={5} value={slotMinutes} onChange={(e) => setSlotMinutes(Number(e.target.value) || 45)} />
-          </div>
-          <button className="btn primary sm" disabled={busy || !personId || !onDate || endTime <= startTime} onClick={add}>
-            <Icon name="plus" size={13} /> Add
-          </button>
-        </div>
-      </section>
-
-      {!theirs.length ? (
-        <div className="empty" style={{ padding: 20 }}>
-          <p style={{ margin: 0 }}>No availability coming up for this interlocutor.</p>
-        </div>
-      ) : (
-        <div className="rows">
-          {theirs.map((a) => (
-            <div className="rowcard row" key={a.id} style={{ gap: 10, padding: '9px 12px' }}>
-              <Icon name="clock" size={14} />
-              <span style={{ flex: 1, fontSize: 13 }}>
-                <strong>{formatDate(a.onDate)}</strong> · {a.startTime}–{a.endTime}
-                <span className="faint"> · slots of {a.slotMinutes} min</span>
+      {startups.map(([candidateId, orgName]) => {
+        const theirs = meetings
+          .filter((m) => m.candidateId === candidateId)
+          .sort((a, b) => (b.heldOn ?? '').localeCompare(a.heldOn ?? ''));
+        return (
+          <section className="card card-pad stack" key={candidateId} style={{ gap: 10 }}>
+            <div className="row">
+              <h3 style={{ margin: 0, fontSize: 15, flex: 1 }}>{orgName}</h3>
+              <span className="badge num">
+                {theirs.length} report{theirs.length === 1 ? '' : 's'}
               </span>
-              <span className="badge num">{booked(a)} booked</span>
-              <button
-                className="btn ghost icon sm"
-                aria-label="Remove"
-                onClick={async () => {
-                  await api.del(`/api/availability/${a.id}`);
-                  onChanged();
-                }}
-              >
-                <Icon name="trash" size={13} />
-              </button>
             </div>
-          ))}
-        </div>
-      )}
+            {theirs.map((m) => (
+              <div className="rowcard card-pad stack" key={m.id} style={{ gap: 8 }}>
+                <button className="row oto-report-head" onClick={() => onOpen(m.id)}>
+                  <strong style={{ fontSize: 13 }}>{m.personName}</strong>
+                  <span className="faint" style={{ fontSize: 12 }}>· {when(m)}</span>
+                  <div className="spacer" />
+                  <Icon name="chevronRight" size={13} />
+                </button>
+                <div className="oto-answers-grid">
+                  {fields
+                    .filter((f) => asText(m.report[f.id]))
+                    .map((f) => (
+                      <div key={f.id}>
+                        <div className="eyebrow">{f.label}</div>
+                        <div style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{asText(m.report[f.id])}</div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            ))}
+          </section>
+        );
+      })}
     </div>
   );
 }

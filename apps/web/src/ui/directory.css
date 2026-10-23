@@ -788,3 +788,35 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
   overflow-y: auto;
   gap: 4px;
 }
+
+/* Une startup posée sur un créneau : la carte entière ouvre son rendez-vous. */
+.oto-seat {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.oto-seat:hover .seated-name { color: var(--blue); }
+
+.oto-report-head {
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.oto-answers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px 16px;
+}

@@ -8,7 +8,7 @@
  */
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { freeSlots, seriesDates, summarise, type FormField } from '@ceed/shared';
+import { freeCells, seriesDates, summarise, type FormField, type OneToOneDay } from '@ceed/shared';
 import { all } from '../src/db/client.js';
 import { letters } from '../src/services/mail.js';
 import { agendaFor } from '../src/services/agenda.js';
@@ -16,8 +16,8 @@ import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
 import {
-  addAvailability, bookSlot, bricksFor, cancelFollowing, changeMeeting, historyOf, invitationFor, meetingFor,
-  meetingsFor, oneToOneView, planMeetings, saveReport, tellMeeting,
+  bookSlot, cancelFollowing, changeMeeting, createDay, historyOf, informAll, invitationFor, meetingFor,
+  meetingsFor, oneToOneView, planMeetings, saveReport, tellMeeting, updateDay,
 } from '../src/services/oneToOne.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
@@ -46,13 +46,19 @@ describe('what a report sums up to', () => {
 });
 
 describe('free slots and series', () => {
-  it('cuts a stretch into slots, leaves out what is taken and what is past', () => {
-    const slots = freeSlots(
-      [{ onDate: '2026-11-10', startTime: '09:00', endTime: '11:00', slotMinutes: 45 }, { onDate: '2026-10-01', startTime: '09:00', endTime: '10:00', slotMinutes: 30 }],
-      [{ heldOn: '2026-11-10', startTime: '09:45' }],
+  it('offers each slot with each interlocutor of the day, minus what is taken and what is past', () => {
+    const day = (id: string, heldOn: string, interlocutors: string[]): OneToOneDay => ({
+      id, blockId: 'b', name: '', heldOn, windows: [{ startsAt: '09:00', endsAt: '10:30' }], minutesPerMeeting: 45,
+      location: '', interlocutors, position: 0,
+    });
+    const cells = freeCells(
+      [day('d1', '2026-11-10', ['nadia', 'omar']), day('d0', '2026-10-01', ['nadia'])],
+      [{ personId: 'nadia', heldOn: '2026-11-10', startTime: '09:00' }],
+      null,
       '2026-10-30',
     );
-    assert.deepEqual(slots.map((x) => x.startTime), ['09:00'], '09:45 is taken, 10:30 would run past 11:00, October is gone');
+    assert.deepEqual(cells.map((c) => `${c.startTime} ${c.personId}`), ['09:00 omar', '09:45 nadia', '09:45 omar']);
+    assert.deepEqual(freeCells([day('d1', '2026-11-10', ['nadia', 'omar'])], [], 'omar', '2026-10-30').map((c) => c.personId), ['omar', 'omar']);
   });
 
   it('dates a series at its rhythm, never past its end, never past 52', () => {
@@ -176,18 +182,44 @@ describe('a One to One', { skip: skipWithoutServer }, () => {
     assert.deepEqual(after.map((m) => m.status), ['held', 'planned', 'cancelled', 'cancelled']);
   });
 
-  it('lets a startup book from the interlocutor’s availability, and not a slot taken meanwhile', async () => {
-    const { block, mentor, a, b } = await setUp();
-    await addAvailability(block.id, mentor.id, { onDate: '2030-02-04', startTime: '09:00', endTime: '10:30', slotMinutes: 45 });
-    const [ma, mb] = await planMeetings(block.id, { candidateIds: [a.id, b.id], personId: mentor.id, invite: 'slots', heldOn: null, startTime: null });
-    const page = await invitationFor(ma!.token);
-    assert.deepEqual(page!.page.slots.map((x) => x.startTime), ['09:00', '09:45']);
-    await bookSlot(ma!.token, '2030-02-04', '09:00');
-    await assert.rejects(bookSlot(mb!.token, '2030-02-04', '09:00'), 'taken a moment ago');
-    assert.deepEqual((await invitationFor(mb!.token))!.page.slots.map((x) => x.startTime), ['09:45']);
+  it('lets a startup book a free cell of the days — with anyone, or with its own interlocutor — and not one taken meanwhile', async () => {
+    const { block, mentor, expert, a, b } = await setUp();
+    const day = await createDay(block.id, {
+      name: 'Day 1', heldOn: '2030-02-04', windows: [{ startsAt: '09:00', endsAt: '10:30' }], minutesPerMeeting: 45,
+      location: 'CEED', interlocutors: [mentor.id, expert.id],
+    });
+    const [ma] = await planMeetings(block.id, { candidateIds: [a.id], personId: null, invite: 'slots', heldOn: null, startTime: null });
+    const [mb] = await planMeetings(block.id, { candidateIds: [b.id], personId: mentor.id, invite: 'slots', heldOn: null, startTime: null });
+    assert.equal((await invitationFor(ma!.token))!.page.slots.length, 4, 'two slots with two interlocutors');
+    assert.equal((await invitationFor(mb!.token))!.page.slots.length, 2, 'only its own interlocutor');
+
+    await bookSlot(ma!.token, { dayId: day.id, startTime: '09:00', personId: mentor.id });
+    await assert.rejects(bookSlot(mb!.token, { dayId: day.id, startTime: '09:00', personId: mentor.id }), 'taken a moment ago');
     const booked = (await oneToOneView(block.id))!.meetings.find((m) => m.id === ma!.id)!;
-    assert.deepEqual([booked.heldOn, booked.startTime, booked.rsvpState], ['2030-02-04', '09:00', 'confirmed']);
-    assert.ok((await bricksFor(mentor.id)).some((x) => x.blockId === block.id), 'the interlocutor may publish here');
+    assert.deepEqual([booked.heldOn, booked.startTime, booked.personId, booked.dayId, booked.location], ['2030-02-04', '09:00', mentor.id, day.id, 'CEED']);
+
+    await updateDay(day.id, { heldOn: '2030-02-05' });
+    const moved = (await oneToOneView(block.id))!.meetings.find((m) => m.id === ma!.id)!;
+    assert.equal(moved.heldOn, '2030-02-05', 'a day moved takes its meetings with it');
+  });
+
+  it('refuses a day with a stranger, and an interlocutor placed on a day they do not receive', async () => {
+    const { block, mentor, expert, a } = await setUp();
+    const stranger = await dir.createRecord({ kind: 'person', name: `X ${uniq()}`, origin: 'manual' });
+    await assert.rejects(createDay(block.id, { name: '', heldOn: '2030-05-01', windows: [{ startsAt: '09:00', endsAt: '10:00' }], minutesPerMeeting: 30, location: '', interlocutors: [stranger.id] }));
+    const day = await createDay(block.id, { name: '', heldOn: '2030-05-01', windows: [{ startsAt: '09:00', endsAt: '10:00' }], minutesPerMeeting: 30, location: '', interlocutors: [mentor.id] });
+    await assert.rejects(planMeetings(block.id, { candidateIds: [a.id], personId: expert.id, dayId: day.id, invite: 'none', heldOn: '2030-05-01', startTime: '09:00' }));
+    const [m] = await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, dayId: day.id, invite: 'none', heldOn: '2030-05-01', startTime: '09:00' });
+    assert.equal(m!.durationMinutes, 30, 'the day’s length');
+  });
+
+  it('informs everyone of a day who has not been told, once', async () => {
+    const { block, mentor, a } = await setUp();
+    await all(`update records set emails = $2::jsonb where id = $1`, [mentor.id, [`n.${uniq()}@example.test`]]);
+    const day = await createDay(block.id, { name: '', heldOn: '2030-06-01', windows: [{ startsAt: '09:00', endsAt: '10:00' }], minutesPerMeeting: 30, location: '', interlocutors: [mentor.id] });
+    await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, dayId: day.id, invite: 'none', heldOn: '2030-06-01', startTime: '09:00' });
+    assert.equal((await informAll(block.id, day.id)).people, 1);
+    assert.equal((await informAll(block.id, day.id)).people, 0, 'told once');
   });
 
   it('writes to the startup with its own link, and to the interlocutor with the meeting', async () => {

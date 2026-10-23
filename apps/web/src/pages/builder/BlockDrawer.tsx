@@ -296,7 +296,7 @@ export function BlockDrawer({
           />
         )}
         {block.type === 'one_to_one' && (
-          <OneToOneSetup config={draft as unknown as OneToOneConfig} patch={patch} tab={otoTab} />
+          <OneToOneSetup block={block} config={draft as unknown as OneToOneConfig} patch={patch} tab={otoTab} />
         )}
         {block.type === 'deliverable' && (
           <DeliverableSetup
