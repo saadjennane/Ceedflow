@@ -395,7 +395,7 @@ async function main() {
   });
   const editionId = grow.editions[0].id;
   await repo.updateEdition(editionId, {
-    status: 'Running',
+    status: 'Live',
     mentors: JUDGES.map(([name]) => name),
   });
 
