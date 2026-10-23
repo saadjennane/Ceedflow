@@ -231,6 +231,73 @@ export async function reissueProvisionalPassword(accountId: string, password: st
   await client.query('delete from sessions where account_id = $1', [accountId]);
 }
 
+/* ------------------------------------------------------------------ */
+/* Forgot password                                                     */
+/* ------------------------------------------------------------------ */
+
+/** How long a password sent by mail works. */
+export const RESET_MINUTES = 60;
+/** How soon another can be asked for the same account. */
+const RESET_AGAIN_MINUTES = 5;
+
+/**
+ * Whether one was sent a moment ago. A second request in that window sends
+ * nothing — the first is still in the inbox, and a box filling with passwords
+ * is how somebody gets harassed through a form.
+ */
+export async function resetRequestedRecently(accountId: string): Promise<boolean> {
+  const row = await one<{ recent: boolean }>(
+    `select coalesce(reset_requested_at > now() - interval '${RESET_AGAIN_MINUTES} minutes', false) as recent
+       from accounts where id = $1`,
+    [accountId],
+  );
+  return Boolean(row?.recent);
+}
+
+/**
+ * Hands over a second password, for an hour, beside the first.
+ *
+ * Not instead of it: replacing the password on request would let anyone who
+ * knows an address lock its owner out. Whichever of the two is used first wins.
+ */
+export async function issueReset(accountId: string, password: string): Promise<void> {
+  await (await db()).query(
+    `update accounts set reset_hash = $2, reset_expires_at = now() + interval '${RESET_MINUTES} minutes',
+            reset_requested_at = now()
+      where id = $1`,
+    [accountId, await hashPassword(password)],
+  );
+}
+
+/**
+ * Signing in with the password that was mailed.
+ *
+ * It becomes the password — provisional, so the next screen asks for one of
+ * the person's own — and the old one stops working, with every session on it:
+ * whoever asked for the reset is the one who now holds the account.
+ */
+export async function useReset(accountId: string, password: string): Promise<boolean> {
+  const row = await one<{ hash: string | null; valid: boolean }>(
+    `select reset_hash as hash, coalesce(reset_expires_at > now(), false) as valid from accounts where id = $1`,
+    [accountId],
+  );
+  if (!row?.hash || !row.valid || !(await verifyPassword(password, row.hash))) return false;
+  const client = await db();
+  await client.query(
+    `update accounts set password_hash = reset_hash, must_change_password = true,
+            reset_hash = null, reset_expires_at = null
+      where id = $1`,
+    [accountId],
+  );
+  await client.query('delete from sessions where account_id = $1', [accountId]);
+  return true;
+}
+
+/** The ordinary password worked: a reset nobody needed is withdrawn. */
+export async function dropReset(accountId: string): Promise<void> {
+  await (await db()).query('update accounts set reset_hash = null, reset_expires_at = null where id = $1', [accountId]);
+}
+
 /**
  * Changer l'adresse de connexion d'un compte, à la demande.
  *

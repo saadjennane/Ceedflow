@@ -49,6 +49,21 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
     ? form.firstName.trim() && form.lastName.trim() && form.email.trim() && form.password.length >= 8
     : form.email.trim() && form.password;
 
+  /* « Mot de passe oublié » : la même page, un autre formulaire. */
+  const [forgetting, setForgetting] = useState(false);
+  if (forgetting) {
+    return (
+      <Forgot
+        email={form.email}
+        onBack={(email) => {
+          set({ email, password: '' });
+          setErrors({});
+          setForgetting(false);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="public">
       <div className="public-card" style={{ maxWidth: 460 }}>
@@ -94,6 +109,16 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
             onChange={(v) => set({ password: v })}
             onEnter={() => ready && submit()}
           />
+          {!signup && (
+            <button
+              type="button"
+              className="linkish"
+              style={{ alignSelf: 'flex-end', marginTop: -6, fontSize: 12.5 }}
+              onClick={() => setForgetting(true)}
+            >
+              Forgot your password?
+            </button>
+          )}
 
           <button className="btn primary" disabled={busy || !ready} onClick={submit}>
             {busy ? 'One moment…' : signup ? 'Create my account' : 'Sign in'}
@@ -112,6 +137,83 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
               </>
             )}
           </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Mot de passe oublié.
+ *
+ * The answer reads the same whether the address has an account or not —
+ * otherwise this form would tell anyone who is registered here. What it sends
+ * is a second password, for an hour, beside the first: asking for one cannot
+ * lock anybody out of their own account.
+ */
+function Forgot({ email: initial, onBack }: { email: string; onBack: (email: string) => void }) {
+  const [email, setEmail] = useState(initial);
+  const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState('');
+
+  const send = async () => {
+    setBusy(true);
+    setProblem('');
+    try {
+      await api.post('/api/auth/forgot', { email });
+      setSent(true);
+    } catch (err) {
+      setProblem((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="public">
+      <div className="public-card" style={{ maxWidth: 460 }}>
+        <div className="public-top" />
+        <div className="public-body stack" style={{ gap: 14 }}>
+          <h1>Forgot your password?</h1>
+          {sent ? (
+            <>
+              <div className="callout">
+                <Icon name="send" size={15} />
+                <div>
+                  <strong>Check your inbox.</strong> If an account exists for {email}, a new password is on its way.
+                  It works for one hour, and you will choose your own once signed in. Your current password still
+                  works in the meantime.
+                </div>
+              </div>
+              <button className="btn primary" onClick={() => onBack(email)}>
+                Back to sign in
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="public-intro">We will email you a new password. Nothing changes until you use it.</p>
+              {problem && (
+                <div className="callout warn">
+                  <Icon name="alert" size={15} /> {problem}
+                </div>
+              )}
+              <Field
+                label="Email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={setEmail}
+                onEnter={() => email.trim() && void send()}
+              />
+              <button className="btn primary" disabled={busy || !email.trim()} onClick={send}>
+                {busy ? 'One moment…' : 'Send me a new password'}
+              </button>
+              <button type="button" className="linkish" style={{ fontSize: 12.5 }} onClick={() => onBack(email)}>
+                Back to sign in
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

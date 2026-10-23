@@ -53,7 +53,14 @@ import {
   reissueProvisionalPassword,
   setPassword,
   verifyPassword,
+  RESET_MINUTES,
+  dropReset,
+  issueReset,
+  resetRequestedRecently,
+  useReset,
 } from '../services/auth.js';
+import { post } from '../services/mail.js';
+import { appLink } from '../services/deliverables.js';
 import { HttpError, notFound, parse } from './util.js';
 
 /** One published edition, as the person signed in sees it. */
@@ -240,14 +247,22 @@ export async function authRoutes(app: FastifyInstance) {
       throw new HttpError(429, 'Too many attempts. Try again in a few minutes.');
     }
 
-    const account = await findAccount(input.email);
+    let account = await findAccount(input.email);
     // The same refusal whether the email is unknown or the password is wrong:
     // otherwise this endpoint tells anyone who has an account here.
-    const ok = account && (await verifyPassword(input.password, account.passwordHash));
-    if (!account || !ok) {
+    const usual = account ? await verifyPassword(input.password, account.passwordHash) : false;
+    /* Ou le mot de passe envoyé par « mot de passe oublié », pendant son heure :
+       il devient le mot de passe, provisoire, et l'écran suivant en demande un
+       à soi. */
+    const mailed = account && !usual ? await useReset(account.id, input.password) : false;
+    if (!account || (!usual && !mailed)) {
       await noteFailedLogin(input.email, req.ip);
       throw new HttpError(401, 'Email or password is wrong.');
     }
+    if (mailed) account = (await findAccount(input.email))!;
+    // Le mot de passe habituel a marché : la demande de réinitialisation, s'il
+    // y en avait une, ne sert plus à rien et ne doit pas rester valable.
+    else await dropReset(account.id);
 
     // A disabled account is told so plainly. Hiding it behind "email or
     // password is wrong" would send somebody to reset a password that works,
@@ -261,6 +276,57 @@ export async function authRoutes(app: FastifyInstance) {
     const { token, expiresAt } = await createSession(account.id);
     setSession(reply, token, expiresAt);
     return meFor(account);
+  });
+
+  /**
+   * Mot de passe oublié.
+   *
+   * La même réponse que l'adresse ait un compte ou non : sinon ce formulaire
+   * dirait à n'importe qui qui est inscrit ici. Rien n'est remplacé — un
+   * second mot de passe part par mail, valable une heure, à côté du premier.
+   * Compté comme une tentative de connexion, pour qu'une machine ne s'en
+   * serve pas en boucle.
+   */
+  app.post('/api/auth/forgot', async (req, reply) => {
+    const { email } = parse(z.object({ email: z.string().trim().min(1, 'Your email.') }), req.body);
+    const gate = await loginAllowed(email, req.ip);
+    if (!gate.allowed) {
+      reply.header('retry-after', String(gate.retryAfter));
+      throw new HttpError(429, 'Too many attempts. Try again in a few minutes.');
+    }
+    await noteFailedLogin(email, req.ip);
+
+    const account = await findAccount(email);
+    if (account && !account.disabledAt && !(await resetRequestedRecently(account.id))) {
+      const password = suggestPassword();
+      await issueReset(account.id, password);
+      const record = await dir.getRecord(account.recordId);
+      const origin = await appLink();
+      const login = origin ? origin.replace(/\/me\?tab=Programs$/, '/login') : '';
+      await post({
+        kind: 'password_reset',
+        to: account.email,
+        toName: record?.name ?? '',
+        recordId: account.recordId,
+        subject: 'Votre mot de passe CEED — Your CEED password',
+        body: [
+          record?.name ? `${record.name},` : 'Bonjour,',
+          '',
+          `Vous avez demandé un nouveau mot de passe. Le voici — il est valable ${RESET_MINUTES} minutes, et vous en choisirez un à vous en vous connectant :`,
+          '',
+          `    ${account.email}`,
+          `    ${password}`,
+          '',
+          ...(login ? [`    ${login}`, ''] : []),
+          'Votre mot de passe actuel continue de fonctionner : si vous n’avez rien demandé, ignorez ce message.',
+          '',
+          '—',
+          '',
+          `You asked for a new password. Here it is — it works for ${RESET_MINUTES} minutes, and you will choose your own when you sign in. Your current password still works: if you did not ask, ignore this message.`,
+        ].join('\n'),
+      });
+    }
+    return { ok: true };
   });
 
   app.post('/api/auth/logout', async (req, reply) => {
