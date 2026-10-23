@@ -13,6 +13,7 @@ import type {
   Block,
   CommitteeConfig,
   EvaluationConfig,
+  OneToOneConfig,
   SelectionConfig,
   SourcingConfig,
 } from '@ceed/shared';
@@ -151,6 +152,19 @@ export function blockLine(block: Block, track?: TrackWithPhases): BlockLine {
         date: c.publishedAt ? c.publishedAt.slice(0, 10) : null,
         progress: c.publishedAt ? 'Completed' : null,
         chips: c.publishedAt ? chips : [...chips, { label: 'Not published', tone: 'warn' as const }],
+      };
+    }
+    case 'one_to_one': {
+      const c = block.config as OneToOneConfig;
+      return {
+        description: [
+          'Meetings with a report',
+          plural(c.interlocutors.length, 'interlocutor'),
+          plural(c.report.fields.length, 'question'),
+        ].join(' · '),
+        date: c.opensAt ?? null,
+        progress: null,
+        chips,
       };
     }
     default:

@@ -721,3 +721,64 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
   border-radius: var(--r);
   background: var(--surface);
 }
+
+/* ------------------------------------------------------------------ */
+/* One to One                                                          */
+/* ------------------------------------------------------------------ */
+
+/* Le planning à gauche, ceux qui n'ont vu personne à droite. */
+.oto-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 14px;
+}
+@media (max-width: 900px) {
+  .oto-layout { grid-template-columns: 1fr; }
+}
+
+/* Une barre par option, comme la page des réponses d'un formulaire. */
+.oto-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+}
+
+.oto-bar-label {
+  width: 180px;
+  flex: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oto-bar-track {
+  flex: 1;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--wash);
+  overflow: hidden;
+}
+
+.oto-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: var(--blue);
+}
+
+.oto-answers {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.oto-answers li {
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+}

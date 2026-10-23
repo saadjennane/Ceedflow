@@ -4,11 +4,13 @@ import { Navigate, RouterProvider, createBrowserRouter } from 'react-router-dom'
 import { Shell } from './app/Shell';
 import { ApplyPage } from './pages/ApplyPage';
 import { BookingPage } from './pages/BookingPage';
+import { MeetPage } from './pages/MeetPage';
 import { EditionPage } from './pages/EditionPage';
 import { AuthPage } from './pages/member/AuthPage';
 import { AsStartupPage } from './pages/member/AsStartupPage';
 import { MemberPage } from './pages/member/MemberPage';
 import { ReviewPage } from './pages/member/ReviewPage';
+import { MeetingPage } from './pages/member/MeetingPage';
 import { DirectoryPage } from './pages/directory/DirectoryPage';
 import { RecordPage } from './pages/directory/RecordPage';
 import { ProgramPage } from './pages/ProgramPage';
@@ -21,6 +23,7 @@ import './ui/app.css';
 const router = createBrowserRouter([
   { path: '/apply/:token', element: <ApplyPage /> },
   { path: '/book/:token', element: <BookingPage /> },
+  { path: '/meet/:token', element: <MeetPage /> },
   { path: '/login', element: <AuthPage mode="login" /> },
   { path: '/signup', element: <AuthPage mode="signup" /> },
   { path: '/join', element: <Navigate to="/signup" replace /> },
@@ -28,6 +31,7 @@ const router = createBrowserRouter([
   /* Ouverte par CEED dans un onglet à part : on y lit ce que la startup lira. */
   { path: '/as/:candidateId', element: <AsStartupPage /> },
   { path: '/review/:sessionId', element: <ReviewPage /> },
+  { path: '/meeting/:meetingId', element: <MeetingPage /> },
   {
     path: '/',
     element: <Shell />,

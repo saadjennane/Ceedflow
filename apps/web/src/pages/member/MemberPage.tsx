@@ -4,6 +4,8 @@ import {
   canManageTeam,
   profileOf,
   profileStarted,
+  meetingState,
+  type OneToOneMeeting,
   type AffiliationView,
   type DirectoryRecord,
   type Me,
@@ -39,10 +41,11 @@ import { OrgSheet } from '../../ui/OrgSheet';
  * whole product already points at.
  */
 /** The four places a member has. Jury only exists for somebody on a panel. */
-const MEMBER_TABS = ['Home', 'Programs', 'Jury', 'Profile', 'Settings'] as const;
+const MEMBER_TABS = ['Home', 'Programs', 'Jury', 'Meetings', 'Profile', 'Settings'] as const;
 /** The word each tab wears, in the language the member reads. */
 const TAB_WORD = {
-  Home: 'tab.home', Programs: 'tab.programs', Jury: 'tab.jury', Profile: 'tab.profile', Settings: 'tab.settings',
+  Home: 'tab.home', Programs: 'tab.programs', Jury: 'tab.jury', Meetings: 'tab.meetings', Profile: 'tab.profile',
+  Settings: 'tab.settings',
 } as const;
 type MemberTab = (typeof MEMBER_TABS)[number];
 
@@ -90,9 +93,17 @@ function MemberSpace({ preview }: { preview?: MemberPreview }) {
     preview ? 'preview-programs' : 'programs',
   );
   const isJuror = (panels.data?.length ?? 0) > 0;
+  /* Les rendez-vous où l'on est l'interlocuteur : l'onglet n'existe que s'il y en a. */
+  const meetings = useAsync<MyMeeting[]>(
+    async () => (preview ? [] : api.get<MyMeeting[]>('/api/me/meetings')),
+    preview ? 'preview-meetings' : 'my-meetings',
+  );
+  const meets = (meetings.data?.length ?? 0) > 0;
   /* Settings holds a password and a way out of the account — neither means
      anything about somebody else's page. */
-  const tabs = MEMBER_TABS.filter((t) => (t !== 'Jury' || isJuror) && (t !== 'Settings' || !preview));
+  const tabs = MEMBER_TABS.filter(
+    (t) => (t !== 'Jury' || isJuror) && (t !== 'Meetings' || meets) && (t !== 'Settings' || !preview),
+  );
   const asked = params.get('tab') as MemberTab | null;
   /* On ouvre là où il y a quelque chose à faire.
      Nobody signs in to read their own profile: a founder comes to see what is
@@ -103,7 +114,8 @@ function MemberSpace({ preview }: { preview?: MemberPreview }) {
      formulaire — une adresse de retour libre enverrait n'importe où. */
   const next = params.get('next') ?? '';
   const returnTo = next.startsWith('/apply/') ? next : '';
-  const landing: MemberTab = (programs.data?.length ?? 0) > 0 ? 'Home' : isJuror ? 'Jury' : 'Profile';
+  const landing: MemberTab =
+    (programs.data?.length ?? 0) > 0 ? 'Home' : isJuror ? 'Jury' : meets ? 'Meetings' : 'Profile';
   const tab: MemberTab = asked && tabs.includes(asked) ? asked : landing;
   const setTab = (next: MemberTab) =>
     setParams((p) => {
@@ -310,6 +322,7 @@ function MemberSpace({ preview }: { preview?: MemberPreview }) {
             <Programs programs={programs} owedFor={preview?.owed} readOnly={Boolean(preview)} onOpen={setEdition} />
           ))}
         {tab === 'Jury' && <Jury panels={panels.data ?? []} />}
+        {tab === 'Meetings' && <Meetings meetings={meetings.data ?? []} />}
         {tab === 'Settings' && !preview && <Settings me={me!} />}
       </div>
     </div>
@@ -732,6 +745,58 @@ export function Programs({
  * into a screen of its own: with one programme and one panel, a page that only
  * held a link to another page would be a click for nothing.
  */
+/** Mes rendez-vous d'interlocuteur : à venir d'abord, puis ceux dont le compte rendu attend. */
+interface MyMeeting extends OneToOneMeeting {
+  programName: string;
+  blockName: string;
+  state: 'open' | 'closed';
+}
+
+function Meetings({ meetings }: { meetings: MyMeeting[] }) {
+  const { lang } = useLang();
+  const today = new Date().toISOString().slice(0, 10);
+  const upcoming = meetings.filter((m) => !m.heldOn || m.heldOn >= today);
+  const past = meetings.filter((m) => m.heldOn && m.heldOn < today).reverse();
+  const row = (m: MyMeeting) => {
+    const state = meetingState(m);
+    return (
+      <Link className="rowcard link-row" key={m.id} to={`/meeting/${m.id}`}>
+        <Icon name="users" size={14} />
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <strong style={{ fontSize: 13 }}>{m.orgName}</strong>
+          <span className="faint" style={{ display: 'block', fontSize: 12 }}>
+            {[m.heldOn ? `${formatDate(m.heldOn)}${m.startTime ? ` · ${m.startTime}` : ''}` : null, m.programName, m.blockName]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
+        </span>
+        {state === 'reported' ? (
+          <span className="badge ok">{lang === 'fr' ? 'CR envoyé' : 'Report sent'}</span>
+        ) : m.state === 'open' && m.heldOn && m.heldOn <= today ? (
+          <span className="badge warn">{lang === 'fr' ? 'CR à écrire' : 'Report due'}</span>
+        ) : null}
+        <Icon name="chevronRight" size={14} />
+      </Link>
+    );
+  };
+  return (
+    <div className="stack" style={{ gap: 14 }}>
+      <section className="card card-pad stack" style={{ gap: 8 }}>
+        <div className="eyebrow">{lang === 'fr' ? 'À venir' : 'Coming up'}</div>
+        {upcoming.length ? upcoming.map(row) : (
+          <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{lang === 'fr' ? 'Rien de prévu.' : 'Nothing planned.'}</p>
+        )}
+      </section>
+      {past.length > 0 && (
+        <section className="card card-pad stack" style={{ gap: 8 }}>
+          <div className="eyebrow">{lang === 'fr' ? 'Passés' : 'Past'}</div>
+          {past.map(row)}
+        </section>
+      )}
+    </div>
+  );
+}
+
 function Jury({ panels }: { panels: ReviewPanel[] }) {
   const waiting = stillWaiting(panels);
 

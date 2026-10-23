@@ -17,6 +17,7 @@ import { funnelRoutes } from './routes/funnel.js';
 import { programRoutes } from './routes/programs.js';
 import { staffRoutes } from './routes/staff.js';
 import { taskRoutes } from './routes/tasks.js';
+import { oneToOnePublicRoutes, oneToOneRoutes } from './routes/oneToOne.js';
 import { bootstrapAdmin } from './services/bootstrap.js';
 import { noteOrigin } from './services/platform.js';
 import { sendDueNotices } from './services/notices.js';
@@ -83,6 +84,8 @@ await app.register(actionRoutes);
 await app.register(directoryRoutes);
 await app.register(staffRoutes);
 await app.register(taskRoutes);
+await app.register(oneToOneRoutes);
+await app.register(oneToOnePublicRoutes);
 await app.register(authRoutes);
 await app.register(mailRoutes);
 

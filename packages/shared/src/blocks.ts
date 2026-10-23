@@ -14,6 +14,7 @@ export const BLOCK_TYPES = [
   'workshop',
   'mentoring',
   'deliverable',
+  'one_to_one',
   'event',
   'campaign',
   'meeting',
@@ -32,6 +33,7 @@ export const IMPLEMENTED_BLOCK_TYPES = [
   'committee',
   'selection',
   'deliverable',
+  'one_to_one',
 ] as const satisfies readonly BlockType[];
 
 export type ImplementedBlockType = (typeof IMPLEMENTED_BLOCK_TYPES)[number];
@@ -90,6 +92,13 @@ export const BLOCK_TYPE_META: Record<BlockType, BlockTypeMeta> = {
     icon: 'file',
     implemented: true,
   },
+  one_to_one: {
+    type: 'one_to_one',
+    label: 'One to One',
+    blurb: 'Meetings between each startup and a mentor or an expert — with a report filled in on the spot.',
+    icon: 'users',
+    implemented: true,
+  },
   event: { type: 'event', label: 'Event', blurb: 'Coming later.', icon: 'calendar', implemented: false },
   campaign: { type: 'campaign', label: 'Campaign', blurb: 'Coming later.', icon: 'send', implemented: false },
   meeting: { type: 'meeting', label: 'Meeting', blurb: 'Coming later.', icon: 'users', implemented: false },
@@ -98,7 +107,9 @@ export const BLOCK_TYPE_META: Record<BlockType, BlockTypeMeta> = {
 
 export const BLOCK_LIBRARY: { group: string; types: BlockType[] }[] = [
   { group: 'Recruitment & selection', types: ['sourcing', 'application', 'evaluation', 'committee', 'selection'] },
-  { group: 'Program delivery', types: ['workshop', 'mentoring', 'deliverable', 'event'] },
+  /* Le One to One prend la place du « Mentoring » prévu et jamais construit :
+     un rendez-vous de mentoring en est un, avec un mentor. */
+  { group: 'Program delivery', types: ['workshop', 'one_to_one', 'deliverable', 'event'] },
   { group: 'Coordination', types: ['campaign', 'meeting', 'custom'] },
 ];
 
@@ -1446,6 +1457,39 @@ export const deliverableOutcomes = (config: DeliverableConfig): BlockOutcome[] =
   { id: DELIVERABLE_FAIL, label: config.failLabel, tone: 'stop', minScore: null, whenSplit: false },
 ];
 
+/* ------------------------------------------------------------------ */
+/* One to One — a startup, an interlocutor, a report                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Des rendez-vous entre une startup et un interlocuteur — un mentor, un
+ * expert, un investisseur —, chacun avec son compte rendu.
+ *
+ * The report is a form, built like an application form and filled by the
+ * interlocutor in front of the startup. It stays between them and CEED.
+ *
+ * How a meeting is set — booked by the startup, proposed and confirmed, or
+ * simply fixed — is chosen per meeting; `invite` is only what a new one starts
+ * with. The door is the interlocutors': it says when they see their meetings
+ * and may write the reports.
+ */
+export const oneToOneConfigSchema = z.object({
+  ...brickWindowFields,
+  invite: z.enum(RSVP_MODES).default('confirm'),
+  durationMinutes: z.number().int().min(5).max(480).default(45),
+  location: z.string().default(''),
+  /** The people startups meet here, by directory record id. */
+  interlocutors: z.array(z.string()).default([]),
+  /** The report, as a form: one page or several. */
+  report: z
+    .object({
+      layout: z.enum(['single', 'paged']).default('single'),
+      pages: z.array(formPageSchema).default([]),
+      fields: z.array(formFieldSchema).default([]),
+    })
+    .default({}),
+});
+
 export const blockConfigSchemas = {
   sourcing: sourcingConfigSchema,
   application: applicationConfigSchema,
@@ -1453,6 +1497,7 @@ export const blockConfigSchemas = {
   committee: committeeConfigSchema,
   selection: selectionConfigSchema,
   deliverable: deliverableConfigSchema,
+  one_to_one: oneToOneConfigSchema,
 } as const;
 
 export type SourcingConfig = z.infer<typeof sourcingConfigSchema>;
@@ -1461,6 +1506,7 @@ export type EvaluationConfig = z.infer<typeof evaluationConfigSchema>;
 export type CommitteeConfig = z.infer<typeof committeeConfigSchema>;
 export type SelectionConfig = z.infer<typeof selectionConfigSchema>;
 export type DeliverableConfig = z.infer<typeof deliverableConfigSchema>;
+export type OneToOneConfig = z.infer<typeof oneToOneConfigSchema>;
 
 export type BlockConfigMap = {
   sourcing: SourcingConfig;
@@ -1469,6 +1515,7 @@ export type BlockConfigMap = {
   committee: CommitteeConfig;
   selection: SelectionConfig;
   deliverable: DeliverableConfig;
+  one_to_one: OneToOneConfig;
 };
 
 export type AnyBlockConfig = BlockConfigMap[ImplementedBlockType] | Record<string, unknown>;
@@ -1477,7 +1524,9 @@ export type AnyBlockConfig = BlockConfigMap[ImplementedBlockType] | Record<strin
  * The form as the applicant walks it. One page or several, both sides read it
  * the same way, and a question whose page was deleted still shows up on the first.
  */
-export function formPages(config: ApplicationConfig): { page: FormPage; fields: FormField[] }[] {
+export function formPages(
+  config: Pick<ApplicationConfig, 'layout' | 'pages' | 'fields'>,
+): { page: FormPage; fields: FormField[] }[] {
   if (config.layout !== 'paged' || !config.pages.length) {
     return [{ page: { id: '', name: 'Your application', intro: '' }, fields: config.fields }];
   }
@@ -1529,6 +1578,11 @@ export function blockConfigured(
     }
     case 'deliverable':
       return (block.config as DeliverableConfig).items.length > 0;
+    case 'one_to_one': {
+      /* Quelqu'un à rencontrer, et de quoi écrire un compte rendu. */
+      const c = block.config as OneToOneConfig;
+      return c.interlocutors.length > 0 && c.report.fields.length > 0;
+    }
     default:
       return true;
   }
@@ -1580,6 +1634,9 @@ export function blockMissing(
   }
   if (block.type === 'committee') return 'Create a sitting';
   if (block.type === 'deliverable') return 'Ask for something';
+  if (block.type === 'one_to_one') {
+    return (block.config as OneToOneConfig).interlocutors.length ? 'Add a report question' : 'Name an interlocutor';
+  }
   return null;
 }
 

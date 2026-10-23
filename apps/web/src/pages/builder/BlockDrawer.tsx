@@ -8,6 +8,7 @@ import {
   type CommitteeConfig,
   type DeliverableConfig,
   type EvaluationConfig,
+  type OneToOneConfig,
   type SelectionConfig,
   type SourcingConfig,
   type TrackWithPhases,
@@ -24,6 +25,7 @@ import { CommitteeSetup, committeeTabs, type CommitteeTab } from './panels/Commi
 import { DELIVERABLE_TABS, DeliverableSetup, type DeliverableTab } from './panels/DeliverablePanel';
 import { SELECTION_TABS, SelectionSetup, type SelectionTab } from './panels/SelectionPanel';
 import { SOURCING_TABS, SourcingSetup, type SourcingTab } from './panels/SourcingPanel';
+import { ONE_TO_ONE_TABS, OneToOneSetup, type OneToOneTab } from './panels/OneToOnePanel';
 
 /**
  * The block's action does not live here — it lives in the edition's work tabs.
@@ -35,6 +37,7 @@ const WORK_TAB: Partial<Record<string, { tab: string; label: string }>> = {
   evaluation: { tab: 'review', label: 'Review' },
   deliverable: { tab: 'deliverables', label: 'Deliverables' },
   selection: { tab: 'review', label: 'Review' },
+  one_to_one: { tab: 'one-to-one', label: 'One to One' },
 };
 
 /** What the header toggle opens, said in the words of each brick. */
@@ -43,6 +46,7 @@ const DOOR_LABEL: Partial<Record<string, string>> = {
   evaluation: 'reviewing',
   committee: 'the panel, for its jurors',
   deliverable: 'the list, for the startups',
+  one_to_one: 'the meetings, for the interlocutors',
 };
 
 export function BlockDrawer({
@@ -82,6 +86,7 @@ export function BlockDrawer({
   // its panels, so that is where it lands.
   const [commTab, setCommTab] = useState<CommitteeTab>(currentTab === 'committees' ? 'Panels' : 'Overview');
   const [srcTab, setSrcTab] = useState<SourcingTab>('Channels');
+  const [otoTab, setOtoTab] = useState<OneToOneTab>('Overview');
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
@@ -117,7 +122,8 @@ export function BlockDrawer({
     block.type === 'application' ||
     block.type === 'evaluation' ||
     block.type === 'committee' ||
-    block.type === 'deliverable';
+    block.type === 'deliverable' ||
+    block.type === 'one_to_one';
   const committeeTab = commTabs.includes(commTab) ? commTab : 'Overview';
 
   return (
@@ -192,6 +198,12 @@ export function BlockDrawer({
                       className={t === delivTab ? 'tab on' : 'tab'}
                       onClick={() => setDelivTab(t)}
                     >
+                      {t}
+                    </button>
+                  ))
+                : block.type === 'one_to_one'
+                ? ONE_TO_ONE_TABS.map((t) => (
+                    <button key={t} role="tab" className={t === otoTab ? 'tab on' : 'tab'} onClick={() => setOtoTab(t)}>
                       {t}
                     </button>
                   ))
@@ -282,6 +294,9 @@ export function BlockDrawer({
             track={track}
             tab={selTab}
           />
+        )}
+        {block.type === 'one_to_one' && (
+          <OneToOneSetup config={draft as unknown as OneToOneConfig} patch={patch} tab={otoTab} />
         )}
         {block.type === 'deliverable' && (
           <DeliverableSetup

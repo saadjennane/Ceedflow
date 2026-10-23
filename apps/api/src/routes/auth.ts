@@ -13,6 +13,7 @@ import {
   signupAccountInput,
   suggestPassword,
   revenueInput,
+  reportInput,
   profileOf,
   SHEET_LISTS,
   sheetListInput,
@@ -33,6 +34,7 @@ import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { changeItem, changeTask, getTask, listTasks } from '../services/tasks.js';
 import { addOrgDocument, changeOrgDocument, saveNeed } from '../services/orgSheet.js';
+import { meetingFor, meetingsFor, saveReport } from '../services/oneToOne.js';
 import { agendaFor } from '../services/agenda.js';
 import { deliverablesFor } from '../services/deliverables.js';
 import { panelFor, reviewsFor, whyNoPanel } from '../services/reviews.js';
@@ -437,6 +439,37 @@ export async function authRoutes(app: FastifyInstance) {
       return notFound(reply, 'Item not found.');
     }
     return getTask(id);
+  });
+
+  /* ---- Les One to One de l'interlocuteur ---- */
+
+  /** Mes rendez-vous : ceux où je suis l'interlocuteur, dans les briques ouvertes ou fermées. */
+  app.get('/api/me/meetings', async (req) => {
+    const account = await require(req);
+    return meetingsFor(account.recordId);
+  });
+
+  app.get('/api/me/meetings/:id', async (req, reply) => {
+    const account = await require(req);
+    const { id } = req.params as { id: string };
+    return (await meetingFor(account.recordId, id)) ?? notFound(reply, 'Meeting not found.');
+  });
+
+  /**
+   * Écrire mon compte rendu. L'auteur vient de la session, jamais de la
+   * requête ; la brique doit être ouverte — fermée, on relit sans réécrire.
+   */
+  app.put('/api/me/meetings/:id/report', async (req, reply) => {
+    const account = await require(req);
+    const { id } = req.params as { id: string };
+    const meeting = (await meetingsFor(account.recordId)).find((m) => m.id === id);
+    if (!meeting) return notFound(reply, 'Meeting not found.');
+    if (meeting.state !== 'open') {
+      throw new HttpError(403, 'These reports are closed. Ask the CEED team if something has to change.');
+    }
+    const { answers, submit } = parse(reportInput, req.body);
+    const who = await dir.getRecord(account.recordId);
+    return saveReport(id, answers, submit, { id: account.recordId, name: who?.name ?? '' });
   });
 
   app.get('/api/me/programs', async (req) => {

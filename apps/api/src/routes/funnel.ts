@@ -55,6 +55,7 @@ import {
 } from '../services/selection.js';
 import { HttpError, notFound, parse } from './util.js';
 import { workspaceGuard } from './guard.js';
+import { meetingsFor } from '../services/oneToOne.js';
 
 const scoreInput = z.object({
   candidateId: z.string(),
@@ -552,9 +553,15 @@ export async function funnelRoutes(app: FastifyInstance) {
               uploadIdsIn(item.answers.map((a) => a.value)).includes(id),
           ),
         );
+      /* Un fichier joint à un compte rendu de One to One : l'interlocuteur qui
+         l'a écrit le rouvre. */
+      const reporting =
+        !mine &&
+        !reviewing &&
+        (await meetingsFor(account.recordId)).some((m) => uploadIdsIn(Object.values(m.report)).includes(id));
       // The same answer as a missing file: whoever asked has no business
       // knowing that this one exists.
-      if (!mine && !reviewing) return notFound(reply, 'File not found.');
+      if (!mine && !reviewing && !reporting) return notFound(reply, 'File not found.');
     }
 
     reply.header('content-type', upload.mime);

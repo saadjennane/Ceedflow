@@ -4,6 +4,7 @@ import { CommitteeWorkspace } from './CommitteeWorkspace';
 import { ReviewTab } from './ReviewTab';
 import { DeliverableTab } from './DeliverableTab';
 import { WorkspaceShell } from './WorkspaceShell';
+import { OneToOneWorkspace } from './OneToOneWorkspace';
 
 /** Runs one kind of work. Configuration stays in the builder. */
 export function WorkTab({
@@ -15,7 +16,7 @@ export function WorkTab({
   onOpenWork,
   onChanged,
 }: {
-  tab: 'outreach' | 'committees' | 'review' | 'deliverables';
+  tab: 'outreach' | 'committees' | 'review' | 'deliverables' | 'one-to-one';
   track: TrackWithPhases;
   currentBlockId: string | null;
   onSelectBlock: (id: string) => void;
@@ -45,6 +46,18 @@ export function WorkTab({
         empty={{ title: 'No deliverables block', body: 'Add one in the builder to ask for documents and figures.' }}
       >
         {(block) => <DeliverableTab block={block} />}
+      </WorkspaceShell>
+    );
+  }
+
+  if (tab === 'one-to-one') {
+    return (
+      <WorkspaceShell
+        {...shared}
+        type="one_to_one"
+        empty={{ title: 'No One to One block', body: 'Add one in the builder to plan meetings with mentors and experts.' }}
+      >
+        {(block) => <OneToOneWorkspace block={block} onOpenSetup={onOpenSetup} />}
       </WorkspaceShell>
     );
   }
