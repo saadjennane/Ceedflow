@@ -45,15 +45,58 @@ import { useState, type ReactNode } from 'react';
 import { say, useLang, type Lang, type Word } from '../lib/lang';
 import { Icon } from './Icon';
 
-export const ASK_WORD = Object.fromEntries(
-  (
-    [
-      'logo', 'pitch', 'orgType', 'legalStatus', 'founded', 'legalForm', 'capital', 'sector', 'website',
-      'linkedin', 'email', 'phone', 'city', 'address', 'bio', 'team', 'maturity', 'mvpUsers', 'revenues',
-      'clients', 'patent', 'patentDetails', 'contracts', 'contractsDetail',
-    ] as const satisfies readonly ProfileAsk[]
-  ).map((k) => [k, `prof.ask.${k}` as Word]),
-) as Record<ProfileAsk, Word>;
+/**
+ * Le mot de chaque chose que la fiche demande.
+ *
+ * Écrit en entier, et typé ainsi : une question ajoutée à la fiche sans son
+ * mot ne compile pas. La liste d'avant se contentait d'un sous-ensemble, et
+ * chaque question oubliée faisait tomber l'accueil de quiconque en arrivait là.
+ */
+export const ASK_WORD: Record<ProfileAsk, Word> = {
+  logo: 'prof.ask.logo',
+  pitch: 'prof.ask.pitch',
+  orgType: 'prof.ask.orgType',
+  legalStatus: 'prof.ask.legalStatus',
+  founded: 'prof.ask.founded',
+  legalForm: 'prof.ask.legalForm',
+  capital: 'prof.ask.capital',
+  sector: 'prof.ask.sector',
+  website: 'prof.ask.website',
+  linkedin: 'prof.ask.linkedin',
+  email: 'prof.ask.email',
+  phone: 'prof.ask.phone',
+  city: 'prof.ask.city',
+  address: 'prof.ask.address',
+  bio: 'prof.ask.bio',
+  activityNature: 'prof.ask.activityNature',
+  targetMarkets: 'prof.ask.targetMarkets',
+  offering: 'prof.ask.offering',
+  salesZone: 'prof.ask.salesZone',
+  salesCountries: 'prof.ask.salesCountries',
+  products: 'prof.ask.products',
+  foundersCount: 'prof.ask.foundersCount',
+  team: 'prof.ask.team',
+  womenCount: 'prof.ask.womenCount',
+  maturity: 'prof.ask.maturity',
+  mvpUsers: 'prof.ask.mvpUsers',
+  revenues: 'prof.ask.revenues',
+  clients: 'prof.ask.clients',
+  patent: 'prof.ask.patent',
+  patentDetails: 'prof.ask.patentDetails',
+  contracts: 'prof.ask.contracts',
+  contractsDetail: 'prof.ask.contractsDetail',
+  hasFunding: 'prof.ask.hasFunding',
+  fundings: 'prof.ask.fundings',
+  pastPrograms: 'prof.ask.pastPrograms',
+  currentPrograms: 'prof.ask.currentPrograms',
+  programs: 'prof.ask.programs',
+  needs: 'prof.ask.needs',
+  needsDetail: 'prof.ask.needsDetail',
+  docStatutes: 'prof.ask.docStatutes',
+  docRc: 'prof.ask.docRc',
+  docPitch: 'prof.ask.docPitch',
+  docFinancials: 'prof.ask.docFinancials',
+};
 
 /** A sum of money, the way a reader expects it in their language. */
 export const money = (amount: number, currency: string, lang: Lang) =>

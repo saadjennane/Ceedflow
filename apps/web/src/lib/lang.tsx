@@ -520,7 +520,7 @@ interface Speaking {
 const Spoken = createContext<Speaking>({
   lang: 'en',
   setLang: () => {},
-  t: (word) => WORDS[word].en,
+  t: (word) => WORDS[word]?.en ?? String(word),
 });
 
 export const useLang = (): Speaking => useContext(Spoken);
@@ -537,9 +537,11 @@ export function LangProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('ceed.lang', lang);
     document.documentElement.setAttribute('lang', lang);
   }, [lang]);
-  const value = useMemo<Speaking>(() => ({ lang, setLang, t: (word) => WORDS[word][lang] }), [lang]);
+  const value = useMemo<Speaking>(() => ({ lang, setLang, t: (word) => WORDS[word]?.[lang] ?? String(word) }), [lang]);
   return <Spoken.Provider value={value}>{children}</Spoken.Provider>;
 }
 
 /** For the few places that are given the language rather than reading it. */
-export const say = (word: Word, lang: Lang): string => WORDS[word][lang];
+/* Un mot qui manquerait au dictionnaire se lit tel quel plutôt que de faire
+   tomber la page : une étiquette brute vaut mieux qu'un écran blanc. */
+export const say = (word: Word, lang: Lang): string => WORDS[word]?.[lang] ?? String(word);
