@@ -14,7 +14,7 @@ import {
   type StaffRole,
 } from '@ceed/shared';
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAccount } from '../lib/account';
 import { ApiError, api } from '../lib/api';
 import { formatDate } from '../lib/format';
@@ -79,7 +79,7 @@ function Trash({ mayManage }: { mayManage: boolean }) {
   };
 
   return (
-    <section className="card card-pad stack" style={{ maxWidth: 880, gap: 12, marginTop: 14 }}>
+    <section className="card card-pad stack" style={{ maxWidth: 880, gap: 12 }}>
       <div>
         <h2 style={{ fontSize: 16, margin: 0 }}>Trash</h2>
         <p className="faint" style={{ margin: '2px 0 0', fontSize: 12.5, lineHeight: 1.5 }}>
@@ -148,7 +148,7 @@ function AsStartup() {
   );
 
   return (
-    <section className="card card-pad stack" style={{ maxWidth: 880, gap: 12, marginTop: 14 }}>
+    <section className="card card-pad stack" style={{ maxWidth: 880, gap: 12 }}>
       <div>
         <h2 style={{ fontSize: 16, margin: 0 }}>Open as a startup</h2>
         <p className="faint" style={{ margin: '2px 0 0', fontSize: 12.5, lineHeight: 1.5 }}>
@@ -225,6 +225,18 @@ export function SettingsPage() {
 
   const mayManage = isWorkspaceAdmin(me?.account.staffRole ?? 'observer');
 
+  const tabs = [
+    { key: 'team', label: 'Team' },
+    { key: 'account', label: 'My account' },
+    { key: 'letters', label: 'Letters' },
+    ...(mayManage ? [{ key: 'test', label: 'Test space' }] : []),
+    { key: 'preview', label: 'Open as a startup' },
+    { key: 'trash', label: 'Trash' },
+  ];
+  const [params, setParams] = useSearchParams();
+  const asked = params.get('tab') ?? 'team';
+  const tab = tabs.some((t) => t.key === asked) ? asked : 'team';
+
   const load = async () => setTeam(await api.get<StaffMember[]>('/api/staff'));
   useEffect(() => {
     void load();
@@ -253,7 +265,25 @@ export function SettingsPage() {
         </div>
       </header>
 
+      {/* Un onglet par sujet plutôt qu'une page qui n'en finit pas ; l'onglet
+          ouvert vit dans l'adresse, pour qu'un lien mène là où l'on était. */}
+      <nav className="tabbar" role="tablist" aria-label="Settings">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            role="tab"
+            aria-selected={tab === t.key}
+            className={tab === t.key ? 'tab on' : 'tab'}
+            onClick={() => setParams({ tab: t.key }, { replace: true })}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
       <div className="page-body stack" style={{ gap: 16 }}>
+        {tab === 'team' && (
+          <>
         {/* A list of a handful of people, not a table: past a readable width the
             name and its controls drift to opposite edges of the screen. */}
         <section className="card" style={{ maxWidth: 880 }}>
@@ -370,11 +400,15 @@ export function SettingsPage() {
             </p>
           </div>
         </section>
+          </>
+        )}
 
+        {tab === 'account' && (
+          <>
         {/* Your own account, under the list of everybody else's. Signing out
             lives here because this is where somebody looks for it — the control
             in the sidebar is a shortcut, not the place it is filed. */}
-        <section className="card card-pad stack" style={{ maxWidth: 880, gap: 12, marginTop: 14 }}>
+        <section className="card card-pad stack" style={{ maxWidth: 880, gap: 12 }}>
           <div>
             <h2 style={{ fontSize: 16, margin: 0 }}>Your account</h2>
             <p className="faint" style={{ margin: '2px 0 0', fontSize: 12.5 }}>
@@ -403,14 +437,16 @@ export function SettingsPage() {
             your password to end all of them at once.
           </p>
         </section>
+          </>
+        )}
 
-        <HouseLetters mayManage={mayManage} />
+        {tab === 'letters' && <HouseLetters mayManage={mayManage} />}
 
-        {mayManage && <TestSpace />}
+        {tab === 'test' && <TestSpace />}
 
-        <AsStartup />
+        {tab === 'preview' && <AsStartup />}
 
-        <Trash mayManage={mayManage} />
+        {tab === 'trash' && <Trash mayManage={mayManage} />}
       </div>
 
       {adding && (
@@ -638,7 +674,7 @@ function HouseLetters({ mayManage }: { mayManage: boolean }) {
   };
 
   return (
-    <section className="card card-pad stack" style={{ maxWidth: 880, gap: 14, marginTop: 14 }}>
+    <section className="card card-pad stack" style={{ maxWidth: 880, gap: 14 }}>
       <div>
         <h2 style={{ fontSize: 16, margin: 0 }}>Letters about tasks</h2>
         <p className="faint" style={{ margin: '2px 0 0', fontSize: 12.5, lineHeight: 1.5 }}>

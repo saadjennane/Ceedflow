@@ -146,7 +146,7 @@ export function Shell() {
           {/* A cross beside somebody's name reads as "remove them", not as
               "sign out". Who you are leads to Settings, where the account and
               its exit are both filed. */}
-          <NavLink to="/settings" className="who" title={`${me.record.name} — your account`}>
+          <NavLink to="/settings?tab=account" className="who" title={`${me.record.name} — your account`}>
             <div className="who-text">
               <div className="who-name">{me.record.name}</div>
               <div className="who-role">{STAFF_ROLE_LABEL[staffRole]}</div>

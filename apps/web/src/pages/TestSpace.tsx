@@ -50,7 +50,7 @@ export function TestSpace() {
   const data = sandbox.data;
 
   return (
-    <section className="card card-pad stack" style={{ maxWidth: 880, gap: 16, marginTop: 14 }}>
+    <section className="card card-pad stack" style={{ maxWidth: 880, gap: 16 }}>
       <div>
         <h2 style={{ fontSize: 16, margin: 0 }}>
           Test space <span className="badge warn">TEST</span>
