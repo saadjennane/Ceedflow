@@ -136,6 +136,51 @@ describe('the test space', { skip: skipWithoutServer }, () => {
     assert.equal(reached.every((r) => r.testOwner), true);
   });
 
+  it('copies an edition into a test programme: re-pointed, with its sittings and days, without its people, opening tomorrow', async () => {
+    const juror = await dir.createRecord({ kind: 'person', name: `Real Juror ${stamp}`, origin: 'manual' });
+    const source = await repo.createProgram({ name: `Source ${stamp}`, edition: { name: 'S1', template: 'selection_funnel' } });
+    const editionId = source.editions[0]!.id;
+    const all = (await repo.getEditionDetail(editionId))!.tracks.flatMap((t) => t.phases.flatMap((p) => p.blocks));
+    const pick = (type: string) => all.find((b) => b.type === type)!;
+    const committee = pick('committee');
+    const evaluation = pick('evaluation');
+    const selection = pick('selection');
+    await repo.updateBlock(evaluation.id, { config: { ...(evaluation.config as object), scopeBlockId: committee.id } });
+    await repo.updateBlock(selection.id, { config: { ...(selection.config as object), fromBlockId: evaluation.id, publishedAt: '2026-01-05T10:00:00Z' } });
+    await repo.updateBlock(committee.id, { config: { ...(committee.config as object), opensAt: '2026-03-01' } });
+    await repo.createSession(committee.id, { name: 'Jour 1', heldOn: '2026-03-10', jury: [juror.id] });
+    const phaseId = (await repo.getEditionDetail(editionId))!.tracks[0]!.phases[1]!.id;
+    const oto = await repo.createBlock(phaseId, 'one_to_one');
+    await repo.updateBlock(oto.id, { config: { ...(oto.config as object), interlocutors: [juror.id], mentors: { x: [juror.id] } } });
+    await (await db()).query(
+      `insert into one_to_one_days (id, block_id, name, held_on, interlocutors) values ($1,$2,'Day','2026-03-12',$3)`,
+      [`day_${stamp}`, oto.id, [juror.id]],
+    );
+
+    const copy = (await createTestProgram(editionId, '', true))!;
+    const copied = (await repo.getEditionDetail(copy.editions[0]!.id))!.tracks.flatMap((t) => t.phases.flatMap((p) => p.blocks));
+    const of = (type: string) => copied.find((b) => b.type === type)!;
+    const cEval = of('evaluation').config as { scopeBlockId: string };
+    const cSel = of('selection').config as { fromBlockId: string; publishedAt: string | null };
+    assert.equal(cEval.scopeBlockId, of('committee').id, 'the evaluation scores the copied committee, not the original');
+    assert.equal(cSel.fromBlockId, of('evaluation').id);
+    assert.equal(cSel.publishedAt, null, 'nothing is published in a fresh copy');
+
+    const [sitting] = await repo.listSessions(of('committee').id);
+    assert.ok(sitting, 'the sitting came along');
+    assert.deepEqual(sitting!.jury, [], 'without the real jurors');
+    const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+    assert.equal((of('committee').config as { opensAt: string }).opensAt, tomorrow, 'the earliest date is now tomorrow');
+    assert.equal(sitting!.heldOn, repo.shiftDate('2026-03-10', Math.round((Date.parse(tomorrow) - Date.parse('2026-03-01')) / 86_400_000)));
+
+    const cOto = of('one_to_one').config as { interlocutors: string[]; mentors: Record<string, string[]> };
+    assert.deepEqual(cOto.interlocutors, []);
+    assert.deepEqual(cOto.mentors, {});
+    const days = await (await db()).query<{ interlocutors: string[] }>('select interlocutors from one_to_one_days where block_id = $1', [of('one_to_one').id]);
+    assert.equal(days.length, 1);
+    assert.deepEqual(days[0]!.interlocutors, []);
+  });
+
   it('purges everything test, and nothing real', async () => {
     const realOrg = await dir.createRecord({ kind: 'org', name: `Keep me ${stamp}`, origin: 'manual' });
     const realProgram = await repo.createProgram({ name: `Real programme ${stamp}` });

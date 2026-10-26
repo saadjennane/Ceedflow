@@ -190,6 +190,7 @@ async function insertEdition(
     city?: string;
     template?: 'blank' | 'selection_funnel';
     copyFromEditionId?: string;
+    copy?: CopyOptions;
   },
 ): Promise<string> {
   const conn = await db();
@@ -213,7 +214,7 @@ async function insertEdition(
   );
 
   if (input.copyFromEditionId) {
-    await copyStructure(input.copyFromEditionId, id);
+    await copyStructure(input.copyFromEditionId, id, input.copy);
     return id;
   }
 
@@ -247,9 +248,77 @@ async function insertEdition(
   return id;
 }
 
-/** Duplicates tracks, phases and blocks — never candidates or decisions. */
-async function copyStructure(fromEditionId: string, toEditionId: string): Promise<void> {
+/** How a copy is made: for the test space, and whether its calendar moves. */
+export interface CopyOptions {
+  /** A test copy leaves out the real people — jurors, interlocutors, mentors — for test accounts to take their place. */
+  forTest?: boolean;
+  /** Days added to every date, so a copy can run now rather than on last season's calendar. */
+  shiftDays?: number;
+}
+
+const DATE_AT_START = /^(\d{4})-(\d{2})-(\d{2})/;
+
+/** A date moved by whole days, its time of day (if any) kept as it was. */
+export function shiftDate(value: string, days: number): string {
+  const m = DATE_AT_START.exec(value);
+  if (!m || !days) return value;
+  const moved = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + days)).toISOString().slice(0, 10);
+  return moved + value.slice(10);
+}
+
+/** Every string in a value, rewritten — the way a copy's configuration is re-pointed and re-dated. */
+function mapStrings(value: unknown, f: (s: string) => string): unknown {
+  if (typeof value === 'string') return f(value);
+  if (Array.isArray(value)) return value.map((v) => mapStrings(v, f));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, mapStrings(v, f)]));
+  }
+  return value;
+}
+
+/**
+ * A brick's settings as a copy starts with them: the same questions, criteria
+ * and letters, but none of the original's history — not published, not opened
+ * by hand, not closed. A form starts shut with a fresh link.
+ */
+function freshConfig(type: string, config: Record<string, unknown>, options: CopyOptions): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    ...config,
+    visibility: type === 'application' ? 'closed' : 'auto',
+    visibilitySetAt: null,
+    openedAt: null,
+  };
+  if ('publishedAt' in config) out.publishedAt = null;
+  if (type === 'application') {
+    /* Un lien neuf, et non un lien vide : vide, aucun lien ne menait au
+       formulaire copié, et l'adresse affichée dans le builder répondait
+       « This form does not exist ». */
+    out.publicToken = newId('form').replace('form_', '');
+  }
+  if (type === 'one_to_one' && options.forTest) {
+    out.interlocutors = [];
+    out.mentors = {};
+  }
+  if (type === 'sourcing' && options.forTest) {
+    const audience = (config.audience ?? {}) as Record<string, unknown>;
+    out.audience = { ...audience, recordIds: [] };
+  }
+  return options.shiftDays ? (mapStrings(out, (v) => shiftDate(v, options.shiftDays!)) as Record<string, unknown>) : out;
+}
+
+/**
+ * Duplicates tracks, phases and blocks — never candidates or decisions.
+ *
+ * Bricks that name one another (an evaluation its committee, a selection its
+ * evaluation) are re-pointed at the copies: left alone they reached back into
+ * the edition they were copied from. Committee sittings and One to One days
+ * come along, the calendar moved if asked.
+ */
+async function copyStructure(fromEditionId: string, toEditionId: string, options: CopyOptions = {}): Promise<void> {
   const conn = await db();
+  const shift = (d: string | null) => (d && options.shiftDays ? shiftDate(d, options.shiftDays) : d);
+  const copies = new Map<string, { id: string; type: string; config: Record<string, unknown> }>();
+
   const tracks = await all<Track>(`select ${TRACK_COLS} from tracks where edition_id = $1 order by position`, [
     fromEditionId,
   ]);
@@ -267,33 +336,19 @@ async function copyStructure(fromEditionId: string, toEditionId: string): Promis
     ]);
     for (const phase of phases) {
       const phaseId = idOf.phase();
-      await conn.query('insert into phases (id, track_id, name, position) values ($1,$2,$3,$4)', [
-        phaseId,
-        trackId,
-        phase.name,
-        phase.position,
-      ]);
+      await conn.query(
+        'insert into phases (id, track_id, name, starts_on, ends_on, position) values ($1,$2,$3,$4,$5,$6)',
+        [phaseId, trackId, phase.name, shift(phase.startsOn ?? null), shift(phase.endsOn ?? null), phase.position],
+      );
       const blocks = await all<Block>(`select ${BLOCK_COLS} from blocks where phase_id = $1 order by position`, [
         phase.id,
       ]);
       for (const block of blocks) {
-        // A copied application must not inherit the original's public link.
-        const config =
-          block.type === 'application'
-            // A copied form starts shut and with a fresh link: the old one
-            // belongs to the edition it was published for.
-            ? {
-                ...(block.config as object),
-                visibility: 'closed',
-                visibilitySetAt: null,
-                /* Un lien neuf, et non un lien vide : vide, aucun lien ne
-                   menait au formulaire copié, et l'adresse affichée dans le
-                   builder répondait « This form does not exist ». */
-                publicToken: newId('form').replace('form_', ''),
-              }
-            : block.config;
+        const id = idOf.block();
+        const config = freshConfig(block.type, block.config as Record<string, unknown>, options);
+        copies.set(block.id, { id, type: block.type, config });
         await conn.query('insert into blocks (id, phase_id, type, name, position, config) values ($1,$2,$3,$4,$5,$6)', [
-          idOf.block(),
+          id,
           phaseId,
           block.type,
           block.name,
@@ -303,6 +358,91 @@ async function copyStructure(fromEditionId: string, toEditionId: string): Promis
       }
     }
   }
+
+  /* Re-pointed once every copy exists: a brick may name one placed after it. */
+  for (const { id, config } of copies.values()) {
+    const repointed = mapStrings(config, (v) => copies.get(v)?.id ?? v);
+    if (JSON.stringify(repointed) !== JSON.stringify(config)) {
+      await conn.query('update blocks set config = $2 where id = $1', [id, repointed]);
+    }
+  }
+
+  for (const [oldId, copy] of copies) {
+    if (copy.type === 'committee') {
+      const sittings = await all<{ name: string; heldOn: string | null; windows: unknown; minutes: number; location: string; jury: string[]; position: number }>(
+        `select name, held_on::text as "heldOn", windows, minutes_per_startup as minutes, location, jury, position
+           from committee_sessions where block_id = $1 order by position`,
+        [oldId],
+      );
+      for (const s of sittings) {
+        await conn.query(
+          `insert into committee_sessions (id, block_id, name, held_on, windows, minutes_per_startup, location, jury, position)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [newId('ses'), copy.id, s.name, shift(s.heldOn), s.windows, s.minutes, s.location, options.forTest ? [] : s.jury, s.position],
+        );
+      }
+    }
+    if (copy.type === 'one_to_one') {
+      const days = await all<{ name: string; heldOn: string | null; windows: unknown; minutes: number; location: string; interlocutors: string[]; position: number }>(
+        `select name, held_on::text as "heldOn", windows, minutes_per_meeting as minutes, location, interlocutors, position
+           from one_to_one_days where block_id = $1 order by position`,
+        [oldId],
+      );
+      for (const d of days) {
+        await conn.query(
+          `insert into one_to_one_days (id, block_id, name, held_on, windows, minutes_per_meeting, location, interlocutors, position)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [newId('day'), copy.id, d.name, shift(d.heldOn), d.windows, d.minutes, d.location, options.forTest ? [] : d.interlocutors, d.position],
+        );
+      }
+    }
+  }
+
+  /* The edition's mentors are real people: a test copy leaves them out. */
+  if (!options.forTest) {
+    await conn.query(
+      'update editions set mentors = (select mentors from editions where id = $2) where id = $1',
+      [toEditionId, fromEditionId],
+    );
+  }
+}
+
+/**
+ * Days to add so a copy of this edition opens tomorrow: measured from its
+ * earliest date — the edition's start, a phase, a sitting, a day, or a
+ * brick's opening.
+ */
+export async function daysUntilTomorrow(editionId: string): Promise<number> {
+  const detail = await getEditionDetail(editionId);
+  if (!detail) return 0;
+  const dates: string[] = [];
+  const add = (v: unknown) => {
+    if (typeof v === 'string' && DATE_AT_START.test(v)) dates.push(v.slice(0, 10));
+  };
+  add(detail.startsOn);
+  const blockIds: string[] = [];
+  for (const track of detail.tracks) {
+    for (const phase of track.phases) {
+      add(phase.startsOn);
+      for (const block of phase.blocks) {
+        blockIds.push(block.id);
+        add((block.config as { opensAt?: unknown }).opensAt);
+      }
+    }
+  }
+  if (blockIds.length) {
+    const rows = await all<{ d: string }>(
+      `select held_on::text as d from committee_sessions where block_id = any($1::text[]) and held_on is not null
+       union all
+       select held_on::text from one_to_one_days where block_id = any($1::text[]) and held_on is not null`,
+      [blockIds],
+    );
+    rows.forEach((r) => add(r.d));
+  }
+  if (!dates.length) return 0;
+  const earliest = dates.sort()[0]!;
+  const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+  return Math.round((Date.parse(tomorrow) - Date.parse(earliest)) / 86_400_000);
 }
 
 export async function createEdition(programId: string, input: Parameters<typeof insertEdition>[1]): Promise<Edition> {

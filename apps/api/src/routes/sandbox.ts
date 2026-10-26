@@ -56,9 +56,16 @@ export async function sandboxRoutes(app: FastifyInstance) {
   });
 
   app.post('/api/sandbox/programs', async (req, reply) => {
-    const input = parse(z.object({ fromEditionId: z.string().nullable().default(null), name: z.string().default('') }), req.body);
+    const input = parse(
+      z.object({
+        fromEditionId: z.string().nullable().default(null),
+        name: z.string().default(''),
+        startTomorrow: z.boolean().default(true),
+      }),
+      req.body,
+    );
     reply.code(201);
-    return createTestProgram(input.fromEditionId, input.name);
+    return createTestProgram(input.fromEditionId, input.name, input.startTomorrow);
   });
 
   app.post('/api/sandbox/purge', async (req) => {

@@ -241,12 +241,13 @@ function NewPerson({ startups, onMade }: { startups: DirectoryRecord[]; onMade: 
 
 function NewProgram({ editions, onMade }: { editions: { id: string; label: string }[]; onMade: () => void }) {
   const [from, setFrom] = useState('');
+  const [tomorrow, setTomorrow] = useState(true);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
   const make = async () => {
     setSaving(true);
     try {
-      await api.post('/api/sandbox/programs', { fromEditionId: from || null });
+      await api.post('/api/sandbox/programs', { fromEditionId: from || null, startTomorrow: tomorrow });
       toast(from ? 'Copied into a test programme.' : 'Test programme created.');
       onMade();
     } catch (err) {
@@ -265,9 +266,20 @@ function NewProgram({ editions, onMade }: { editions: { id: string; label: strin
           </option>
         ))}
       </select>
+      {from && (
+        <label className="row" style={{ gap: 6, fontSize: 12.5 }} title="Every date moves by the same number of days, so the copy opens tomorrow">
+          <input type="checkbox" checked={tomorrow} onChange={(e) => setTomorrow(e.target.checked)} /> Start tomorrow
+        </label>
+      )}
       <button className="btn" disabled={saving} onClick={make}>
         <Icon name="copy" size={13} /> {saving ? 'Creating…' : 'Create test programme'}
       </button>
+      {from && (
+        <span className="faint" style={{ fontSize: 11.5, flexBasis: '100%' }}>
+          Questions, criteria, letters, sittings and One to One days are copied. Jurors, interlocutors and mentors are
+          left empty — put test accounts in their place.
+        </span>
+      )}
     </div>
   );
 }

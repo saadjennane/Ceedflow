@@ -319,7 +319,7 @@ export async function sandboxOverview() {
  * vient avec — parcours, phases, briques et leurs réglages —, jamais un
  * candidat, une note ou une lettre.
  */
-export async function createTestProgram(fromEditionId: string | null, name: string) {
+export async function createTestProgram(fromEditionId: string | null, name: string, startTomorrow = false) {
   const source = fromEditionId ? await repo.getEditionDetail(fromEditionId) : null;
   if (fromEditionId && !source) throw new HttpError(404, 'That edition does not exist.');
   const program = await repo.createProgram({
@@ -328,10 +328,18 @@ export async function createTestProgram(fromEditionId: string | null, name: stri
     summary: 'Programme de l’espace de test : invisible des vrais membres.',
   });
   await (await db()).query('update programs set is_test = true where id = $1', [program.id]);
+  /* Tout le calendrier glisse d'autant, pour que la copie s'ouvre demain et
+     que le test tienne en une semaine plutôt que sur les dates d'une autre saison. */
+  const shiftDays = source && startTomorrow ? await repo.daysUntilTomorrow(source.id) : 0;
+  const moved = (d: string | null | undefined) => (d ? repo.shiftDate(d, shiftDays) : null);
   await repo.createEdition(program.id, {
     name: source?.name ?? 'Édition de test',
     city: source?.city ?? '',
-    ...(fromEditionId ? { copyFromEditionId: fromEditionId } : { template: 'selection_funnel' as const }),
+    startsOn: moved(source?.startsOn),
+    endsOn: moved(source?.endsOn),
+    ...(fromEditionId
+      ? { copyFromEditionId: fromEditionId, copy: { forTest: true, shiftDays } }
+      : { template: 'selection_funnel' as const }),
   });
   return repo.getProgram(program.id);
 }
