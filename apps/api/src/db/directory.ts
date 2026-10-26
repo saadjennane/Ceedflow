@@ -16,7 +16,7 @@ import {
 import { accountOfRecord, accountStatesByRecord } from '../services/auth.js';
 import { db } from './client.js';
 
-const COLS = `id, kind, name, first_name as "firstName", last_name as "lastName", roles, origin,
+const COLS = `id, kind, name, first_name as "firstName", last_name as "lastName", roles, origin, test_owner as "testOwner",
   job_title as "jobTitle", department,
   logo_upload_id as "logoUploadId", pitch, sector, stage,
   created_by as "createdBy", created_by_name as "createdByName",
@@ -577,7 +577,12 @@ export async function openOrganisation(
     origin: 'signup',
   });
   await linkRecords({ personId, orgId: org.id, role: input.myRole ?? 'Founder', access: 'admin' });
-  return { org, joined: false, pending: false };
+  /* Ouverte par une identité de test, elle est de test, au même collègue. */
+  await (await db()).query(
+    `update records set test_owner = (select test_owner from records where id = $2) where id = $1`,
+    [org.id, personId],
+  );
+  return { org: (await getRecord(org.id))!, joined: false, pending: false };
 }
 
 /* ------------------------------------------------------------------ */

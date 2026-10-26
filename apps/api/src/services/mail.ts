@@ -13,6 +13,7 @@
  */
 import { newId, redactPasswords } from '@ceed/shared';
 import { db } from '../db/client.js';
+import { inTestContext, isTestAddress } from './testIdentity.js';
 
 export type OutboxState = 'queued' | 'held' | 'sent' | 'failed' | 'bounced';
 
@@ -127,11 +128,15 @@ export async function post(letter: Letter): Promise<string | null> {
   const to = letter.to.trim().toLowerCase();
   if (!to) return null;
   try {
-    const held = (await suppressed(to)) || !sendingIsLive();
+    /* Le garde-fou de l'espace de test : une lettre d'un programme de test ne
+       part que vers une adresse de test. Un Sourcing copié qui viserait les
+       vraies startups écrit ses lettres — on les voit — mais aucune ne part. */
+    const fenced = (await inTestContext(letter)) && !(await isTestAddress(to));
+    const held = fenced || (await suppressed(to)) || !sendingIsLive();
     const id = newId('msg');
     await (await db()).query(
-      `insert into outbox (id, kind, to_email, to_name, subject, body, record_id, block_id, candidate_id, state, send_after)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      `insert into outbox (id, kind, to_email, to_name, subject, body, record_id, block_id, candidate_id, state, send_after, error)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
       [
         id,
         letter.kind,
@@ -144,6 +149,7 @@ export async function post(letter: Letter): Promise<string | null> {
         letter.candidateId ?? null,
         held ? 'held' : 'queued',
         letter.sendAfter ?? null,
+        fenced ? 'Blocked: a test programme writes only to test addresses.' : '',
       ],
     );
     return id;

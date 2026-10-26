@@ -37,6 +37,8 @@ export const programSchema = z.object({
    * already judged in the old ones. Empty falls back to the built-in set.
    */
   statuses: z.array(blockOutcomeSchema).default([]),
+  /** Un programme de l'espace de test : invisible des vrais membres, et ses lettres ne partent que vers des adresses de test. */
+  isTest: z.boolean().default(false),
   createdAt: z.string(),
 });
 

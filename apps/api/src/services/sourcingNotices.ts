@@ -31,7 +31,7 @@ export const SOURCING_KIND = 'sourcing_invite';
 async function audienceRows(blockId: string): Promise<NoticeTargetRow[]> {
   const view = await outreachView(blockId);
   if (!view) return [];
-  const records = await resolveAudience((view.block.config as SourcingConfig).audience);
+  const records = await resolveAudience((view.block.config as SourcingConfig).audience, view.block.id);
   /* La même adresse que celle montrée à l'écran, par le même résolveur : une
      fenêtre qui annonce 427 destinataires et un envoi qui en trouve 13 serait
      une vérification pour rien. */

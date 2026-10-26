@@ -43,6 +43,7 @@ import {
 } from '../services/deliverables.js';
 import { programsFor, tellAdminsOfRequest } from './auth.js';
 import { UPLOADS_PER_HOUR, servingHeaders, uploadType } from '../services/uploads.js';
+import { isTestRecord } from '../services/testIdentity.js';
 import { reviewsFor } from '../services/reviews.js';
 import { outcomesByCandidate, outcomesOf, scoresByCandidate, setOutcomeByHand } from '../services/scoring.js';
 import {
@@ -421,6 +422,17 @@ export async function funnelRoutes(app: FastifyInstance) {
     // A provisional password opens one door, and it is not this one.
     if (account.mustChangePassword) {
       throw new HttpError(403, 'Choose your own password before applying.', { mustChangePassword: 'true' });
+    }
+
+    /* L'espace de test et le vrai ne se mêlent pas : un compte de test ne
+       candidate qu'à un programme de test, et un vrai compte jamais à l'un d'eux. */
+    if ((await repo.inTestProgram({ blockId: found.block.id })) !== (await isTestRecord(account.recordId))) {
+      throw new HttpError(
+        403,
+        (await isTestRecord(account.recordId))
+          ? 'A test account applies only to test programmes.'
+          : 'This form belongs to a test programme.',
+      );
     }
 
     const input = parse(submitApplicationInput, req.body);

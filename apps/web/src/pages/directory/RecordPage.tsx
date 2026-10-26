@@ -58,7 +58,9 @@ export function RecordPage() {
         <span className="crumbs">
           <Link to={backTo}>{isOrg ? 'Organisations' : 'Individuals'}</Link> ›
         </span>
-        <h1>{record.name}</h1>
+        <h1>
+          {record.name} {record.testOwner && <span className="badge warn">TEST</span>}
+        </h1>
         <div className="spacer" />
         <button className="btn" onClick={() => setEditing(true)}>
           <Icon name="edit" size={14} /> Edit

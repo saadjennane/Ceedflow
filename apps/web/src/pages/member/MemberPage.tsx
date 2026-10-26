@@ -213,6 +213,16 @@ function MemberSpace({ preview }: { preview?: MemberPreview }) {
         </div>
       )}
 
+      {/* Un compte de l'espace de test le sait : il ne voit que les programmes de test. */}
+      {!preview && me?.record.testOwner && (
+        <div className="callout warn" style={{ margin: '10px 14px 0' }}>
+          <Icon name="alert" size={15} />
+          <div>
+            <strong>{t('test.banner')}</strong> {t('test.bannerMore')}
+          </div>
+        </div>
+      )}
+
       <div className="member-bar">
         <span className="rec-mark">{initials(name)}</span>
         <span style={{ flex: 1, minWidth: 0 }}>

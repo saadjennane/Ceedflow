@@ -128,7 +128,9 @@ export function EditionPage() {
           <Link to={`/programs/${detail.program.id}`}>{detail.program.name}</Link>
           <Icon name="chevronRight" size={13} />
         </div>
-        <h1>{detail.name}</h1>
+        <h1>
+          {detail.name} {detail.program.isTest && <span className="badge warn">TEST</span>}
+        </h1>
         <select
           className="status-select"
           value={detail.status}

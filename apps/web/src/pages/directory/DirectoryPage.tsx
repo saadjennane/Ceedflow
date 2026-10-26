@@ -69,7 +69,12 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [inviting, setInviting] = useState(false);
 
-  const all = records.data ?? [];
+  /* Les fiches de l'espace de test restent hors de vue, des comptes et des
+     exports, tant qu'on ne demande pas à les voir. */
+  const [withTest, setWithTest] = useState(false);
+  const loaded = records.data ?? [];
+  const testCount = loaded.filter((r) => r.testOwner).length;
+  const all = withTest ? loaded : loaded.filter((r) => !r.testOwner);
   const isOrg = kind === 'org';
 
   /* Exactement ce que la pastille comptait : la même liste, pas une requête
@@ -224,6 +229,11 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
         </div>
 
         <div className="row wrap">
+          {testCount > 0 && (
+            <button className={withTest ? 'track on' : 'track'} onClick={() => setWithTest((v) => !v)}>
+              Test records <span className="num">{testCount}</span>
+            </button>
+          )}
           <SearchBox
             placeholder={isOrg ? 'Search an organisation, a city, a tag…' : 'Search a name, an email, a city…'}
             value={query}
@@ -327,6 +337,7 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
                         )}
                         <span>
                           {r.name}
+                          {r.testOwner && <span className="badge warn" style={{ marginLeft: 6 }}>TEST</span>}
                           {isOrg && r.email && (
                             <span className="faint" style={{ display: 'block', fontWeight: 400, fontSize: 12 }}>
                               {r.email}

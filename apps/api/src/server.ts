@@ -10,6 +10,7 @@ import { migrate } from './db/client.js';
 import { actionRoutes } from './routes/actions.js';
 import { authRoutes } from './routes/auth.js';
 import { mailRoutes } from './routes/mail.js';
+import { sandboxRoutes } from './routes/sandbox.js';
 import { builderRoutes } from './routes/builder.js';
 import { directoryRoutes } from './routes/directory.js';
 import { funnelRoutes } from './routes/funnel.js';
@@ -90,6 +91,7 @@ await app.register(oneToOneRoutes);
 await app.register(oneToOnePublicRoutes);
 await app.register(authRoutes);
 await app.register(mailRoutes);
+await app.register(sandboxRoutes);
 
 /* A deployment that owns the schema step sets SKIP_MIGRATE and runs
    `npm run migrate` before starting anything, so the schema settles once while

@@ -141,6 +141,7 @@ export function ProgramsPage() {
                     {program.name}
                   </Link>
                   <span className="badge">{program.type}</span>
+                  {program.isTest && <span className="badge warn">TEST</span>}
                   {program.partner && <span className="faint">with {program.partner}</span>}
                   <div className="spacer" />
                   <button className="btn sm ghost" onClick={() => setNewEditionFor(program)}>

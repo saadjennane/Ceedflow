@@ -31,7 +31,7 @@ import { all, db, one } from './client.js';
 /* Row mapping                                                         */
 /* ------------------------------------------------------------------ */
 
-const PROGRAM_COLS = `id, name, code, type, summary, partner, colour, statuses,
+const PROGRAM_COLS = `id, name, code, type, summary, partner, colour, statuses, is_test as "isTest",
   created_at::text as "createdAt"`;
 const EDITION_COLS = `id, program_id as "programId", name, status, starts_on::text as "startsOn",
   ends_on::text as "endsOn", city, mentors, position, created_at::text as "createdAt"`;
@@ -594,6 +594,26 @@ export async function blockContext(
   const block = await getBlock(blockId);
   if (!row || !block) return null;
   return { block, trackId: row.trackId, editionId: row.editionId };
+}
+
+/**
+ * Whether a brick, a candidacy or an edition belongs to a test programme —
+ * the question every letter and every member screen asks before anything
+ * leaves the sandbox.
+ */
+export async function inTestProgram(where: { blockId?: string | null; candidateId?: string | null; editionId?: string | null }): Promise<boolean> {
+  const editionId =
+    where.editionId ??
+    (where.blockId ? (await blockContext(where.blockId))?.editionId : null) ??
+    (where.candidateId
+      ? (await one<{ editionId: string }>('select edition_id as "editionId" from candidates where id = $1', [where.candidateId]))?.editionId
+      : null);
+  if (!editionId) return false;
+  const row = await one<{ isTest: boolean }>(
+    'select p.is_test as "isTest" from editions e join programs p on p.id = e.program_id where e.id = $1',
+    [editionId],
+  );
+  return Boolean(row?.isTest);
 }
 
 /* ------------------------------------------------------------------ */

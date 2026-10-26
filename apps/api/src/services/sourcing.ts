@@ -74,10 +74,13 @@ function matches(record: DirectoryRecord, audience: SourcingAudience): boolean {
 }
 
 /** Who the call would reach, asked of the directory rather than typed out. */
-export async function resolveAudience(audience: SourcingAudience): Promise<DirectoryRecord[]> {
+export async function resolveAudience(audience: SourcingAudience, blockId: string): Promise<DirectoryRecord[]> {
   if (!audience.roles.length && !audience.tags.length && !audience.recordIds.length) return [];
+  /* Un appel de test ne vise que des fiches de test, un vrai appel jamais :
+     un Sourcing copié dans l'espace de test ne compte pas les 400 vraies startups. */
+  const test = await repo.inTestProgram({ blockId });
   const everyone = await dir.listRecords();
-  return everyone.filter((record) => matches(record, audience));
+  return everyone.filter((record) => Boolean(record.testOwner) === test && matches(record, audience));
 }
 
 /** The application this sourcing opens: the first form after it in the track. */
@@ -100,7 +103,7 @@ export async function outreachView(blockId: string): Promise<OutreachView | null
   const form = formFor(track, blockId);
   const formConfig = form ? (form.config as ApplicationConfig) : null;
 
-  const records = await resolveAudience(config.audience);
+  const records = await resolveAudience(config.audience, blockId);
   /* L'adresse d'une société est la sienne, sinon celle de qui tient sa page :
      une startup venue d'une candidature n'en a presque jamais à elle, et son
      contact est pourtant lié à elle depuis le premier jour. */

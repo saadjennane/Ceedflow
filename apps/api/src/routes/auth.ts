@@ -61,6 +61,7 @@ import {
   useReset,
 } from '../services/auth.js';
 import { post } from '../services/mail.js';
+import { markTest, testOwnerOf } from '../services/sandbox.js';
 import { appLink } from '../services/deliverables.js';
 import { HttpError, notFound, parse } from './util.js';
 
@@ -140,8 +141,12 @@ export async function programsFor(recordId: string): Promise<MyProgram[]> {
   const mine = new Set(record ? (await dir.linksOf(record)).map((l) => l.record.id) : []);
   const programs = await repo.listPrograms();
   const out: MyProgram[] = [];
+  /* Un compte de test ne voit que les programmes de test, et un vrai membre
+     ne les voit jamais : les deux mondes partagent l'app, pas leurs écrans. */
+  const testViewer = Boolean(record?.testOwner);
 
   for (const program of programs) {
+    if (program.isTest !== testViewer) continue;
     for (const edition of program.editions) {
       if (edition.status === 'Draft') continue;
       const detail = await repo.getEditionDetail(edition.id);
@@ -263,6 +268,10 @@ export async function authRoutes(app: FastifyInstance) {
       places: [],
       origin: 'signup',
     });
+    /* L'alias d'un collègue — saad+startup@… — est une identité de test, même
+       inscrite d'elle-même depuis un formulaire : elle rejoint l'espace de test. */
+    const owner = await testOwnerOf(input.email);
+    if (owner) await markTest(record.id, owner.accountId);
 
     const account = await createAccount({ email: input.email, password: input.password, recordId: record.id });
     const { token, expiresAt } = await createSession(account.id);
@@ -1041,6 +1050,8 @@ async function mailTeamInvite(email: string, name: string, recordId: string, org
 export async function tellAdminsOfRequest(orgId: string, personId: string) {
   const [org, person, team] = await Promise.all([dir.getRecord(orgId), dir.getRecord(personId), dir.teamOf(orgId)]);
   if (!org || !person) return;
+  // Une identité de test n'écrit pas aux administrateurs d'une vraie organisation.
+  if (person.testOwner && !org.testOwner) return;
   const origin = await appLink();
   const space = origin ? origin.replace(/\?tab=Programs$/, '?tab=Profile') : '';
   for (const member of team) {

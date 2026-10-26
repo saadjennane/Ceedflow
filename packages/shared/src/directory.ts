@@ -280,6 +280,8 @@ export const recordSchema = z.object({
   website: z.string().default(''),
   bio: z.string().default(''),
   tags: z.array(z.string()).default([]),
+  /** Une fiche de l'espace de test : le compte du collègue qui la tient. Null pour une vraie. */
+  testOwner: z.string().nullable().default(null),
   createdAt: z.string(),
 });
 

@@ -22,6 +22,7 @@ import {
   CONTACT_FIELD_TYPES,
 } from '@ceed/shared';
 import * as dir from '../db/directory.js';
+import { isTestRecord } from './testIdentity.js';
 import * as repo from '../db/repo.js';
 import { committeeView, evaluationForCommittee } from './committee.js';
 import { outcomesOf } from './scoring.js';
@@ -144,7 +145,11 @@ export async function reviewsFor(recordId: string): Promise<ReviewPanel[]> {
     return profiles.get(orgId) ?? null;
   };
 
+  /* L'espace de test et le vrai ne se voient pas : un vrai juré resté sur la
+     liste d'une copie de test n'y siège pas, et un juré de test ne siège que là. */
+  const testViewer = await isTestRecord(recordId);
   for (const program of programs) {
+    if (program.isTest !== testViewer) continue;
     for (const edition of program.editions) {
       // A draft edition has no outside at all — not even for the people it
       // would eventually ask to review.

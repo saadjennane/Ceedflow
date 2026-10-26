@@ -82,7 +82,9 @@ export function ProgramPage() {
           <Link to="/">Programs</Link>
           <Icon name="chevronRight" size={13} />
         </div>
-        <h1>{p.name}</h1>
+        <h1>
+          {p.name} {p.isTest && <span className="badge warn">TEST</span>}
+        </h1>
         <span className="badge">{p.type}</span>
         <div className="spacer" />
         <button className="btn" onClick={() => setEditing(true)}>

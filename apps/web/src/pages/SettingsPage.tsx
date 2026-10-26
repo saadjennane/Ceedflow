@@ -21,6 +21,7 @@ import { formatDate } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
 import { initials } from './directory/DirectoryPage';
 import { Template } from './builder/panels/Template';
+import { TestSpace } from './TestSpace';
 import { Icon } from '../ui/Icon';
 import { Modal, useToast } from '../ui/Overlays';
 import '../ui/builder.css';
@@ -404,6 +405,8 @@ export function SettingsPage() {
         </section>
 
         <HouseLetters mayManage={mayManage} />
+
+        {mayManage && <TestSpace />}
 
         <AsStartup />
 

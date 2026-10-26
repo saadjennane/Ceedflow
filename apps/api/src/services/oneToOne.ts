@@ -36,6 +36,7 @@ import {
   CONTACT_FIELD_TYPES,
 } from '@ceed/shared';
 import { accessFor } from './invitations.js';
+import { isTestRecord } from './testIdentity.js';
 import { post } from './mail.js';
 import { publicOrigin } from './platform.js';
 import { all, one } from '../db/client.js';
@@ -406,6 +407,7 @@ export async function meetingsFor(recordId: string): Promise<MyMeeting[]> {
   const ownOrgs = await dir.orgIdsOf(recordId);
   const out: MyMeeting[] = [];
   const contexts = new Map<string, { block: Block; program: string; edition: string; visible: boolean } | null>();
+  const testViewer = await isTestRecord(recordId);
   for (const m of mine) {
     if (!contexts.has(m.blockId)) {
       const ctx = await repo.blockContext(m.blockId);
@@ -413,7 +415,13 @@ export async function meetingsFor(recordId: string): Promise<MyMeeting[]> {
       contexts.set(
         m.blockId,
         ctx && detail
-          ? { block: ctx.block, program: detail.program.name, edition: detail.name, visible: editionIsVisible(detail.status) }
+          ? {
+              block: ctx.block,
+              program: detail.program.name,
+              edition: detail.name,
+              // L'espace de test et le vrai ne se voient pas.
+              visible: editionIsVisible(detail.status) && Boolean(detail.program.isTest) === testViewer,
+            }
           : null,
       );
     }

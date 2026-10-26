@@ -488,6 +488,11 @@ const WORDS = {
     en: 'This organisation already exists: your request to join was sent to its administrators (or to CEED). It will appear here once accepted.',
   },
   'org.created': { fr: 'Page créée.', en: 'Page created.' },
+  'test.banner': { fr: 'Compte de test.', en: 'Test account.' },
+  'test.bannerMore': {
+    fr: 'Vous ne voyez que les programmes de test, et rien de ce que vous faites ici n’atteint une vraie startup.',
+    en: 'You only see test programmes, and nothing you do here reaches a real startup.',
+  },
   'org.requestWaiting': { fr: 'Demande envoyée — en attente d’acceptation', en: 'Request sent — waiting to be accepted' },
   'org.requestWithdraw': { fr: 'Retirer', en: 'Withdraw' },
 
