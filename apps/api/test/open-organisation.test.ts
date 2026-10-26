@@ -2,8 +2,8 @@
  * Une organisation nommée par quelqu'un.
  *
  * La même règle sert à la page qu'on ouvre dans son espace et à l'organisation
- * qu'on nomme en postulant : une nouvelle est à qui l'ouvre, une connue gagne
- * un contact plutôt qu'un double, et la sienne ne se rejoint pas deux fois.
+ * qu'on nomme en postulant : une nouvelle est à qui l'ouvre, une connue se
+ * demande — son équipe ou CEED valide —, et la sienne ne se rejoint pas deux fois.
  */
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
@@ -27,14 +27,47 @@ describe('naming an organisation', { skip: skipWithoutServer }, () => {
     assert.equal(await dir.accessOf(karim.id, org.id), 'admin');
   });
 
-  it('joins one CEED already knows as a member, rather than making a twin', async () => {
+  it('asks to join one CEED already knows, rather than walking in', async () => {
+    /* N'importe qui tapait un nom et lisait les statuts, l'équipe et les
+       livrables d'une société qui n'était pas la sienne. */
     const name = `Atlas ${uniq()}`;
-    const known = await dir.createRecord({ kind: 'org', name, origin: 'manual' });
+    const known = await dir.createRecord({ kind: 'org', name, emails: ['contact@atlas.test'], origin: 'manual' });
     const sanaa = await someone();
-    const { org, joined } = await dir.openOrganisation(sanaa.id, { name: `  ${name}  ` });
-    assert.equal(joined, true);
-    assert.equal(org.id, known.id);
+    const { org, joined, pending } = await dir.openOrganisation(sanaa.id, { name: `  ${name}  `, emails: ['me@x.test'] });
+    assert.equal(org.id, known.id, 'no twin');
+    assert.equal(joined, false);
+    assert.equal(pending, true);
+    assert.equal(await dir.accessOf(sanaa.id, known.id), null, 'nothing opens until somebody says yes');
+    assert.deepEqual((await dir.getRecord(known.id))!.emails, ['contact@atlas.test'], 'and the page is not rewritten');
+
+    const [request] = await dir.requestsFor(known.id);
+    assert.equal(request?.personId, sanaa.id);
+    await dir.openOrganisation(sanaa.id, { name });
+    assert.equal((await dir.requestsFor(known.id)).length, 1, 'asking twice is still one request');
+
+    await dir.acceptRequest(request!.id);
     assert.equal(await dir.accessOf(sanaa.id, known.id), 'member');
+    assert.equal((await dir.requestsFor(known.id)).length, 0);
+  });
+
+  it('lets somebody the directory already placed there straight in', async () => {
+    const org = await dir.createRecord({ kind: 'org', name: `Imported ${uniq()}`, origin: 'manual' });
+    const founder = await someone();
+    await dir.linkRecords({ personId: founder.id, orgId: org.id, role: 'CEO', access: 'admin' });
+    const { pending, joined } = await dir.openOrganisation(founder.id, { name: org.name });
+    assert.equal(pending, false);
+    assert.equal(joined, true);
+    assert.equal(await dir.accessOf(founder.id, org.id), 'admin');
+  });
+
+  it('forgets a declined request', async () => {
+    const org = await dir.createRecord({ kind: 'org', name: `Nope ${uniq()}`, origin: 'manual' });
+    const someoneElse = await someone();
+    await dir.openOrganisation(someoneElse.id, { name: org.name });
+    const [request] = await dir.requestsFor(org.id);
+    assert.equal(await dir.declineRequest(request!.id), true);
+    assert.equal(await dir.accessOf(someoneElse.id, org.id), null);
+    assert.equal((await dir.requestsFor(org.id)).length, 0);
   });
 
   it('leaves an administrator who names their own organisation an administrator', async () => {

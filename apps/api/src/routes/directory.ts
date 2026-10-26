@@ -12,7 +12,6 @@ import {
   SHEET_LISTS,
   sheetListInput,
   teamProblems,
-  signupInput,
   suggestPassword,
   updateRecordInput,
   type DirectoryRecord,
@@ -26,6 +25,7 @@ import * as dir from '../db/directory.js';
 import { addOrgDocument, changeOrgDocument, saveNeed } from '../services/orgSheet.js';
 import {
   accountOfRecord,
+  staffRoleOfRecord,
   accountStatesByRecord,
   closeAccount,
   createAccount,
@@ -47,9 +47,21 @@ const openAccountInput = z.object({
   password: z.string().min(8, 'At least 8 characters.'),
 });
 
+/**
+ * Le compte d'un membre de CEED ne se touche que par un administrateur.
+ *
+ * An editor opens accounts for jurors and founders every day, and keeps that.
+ * What they no longer do is set the password of a colleague who has not signed
+ * in yet, close the only administrator's account, or remove them: each of
+ * those is a way to become, or to unseat, an administrator.
+ */
+async function adminForStaffAccount(req: FastifyRequest, recordId: string) {
+  if (await staffRoleOfRecord(recordId)) requireWorkspaceAdmin(req);
+}
+
 export async function directoryRoutes(app: FastifyInstance) {
   // Everything below is the CEED workspace. Public routes name themselves.
-  app.addHook('preHandler', workspaceGuard((url) => url.startsWith('/api/public/')));
+  app.addHook('preHandler', workspaceGuard());
 
   /* ---- The two lists are one query ---- */
 
@@ -255,6 +267,7 @@ export async function directoryRoutes(app: FastifyInstance) {
 
   app.delete('/api/records/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
+    await adminForStaffAccount(req, id);
     const plan = await dir.removalPlan(id);
     if (!plan) return notFound(reply, 'Record not found.');
     // Almost nothing refuses any more: removing somebody means something
@@ -273,6 +286,7 @@ export async function directoryRoutes(app: FastifyInstance) {
    */
   app.post('/api/records/:id/account', async (req, reply) => {
     const { id } = req.params as { id: string };
+    await adminForStaffAccount(req, id);
     const input = parse(openAccountInput, req.body);
     const record = await dir.getRecord(id);
     if (!record) return notFound(reply, 'Record not found.');
@@ -301,7 +315,7 @@ export async function directoryRoutes(app: FastifyInstance) {
       return { ...(await accountOfRecord(record.id))!, reissued: true };
     }
 
-    if (!record.email) await dir.updateRecord(record.id, { email });
+    if (!record.email) await dir.updateRecord(record.id, { emails: [email, ...record.emails] });
 
     await createAccount({ email, password: input.password, recordId: record.id, mustChangePassword: true });
     reply.code(201);
@@ -324,6 +338,7 @@ export async function directoryRoutes(app: FastifyInstance) {
    */
   app.post('/api/records/:id/account/invite', async (req, reply) => {
     const { id } = req.params as { id: string };
+    await adminForStaffAccount(req, id);
     const record = await dir.getRecord(id);
     if (!record) return notFound(reply, 'Record not found.');
 
@@ -439,9 +454,27 @@ export async function directoryRoutes(app: FastifyInstance) {
    */
   app.delete('/api/records/:id/account', async (req, reply) => {
     const { id } = req.params as { id: string };
+    await adminForStaffAccount(req, id);
     const account = await accountOfRecord(id);
     if (!account) return notFound(reply, 'This person has no account.');
     await closeAccount(account.id);
+    reply.code(204);
+  });
+
+  /* ---- Demandes pour rejoindre une organisation ---- */
+
+  /** Celles qui attendent sur cette fiche — une organisation sans administrateur joignable n'a que CEED pour répondre. */
+  app.get('/api/records/:id/requests', async (req) => dir.requestsFor((req.params as { id: string }).id));
+
+  app.post('/api/org-requests/:requestId/accept', async (req, reply) => {
+    const { requestId } = req.params as { requestId: string };
+    const done = await dir.acceptRequest(requestId);
+    return done ? dir.requestsFor(done.orgId) : notFound(reply, 'No such request.');
+  });
+
+  app.delete('/api/org-requests/:requestId', async (req, reply) => {
+    const { requestId } = req.params as { requestId: string };
+    if (!(await dir.declineRequest(requestId))) return notFound(reply, 'No such request.');
     reply.code(204);
   });
 
@@ -488,60 +521,6 @@ export async function directoryRoutes(app: FastifyInstance) {
   app.post('/api/records/import', async (req) => {
     const input = parse(importInput, req.body);
     return runImport(input.kind, input.rows, input.dryRun, await actor(req));
-  });
-
-  /* ---- Registering yourself ---- */
-
-  app.post('/api/public/join', async (req) => {
-    const input = parse(signupInput, req.body);
-
-    // The person is who is filling this in, so they always exist. Joining a
-    // record CEED already typed in beats creating a twin of it.
-    const person =
-      (await dir.findByName('person', input.contactName)) ??
-      (await dir.createRecord({
-        kind: 'person',
-        name: input.contactName,
-        origin: 'signup',
-        emails: [input.contactEmail],
-        places: input.contactCity.trim() ? [{ city: input.contactCity.trim(), country: 'Morocco' }] : [],
-        bio: input.contactBio,
-      }));
-
-    if (!input.name.trim()) return { contact: person, record: null, joined: false };
-
-    const found = await dir.findByName('org', input.name);
-    const org = found
-      ? await dir.updateRecord(found.id, {
-          email: found.email || input.email,
-          website: found.website || input.website,
-          places: found.places.length
-            ? found.places
-            : input.city.trim()
-              ? [{ city: input.city.trim(), country: 'Morocco' }]
-              : [],
-          bio: found.bio || input.bio,
-        })
-      : await dir.createRecord({
-          kind: 'org',
-          name: input.name,
-          roles: ['Startup'],
-          origin: 'signup',
-          emails: input.email.trim() ? [input.email.trim()] : [],
-          website: input.website,
-          places: input.city.trim() ? [{ city: input.city.trim(), country: 'Morocco' }] : [],
-          bio: input.bio,
-        });
-
-    await dir.linkRecords({ personId: person.id, orgId: org!.id, role: input.contactRole || 'Contact' });
-    return { contact: person, record: org, joined: Boolean(found) };
-  });
-
-  app.get('/api/public/join/check', async (req) => {
-    const { name } = req.query as { name?: string };
-    if (!name?.trim()) return { found: null };
-    const org = await dir.findByName('org', name);
-    return { found: org ? { name: org.name, origin: org.origin } : null };
   });
 }
 

@@ -41,6 +41,9 @@ export function ApplyPage() {
   const [step, setStep] = useState(0);
   const [sending, setSending] = useState(false);
   const [done, setDone] = useState<string | null>(null);
+  /* L'organisation nommée existait déjà : la candidature est déposée, et la
+     demande pour la rejoindre attend la réponse de son équipe ou de CEED. */
+  const [pending, setPending] = useState(false);
   const [heardFrom, setHeardFrom] = useState('');
 
   if (form.loading || checkingAccount || (me && applied.loading)) {
@@ -132,6 +135,16 @@ export function ApplyPage() {
         </span>
         <h1>{data.programName}</h1>
         <p className="public-intro">{done}</p>
+        {pending && (
+          <div className="callout">
+            <Icon name="users" size={15} />
+            <div>
+              This organisation was already known to CEED, so your request to join its page has been sent to its
+              administrators (or to CEED). You will see the organisation and this application in your space once
+              it is accepted.
+            </div>
+          </div>
+        )}
         <Link className="btn" to="/me">
           Back to my space
         </Link>
@@ -225,13 +238,14 @@ export function ApplyPage() {
     if (Object.keys(found).length) return;
     setSending(true);
     try {
-      const result = await api.post<{ confirmation: string }>(`/api/public/forms/${token}`, {
+      const result = await api.post<{ confirmation: string; pending?: boolean }>(`/api/public/forms/${token}`, {
         orgId: naming ? '' : applyingAs,
         newOrg: naming ? newOrg : null,
         source: via || heardFrom,
         acknowledged: ticked,
         answers,
       });
+      setPending(Boolean(result.pending));
       setDone(result.confirmation);
       window.scrollTo({ top: 0 });
     } catch (err) {

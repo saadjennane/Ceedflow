@@ -186,6 +186,8 @@ export function RecordPage() {
             )}
           </div>
 
+          {isOrg && <JoinRequests orgId={record.id} onAnswered={detail.reload} />}
+
           <div className="card">
             <div className="rowcard-head" style={{ padding: '11px 14px' }}>
               <strong style={{ flex: 1, fontFamily: 'var(--display)', fontSize: 13.5 }}>
@@ -624,5 +626,57 @@ function LinkModal({
         {!list.length && <div className="empty">Nobody matches. Create the record instead.</div>}
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Ceux qui demandent à rejoindre cette organisation. Son équipe peut répondre
+ * depuis son espace ; CEED le peut ici — et c'est la seule réponse possible
+ * pour une organisation dont personne n'a encore de compte.
+ */
+function JoinRequests({ orgId, onAnswered }: { orgId: string; onAnswered: () => void }) {
+  const requests = useAsync(
+    () => api.get<{ id: string; name: string; email: string; createdAt: string }[]>(`/api/records/${orgId}/requests`),
+    `requests:${orgId}`,
+  );
+  const toast = useToast();
+  const [busy, setBusy] = useState<string | null>(null);
+  if (!requests.data?.length) return null;
+  const answer = async (id: string, name: string, accept: boolean) => {
+    setBusy(id);
+    try {
+      if (accept) await api.post(`/api/org-requests/${id}/accept`);
+      else await api.del(`/api/org-requests/${id}`);
+      toast(accept ? `${name} joined as a member.` : `${name}'s request was declined.`);
+      requests.reload();
+      onAnswered();
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <div className="card card-pad stack" style={{ gap: 8 }}>
+      <strong style={{ fontFamily: 'var(--display)', fontSize: 13.5 }}>Asking to join</strong>
+      <span className="faint" style={{ fontSize: 12 }}>
+        They named this organisation and see nothing of what it keeps for its team until somebody accepts.
+      </span>
+      {requests.data.map((r) => (
+        <div className="row" key={r.id} style={{ gap: 6 }}>
+          <span style={{ flex: 1, minWidth: 0, fontSize: 12.5 }}>
+            <strong>{r.name}</strong>
+            {r.email && <span className="faint"> · {r.email}</span>}
+            <span className="faint"> · {formatDate(r.createdAt)}</span>
+          </span>
+          <button className="btn sm" disabled={busy === r.id} onClick={() => answer(r.id, r.name, false)}>
+            Decline
+          </button>
+          <button className="btn sm primary" disabled={busy === r.id} onClick={() => answer(r.id, r.name, true)}>
+            Accept
+          </button>
+        </div>
+      ))}
+    </div>
   );
 }

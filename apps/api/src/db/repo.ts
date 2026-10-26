@@ -1556,11 +1556,15 @@ export async function saveUpload(input: {
   mime: string;
   bytes: Buffer;
   fieldId: string;
+  /** The record of whoever sent it: only they may attach it somewhere. */
+  uploadedBy: string;
 }): Promise<{ id: string; filename: string; size: number }> {
-  const id = newId('upl');
+  /* Long : un identifiant de fichier se lit dans les réponses qu'un juré
+     parcourt, et il ne doit pas se deviner à partir d'un autre. */
+  const id = newId('upl', 20);
   await (await db()).query(
-    'insert into uploads (id, field_id, filename, mime, size, bytes) values ($1,$2,$3,$4,$5,$6)',
-    [id, input.fieldId, input.filename, input.mime, input.bytes.length, input.bytes],
+    'insert into uploads (id, field_id, filename, mime, size, bytes, uploaded_by) values ($1,$2,$3,$4,$5,$6,$7)',
+    [id, input.fieldId, input.filename, input.mime, input.bytes.length, input.bytes, input.uploadedBy],
   );
   return { id, filename: input.filename, size: input.bytes.length };
 }
@@ -1569,7 +1573,12 @@ export async function saveUpload(input: {
  * A file is uploaded before the form is sent, so it starts with no candidate.
  * Submitting is what attaches it — anything never claimed is an abandoned draft.
  */
-export async function claimUploads(candidateId: string, answers: Record<string, unknown>): Promise<void> {
+export async function claimUploads(
+  candidateId: string,
+  answers: Record<string, unknown>,
+  /** Who is sending the answers. Only a file of theirs, attached to nothing yet, is taken. */
+  by: string,
+): Promise<void> {
   /* All the way down, because an answer is no longer always one level deep: a
      CIN now sits inside the third associé of a repeatable group. A file that
      this misses stays unattached to any candidacy — and who may open a file
@@ -1582,10 +1591,15 @@ export async function claimUploads(candidateId: string, answers: Record<string, 
      elle — la clé supprime en cascade —, et une seconde candidature le
      retirerait à la première. Le juré l'ouvre par les réponses qu'il lit. */
   await (await db()).query(
+    /* Et seulement un fichier libre, déposé par qui envoie : citer
+       l'identifiant du fichier d'une autre startup ne le lui prend plus. Les
+       fichiers d'avant, sans auteur, restent prenables tant qu'ils sont libres. */
     `update uploads set candidate_id = $1
       where id = any($2::text[])
+        and candidate_id is null
+        and (uploaded_by is null or uploaded_by = $3)
         and not exists (select 1 from org_documents d where d.upload_id = uploads.id)`,
-    [candidateId, ids],
+    [candidateId, ids, by],
   );
 }
 
@@ -1599,9 +1613,13 @@ export async function getUpload(id: string) {
      reads the org off the candidacy, and there is no candidacy. */
   return one<{
     filename: string; mime: string; bytes: Buffer; candidateId: string | null; orgId: string | null; isDocument: boolean;
+    uploadedBy: string | null;
   }>(
-    `select u.filename, u.mime, u.bytes, u.candidate_id as "candidateId",
-            coalesce(c.org_id, r.id, d.org_id, pr.org_id) as "orgId",
+    `select u.filename, u.mime, u.bytes, u.candidate_id as "candidateId", u.uploaded_by as "uploadedBy",
+            /* Le document d'abord : c'est lui qui dit à qui un fichier appartient
+               le plus sûrement — un logo qu'on aurait fait pointer dessus ne le
+               fait pas changer de main. */
+            coalesce(c.org_id, d.org_id, r.id, pr.org_id) as "orgId",
             d.org_id is not null as "isDocument"
        from uploads u
        left join candidates c on c.id = u.candidate_id
@@ -1610,7 +1628,28 @@ export async function getUpload(id: string) {
           qui l'a déposé, comme son logo. */
        left join org_documents d on d.upload_id = u.id
        left join org_products pr on pr.image_upload_id = u.id
-      where u.id = $1`,
+      where u.id = $1
+      limit 1`,
     [id],
   );
+}
+
+/** How many files somebody sent in the last hour — the ceiling on filling the database. */
+export async function uploadsLastHour(by: string): Promise<number> {
+  const rows = await (await db()).query<{ n: number }>(
+    `select count(*)::int as n from uploads where uploaded_by = $1 and created_at > now() - interval '1 hour'`,
+    [by],
+  );
+  return rows[0]?.n ?? 0;
+}
+
+/**
+ * Whether this person may put this file on this organisation's page: they sent
+ * it, or it is already the organisation's. Knowing a file's id is not enough —
+ * a logo pointed at another startup's statutes would otherwise hand them over.
+ */
+export async function mayPlaceUpload(uploadId: string, by: string, orgId: string): Promise<boolean> {
+  const found = await getUpload(uploadId);
+  if (!found) return false;
+  return found.uploadedBy === by || found.orgId === orgId;
 }

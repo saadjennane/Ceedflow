@@ -74,8 +74,10 @@ describe('inviting somebody into an account', { skip: skipWithoutServer }, () =>
 
     const [letter] = await letters({ email });
     assert.equal(letter?.kind, 'account_invite');
-    assert.match(letter!.body, new RegExp(password), 'and it is in the letter, not only on the screen');
+    assert.doesNotMatch(letter!.body, new RegExp(password), 'the history a colleague reads never shows it');
     assert.match(letter!.body, /Karim/);
+    const [stored] = await (await db()).query<{ body: string }>('select body from outbox where id = $1', [letter!.id]);
+    assert.match(stored!.body, new RegExp(password), 'but the letter that leaves carries it');
   });
 
   it('records the invitation as well as sending it', async () => {

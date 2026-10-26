@@ -172,6 +172,15 @@ export async function accountOfRecord(recordId: string): Promise<RecordAccount |
   };
 }
 
+/** Le rôle CEED du compte de cette fiche, s'il en a un — pour réserver aux administrateurs ce qui touche un collègue. */
+export async function staffRoleOfRecord(recordId: string): Promise<StaffRole | null> {
+  const rows = await (await db()).query<{ role: StaffRole | null }>(
+    'select staff_role as "role" from accounts where record_id = $1',
+    [recordId],
+  );
+  return rows[0]?.role ?? null;
+}
+
 /** Account states for many records at once — one query, for the lists. */
 export async function accountStatesByRecord(): Promise<Map<string, RecordAccount>> {
   const rows = await (
@@ -445,6 +454,12 @@ export async function closeAccount(accountId: string): Promise<void> {
 const WINDOW_MINUTES = 15;
 const MAX_PER_EMAIL_AND_IP = 5;
 const MAX_PER_IP = 20;
+/* Et l'adresse seule, mais haut : l'IP se déclare dans un en-tête qu'un
+   client peut écrire, si bien que les deux limites ci-dessus se contournent.
+   Celle-ci ne se contourne pas — trente essais par quart d'heure, contre un
+   mot de passe d'environ 31 bits, c'est des millions d'heures. Assez haut
+   pour que bloquer quelqu'un exprès demande de s'y acharner. */
+const MAX_PER_EMAIL = 30;
 
 export interface LoginGate {
   allowed: boolean;
@@ -455,17 +470,19 @@ export interface LoginGate {
 /** Whether this attempt may even be tried. Read before any password is checked. */
 export async function loginAllowed(email: string, ip: string): Promise<LoginGate> {
   const since = `${WINDOW_MINUTES} minutes`;
-  const row = await one<{ pair: number; source: number }>(
+  const row = await one<{ pair: number; source: number; address: number }>(
     `select
        count(*) filter (where email = $1 and ip = $2)::int as pair,
-       count(*) filter (where ip = $2)::int                as source
+       count(*) filter (where ip = $2)::int                as source,
+       count(*) filter (where email = $1)::int             as address
      from login_attempts
      where at > now() - interval '${since}'`,
     [email.trim().toLowerCase(), ip],
   );
   const pair = row?.pair ?? 0;
   const source = row?.source ?? 0;
-  if (pair < MAX_PER_EMAIL_AND_IP && source < MAX_PER_IP) {
+  const address = row?.address ?? 0;
+  if (pair < MAX_PER_EMAIL_AND_IP && source < MAX_PER_IP && address < MAX_PER_EMAIL) {
     return { allowed: true, retryAfter: 0 };
   }
   return { allowed: false, retryAfter: WINDOW_MINUTES * 60 };

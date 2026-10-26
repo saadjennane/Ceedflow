@@ -33,6 +33,7 @@ import {
   freeCells,
   longDate,
   seriesDates,
+  CONTACT_FIELD_TYPES,
 } from '@ceed/shared';
 import { accessFor } from './invitations.js';
 import { post } from './mail.js';
@@ -425,6 +426,9 @@ export async function meetingsFor(recordId: string): Promise<MyMeeting[]> {
     if (!candidate || conflicted(candidate, recordId, ownOrgs)) continue;
     out.push({
       ...m,
+      /* Le lien de la startup est à elle : l'interlocuteur qui l'aurait
+         pourrait confirmer, refuser ou réserver à sa place. */
+      token: '',
       programName: ctx.program,
       editionName: ctx.edition,
       blockName: ctx.block.name,
@@ -453,7 +457,7 @@ export async function meetingFor(recordId: string, id: string): Promise<MyMeetin
     profile: profile && profileStarted(profile) ? profile : null,
     answers: candidate
       ? questions
-          .filter((q) => !blank(candidate.answers[q.id]))
+          .filter((q) => !blank(candidate.answers[q.id]) && !CONTACT_FIELD_TYPES.includes(q.type))
           .map((q) => ({ label: q.label, value: candidate.answers[q.id], type: q.type }))
       : [],
   };

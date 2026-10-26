@@ -537,11 +537,12 @@ export async function putRevenue(
  * Une organisation nommée par quelqu'un : la sienne, nouvelle ou déjà connue.
  *
  * Une seule règle pour les deux endroits où l'on en nomme une — la page de son
- * espace, et le formulaire de candidature. Une organisation que CEED connaît
- * déjà gagne un contact plutôt qu'un double ; qui ouvre une page la tient,
- * qui en rejoint une existante n'en est que membre. Et qui la tient déjà ne
- * la rejoint pas une seconde fois : la rejoindre réécrirait son accès, et un
- * administrateur qui retape le nom de sa propre société deviendrait membre.
+ * espace, et le formulaire de candidature. Qui ouvre une page nouvelle la
+ * tient. Qui nomme une organisation que CEED connaît déjà n'y entre pas pour
+ * autant : il en fait la demande, qu'un de ses administrateurs ou CEED
+ * valide — sans quoi n'importe qui, en tapant un nom, lirait les statuts,
+ * l'équipe et les livrables d'une société qui n'est pas la sienne. Celui que
+ * l'annuaire rattachait déjà à cette organisation y est, lui, sans attendre.
  */
 export async function openOrganisation(
   personId: string,
@@ -555,39 +556,88 @@ export async function openOrganisation(
     bio?: string;
     myRole?: string;
   },
-): Promise<{ org: DirectoryRecord; joined: boolean }> {
+): Promise<{ org: DirectoryRecord; joined: boolean; pending: boolean }> {
   const found = await findByName('org', input.name);
-  const org =
-    found ??
-    (await createRecord({
-      kind: 'org',
-      name: input.name.trim(),
-      roles: input.roles ?? ['Startup'],
-      emails: input.emails ?? [],
-      phones: input.phones ?? [],
-      places: input.places ?? [],
-      website: input.website ?? '',
-      bio: input.bio ?? '',
-      origin: 'signup',
-    }));
   if (found) {
-    await updateRecord(found.id, {
-      /* Les adresses aussi : une page que CEED connaissait déjà a souvent
-         un contact@, et la fondatrice donne la sienne. */
-      emails: [...new Set([...found.emails, ...(input.emails ?? [])])],
-      /* Les numéros et les lieux s'ajoutent plutôt que de s'écraser : une
-         page que CEED connaissait déjà a souvent le standard, et la
-         fondatrice donne le sien. */
-      phones: [...new Set([...found.phones, ...(input.phones ?? [])])],
-      places: found.places.length ? found.places : (input.places ?? []),
-      website: found.website || (input.website ?? ''),
-      bio: found.bio || (input.bio ?? ''),
-    });
+    /* Déjà dedans : rien à demander, et surtout rien à réécrire — un
+       administrateur qui retape le nom de sa société resterait administrateur. */
+    if (await accessOf(personId, found.id)) return { org: found, joined: true, pending: false };
+    await requestToJoin(personId, found.id, input.myRole ?? 'Founder');
+    return { org: found, joined: false, pending: true };
   }
-  if (!(await accessOf(personId, org.id))) {
-    await linkRecords({ personId, orgId: org.id, role: input.myRole ?? 'Founder', access: found ? 'member' : 'admin' });
-  }
-  return { org, joined: Boolean(found) };
+  const org = await createRecord({
+    kind: 'org',
+    name: input.name.trim(),
+    roles: input.roles ?? ['Startup'],
+    emails: input.emails ?? [],
+    phones: input.phones ?? [],
+    places: input.places ?? [],
+    website: input.website ?? '',
+    bio: input.bio ?? '',
+    origin: 'signup',
+  });
+  await linkRecords({ personId, orgId: org.id, role: input.myRole ?? 'Founder', access: 'admin' });
+  return { org, joined: false, pending: false };
+}
+
+/* ------------------------------------------------------------------ */
+/* Demandes pour rejoindre une organisation                           */
+/* ------------------------------------------------------------------ */
+
+export interface OrgRequest {
+  id: string;
+  personId: string;
+  orgId: string;
+  orgName: string;
+  name: string;
+  email: string;
+  role: string;
+  createdAt: string;
+}
+
+const REQUEST_COLS = `q.id, q.person_id as "personId", q.org_id as "orgId", o.name as "orgName",
+  p.name, coalesce(p.email, '') as email, q.role, q.created_at::text as "createdAt"`;
+const REQUEST_FROM = `from org_requests q
+  join records p on p.id = q.person_id
+  join records o on o.id = q.org_id`;
+
+/** Asked once: asking again keeps the first request rather than a second. */
+export async function requestToJoin(personId: string, orgId: string, role: string): Promise<void> {
+  await (await db()).query(
+    `insert into org_requests (id, person_id, org_id, role) values ($1,$2,$3,$4)
+     on conflict (person_id, org_id) do nothing`,
+    [newId('orq'), personId, orgId, role],
+  );
+}
+
+export const requestsFor = (orgId: string) =>
+  all<OrgRequest>(`select ${REQUEST_COLS} ${REQUEST_FROM} where q.org_id = $1 order by q.created_at`, [orgId]);
+
+/** What somebody is still waiting on, for their own space. */
+export const requestsBy = (personId: string) =>
+  all<OrgRequest>(`select ${REQUEST_COLS} ${REQUEST_FROM} where q.person_id = $1 order by q.created_at`, [personId]);
+
+export const requestById = (id: string) =>
+  one<OrgRequest>(`select ${REQUEST_COLS} ${REQUEST_FROM} where q.id = $1`, [id]);
+
+/** Validée : la personne rejoint l'équipe comme membre, et la demande s'efface. */
+export async function acceptRequest(id: string): Promise<OrgRequest | null> {
+  const request = await requestById(id);
+  if (!request) return null;
+  /* Membre, pas administrateur : celui qui accepte décide ensuite de ce que
+     la personne peut faire. Un accès qui existait déjà n'est pas réécrit. */
+  await (await db()).query(
+    `insert into affiliations (id, person_id, org_id, role, access, since) values ($1,$2,$3,$4,'member','')
+     on conflict (person_id, org_id) do nothing`,
+    [idOf.affiliation(), request.personId, request.orgId, request.role || 'Founder'],
+  );
+  await (await db()).query('delete from org_requests where id = $1', [id]);
+  return request;
+}
+
+export async function declineRequest(id: string): Promise<boolean> {
+  const rows = await (await db()).query<{ id: string }>('delete from org_requests where id = $1 returning id', [id]);
+  return rows.length > 0;
 }
 
 /**

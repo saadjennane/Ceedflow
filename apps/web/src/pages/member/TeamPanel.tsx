@@ -9,6 +9,14 @@ import {
   type TeamInvite,
   type TeamMember,
 } from '@ceed/shared';
+
+/** Une demande pour rejoindre la page, telle que l'API la rend. */
+interface OrgRequest {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: string;
+}
 import { useEffect, useState } from 'react';
 import { ApiError, api } from '../../lib/api';
 import { Icon } from '../../ui/Icon';
@@ -32,11 +40,15 @@ export function TeamModal({ link, onClose }: { link: AffiliationView; onClose: (
   const mayManage = canManageTeam(link.affiliation.access);
   const [team, setTeam] = useState<TeamMember[] | null>(null);
   const [adding, setAdding] = useState(false);
-  const [invite, setInvite] = useState<TeamInvite | null>(null);
+  const [requests, setRequests] = useState<OrgRequest[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const toast = useToast();
 
-  const load = async () => setTeam(await api.get<TeamMember[]>(`/api/me/organisations/${orgId}/team`));
+  const load = async () => {
+    setTeam(await api.get<TeamMember[]>(`/api/me/organisations/${orgId}/team`));
+    // Qui demande à entrer : seul un administrateur le voit, et y répond.
+    if (mayManage) setRequests(await api.get<OrgRequest[]>(`/api/me/organisations/${orgId}/requests`));
+  };
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -63,14 +75,20 @@ export function TeamModal({ link, onClose }: { link: AffiliationView; onClose: (
       toast(`${m.person.name} is off the page.`);
     });
 
+  /* Le mot de passe part par mail, à la personne elle-même : il ne passe
+     jamais par cet écran. */
   const sendInvite = (m: TeamMember) =>
     act(m.affiliationId, async () => {
-      setInvite(await api.post<TeamInvite>(`/api/me/organisations/${orgId}/team/${m.affiliationId}/invite`));
+      const { email } = await api.post<TeamInvite>(`/api/me/organisations/${orgId}/team/${m.affiliationId}/invite`);
+      toast(`Invitation sent — ${m.person.name} receives their password at ${email}.`);
     });
 
-  if (invite) {
-    return <InviteHandover invite={invite} onClose={() => setInvite(null)} />;
-  }
+  const answer = (r: OrgRequest, accept: boolean) =>
+    act(r.id, async () => {
+      if (accept) await api.post(`/api/me/organisations/${orgId}/requests/${r.id}/accept`);
+      else await api.del(`/api/me/organisations/${orgId}/requests/${r.id}`);
+      toast(accept ? `${r.name} joined the page as a member.` : `${r.name}'s request was declined.`);
+    });
 
   return (
     <>
@@ -97,6 +115,34 @@ export function TeamModal({ link, onClose }: { link: AffiliationView; onClose: (
             <p className="faint" style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5 }}>
               You are on this page but do not hold it. An administrator adds people and decides what each one may do.
             </p>
+          )}
+
+          {requests.length > 0 && (
+            <div className="callout">
+              <Icon name="users" size={15} />
+              <div className="stack" style={{ gap: 8, flex: 1, minWidth: 0 }}>
+                <strong style={{ fontSize: 13 }}>
+                  {requests.length === 1 ? 'Someone asks to join' : `${requests.length} people ask to join`}
+                </strong>
+                <span className="faint" style={{ fontSize: 12 }}>
+                  They see nothing the page keeps for its team until you accept.
+                </span>
+                {requests.map((r) => (
+                  <div className="row" key={r.id} style={{ gap: 6 }}>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 12.5 }}>
+                      <strong>{r.name}</strong>
+                      {r.email && <span className="faint"> · {r.email}</span>}
+                    </span>
+                    <button className="btn sm" disabled={busy === r.id} onClick={() => answer(r, false)}>
+                      Decline
+                    </button>
+                    <button className="btn sm primary" disabled={busy === r.id} onClick={() => answer(r, true)}>
+                      Accept
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {team === null ? (
@@ -146,11 +192,11 @@ export function TeamModal({ link, onClose }: { link: AffiliationView; onClose: (
 
                   {mayManage && (
                     <div className="row" style={{ gap: 5, flexShrink: 0 }}>
-                      {m.account?.state !== 'claimed' && (
+                      {!m.account && (
                         <button
                           className="btn sm"
                           disabled={busy === m.affiliationId || !m.person.email}
-                          title={m.person.email ? 'Open a way in for them' : 'Add an email address first.'}
+                          title={m.person.email ? 'Invite them: their password goes to their email' : 'Add an email address first.'}
                           onClick={() => sendInvite(m)}
                         >
                           <Icon name="send" size={13} />
@@ -275,60 +321,6 @@ function AddMemberModal({
           </select>
           <div className="hint">{ORG_ACCESS_HINT[draft.access]}</div>
         </div>
-      </div>
-    </Modal>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* The one moment the password is readable                             */
-/* ------------------------------------------------------------------ */
-
-function InviteHandover({ invite, onClose }: { invite: TeamInvite; onClose: () => void }) {
-  const toast = useToast();
-  const copy = () => {
-    void navigator.clipboard?.writeText(`${invite.email} · ${invite.password}`);
-    toast('Email and password copied.');
-  };
-
-  return (
-    <Modal
-      title="They can come in"
-      onClose={onClose}
-      footer={
-        <>
-          <div className="spacer" />
-          <button className="btn" onClick={copy}>
-            <Icon name="copy" size={13} /> Copy both
-          </button>
-          <button className="btn primary" onClick={onClose}>
-            Done
-          </button>
-        </>
-      }
-    >
-      <div className="stack" style={{ gap: 12 }}>
-        <div className="callout warn">
-          <Icon name="alert" size={15} />
-          <div>
-            <strong>Pass this on now.</strong> The password is hashed the moment it is saved — this screen is the only
-            place it will ever be readable.
-          </div>
-        </div>
-        <div className="rowcard stack" style={{ gap: 6 }}>
-          <div>
-            <div className="faint" style={{ fontSize: 11.5 }}>Signs in with</div>
-            <div style={{ fontSize: 12.5, overflowWrap: 'anywhere' }}>{invite.email}</div>
-          </div>
-          <div>
-            <div className="faint" style={{ fontSize: 11.5 }}>Password</div>
-            <code className="num" style={{ fontSize: 15 }}>{invite.password}</code>
-          </div>
-        </div>
-        <p className="faint" style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5 }}>
-          They will be asked to replace it the first time they sign in. Until they do, they stay a name on your page —
-          CEED's people list only shows them once they have come in themselves.
-        </p>
       </div>
     </Modal>
   );

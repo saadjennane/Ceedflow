@@ -482,8 +482,14 @@ const WORDS = {
   'org.country': { fr: 'Pays', en: 'Country' },
   'org.website': { fr: 'Site web', en: 'Website' },
   'org.saved': { fr: 'Enregistré.', en: 'Saved.' },
-  'org.joined': { fr: 'CEED connaissait déjà cette organisation : vous rejoignez sa page.', en: 'CEED already knew it — you are attached to that page.' },
+  'org.joined': { fr: 'Vous faites déjà partie de cette organisation.', en: 'You are already on this organisation’s page.' },
+  'org.pending': {
+    fr: 'Cette organisation existe déjà : votre demande pour la rejoindre est envoyée à ses administrateurs (ou à CEED). Vous la verrez ici dès qu’elle sera acceptée.',
+    en: 'This organisation already exists: your request to join was sent to its administrators (or to CEED). It will appear here once accepted.',
+  },
   'org.created': { fr: 'Page créée.', en: 'Page created.' },
+  'org.requestWaiting': { fr: 'Demande envoyée — en attente d’acceptation', en: 'Request sent — waiting to be accepted' },
+  'org.requestWithdraw': { fr: 'Retirer', en: 'Withdraw' },
 
   /* ---- les boutons d'une fenêtre ---- */
   'do.cancel': { fr: 'Annuler', en: 'Cancel' },

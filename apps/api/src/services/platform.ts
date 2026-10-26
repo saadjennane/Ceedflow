@@ -50,6 +50,9 @@ function reachable(host: string): boolean {
  * without a deploy while an ordinary request costs nothing.
  */
 export async function noteOrigin(protocol: string | undefined, host: string | undefined): Promise<void> {
+  /* L'adresse donnée l'emporte, et rien de ce qu'une requête prétend ne
+     l'approche : les liens des mails de mot de passe partent d'ici. */
+  if (process.env.APP_URL?.trim()) return;
   if (!host || !reachable(host)) return;
   /* https unless the proxy in front says otherwise.
      Only public hosts get this far, and the two ways to be wrong are not

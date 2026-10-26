@@ -52,7 +52,6 @@ import {
   endSession,
   findAccount,
   markInvited,
-  reissueProvisionalPassword,
   setPassword,
   verifyPassword,
   RESET_MINUTES,
@@ -179,6 +178,37 @@ export async function programsFor(recordId: string): Promise<MyProgram[]> {
   return out;
 }
 
+/**
+ * La lettre à une adresse que CEED connaissait : le mot de passe qui prouve
+ * qu'on la tient, provisoire, remplacé à la première connexion.
+ */
+async function mailKnownAddress(email: string, name: string, recordId: string, password: string) {
+  const origin = await appLink();
+  const login = origin ? origin.replace(/\/me\?tab=Programs$/, '/login') : '';
+  await post({
+    kind: 'account_known',
+    to: email,
+    toName: name,
+    recordId,
+    subject: 'Votre compte CEED — Your CEED account',
+    body: [
+      name ? `${name},` : 'Bonjour,',
+      '',
+      'Vous venez de créer un compte avec une adresse que CEED connaissait déjà. Pour être sûrs que c’est bien la vôtre, voici votre mot de passe — vous en choisirez un à vous en vous connectant :',
+      '',
+      `    ${email}`,
+      `    ${password}`,
+      '',
+      ...(login ? [`    ${login}`, ''] : []),
+      'Vous retrouverez votre fiche, vos organisations et vos programmes. Si vous n’avez rien demandé, ignorez ce message.',
+      '',
+      '—',
+      '',
+      'You just created an account with an address CEED already knew. To make sure it is yours, here is your password — you will choose your own when you sign in. If you did not ask for this, ignore this message.',
+    ].join('\n'),
+  });
+}
+
 export async function authRoutes(app: FastifyInstance) {
   /**
    * Reads the signed-in account, or refuses. A provisional password is refused
@@ -203,31 +233,36 @@ export async function authRoutes(app: FastifyInstance) {
       throw new HttpError(422, 'An account already uses this email.', { email: 'Already taken — sign in instead.' });
     }
 
-    const name = fullName(input.firstName, input.lastName);
-    // Somebody CEED already typed in becomes the account's profile rather than a
-    // second copy of the same person — unless that record is already somebody
-    // else's. A namesake is not the same person, and five founders called Ali
-    // came through the import to prove it.
-    const sameName = await dir.findByName('person', name);
-    const existing = sameName && !(await accountOfRecord(sameName.id)) ? sameName : null;
-    const record =
-      existing ??
-      (await dir.createRecord({
-        kind: 'person',
-        name,
-        firstName: input.firstName,
-        lastName: input.lastName,
-        emails: [input.email],
-        places: [],
-        origin: 'signup',
-      }));
-    if (existing) {
-      await dir.updateRecord(existing.id, {
-        firstName: existing.firstName || input.firstName,
-        lastName: existing.lastName || input.lastName,
-        email: existing.email || input.email,
-      });
+    /* Quelqu'un que CEED connaît déjà, par son adresse : un juré, une
+       fondatrice importée. Sa fiche porte ses panels, ses organisations, ses
+       rendez-vous — la lui rendre sur la seule foi d'un formulaire, c'était
+       la rendre à quiconque tape son adresse. Le mot de passe part donc à
+       cette adresse : qui le reçoit la possède, et retrouve tout en se
+       connectant. Jamais par le nom : cinq fondateurs s'appellent Ali. */
+    const known = await dir.findByEmail('person', input.email);
+    if (known) {
+      if (await accountOfRecord(known.id)) {
+        throw new HttpError(422, 'This person already has an account.', {
+          email: 'Already has an account — sign in, or use “Forgot password”.',
+        });
+      }
+      const password = suggestPassword();
+      await createAccount({ email: input.email, password, recordId: known.id, mustChangePassword: true });
+      await mailKnownAddress(input.email, known.name, known.id, password);
+      reply.code(202);
+      return { mailed: true, email: input.email };
     }
+
+    const name = fullName(input.firstName, input.lastName);
+    const record = await dir.createRecord({
+      kind: 'person',
+      name,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      emails: [input.email],
+      places: [],
+      origin: 'signup',
+    });
 
     const account = await createAccount({ email: input.email, password: input.password, recordId: record.id });
     const { token, expiresAt } = await createSession(account.id);
@@ -386,9 +421,28 @@ export async function authRoutes(app: FastifyInstance) {
     const account = await require(req);
     const input = parse(myOrgInput, req.body);
 
-    const { org, joined } = await dir.openOrganisation(account.recordId, input);
+    const { org, joined, pending } = await dir.openOrganisation(account.recordId, input);
+    if (pending) await tellAdminsOfRequest(org.id, account.recordId);
     reply.code(201);
-    return { organisation: org, joined };
+    /* Une demande ne montre de l'organisation que son nom : la page entière
+       attend qu'on ait dit oui. */
+    return pending ? { organisation: { id: org.id, name: org.name }, joined, pending } : { organisation: org, joined, pending };
+  });
+
+  /** Ce que la personne attend encore : ses demandes pour rejoindre une organisation. */
+  app.get('/api/me/requests', async (req) => {
+    const account = await require(req);
+    return (await dir.requestsBy(account.recordId)).map(({ id, orgId, orgName, createdAt }) => ({ id, orgId, orgName, createdAt }));
+  });
+
+  /** Retirer sa propre demande. */
+  app.delete('/api/me/requests/:requestId', async (req, reply) => {
+    const account = await require(req);
+    const { requestId } = req.params as { requestId: string };
+    const request = await dir.requestById(requestId);
+    if (!request || request.personId !== account.recordId) return notFound(reply, 'No such request.');
+    await dir.declineRequest(requestId);
+    reply.code(204);
   });
 
   /* ---- The programmes CEED has published ---- */
@@ -552,7 +606,7 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     await repo.saveReturn(input.blockId, candidateId, input.itemId, input.value ?? null);
-    await repo.claimUploads(candidateId, { [input.itemId]: input.value });
+    await repo.claimUploads(candidateId, { [input.itemId]: input.value }, account.recordId);
     return deliverablesFor(candidate.editionId, candidate);
   });
 
@@ -626,6 +680,22 @@ export async function authRoutes(app: FastifyInstance) {
     if (!panel.items.some((i) => i.candidate.id === input.candidateId)) {
       throw new HttpError(403, 'That startup is not on your list.');
     }
+    /* Une note est sur la grille, et dans son échelle : une note de mille sur
+       dix, envoyée à la main, pèserait plus que tout le reste du jury. */
+    if (panel.evaluation.method === 'verdict') {
+      if (input.verdict && !panel.evaluation.outcomes.some((o) => o.id === input.verdict)) {
+        throw new HttpError(422, 'That verdict is not one of this panel’s.');
+      }
+    } else {
+      const outOf = panel.evaluation.markedOutOf;
+      const criteria = new Set(panel.evaluation.leaves.map((l) => l.id));
+      for (const [criterion, mark] of Object.entries(input.marks)) {
+        if (!criteria.has(criterion)) throw new HttpError(422, 'A mark was given for a criterion this grid does not have.');
+        if (!Number.isFinite(mark) || mark < 0 || mark > outOf) {
+          throw new HttpError(422, `Every mark is between 0 and ${outOf}.`);
+        }
+      }
+    }
 
     const record = await dir.getRecord(account.recordId);
     if (input.submit) {
@@ -670,13 +740,26 @@ export async function authRoutes(app: FastifyInstance) {
     return { account, access };
   };
 
+  /**
+   * Un fichier qu'on met sur la page — logo, document, image d'un produit —
+   * doit être le sien ou déjà celui de l'organisation. Connaître l'identifiant
+   * du fichier d'une autre startup ne suffit pas à le faire sien.
+   */
+  const placeable = async (by: string, orgId: string, uploadId: unknown) => {
+    if (typeof uploadId !== 'string' || !uploadId) return;
+    if (!(await repo.mayPlaceUpload(uploadId, by, orgId))) {
+      throw new HttpError(422, 'That file did not arrive. Send it again.', { uploadId: 'Missing file.' });
+    }
+  };
+
   app.patch('/api/me/organisations/:id', async (req) => {
     const { id } = req.params as { id: string };
-    const { access } = await accessTo(req, id);
+    const { account, access } = await accessTo(req, id);
     if (!canEditOrg(access)) {
       throw new HttpError(403, 'Only an editor or an administrator can change this page.');
     }
     const patch = parse(myOrgInput.omit({ myRole: true }).partial(), req.body);
+    await placeable(account.recordId, id, patch.logoUploadId);
     /* Ce qui ne peut pas être vrai à la fois est refusé ici, contre la fiche
        telle qu'elle sera : le champ envoyé seul ne dit rien de l'autre. */
     const current = await dir.getRecord(id);
@@ -707,6 +790,7 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/api/me/organisations/:id/documents', async (req, reply) => {
     const { id } = req.params as { id: string };
     const account = await canEdit(req, id);
+    await placeable(account.recordId, id, (req.body as { uploadId?: unknown } | null)?.uploadId);
     const who = await dir.getRecord(account.recordId);
     await addOrgDocument(id, req.body, who?.name ?? '');
     reply.code(201);
@@ -714,7 +798,8 @@ export async function authRoutes(app: FastifyInstance) {
   });
   app.patch('/api/me/organisations/:id/documents/:docId', async (req, reply) => {
     const { id, docId } = req.params as { id: string; docId: string };
-    await canEdit(req, id);
+    const account = await canEdit(req, id);
+    await placeable(account.recordId, id, (req.body as { uploadId?: unknown } | null)?.uploadId);
     return (await changeOrgDocument(id, docId, req.body)) ? dir.getRecord(id) : notFound(reply, 'Not on this page.');
   });
   app.delete('/api/me/organisations/:id/documents/:docId', async (req, reply) => {
@@ -728,20 +813,25 @@ export async function authRoutes(app: FastifyInstance) {
      rend la fiche entière, comme le chiffre d'affaires. */
   for (const list of SHEET_LISTS) {
     const editable = async (req: FastifyRequest, id: string) => {
-      const { access } = await accessTo(req, id);
+      const { account, access } = await accessTo(req, id);
       if (!canEditOrg(access)) throw new HttpError(403, 'Only an editor or an administrator can change this page.');
+      return account;
     };
     app.post(`/api/me/organisations/:id/${list}`, async (req, reply) => {
       const { id } = req.params as { id: string };
-      await editable(req, id);
-      await dir.addSheetItem(list, id, parse(sheetListInput[list], req.body));
+      const account = await editable(req, id);
+      const item = parse(sheetListInput[list], req.body);
+      await placeable(account.recordId, id, (item as { imageUploadId?: unknown }).imageUploadId);
+      await dir.addSheetItem(list, id, item);
       reply.code(201);
       return dir.getRecord(id);
     });
     app.patch(`/api/me/organisations/:id/${list}/:itemId`, async (req, reply) => {
       const { id, itemId } = req.params as { id: string; itemId: string };
-      await editable(req, id);
-      const done = await dir.changeSheetItem(list, id, itemId, parse(sheetListInput[list].partial(), req.body));
+      const account = await editable(req, id);
+      const patch = parse(sheetListInput[list].partial(), req.body);
+      await placeable(account.recordId, id, (patch as { imageUploadId?: unknown }).imageUploadId);
+      const done = await dir.changeSheetItem(list, id, itemId, patch);
       return done ? dir.getRecord(id) : notFound(reply, 'Not on this page.');
     });
     app.delete(`/api/me/organisations/:id/${list}/:itemId`, async (req, reply) => {
@@ -778,6 +868,32 @@ export async function authRoutes(app: FastifyInstance) {
     if (!canManageTeam(access)) throw new HttpError(403, 'Only an administrator can manage the team.');
     return account;
   };
+
+  /* ---- Ceux qui demandent à rejoindre la page ---- */
+
+  app.get('/api/me/organisations/:id/requests', async (req) => {
+    const { id } = req.params as { id: string };
+    await requireAdmin(req, id);
+    return dir.requestsFor(id);
+  });
+
+  app.post('/api/me/organisations/:id/requests/:requestId/accept', async (req, reply) => {
+    const { id, requestId } = req.params as { id: string; requestId: string };
+    await requireAdmin(req, id);
+    const request = await dir.requestById(requestId);
+    if (!request || request.orgId !== id) return notFound(reply, 'No such request.');
+    await dir.acceptRequest(requestId);
+    return dir.teamOf(id);
+  });
+
+  app.delete('/api/me/organisations/:id/requests/:requestId', async (req, reply) => {
+    const { id, requestId } = req.params as { id: string; requestId: string };
+    await requireAdmin(req, id);
+    const request = await dir.requestById(requestId);
+    if (!request || request.orgId !== id) return notFound(reply, 'No such request.');
+    await dir.declineRequest(requestId);
+    reply.code(204);
+  });
 
   /**
    * Adding somebody to the page. No account, no password, no mail: this writes a
@@ -848,9 +964,14 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   /**
-   * Opening a way in for a teammate. Recorded rather than delivered, like every
-   * other invitation here: the password comes back once, for the founder to pass
-   * on, until mail routing exists to carry it.
+   * Ouvrir un compte à un coéquipier.
+   *
+   * Le mot de passe part par mail, à son adresse, et ne revient jamais à
+   * l'écran : l'adresse d'une équipe se tape librement, et rendre le mot de
+   * passe à qui l'a tapée, c'était lui donner le compte de n'importe qui — un
+   * juré, un membre de CEED — pourvu qu'il ne se soit pas encore connecté.
+   * Pour la même raison, un compte qui existe déjà n'est jamais touché d'ici :
+   * son titulaire se connecte, ou passe par « mot de passe oublié ».
    */
   app.post('/api/me/organisations/:id/team/:affiliationId/invite', async (req, reply) => {
     const { id, affiliationId } = req.params as { id: string; affiliationId: string };
@@ -866,24 +987,81 @@ export async function authRoutes(app: FastifyInstance) {
         email: 'An invitation needs somewhere to go.',
       });
     }
-
-    const existing = await accountOfRecord(person.id);
-    // A password its owner chose is never overwritten from outside.
-    if (existing && existing.state === 'claimed') {
-      throw new HttpError(422, `${person.name} already signed in and chose their own password.`);
-    }
-    if (await findAccount(email)) {
-      const held = existing?.email === email.toLowerCase();
-      if (!held) throw new HttpError(422, 'Another account already uses this email address.');
+    if ((await accountOfRecord(person.id)) || (await findAccount(email))) {
+      throw new HttpError(
+        422,
+        `${person.name} already has an account. They sign in with it — or use “Forgot password” on the sign-in page.`,
+      );
     }
 
     const password = suggestPassword();
-    if (existing) await reissueProvisionalPassword(existing.id, password);
-    else await createAccount({ email, password, recordId: person.id, mustChangePassword: true });
-
+    await createAccount({ email, password, recordId: person.id, mustChangePassword: true });
     const account = (await accountOfRecord(person.id))!;
     await markInvited(account.id);
+    const org = await dir.getRecord(id);
+    await mailTeamInvite(email, person.name, person.id, org?.name ?? '', password);
     reply.code(201);
-    return { email, password } satisfies TeamInvite;
+    return { email } satisfies TeamInvite;
   });
+}
+
+/** Le mot de passe d'un coéquipier, à son adresse et à elle seule. */
+async function mailTeamInvite(email: string, name: string, recordId: string, orgName: string, password: string) {
+  const origin = await appLink();
+  const login = origin ? origin.replace(/\/me\?tab=Programs$/, '/login') : '';
+  await post({
+    kind: 'team_invite',
+    to: email,
+    toName: name,
+    recordId,
+    subject: `Votre compte CEED${orgName ? ` — ${orgName}` : ''}`,
+    body: [
+      name ? `${name},` : 'Bonjour,',
+      '',
+      `${orgName ? `L’équipe de ${orgName} vous` : 'On vous'} a ouvert un compte sur l’espace CEED. Voici votre mot de passe — vous en choisirez un à vous en vous connectant :`,
+      '',
+      `    ${email}`,
+      `    ${password}`,
+      '',
+      ...(login ? [`    ${login}`, ''] : []),
+      'Si vous ne vous y attendiez pas, ignorez ce message : rien ne se passe tant que personne ne se connecte.',
+      '',
+      '—',
+      '',
+      `${orgName ? `The ${orgName} team` : 'Someone'} opened a CEED account for you. Sign in with the password above; you will choose your own.`,
+    ].join('\n'),
+  });
+}
+
+/**
+ * Prévenir les administrateurs d'une organisation qu'on demande à la rejoindre.
+ * Une organisation sans administrateur joignable attend CEED, qui voit la
+ * demande sur sa fiche.
+ */
+export async function tellAdminsOfRequest(orgId: string, personId: string) {
+  const [org, person, team] = await Promise.all([dir.getRecord(orgId), dir.getRecord(personId), dir.teamOf(orgId)]);
+  if (!org || !person) return;
+  const origin = await appLink();
+  const space = origin ? origin.replace(/\?tab=Programs$/, '?tab=Profile') : '';
+  for (const member of team) {
+    const admin = member.person;
+    if (member.access !== 'admin' || !admin.email) continue;
+    await post({
+      kind: 'org_request',
+      to: admin.email,
+      toName: admin.name,
+      recordId: admin.id,
+      subject: `${person.name} demande à rejoindre ${org.name}`,
+      body: [
+        `${admin.name},`,
+        '',
+        `${person.name}${person.email ? ` (${person.email})` : ''} demande à rejoindre la page de ${org.name} sur CEED. Tant que vous n’avez pas accepté, cette personne ne voit rien de ce que la page garde pour l’équipe.`,
+        '',
+        ...(space ? [`Accepter ou refuser : ${space}`, ''] : []),
+        '—',
+        '',
+        `${person.name} asked to join ${org.name} on CEED. Until you accept, they see nothing the page keeps for its team.`,
+      ].join('\n'),
+    });
+  }
 }

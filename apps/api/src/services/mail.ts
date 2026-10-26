@@ -11,7 +11,7 @@
  * hearing about it. Switching that off is one environment variable, set in one
  * place, on purpose.
  */
-import { newId } from '@ceed/shared';
+import { newId, redactPasswords } from '@ceed/shared';
 import { db } from '../db/client.js';
 
 export type OutboxState = 'queued' | 'held' | 'sent' | 'failed' | 'bounced';
@@ -219,10 +219,11 @@ export async function flush(limit = 25): Promise<{ sent: number; failed: number 
     const out = await handOver(row);
     if (out.ok) {
       sent++;
+      /* Parti : le mot de passe qu'il portait n'a plus à rester écrit ici. */
       await conn.query(
-        `update outbox set state = 'sent', provider_id = $2, sent_at = now(),
+        `update outbox set state = 'sent', provider_id = $2, sent_at = now(), body = $3,
                            attempts = attempts + 1, updated_at = now() where id = $1`,
-        [row.id, out.id],
+        [row.id, out.id, redactPasswords(row.body)],
       );
     } else {
       failed++;
@@ -230,8 +231,8 @@ export async function flush(limit = 25): Promise<{ sent: number; failed: number 
       // having a bad minute is not a message that should never go.
       const done = row.attempts + 1 >= GIVE_UP_AFTER;
       await conn.query(
-        `update outbox set state = $3, error = $2, attempts = attempts + 1, updated_at = now() where id = $1`,
-        [row.id, out.why.slice(0, 500), done ? 'failed' : 'queued'],
+        `update outbox set state = $3, error = $2, attempts = attempts + 1, updated_at = now(), body = $4 where id = $1`,
+        [row.id, out.why.slice(0, 500), done ? 'failed' : 'queued', done ? redactPasswords(row.body) : row.body],
       );
     }
   }
@@ -261,9 +262,9 @@ export async function flushOne(id: string): Promise<{ state: OutboxState; error:
   const out = await handOver(row);
   if (out.ok) {
     await conn.query(
-      `update outbox set state = 'sent', provider_id = $2, sent_at = now(),
+      `update outbox set state = 'sent', provider_id = $2, sent_at = now(), body = $3,
                          attempts = attempts + 1, updated_at = now() where id = $1`,
-      [id, out.id],
+      [id, out.id, redactPasswords(row.body)],
     );
     return { state: 'sent', error: '' };
   }
@@ -276,8 +277,19 @@ export async function flushOne(id: string): Promise<{ state: OutboxState; error:
   return { state: 'failed', error: out.why };
 }
 
-/** What went out, or did not, about one person — for the screen that asks. */
+/**
+ * What went out, or did not, about one person — for the screen that asks.
+ * A password a letter carries is never shown: not to a colleague reading the
+ * history, whatever their role, and not while the letter is still waiting.
+ */
 export async function letters(
+  where: { email?: string; candidateId?: string; blockId?: string },
+  limit = 50,
+): Promise<OutboxRow[]> {
+  return (await rawLetters(where, limit)).map((row) => ({ ...row, body: redactPasswords(row.body) }));
+}
+
+async function rawLetters(
   where: { email?: string; candidateId?: string; blockId?: string },
   limit = 50,
 ): Promise<OutboxRow[]> {

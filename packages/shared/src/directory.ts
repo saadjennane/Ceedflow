@@ -503,10 +503,9 @@ export interface TeamMember {
   account: RecordAccount | null;
 }
 
-/** Handed back once, when an administrator opens a way in for a teammate. */
+/** What an administrator hears back when a teammate is invited: where the password went. */
 export interface TeamInvite {
   email: string;
-  password: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -687,14 +686,46 @@ export const myOrgInput = z.object({
  * record, a founder from their team page.
  */
 const PASSWORD_WORDS = [
-  'atlas', 'argan', 'safran', 'ambre', 'cedre', 'menthe', 'dune',
-  'zellige', 'oasis', 'corail', 'sable', 'olive',
+  'atlas', 'argan', 'safran', 'ambre', 'cedre', 'menthe', 'dune', 'zellige',
+  'oasis', 'corail', 'sable', 'olive', 'figue', 'datte', 'grenade', 'jasmin',
+  'cannelle', 'cumin', 'anis', 'amande', 'noisette', 'citron', 'orange', 'raisin',
+  'palmier', 'eucalyptus', 'lavande', 'thym', 'romarin', 'basilic', 'laurier', 'myrte',
+  'riad', 'medina', 'souk', 'kasbah', 'ksar', 'agadir', 'jardin', 'fontaine',
+  'patio', 'terrasse', 'arcade', 'coupole', 'minaret', 'zouak', 'tadelakt', 'mosaique',
+  'falaise', 'vallee', 'plateau', 'riviere', 'source', 'cascade', 'lagune', 'rivage',
+  'phare', 'voile', 'marine', 'horizon', 'nuage', 'aurore', 'zenith', 'etoile',
 ];
 
-export function suggestPassword(): string {
-  const pick = () => PASSWORD_WORDS[Math.floor(Math.random() * PASSWORD_WORDS.length)];
-  return `${pick()}-${pick()}-${1000 + Math.floor(Math.random() * 9000)}`;
+/**
+ * Trois mots et quatre chiffres, tirés au hasard cryptographique : environ
+ * 31 bits, ce qui, avec la limite de tentatives par adresse, laisse à qui
+ * devine des millions d'heures. `Math.random` se prédit ; celui-ci non.
+ */
+function randomBelow(n: number): number {
+  /* Rejet plutôt que modulo : un modulo favorise les premiers mots. */
+  const limit = Math.floor(0x100000000 / n) * n;
+  const box = new Uint32Array(1);
+  for (;;) {
+    crypto.getRandomValues(box);
+    if (box[0]! < limit) return box[0]! % n;
+  }
 }
+
+export function suggestPassword(): string {
+  const pick = () => PASSWORD_WORDS[randomBelow(PASSWORD_WORDS.length)];
+  return `${pick()}-${pick()}-${pick()}-${1000 + randomBelow(9000)}`;
+}
+
+/**
+ * Masque, dans un texte, ce qui a la forme d'un mot de passe proposé ici.
+ *
+ * A letter that carried a password is kept after it leaves — to say what was
+ * sent, and when — but the password in it is nobody's business once it has
+ * gone: not a colleague reading the history, not a backup. The old two-word
+ * shape is caught too, for the letters written before the third word.
+ */
+const PASSWORD_SHAPE = new RegExp(`\\b(?:(?:${PASSWORD_WORDS.join('|')})-){2,3}\\d{4}\\b`, 'g');
+export const redactPasswords = (text: string): string => text.replace(PASSWORD_SHAPE, '••••••••');
 
 /* ------------------------------------------------------------------ */
 /* The CEED workspace                                                  */

@@ -41,7 +41,8 @@ import {
   rosterFor,
   tellReturned,
 } from '../services/deliverables.js';
-import { programsFor } from './auth.js';
+import { programsFor, tellAdminsOfRequest } from './auth.js';
+import { UPLOADS_PER_HOUR, servingHeaders, uploadType } from '../services/uploads.js';
 import { reviewsFor } from '../services/reviews.js';
 import { outcomesByCandidate, outcomesOf, scoresByCandidate, setOutcomeByHand } from '../services/scoring.js';
 import {
@@ -211,8 +212,10 @@ export async function funnelRoutes(app: FastifyInstance) {
       const phones = phone.trim() ? [phone.trim()] : [];
       const clean = name.trim();
       if (!clean) return null;
-      const found =
-        (email.trim() ? await dir.findByEmail('person', email) : null) ?? (await dir.findByName('person', clean));
+      /* Une adresse donnée tranche : si elle n'est à personne, c'est quelqu'un
+         de nouveau — pas l'homonyme qu'on lierait comme administrateur de la
+         page. Le nom ne sert que quand aucune adresse n'est donnée. */
+      const found = email.trim() ? await dir.findByEmail('person', email) : await dir.findByName('person', clean);
       return (
         found ??
         (await dir.createRecord({ kind: 'person', name: clean, emails: email.trim() ? [email.trim()] : [], phones, origin }))
@@ -467,9 +470,16 @@ export async function funnelRoutes(app: FastifyInstance) {
         });
       }
     }
-    const orgId =
-      input.orgId ||
-      (await dir.openOrganisation(account.recordId, { name: input.newOrg!.name, website: input.newOrg!.website })).org.id;
+    /* Une organisation déjà connue, que la personne ne tient pas : la
+       candidature est déposée pour elle, et la demande de la rejoindre part
+       en même temps — l'équipe ou CEED la valide, et d'ici là la personne ne
+       voit rien de ce que l'organisation garde pour elle. */
+    const opened = input.orgId
+      ? null
+      : await dir.openOrganisation(account.recordId, { name: input.newOrg!.name, website: input.newOrg!.website });
+    const orgId = input.orgId || opened!.org.id;
+    const pending = Boolean(opened?.pending);
+    if (pending) await tellAdminsOfRequest(orgId, account.recordId);
 
     const candidate = await repo.createCandidate({
       editionId: found.editionId,
@@ -483,13 +493,13 @@ export async function funnelRoutes(app: FastifyInstance) {
       answers: input.answers,
     });
     // Attachments are uploaded before the form is sent, so they are claimed here.
-    await repo.claimUploads(candidate.id, input.answers);
+    await repo.claimUploads(candidate.id, input.answers, account.recordId);
     /* The receipt, and whoever at CEED asked to hear about each one. Both are
        posted rather than sent: post() never throws, so a mail provider having
        a bad minute cannot undo an application somebody just filed. */
     await acknowledge(found.block.id, candidate.id);
     reply.code(201);
-    return { confirmation: config.confirmation, candidateId: candidate.id };
+    return { confirmation: config.confirmation, candidateId: candidate.id, pending };
   });
 
   /**
@@ -501,17 +511,25 @@ export async function funnelRoutes(app: FastifyInstance) {
     const account = await accountForToken(req.cookies[SESSION_COOKIE]);
     if (!account) throw new HttpError(401, 'Sign in to attach a file.');
 
+    if ((await repo.uploadsLastHour(account.recordId)) >= UPLOADS_PER_HOUR) {
+      throw new HttpError(429, 'Too many files in an hour. Try again a little later.');
+    }
     const file = await req.file();
     if (!file) throw new HttpError(422, 'No file received.');
+    const mime = uploadType(file.filename, file.mimetype);
+    if (!mime) {
+      throw new HttpError(422, 'This kind of file is not accepted. Send a PDF, an image, an office document or a video.');
+    }
     const bytes = await file.toBuffer();
     if (!bytes.length) throw new HttpError(422, 'That file is empty.');
 
     reply.code(201);
     return repo.saveUpload({
       filename: file.filename,
-      mime: file.mimetype,
+      mime,
       bytes,
       fieldId: (file.fields.fieldId as { value?: string } | undefined)?.value ?? '',
+      uploadedBy: account.recordId,
     });
   });
 
@@ -534,7 +552,11 @@ export async function funnelRoutes(app: FastifyInstance) {
 
     if (!account.staffRole) {
       const ownOrgs = await dir.orgIdsOf(account.recordId);
-      const mine = Boolean(upload.orgId && ownOrgs.has(upload.orgId));
+      /* Le sien parce que c'est son organisation, ou parce qu'on vient de le
+         déposer et qu'il n'est encore attaché à rien. */
+      const mine =
+        Boolean(upload.orgId && ownOrgs.has(upload.orgId)) ||
+        (upload.uploadedBy === account.recordId && !upload.candidateId && !upload.orgId);
       /* Exactement ce que leur écran montre, et rien d'autre : la pièce jointe
          d'une candidature de leur liste, ou le logo affiché sur cette fiche. */
       const reviewing =
@@ -555,17 +577,19 @@ export async function funnelRoutes(app: FastifyInstance) {
         );
       /* Un fichier joint à un compte rendu de One to One : l'interlocuteur qui
          l'a écrit le rouvre. */
+      /* Un fichier que l'interlocuteur a lui-même déposé : citer dans son compte
+         rendu l'identifiant d'un autre fichier ne l'ouvre pas. */
       const reporting =
         !mine &&
         !reviewing &&
+        upload.uploadedBy === account.recordId &&
         (await meetingsFor(account.recordId)).some((m) => uploadIdsIn(Object.values(m.report)).includes(id));
       // The same answer as a missing file: whoever asked has no business
       // knowing that this one exists.
       if (!mine && !reviewing && !reporting) return notFound(reply, 'File not found.');
     }
 
-    reply.header('content-type', upload.mime);
-    reply.header('content-disposition', `inline; filename="${upload.filename.replace(/"/g, '')}"`);
+    reply.headers(servingHeaders(upload.mime, upload.filename));
     return reply.send(upload.bytes);
   });
 
@@ -728,7 +752,7 @@ export async function funnelRoutes(app: FastifyInstance) {
     const block = await repo.getBlock(id);
     if (!block || block.type !== 'deliverable') return notFound(reply, 'Deliverables block not found.');
     await repo.saveReturn(id, candidateId, input.itemId, input.value ?? null);
-    await repo.claimUploads(candidateId, { [input.itemId]: input.value });
+    await repo.claimUploads(candidateId, { [input.itemId]: input.value }, req.staff!.recordId);
     return deliverableView(id);
   });
 

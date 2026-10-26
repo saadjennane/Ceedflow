@@ -15,6 +15,8 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', password: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [mailed, setMailed] = useState<string | null>(null);
+  const [forgetting, setForgetting] = useState(false);
   const navigate = useNavigate();
   const [params] = useSearchParams();
   /**
@@ -32,7 +34,13 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
     setBusy(true);
     setErrors({});
     try {
-      const me = await api.post<Me>(signup ? '/api/auth/signup' : '/api/auth/login', form);
+      const me = await api.post<Me | { mailed: true; email: string }>(signup ? '/api/auth/signup' : '/api/auth/login', form);
+      /* Une adresse que CEED connaissait : le mot de passe est parti à cette
+         adresse, pour prouver qu'elle est bien la sienne. */
+      if ('mailed' in me) {
+        setMailed(me.email);
+        return;
+      }
       // Two doors, one form. A provisional password opens neither until it has
       // been replaced, so it goes to the one screen that can do that.
       const home = me.account.mustChangePassword ? '/me' : me.account.staffRole ? '/' : '/me';
@@ -49,8 +57,31 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
     ? form.firstName.trim() && form.lastName.trim() && form.email.trim() && form.password.length >= 8
     : form.email.trim() && form.password;
 
+  if (mailed) {
+    return (
+      <div className="public">
+        <div className="public-card" style={{ maxWidth: 460 }}>
+          <div className="public-top" />
+          <div className="public-body stack" style={{ gap: 14 }}>
+            <h1>Check your inbox</h1>
+            <div className="callout">
+              <Icon name="send" size={15} />
+              <div>
+                <strong>CEED already knows {mailed}.</strong> To make sure it is yours, we sent your password to that
+                address. Sign in with it and you will choose your own — your profile, organisations and programmes will
+                be there.
+              </div>
+            </div>
+            <Link className="btn primary" to={`/login${carry}`} onClick={() => setMailed(null)}>
+              Sign in
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   /* « Mot de passe oublié » : la même page, un autre formulaire. */
-  const [forgetting, setForgetting] = useState(false);
   if (forgetting) {
     return (
       <Forgot

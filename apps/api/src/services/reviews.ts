@@ -19,6 +19,7 @@ import {
   profileOf,
   profileStarted,
   type OrgProfile,
+  CONTACT_FIELD_TYPES,
 } from '@ceed/shared';
 import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
@@ -188,6 +189,7 @@ export async function reviewsFor(recordId: string): Promise<ReviewPanel[]> {
                 profile: await profileOfOrg(candidate.orgId),
                 answers: questions
                   .filter((q) => candidate.answers[q.id] !== undefined && candidate.answers[q.id] !== '')
+                  .filter((q) => !CONTACT_FIELD_TYPES.includes(q.type))
                   .map((q) => ({ label: q.label, value: candidate.answers[q.id], type: q.type })),
                 mine: own
                   ? { marks: own.marks, verdict: own.verdict, comment: own.comment, submittedAt: own.submittedAt }

@@ -132,6 +132,13 @@ export const FIELD_TYPES = [
 
 export type FieldType = (typeof FIELD_TYPES)[number];
 
+/**
+ * Les réponses qui disent comment joindre quelqu'un. Un juré ou un mentor lit
+ * la candidature, jamais ces lignes-là : la fiche les tient pour privées, et
+ * la candidature ne doit pas les laisser passer par une autre porte.
+ */
+export const CONTACT_FIELD_TYPES: readonly FieldType[] = ['email', 'phone'];
+
 export const FIELD_TYPE_LABEL: Record<FieldType, string> = {
   short_text: 'Short answer',
   long_text: 'Long answer',

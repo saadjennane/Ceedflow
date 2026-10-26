@@ -334,8 +334,8 @@ describe('needs and documents, kept', { skip: skipWithoutServer }, () => {
   it('takes a document in its expected format, on its own page only, and replaces it', async () => {
     const org = await dir.createRecord({ kind: 'org', name: `Docs ${uniq()}`, origin: 'manual' });
     const other = await dir.createRecord({ kind: 'org', name: `Ailleurs ${uniq()}`, origin: 'manual' });
-    const pdf = await repo.saveUpload({ filename: 'rc.pdf', mime: 'application/pdf', bytes: Buffer.from('%PDF'), fieldId: 'document' });
-    const png = await repo.saveUpload({ filename: 'rc.png', mime: 'image/png', bytes: Buffer.from('png'), fieldId: 'document' });
+    const pdf = await repo.saveUpload({ filename: 'rc.pdf', mime: 'application/pdf', bytes: Buffer.from('%PDF'), fieldId: 'document', uploadedBy: 'test' });
+    const png = await repo.saveUpload({ filename: 'rc.png', mime: 'image/png', bytes: Buffer.from('png'), fieldId: 'document', uploadedBy: 'test' });
 
     await assert.rejects(addOrgDocument(org.id, { kind: 'rc', uploadId: png.id }, 'Karim'), 'an image is not a register');
     await addOrgDocument(org.id, { kind: 'rc', uploadId: pdf.id }, 'Karim');
@@ -344,7 +344,7 @@ describe('needs and documents, kept', { skip: skipWithoutServer }, () => {
     assert.equal(doc.createdByName, 'Karim');
 
     assert.equal(await changeOrgDocument(other.id, doc.id, { label: 'x' }), false, 'not through another page');
-    const again = await repo.saveUpload({ filename: 'rc-2026.pdf', mime: 'application/pdf', bytes: Buffer.from('%PDF2'), fieldId: 'document' });
+    const again = await repo.saveUpload({ filename: 'rc-2026.pdf', mime: 'application/pdf', bytes: Buffer.from('%PDF2'), fieldId: 'document', uploadedBy: 'test' });
     assert.equal(await changeOrgDocument(org.id, doc.id, { uploadId: again.id }), true);
     doc = (await dir.getRecord(org.id))!.documents[0]!;
     assert.equal(doc.filename, 'rc-2026.pdf');
@@ -397,15 +397,15 @@ describe('an application taking from the fiche', () => {
 describe('a document reused in an application, kept', { skip: skipWithoutServer }, () => {
   it('stays the organisation’s, and is not taken by the candidacy', async () => {
     const org = await dir.createRecord({ kind: 'org', name: `Reprise ${uniq()}`, origin: 'manual' });
-    const deck = await repo.saveUpload({ filename: 'deck.pdf', mime: 'application/pdf', bytes: Buffer.from('%PDF'), fieldId: 'document' });
+    const deck = await repo.saveUpload({ filename: 'deck.pdf', mime: 'application/pdf', bytes: Buffer.from('%PDF'), fieldId: 'document', uploadedBy: 'test' });
     await addOrgDocument(org.id, { kind: 'pitch_deck', uploadId: deck.id }, 'Karim');
-    const fresh = await repo.saveUpload({ filename: 'cv.pdf', mime: 'application/pdf', bytes: Buffer.from('%PDF'), fieldId: 'f' });
+    const fresh = await repo.saveUpload({ filename: 'cv.pdf', mime: 'application/pdf', bytes: Buffer.from('%PDF'), fieldId: 'f', uploadedBy: 'test' });
 
     const program = await repo.createProgram({ name: `Appel ${uniq()}` });
     const edition = await repo.createEdition(program.id, { name: '2026' });
     const track = (await repo.getEditionDetail(edition.id))!.tracks[0]!;
     const candidate = await repo.createCandidate({ editionId: edition.id, trackId: track.id, orgId: org.id, personId: null, originBlockId: null });
-    await repo.claimUploads(candidate.id, { deck: { uploadId: deck.id }, cv: { uploadId: fresh.id } });
+    await repo.claimUploads(candidate.id, { deck: { uploadId: deck.id }, cv: { uploadId: fresh.id } }, 'test');
 
     assert.equal((await repo.getUpload(deck.id))?.candidateId, null, 'the fiche’s document is not the candidacy’s');
     assert.equal((await repo.getUpload(fresh.id))?.candidateId, candidate.id, 'a file sent with the form is');

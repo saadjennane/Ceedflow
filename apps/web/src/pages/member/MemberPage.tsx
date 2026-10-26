@@ -1145,6 +1145,9 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
         </div>
       )}
 
+      {/* Rechargé quand la fenêtre de création se ferme : une demande vient peut-être de partir. */}
+      <PendingRequests key={String(creating)} />
+
       {creating && (
         <OrgModal
           onClose={() => setCreating(false)}
@@ -1213,12 +1216,13 @@ function OrgModal({
     setSaving(true);
     setErrors({});
     try {
-      const { organisation, joined } = await api.post<{ organisation: DirectoryRecord; joined: boolean }>(
-        '/api/me/organisations',
-        draft,
-      );
-      toast(joined ? t('org.joined') : t('org.created'));
-      onSaved(joined ? null : organisation);
+      const { organisation, joined, pending } = await api.post<{
+        organisation: DirectoryRecord;
+        joined: boolean;
+        pending: boolean;
+      }>('/api/me/organisations', draft);
+      toast(pending ? t('org.pending') : joined ? t('org.joined') : t('org.created'));
+      onSaved(joined || pending ? null : organisation);
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrors(err.fields);
       else toast((err as Error).message, true);
@@ -1293,6 +1297,38 @@ function Text({
         onChange={(e) => onChange(e.target.value)}
       />
       {error && <div style={{ color: 'var(--stop)', fontSize: 12 }}>{error}</div>}
+    </div>
+  );
+}
+
+/** Les organisations qu'on a demandé à rejoindre, et qui n'ont pas encore répondu. */
+function PendingRequests() {
+  const { t } = useLang();
+  const toast = useToast();
+  const requests = useAsync(() => api.get<{ id: string; orgName: string; createdAt: string }[]>('/api/me/requests'), 'requests');
+  if (!requests.data?.length) return null;
+  const withdraw = async (id: string) => {
+    try {
+      await api.del(`/api/me/requests/${id}`);
+      requests.reload();
+    } catch (err) {
+      toast((err as Error).message, true);
+    }
+  };
+  return (
+    <div className="rows" style={{ padding: '0 12px 12px' }}>
+      {requests.data.map((r) => (
+        <div className="rowcard row" key={r.id} style={{ gap: 10 }}>
+          <span className="rec-mark">{initials(r.orgName)}</span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ fontWeight: 600, fontSize: 13 }}>{r.orgName}</span>
+            <span className="faint" style={{ display: 'block', fontSize: 12 }}>{t('org.requestWaiting')}</span>
+          </span>
+          <button className="btn sm ghost" onClick={() => withdraw(r.id)}>
+            {t('org.requestWithdraw')}
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

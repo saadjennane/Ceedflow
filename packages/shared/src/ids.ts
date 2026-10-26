@@ -9,8 +9,8 @@ function randomPart(length: number): string {
   return out;
 }
 
-export function newId(prefix: string): string {
-  return `${prefix}_${Date.now().toString(36)}${randomPart(6)}`;
+export function newId(prefix: string, length = 6): string {
+  return `${prefix}_${Date.now().toString(36)}${randomPart(length)}`;
 }
 
 export const idOf = {

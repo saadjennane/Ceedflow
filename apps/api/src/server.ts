@@ -1,6 +1,5 @@
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
-import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -36,7 +35,10 @@ const app = Fastify({
   trustProxy: process.env.NODE_ENV === 'production',
 });
 
-await app.register(cors, { origin: true, credentials: true });
+/* Pas de CORS : l'app et son API ont une seule adresse (le proxy de Vite en
+   local, le même service en production). Renvoyer l'origine de n'importe quel
+   site avec les cookies, c'était laisser une page d'ailleurs parler à l'API
+   au nom de qui la visite. */
 await app.register(cookie);
 await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } });
 
