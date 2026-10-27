@@ -40,6 +40,7 @@ export function MeetingPage() {
 
   useEffect(() => {
     if (meeting.error?.includes('Sign in')) navigate('/login?next=' + encodeURIComponent(`/meeting/${meetingId}`));
+    else if (meeting.error?.includes('Choose your own password')) navigate('/me?next=' + encodeURIComponent(`/meeting/${meetingId}`));
   }, [meeting.error, navigate, meetingId]);
 
   if (meeting.loading) return <div className="member-shell" />;

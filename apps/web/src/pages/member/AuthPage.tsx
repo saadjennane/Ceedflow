@@ -43,8 +43,13 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
       }
       // Two doors, one form. A provisional password opens neither until it has
       // been replaced, so it goes to the one screen that can do that.
-      const home = me.account.mustChangePassword ? '/me' : me.account.staffRole ? '/' : '/me';
-      navigate(next ?? home, { replace: true });
+      /* Un mot de passe provisoire se remplace avant tout le reste : on passe
+         par l'espace, qui le demande, et qui renvoie ensuite là où l'on allait. */
+      if (me.account.mustChangePassword) {
+        navigate(next ? `/me?next=${encodeURIComponent(next)}` : '/me', { replace: true });
+        return;
+      }
+      navigate(next ?? (me.account.staffRole ? '/' : '/me'), { replace: true });
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrors(err.fields);
       else setErrors({ _: (err as Error).message });

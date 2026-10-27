@@ -77,8 +77,65 @@ export function MemberPage({ preview }: { preview?: MemberPreview } = {}) {
   );
 }
 
+/**
+ * La porte de l'espace : qui est connecté, et si son mot de passe est encore
+ * provisoire. Rien de l'espace ne se charge avant qu'elle soit passée — sinon
+ * les programmes, les tâches et les panels, demandés pendant que le mot de
+ * passe était provisoire, gardaient le refus du serveur une fois le mot de
+ * passe choisi, et l'onglet affichait « Choose your own password ».
+ */
 function MemberSpace({ preview }: { preview?: MemberPreview }) {
   const { me, loading, reload } = useAccount();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  /* Un formulaire de candidature qui attend : on est passé ici pour remplacer
+     un mot de passe provisoire, et on y retourne. Seulement vers un
+     formulaire, un panel de juré ou un rendez-vous — une adresse de retour
+     libre enverrait n'importe où. */
+  const next = params.get('next') ?? '';
+  const returnTo = /^\/(apply|review|meeting)\//.test(next) ? next : '';
+
+  useEffect(() => {
+    if (!preview && !loading && !me) navigate('/login', { replace: true });
+  }, [preview, loading, me, navigate]);
+
+  /* Le mot de passe remplacé, on retourne au formulaire sans chercher le lien. */
+  useEffect(() => {
+    if (preview || !returnTo || !me || me.account.mustChangePassword) return;
+    navigate(returnTo, { replace: true });
+  }, [preview, returnTo, me, navigate]);
+
+  if (!preview) {
+    if (loading) return <div className="member-shell" />;
+    if (!me) return null;
+  }
+  // A password CEED chose is not yet this person's account. Nothing else opens
+  // until they have replaced it — the server refuses it anyway.
+  if (!preview && me!.account.mustChangePassword) {
+    return (
+      <ChoosePassword
+        me={me!}
+        // Having replaced it, somebody at CEED belongs in the workspace rather
+        // than on their own profile page.
+        // Une candidature en attente reprend la main juste après : l'effet de
+        // retour voit le mot de passe changé et ramène au formulaire.
+        onDone={() => (me!.account.staffRole ? navigate('/', { replace: true }) : reload())}
+      />
+    );
+  }
+
+  return <MemberSpaceReady preview={preview} me={me} reload={reload} />;
+}
+
+function MemberSpaceReady({
+  preview,
+  me,
+  reload,
+}: {
+  preview?: MemberPreview;
+  me: Me | null;
+  reload: () => Promise<void>;
+}) {
   const { lang, setLang, t } = useLang();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -109,11 +166,6 @@ function MemberSpace({ preview }: { preview?: MemberPreview }) {
      Nobody signs in to read their own profile: a founder comes to see what is
      still asked of them, a juror to see what is left to mark. Profile is where
      you end up when neither is true. */
-  /* Un formulaire de candidature qui attend : on est passé ici pour remplacer
-     un mot de passe provisoire, et on y retourne. Seulement vers un
-     formulaire — une adresse de retour libre enverrait n'importe où. */
-  const next = params.get('next') ?? '';
-  const returnTo = next.startsWith('/apply/') ? next : '';
   const landing: MemberTab =
     (programs.data?.length ?? 0) > 0 ? 'Home' : isJuror ? 'Jury' : meets ? 'Meetings' : 'Profile';
   const tab: MemberTab = asked && tabs.includes(asked) ? asked : landing;
@@ -169,34 +221,6 @@ function MemberSpace({ preview }: { preview?: MemberPreview }) {
     preview ? 'preview-tasks' : 'my-tasks',
   );
 
-  useEffect(() => {
-    if (!preview && !loading && !me) navigate('/login', { replace: true });
-  }, [preview, loading, me, navigate]);
-
-  /* Le mot de passe remplacé, on retourne au formulaire sans chercher le lien. */
-  useEffect(() => {
-    if (preview || !returnTo || !me || me.account.mustChangePassword) return;
-    navigate(returnTo, { replace: true });
-  }, [preview, returnTo, me, navigate]);
-
-  if (!preview) {
-    if (loading) return <div className="member-shell" />;
-    if (!me) return null;
-  }
-  // A password CEED chose is not yet this person's account. Nothing else opens
-  // until they have replaced it — the server refuses it anyway.
-  if (!preview && me!.account.mustChangePassword) {
-    return (
-      <ChoosePassword
-        me={me!}
-        // Having replaced it, somebody at CEED belongs in the workspace rather
-        // than on their own profile page.
-        // Une candidature en attente reprend la main juste après : l'effet de
-        // retour voit le mot de passe changé et ramène au formulaire.
-        onDone={() => (me!.account.staffRole ? navigate('/', { replace: true }) : reload())}
-      />
-    );
-  }
 
   const name = preview ? (preview.who?.name ?? preview.orgName) : me!.record.name;
   const email = preview ? (preview.who?.email ?? '') : me!.account.email;

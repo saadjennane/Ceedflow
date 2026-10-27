@@ -88,6 +88,8 @@ export function ReviewPage() {
 
   useEffect(() => {
     if (panel.error?.includes('Sign in')) navigate('/login?next=' + encodeURIComponent(`/review/${sessionId}`));
+    // Un mot de passe encore provisoire : on le choisit d'abord, puis on revient ici.
+    else if (panel.error?.includes('Choose your own password')) navigate('/me?next=' + encodeURIComponent(`/review/${sessionId}`));
   }, [panel.error, navigate, sessionId]);
 
   if (panel.loading) return <div className="member-shell" />;
