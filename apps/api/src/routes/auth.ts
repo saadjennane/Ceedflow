@@ -433,6 +433,8 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/api/me/organisations', async (req, reply) => {
     const account = await require(req);
     const input = parse(myOrgInput, req.body);
+    // Un logo qu'on a soi-même déposé : l'identifiant d'un autre fichier ne suffit pas.
+    await placeable(account.recordId, '', input.logoUploadId);
 
     const { org, joined, pending } = await dir.openOrganisation(account.recordId, input);
     if (pending) await tellAdminsOfRequest(org.id, account.recordId);

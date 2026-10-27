@@ -179,6 +179,10 @@ export async function createRecord(input: {
   linkedin?: string;
   /** Qui l'ajoute, quand quelqu'un l'ajoute. Recopié, pas joint. */
   by?: { id: string; name: string } | null;
+  /** Le logo d'une organisation, la photo d'une personne. */
+  logoUploadId?: string | null;
+  /** Le reste de la fiche, tel que le formulaire l'envoie — écrit comme le ferait `updateRecord`. */
+  [field: string]: unknown;
 }): Promise<DirectoryRecord> {
   const id = idOf.record();
   /* Coupé ici, une fois pour toutes.
@@ -220,9 +224,29 @@ export async function createRecord(input: {
       input.by?.name ?? '',
     ],
   );
-  if (input.sheet && Object.keys(input.sheet).length) await updateRecord(id, input.sheet);
+  /* Tout ce que la fiche sait écrire et que la ligne ci-dessus n'a pas pris —
+     la photo, le logo, le type d'organisation, le statut, le capital… Ils
+     étaient reçus puis oubliés : une personne créée avec sa photo n'avait
+     que ses initiales, et il fallait la rouvrir pour que la photo tienne. */
+  const rest: Record<string, unknown> = { ...((input.sheet as Record<string, unknown> | undefined) ?? {}) };
+  for (const key of [...Object.keys(FIELDS), ...Object.keys(JSON_FIELDS)]) {
+    if (WRITTEN_ON_INSERT.has(key) || key in rest) continue;
+    const value = input[key];
+    const empty =
+      value === undefined || value === null || value === '' ||
+      (Array.isArray(value) && !value.length) ||
+      (typeof value === 'object' && value !== null && !Array.isArray(value) && !Object.keys(value).length);
+    if (!empty) rest[key] = value;
+  }
+  if (Object.keys(rest).length) await updateRecord(id, rest);
   return (await getRecord(id))!;
 }
+
+/** What the insert in `createRecord` already writes; everything else in FIELDS follows it. */
+const WRITTEN_ON_INSERT = new Set([
+  'name', 'firstName', 'lastName', 'website', 'bio', 'jobTitle', 'department',
+  'pitch', 'sector', 'stage', 'foundedYear', 'teamSize', 'linkedin',
+]);
 
 const FIELDS: Record<string, string> = {
   name: 'name',
@@ -555,6 +579,8 @@ export async function openOrganisation(
     website?: string;
     bio?: string;
     myRole?: string;
+    logoUploadId?: string | null;
+    [field: string]: unknown;
   },
 ): Promise<{ org: DirectoryRecord; joined: boolean; pending: boolean }> {
   const found = await findByName('org', input.name);
@@ -565,7 +591,11 @@ export async function openOrganisation(
     await requestToJoin(personId, found.id, input.myRole ?? 'Founder');
     return { org: found, joined: false, pending: true };
   }
+  const { myRole: _role, ...sheet } = input;
   const org = await createRecord({
+    /* Ce que la personne a rempli en l'ouvrant — son logo, son secteur — vient
+       avec ; seuls le nom et l'origine sont fixés ici. */
+    ...sheet,
     kind: 'org',
     name: input.name.trim(),
     roles: input.roles ?? ['Startup'],
