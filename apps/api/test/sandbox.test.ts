@@ -126,6 +126,22 @@ describe('the test space', { skip: skipWithoutServer }, () => {
     }
   });
 
+  it('sends “Apply” to the open form itself', async () => {
+    /* Le bouton menait à /apply/<id de la brique>, que la page de candidature
+       ne sait pas lire : « This form does not exist ». */
+    const program = (await createTestProgram(null, `ZZ Apply ${stamp}`))!;
+    await repo.updateEdition(program.editions[0]!.id, { status: 'Live' });
+    const form = await blockOf(program.id, 'application');
+    await repo.updateBlock(form.id, {
+      config: { ...(form.config as object), visibility: 'open', fields: [{ id: 'q1', label: 'Nom', type: 'short_text', required: false, options: [], help: '' }] },
+    });
+    const tester = (await dir.listRecords({ kind: 'person' })).find((r) => r.testOwner === staff.accountId)!;
+    const mine = (await programsFor(tester.id)).find((p) => p.programId === program.id)!;
+    assert.ok(mine.applyUrl, 'an open form offers the button');
+    const token = mine.applyUrl!.replace('/apply/', '');
+    assert.equal((await repo.findPublicForm(token))?.block.id, form.id, 'and the link opens that form');
+  });
+
   it('lets a test sourcing reach test startups only', async () => {
     const program = (await createTestProgram(null, `ZZ Sourcing ${stamp}`))!;
     const sourcing = await blockOf(program.id, 'sourcing');

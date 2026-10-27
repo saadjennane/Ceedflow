@@ -157,6 +157,7 @@ export async function programsFor(recordId: string): Promise<MyProgram[]> {
         ? forms.map((b) => blockStatus(b)).sort((a, b) => RANK[a] - RANK[b])[0]
         : null;
       const opensAt = forms.map((b) => (b.config as { opensAt?: string | null }).opensAt).find(Boolean) ?? null;
+      const live = edition.status === 'Completed' ? null : (forms.find((b) => blockStatus(b) === 'live') ?? null);
 
       // A candidacy of one of their own organisations, which is the only part
       // of this screen that is about them rather than about the programme.
@@ -175,7 +176,10 @@ export async function programsFor(recordId: string): Promise<MyProgram[]> {
         endsOn: edition.endsOn,
         applications: edition.status === 'Completed' ? 'closed' : state,
         opensAt,
-        applyUrl: state === 'live' && forms[0] ? `/apply/${forms[0].id}` : null,
+        /* Le lien public du formulaire ouvert — celui que la page de candidature
+           cherche —, et non l'identifiant de la brique : avec lui, « Apply »
+           menait à « This form does not exist ». */
+        applyUrl: live ? `/apply/${(live.config as { publicToken?: string }).publicToken ?? ''}` : null,
         mine: candidacies,
       });
     }
