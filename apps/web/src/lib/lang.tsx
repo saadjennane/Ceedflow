@@ -106,6 +106,7 @@ const WORDS = {
   'file.open': { fr: 'Ouvrir', en: 'Open' },
   'file.replace': { fr: 'Remplacer', en: 'Replace' },
   'field.choose': { fr: 'Choisir', en: 'Choose one' },
+  'field.missing': { fr: 'À remplir.', en: 'Still to fill in.' },
   'bad.email': { fr: 'Une adresse s’écrit nom@domaine.ma.', en: 'An address is written name@domain.ma.' },
   'email.add': { fr: 'Ajouter une adresse', en: 'Add an address' },
   'phone.add': { fr: 'Ajouter un numéro', en: 'Add a number' },

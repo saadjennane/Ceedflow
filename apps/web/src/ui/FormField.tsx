@@ -61,7 +61,7 @@ export function FormFieldInput({
         <ReadValue field={field} value={value} />
       ) : field.type === 'long_text' ? (
         <textarea
-          className="textarea"
+          className={error ? 'textarea bad' : 'textarea'}
           rows={4}
           readOnly={readOnly}
           value={String(value ?? '')}
@@ -69,7 +69,7 @@ export function FormFieldInput({
         />
       ) : field.type === 'select' ? (
         <select
-          className="input"
+          className={error ? 'input bad' : 'input'}
           disabled={readOnly}
           value={String(value ?? '')}
           onChange={(e) => onChange(e.target.value)}
@@ -82,7 +82,7 @@ export function FormFieldInput({
           ))}
         </select>
       ) : field.type === 'multiselect' ? (
-        <div className="rows">
+        <div className={error ? 'rows bad-group' : 'rows'}>
           {field.options.map((o) => {
             const chosen = Array.isArray(value) ? (value as string[]) : [];
             return (
@@ -99,10 +99,12 @@ export function FormFieldInput({
           })}
         </div>
       ) : field.type === 'file' ? (
-        <FileField field={field} value={value} onChange={onChange} readOnly={readOnly} />
+        <div className={error ? 'bad-group' : undefined}>
+          <FileField field={field} value={value} onChange={onChange} readOnly={readOnly} />
+        </div>
       ) : (
         <input
-          className={error ? 'input bad' : 'input'}
+          className={error || problem ? 'input bad' : 'input'}
           type={
             field.type === 'email'
               ? 'email'

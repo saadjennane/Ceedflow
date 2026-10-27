@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AccountBadge } from '../directory/AccountCard';
 import { initials } from '../directory/DirectoryPage';
-import { api } from '../../lib/api';
+import { ApiError, api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
 import { TextField } from '../../ui/Field';
@@ -849,6 +849,7 @@ function AddCandidateModal({
   /** Co-founders land as people affiliated to the organisation, like a team. */
   const [team, setTeam] = useState<{ name: string; role: string; email: string }[]>([]);
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const toast = useToast();
   const set = (patch: Partial<typeof draft>) => setDraft((d) => ({ ...d, ...patch }));
 
@@ -872,6 +873,7 @@ function AddCandidateModal({
             disabled={saving || !draft.orgName.trim()}
             onClick={async () => {
               setSaving(true);
+              setErrors({});
               try {
                 await api.post(`/api/editions/${editionId}/candidates`, {
                   orgName: draft.orgName,
@@ -890,6 +892,7 @@ function AddCandidateModal({
                 onCreated();
                 onClose();
               } catch (err) {
+                if (err instanceof ApiError && err.fields) setErrors(err.fields);
                 toast((err as Error).message, true);
               } finally {
                 setSaving(false);
@@ -901,13 +904,13 @@ function AddCandidateModal({
         </>
       }
     >
-      <TextField label="Organisation" value={draft.orgName} onChange={(v) => set({ orgName: v })} placeholder="SportIQ" />
+      <TextField label="Organisation" value={draft.orgName} error={errors.orgName} onChange={(v) => set({ orgName: v })} placeholder="SportIQ" />
       <div className="grid-2">
-        <TextField label="Contact" value={draft.contactName} onChange={(v) => set({ contactName: v })} />
-        <TextField label="Email" value={draft.email} onChange={(v) => set({ email: v })} type="email" />
+        <TextField label="Contact" value={draft.contactName} error={errors['contact.name']} onChange={(v) => set({ contactName: v })} />
+        <TextField label="Email" value={draft.email} error={errors['contact.email']} onChange={(v) => set({ email: v })} type="email" />
       </div>
       <div className="grid-2">
-        <TextField label="Phone" value={draft.phone} onChange={(v) => set({ phone: v })} />
+        <TextField label="Phone" value={draft.phone} error={errors['contact.phone']} onChange={(v) => set({ phone: v })} />
         <TextField label="Their role" value={draft.role} onChange={(v) => set({ role: v })} placeholder="CEO" />
       </div>
       <TextField label="Source" value={draft.source} onChange={(v) => set({ source: v })} placeholder="Partner referral" />

@@ -172,7 +172,11 @@ function NewPerson({ startups, onMade }: { startups: DirectoryRecord[]; onMade: 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const toast = useToast();
-  const set = (p: Partial<typeof draft>) => setDraft((d) => ({ ...d, ...p }));
+  const set = (p: Partial<typeof draft>) => {
+    setDraft((d) => ({ ...d, ...p }));
+    // Ce qu'on corrige cesse d'être signalé.
+    setErrors((e) => Object.fromEntries(Object.entries(e).filter(([k]) => !(k in p))));
+  };
 
   const save = async () => {
     setSaving(true);
@@ -196,13 +200,15 @@ function NewPerson({ startups, onMade }: { startups: DirectoryRecord[]; onMade: 
         <input
           className={errors.email ? 'input bad' : 'input'}
           style={{ flex: 2, minWidth: 220 }}
+          name="email"
+          type="email"
           placeholder="saad+jury@ceed-morocco.org"
           aria-label="Test address"
           value={draft.email}
           onChange={(e) => set({ email: e.target.value })}
         />
-        <input className="input" style={{ flex: 1, minWidth: 120 }} placeholder="First name" aria-label="First name" value={draft.firstName} onChange={(e) => set({ firstName: e.target.value })} />
-        <input className="input" style={{ flex: 1, minWidth: 120 }} placeholder="Last name" aria-label="Last name" value={draft.lastName} onChange={(e) => set({ lastName: e.target.value })} />
+        <input name="firstName" className={errors.firstName ? 'input bad' : 'input'} style={{ flex: 1, minWidth: 120 }} placeholder="First name" aria-label="First name" value={draft.firstName} onChange={(e) => set({ firstName: e.target.value })} />
+        <input name="lastName" className={errors.lastName ? 'input bad' : 'input'} style={{ flex: 1, minWidth: 120 }} placeholder="Last name" aria-label="Last name" value={draft.lastName} onChange={(e) => set({ lastName: e.target.value })} />
       </div>
       <div className="row wrap" style={{ gap: 8 }}>
         <select className="input" style={{ flex: 1, minWidth: 200 }} aria-label="Role" value={draft.role} onChange={(e) => set({ role: e.target.value as typeof draft.role })}>
@@ -216,6 +222,7 @@ function NewPerson({ startups, onMade }: { startups: DirectoryRecord[]; onMade: 
           <select
             className={errors.orgId ? 'input bad' : 'input'}
             style={{ flex: 1, minWidth: 200 }}
+            name="orgId"
             aria-label="Startup"
             value={draft.orgId}
             onChange={(e) => set({ orgId: e.target.value })}
@@ -232,8 +239,8 @@ function NewPerson({ startups, onMade }: { startups: DirectoryRecord[]; onMade: 
           {saving ? 'Opening…' : 'Open the account'}
         </button>
       </div>
-      <span className="faint" style={{ fontSize: 11.5 }}>
-        {errors.email ?? 'An alias of a CEED colleague’s address, with a “+”: the password and every letter land in their inbox.'}
+      <span className={Object.keys(errors).length ? '' : 'faint'} style={{ fontSize: 11.5, color: Object.keys(errors).length ? 'var(--stop)' : undefined }}>
+        {Object.values(errors)[0] ?? 'An alias of a CEED colleague’s address, with a “+”: the password and every letter land in their inbox.'}
       </span>
     </div>
   );

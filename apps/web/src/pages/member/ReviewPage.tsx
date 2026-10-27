@@ -246,10 +246,30 @@ function ReviewOne({
   const voting = grid.method === 'verdict';
   const shut = panel.state !== 'open';
   const preview = normalisedScore(marks, grid.leaves);
-  const blocked =
-    (grid.requireComment && !comment.trim()) || (voting ? !verdict : preview === null);
+  /* Ce qui manque pour envoyer, dit sur place : le bouton reste cliquable, et
+     cliquer montre en rouge ce qu'il reste à faire plutôt qu'un bouton grisé
+     qui ne dit pas pourquoi. */
+  const [tried, setTried] = useState(false);
+  const missingComment = grid.requireComment && !comment.trim();
+  const missingJudgement = voting ? !verdict : preview === null;
+  const blocked = missingComment || missingJudgement;
 
   const send = async (submit: boolean) => {
+    if (submit && blocked) {
+      setTried(true);
+      toast(
+        missingJudgement
+          ? voting
+            ? 'Pick a verdict before sending.'
+            : 'Give at least one mark before sending.'
+          : 'This panel asks every reviewer for a comment.',
+        true,
+      );
+      requestAnimationFrame(() =>
+        document.querySelector('.bad-group, .textarea.bad')?.scrollIntoView({ block: 'center', behavior: 'smooth' }),
+      );
+      return;
+    }
     setSaving(true);
     try {
       const next = await api.post<ReviewPanel>(`/api/me/reviews/${panel.sessionId}/scores`, {
@@ -340,7 +360,7 @@ function ReviewOne({
                 ))}
               </div>
             )}
-            <div className="work-pick">
+            <div className={tried && !verdict ? 'work-pick bad-group card-pad' : 'work-pick'}>
               {grid.outcomes.map((o) => (
                 <button
                   key={o.id}
@@ -353,13 +373,15 @@ function ReviewOne({
             </div>
           </>
         ) : (
-          <GridMarks
-            criteria={grid.criteria}
-            markedOutOf={grid.markedOutOf}
-            scale={grid.scale}
-            marks={marks}
-            onChange={setMarks}
-          />
+          <div className={tried && preview === null ? 'bad-group card-pad' : undefined}>
+            <GridMarks
+              criteria={grid.criteria}
+              markedOutOf={grid.markedOutOf}
+              scale={grid.scale}
+              marks={marks}
+              onChange={setMarks}
+            />
+          </div>
         )}
 
         <div className="field">
@@ -367,7 +389,7 @@ function ReviewOne({
             Comment{grid.requireComment && <span style={{ color: 'var(--stop)' }}> *</span>}
           </label>
           <textarea
-            className="textarea"
+            className={tried && missingComment ? 'textarea bad' : 'textarea'}
             rows={3}
             value={comment}
             placeholder="What convinced you, and what did not."
@@ -395,7 +417,7 @@ function ReviewOne({
           <button className="btn" disabled={saving || shut} onClick={() => send(false)}>
             Save draft
           </button>
-          <button className="btn primary" disabled={saving || blocked || shut} onClick={() => send(true)}>
+          <button className="btn primary" disabled={saving || shut} onClick={() => send(true)}>
             {item.mine?.submittedAt ? 'Update' : 'Send'}
           </button>
         </div>

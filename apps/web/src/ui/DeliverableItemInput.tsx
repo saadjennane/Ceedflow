@@ -41,12 +41,16 @@ function Entry({
   value,
   onChange,
   readOnly,
+  flag = false,
 }: {
   item: DeliverableItem;
   value: unknown;
   onChange: (next: unknown) => void;
   readOnly: boolean;
+  /** Commencée : ce qui y manque encore se voit, champ par champ. */
+  flag?: boolean;
 }) {
+  const { t } = useLang();
   if (item.kind !== 'group') {
     // The repeated line carries no label of its own: the item's label sits
     // above the lot, and repeating it on each row says nothing.
@@ -68,6 +72,7 @@ function Entry({
           field={field}
           value={values[field.id] ?? null}
           readOnly={readOnly}
+          error={flag && field.required && emptyValue(values[field.id]) ? t('field.missing') : undefined}
           onChange={(v) => onChange({ ...values, [field.id]: v })}
         />
       ))}
@@ -80,18 +85,21 @@ export function DeliverableItemInput({
   value,
   onChange,
   readOnly = false,
+  error,
 }: {
   item: DeliverableItem;
   value: unknown;
   onChange: (next: unknown) => void;
   readOnly?: boolean;
+  /** Ce que le serveur a refusé de cette pièce. */
+  error?: string;
 }) {
   const { t, lang } = useLang();
 
   /* A plain field is exactly what it always was. Everything below is for the
      three shapes that are not. */
   if (!item.repeatable && item.kind !== 'group') {
-    return <FormFieldInput field={item as FormField} value={value} readOnly={readOnly} onChange={onChange} />;
+    return <FormFieldInput field={item as FormField} value={value} readOnly={readOnly} error={error} onChange={onChange} />;
   }
 
   const heading = (
@@ -118,9 +126,10 @@ export function DeliverableItemInput({
       <div className="field">
         {heading}
         {item.help && <div className="help">{item.help}</div>}
-        <div className="stack" style={{ gap: 10, marginTop: 6 }}>
-          <Entry item={item} value={value} onChange={onChange} readOnly={readOnly} />
+        <div className={error ? 'stack bad-group card-pad' : 'stack'} style={{ gap: 10, marginTop: 6 }}>
+          <Entry item={item} value={value} onChange={onChange} readOnly={readOnly} flag={!readOnly && !isBlank(item, value)} />
         </div>
+        {error && <div className="err">{error}</div>}
       </div>
     );
   }
@@ -162,7 +171,10 @@ export function DeliverableItemInput({
         <p className="faint" style={{ margin: '6px 0 0', fontSize: 13 }}>—</p>
       )}
 
-      <div className="stack" style={{ gap: item.kind === 'group' ? 10 : 6, marginTop: 6 }}>
+      <div
+        className={error ? 'stack bad-group card-pad' : 'stack'}
+        style={{ gap: item.kind === 'group' ? 10 : 6, marginTop: 6 }}
+      >
         {shown.map((entry, index) =>
           item.kind === 'group' ? (
             <div className="rowcard card-pad stack" key={index} style={{ gap: 10 }}>
@@ -180,7 +192,13 @@ export function DeliverableItemInput({
                   </button>
                 )}
               </div>
-              <Entry item={item} value={entry} readOnly={readOnly} onChange={(next) => edit(index, next)} />
+              <Entry
+                item={item}
+                value={entry}
+                readOnly={readOnly}
+                flag={!readOnly && index < entries.length}
+                onChange={(next) => edit(index, next)}
+              />
             </div>
           ) : (
             <div className="row" key={index} style={{ gap: 6 }}>
@@ -200,6 +218,7 @@ export function DeliverableItemInput({
           ),
         )}
       </div>
+      {error && <div className="err">{error}</div>}
 
       {/* Under the last one, where the eye already is. */}
       {!readOnly && (
@@ -216,6 +235,8 @@ export function DeliverableItemInput({
 }
 
 /** Nothing in it at all — which is not the same as unfinished. */
+const emptyValue = (v: unknown) => v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length);
+
 function isBlank(item: DeliverableItem, entry: unknown): boolean {
   const empty = (v: unknown) => v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length);
   if (item.kind !== 'group') return empty(entry);

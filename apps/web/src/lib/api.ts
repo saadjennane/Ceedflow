@@ -1,3 +1,5 @@
+import { pointAtFields } from './fieldErrors';
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -45,7 +47,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     payload = null;
   }
 
-  if (!res.ok) throw new ApiError(res.status, payload?.error ?? fallback(res.status), payload?.fields ?? null);
+  if (!res.ok) {
+    if (payload?.fields && Object.keys(payload.fields).length) pointAtFields(payload.fields);
+    throw new ApiError(res.status, payload?.error ?? fallback(res.status), payload?.fields ?? null);
+  }
 
   // A success that is not JSON is a wrong answer too — usually the index page
   // served where the API should have been — and saying so beats a page that

@@ -635,10 +635,34 @@ a.badge:hover {
   line-height: 1.55;
 }
 
+/* Un groupe — des cases, un fichier — qu'il faut encore remplir. */
+.bad-group {
+  border-radius: 10px;
+  box-shadow: 0 0 0 1.5px var(--stop);
+  background: var(--stop-wash);
+}
+
+/* Un champ à corriger se voit d'un coup d'œil : le contour, un fond à peine
+   teinté, et le même anneau quand on y entre. */
 .input[aria-invalid='true'],
 .select[aria-invalid='true'],
-.textarea[aria-invalid='true'] {
+.textarea[aria-invalid='true'],
+.input.bad,
+.select.bad,
+.textarea.bad,
+select[aria-invalid='true'],
+input[aria-invalid='true'],
+textarea[aria-invalid='true'] {
   border-color: var(--stop);
+  background-color: var(--stop-wash);
+}
+.input.bad:focus,
+.input[aria-invalid='true']:focus,
+.select.bad:focus,
+.textarea.bad:focus,
+.textarea[aria-invalid='true']:focus {
+  border-color: var(--stop);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--stop) 22%, transparent);
 }
 
 .grid-2 {

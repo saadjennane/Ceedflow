@@ -8,7 +8,7 @@ import {
 } from '@ceed/shared';
 import { useEffect, useRef, useState } from 'react';
 import { useLang } from '../../lib/lang';
-import { api } from '../../lib/api';
+import { ApiError, api } from '../../lib/api';
 import { forget, remember, stranded } from './drafts';
 import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
@@ -80,6 +80,8 @@ export function OwedItems({
     `${candidateId}:${given ? 'given' : 'mine'}`,
   );
   const toast = useToast();
+  /** Les pièces que le serveur a refusées, et pourquoi. */
+  const [refused, setRefused] = useState<Record<string, string>>({});
 
   if (!owed.data?.length) return null;
 
@@ -108,9 +110,14 @@ export function OwedItems({
     try {
       const next = await api.post<Owed[]>(`/api/me/deliverables/${candidateId}`, { blockId, itemId, value });
       forget(candidateId, blockId, itemId);
+      setRefused(({ [itemId]: _gone, ...rest }) => rest);
       owed.set(next);
       onSaved?.(next);
     } catch (err) {
+      /* Refusée, la pièce le dit elle-même — surlignée, avec la raison
+         dessous — plutôt que par un message qui passe en bas de l'écran. */
+      const fields = err instanceof ApiError ? err.fields : null;
+      setRefused((r) => ({ ...r, [itemId]: (fields && Object.values(fields)[0]) || (err as Error).message }));
       toast((err as Error).message, true);
     }
   };
@@ -125,6 +132,7 @@ export function OwedItems({
           readOnly={readOnly}
           startOpen={startOpen}
           candidateId={candidateId}
+          refused={refused}
           onSave={(itemId, value, leaving) => save(ask.block.id, itemId, value, leaving)}
         />
       ))}
@@ -147,8 +155,11 @@ export function OwedList({
   candidateId,
   startOpen = false,
   readOnly = false,
+  refused = {},
 }: {
   ask: Owed;
+  /** Ce que le serveur a refusé, pièce par pièce. */
+  refused?: Record<string, string>;
   orgName: string;
   onSave: (itemId: string, value: unknown, leaving?: boolean) => void | Promise<void>;
   /** Ce qui nomme les brouillons gardés dans ce navigateur. Absent sur l'aperçu. */
@@ -396,6 +407,7 @@ export function OwedList({
                 item={item}
                 value={item.id in typed ? typed[item.id] : (mine?.value ?? null)}
                 readOnly={readOnly || !ask.open}
+                error={refused[item.id]}
                 onChange={(v) => write(item, v)}
               />
               {/* Dit par pièce : avec une écriture différée, le silence se
