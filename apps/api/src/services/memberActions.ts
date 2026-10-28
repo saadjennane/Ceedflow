@@ -142,7 +142,7 @@ export async function memberActions(recordId: string): Promise<{ actions: Member
           dueOn: entry.answerBy ?? null,
           ...where,
           href: entry.link,
-          label: entry.kind === 'one_to_one' ? (entry.with ?? entry.name) : entry.blockName,
+          label: entry.kind === 'one_to_one' ? (entry.with ?? '') : entry.blockName,
           orgName: candidate.orgName,
           answer: entry.answer,
         });

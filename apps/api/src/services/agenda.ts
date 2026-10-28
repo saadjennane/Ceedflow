@@ -41,6 +41,8 @@ export interface AgendaEntry {
   answer?: 'book' | 'confirm';
   /** Until when they may answer, when a deadline is set. */
   answerBy?: string | null;
+  /** The video link, for a meeting held online. */
+  meetingLink?: string;
 }
 
 /** What is coming for one candidacy, soonest first. */
@@ -96,11 +98,13 @@ export async function agendaFor(candidateId: string): Promise<AgendaEntry[]> {
   for (const m of await all<{
     blockName: string; heldOn: string | null; startTime: string | null; durationMinutes: number;
     location: string; personName: string; token: string; invite: string; rsvpState: string;
+    meetingLink: string; answerBy: string | null;
   }>(
     `select b.name as "blockName", m.held_on::text as "heldOn", m.start_time as "startTime",
-            m.duration_minutes as "durationMinutes", m.location, p.name as "personName", m.token, m.invite,
+            m.duration_minutes as "durationMinutes", m.location, coalesce(p.name, '') as "personName", m.token, m.invite,
+            m.meeting_link as "meetingLink", nullif(b.config->>'answerBy', '') as "answerBy",
             m.rsvp_state as "rsvpState"
-       from one_to_one_meetings m join blocks b on b.id = m.block_id join records p on p.id = m.person_id
+       from one_to_one_meetings m join blocks b on b.id = m.block_id left join records p on p.id = m.person_id
       where m.candidate_id = $1 and m.status = 'planned'
         and (m.held_on is null or m.held_on >= current_date)`,
     [candidateId],
@@ -108,15 +112,17 @@ export async function agendaFor(candidateId: string): Promise<AgendaEntry[]> {
     const asks = m.invite === 'slots' ? !m.heldOn : m.invite === 'confirm' && m.rsvpState === 'pending';
     out.push({
       kind: 'one_to_one',
-      name: m.personName,
+      name: m.personName || m.blockName,
       blockName: m.blockName,
       on: m.heldOn,
       startsAt: m.startTime,
       endsAt: m.startTime ? clockPlus(m.startTime, m.durationMinutes) : null,
       location: m.location,
-      with: m.personName,
+      /* Vide tant qu'une startup invitée à choisir n'a pas dit chez qui. */
+      with: m.personName || undefined,
       link: asks ? `/meet/${m.token}` : null,
-      ...(asks ? { answer: (m.invite === 'slots' ? 'book' : 'confirm') as 'book' | 'confirm' } : {}),
+      meetingLink: m.meetingLink || undefined,
+      ...(asks ? { answer: (m.invite === 'slots' ? 'book' : 'confirm') as 'book' | 'confirm', answerBy: m.answerBy } : {}),
     });
   }
 

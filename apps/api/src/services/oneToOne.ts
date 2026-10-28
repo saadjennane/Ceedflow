@@ -34,6 +34,8 @@ import {
   longDate,
   seriesDates,
   CONTACT_FIELD_TYPES,
+  mentorsOf,
+  pairingOf,
 } from '@ceed/shared';
 import { accessFor } from './invitations.js';
 import { isTestRecord } from './testIdentity.js';
@@ -51,7 +53,7 @@ const COLS = `
   m.id, m.block_id as "blockId", m.candidate_id as "candidateId", o.name as "orgName",
   m.person_id as "personId", coalesce(p.name, '') as "personName", m.series_id as "seriesId", m.day_id as "dayId",
   m.held_on::text as "heldOn", m.start_time as "startTime", m.duration_minutes as "durationMinutes",
-  m.location, m.invite, m.token, m.rsvp_state as "rsvpState", m.rsvp_note as "rsvpNote", m.responded_at::text as "respondedAt",
+  m.location, m.meeting_link as "meetingLink", m.invite, m.token, m.rsvp_state as "rsvpState", m.rsvp_note as "rsvpNote", m.responded_at::text as "respondedAt",
   m.status, m.report, m.report_submitted_at::text as "reportSubmittedAt", m.report_by_name as "reportByName",
   m.created_at::text as "createdAt",
   m.told_startup_at::text as "toldStartupAt", m.told_person_at::text as "toldPersonAt"
@@ -164,6 +166,7 @@ export async function planMeetings(
     startTime: string | null;
     durationMinutes?: number;
     location?: string;
+    meetingLink?: string;
     repeat?: { frequency: Frequency; count: number | null; until: string | null } | null;
     tell?: boolean;
   },
@@ -184,6 +187,7 @@ export async function planMeetings(
   }
   const inPool = new Set(ctx.intake.map((c) => c.id));
   if (input.candidateIds.some((id) => !inPool.has(id))) throw new HttpError(422, 'That startup has not reached this brick.');
+  await checkAllowance(blockId, ctx.config, ctx.intake, input.candidateIds, input.personId, Boolean(input.repeat));
   /* Plusieurs startups à la même heure avec la même personne : refusé, comme
      un second rendez-vous par-dessus un premier. Laisser réserver, si : chacune
      prendra son créneau. */
@@ -217,6 +221,7 @@ export async function planMeetings(
   }
   const duration = input.durationMinutes ?? theDay?.minutesPerMeeting ?? ctx.config.durationMinutes;
   const location = input.location ?? (theDay?.location || ctx.config.location);
+  const meetingLink = input.meetingLink ?? theDay?.meetingLink ?? '';
   let seriesId: string | null = null;
   if (!books && input.repeat) {
     seriesId = newId('ser');
@@ -236,8 +241,8 @@ export async function planMeetings(
       await all(
         `insert into one_to_one_meetings
            (id, block_id, candidate_id, person_id, series_id, held_on, start_time, duration_minutes, location,
-            invite, token, rsvp_state, day_id)
-         values ($1,$2,$3,$4,$5,$6::date,$7,$8,$9,$10,$11,$12,$13)`,
+            invite, token, rsvp_state, day_id, meeting_link)
+         values ($1,$2,$3,$4,$5,$6::date,$7,$8,$9,$10,$11,$12,$13,$14)`,
         [
           id, blockId, candidateId, input.personId, seriesId,
           books ? null : date, books ? null : input.startTime, duration, location,
@@ -245,6 +250,7 @@ export async function planMeetings(
           /* Fixé sans invitation : il n'y a pas de réponse à attendre. */
           input.invite === 'none' ? 'confirmed' : 'pending',
           books || seriesId ? null : (input.dayId ?? null),
+          meetingLink,
         ],
       );
       made.push((await getMeeting(id))!);
@@ -260,6 +266,57 @@ export async function planMeetings(
   return made;
 }
 
+/**
+ * Combien de rendez-vous une startup peut avoir ici. Partagées, une startup
+ * voit chacun de ses interlocuteurs une fois, et seulement eux ; sinon, elle
+ * en a au plus ce que l'onglet Invitations dit. Une série compte pour un : le
+ * suivi régulier, c'est elle. Rien n'est limité pour une brique récurrente.
+ */
+async function checkAllowance(
+  blockId: string,
+  config: OneToOneConfig,
+  intake: Candidate[],
+  candidateIds: string[],
+  personId: string | null,
+  series: boolean,
+): Promise<void> {
+  if (config.cadence === 'recurring' || series) return;
+  const pairing = pairingOf(config);
+  for (const candidateId of candidateIds) {
+    const candidate = intake.find((c) => c.id === candidateId)!;
+    const held = await all<{ personId: string | null; n: number }>(
+      `select person_id as "personId", count(distinct coalesce(series_id, id))::int as n
+         from one_to_one_meetings
+        where block_id = $1 and candidate_id = $2 and status <> 'cancelled'
+        group by person_id`,
+      [blockId, candidateId],
+    );
+    if (pairing === 'assigned') {
+      if (!personId) continue;
+      if (!mentorsOf(config, candidate).includes(personId)) {
+        throw new HttpError(
+          422,
+          `${candidate.orgName} is not paired with this interlocutor — pair them in the Interlocutors tab of the setup.`,
+          { personId: 'Not one of this startup’s interlocutors.' },
+        );
+      }
+      if (held.some((h) => h.personId === personId)) {
+        throw new HttpError(422, `${candidate.orgName} already has a meeting with this interlocutor here.`, {
+          personId: 'Already met here.',
+        });
+      }
+    } else {
+      const total = held.reduce((sum, h) => sum + h.n, 0);
+      if (total >= config.perStartup) {
+        throw new HttpError(
+          422,
+          `${candidate.orgName} already has ${total} meeting${total > 1 ? 's' : ''} here — the most the Invitations tab allows. Raise it there to add one.`,
+        );
+      }
+    }
+  }
+}
+
 /** « Puis toutes les semaines, jusqu'au 15 décembre. » */
 const rhythmLine = (frequency: Frequency, last: string) =>
   `Puis ${frequency === 'weekly' ? 'toutes les semaines' : frequency === 'biweekly' ? 'toutes les deux semaines' : 'tous les mois'}, jusqu’au ${longDate(last)}.`;
@@ -273,6 +330,7 @@ export async function changeMeeting(
     startTime?: string | null;
     durationMinutes?: number;
     location?: string;
+    meetingLink?: string;
     status?: string;
   },
 ): Promise<OneToOneMeeting | null> {
@@ -303,6 +361,7 @@ export async function changeMeeting(
   if (patch.startTime !== undefined) put('start_time', patch.startTime);
   if (patch.durationMinutes !== undefined) put('duration_minutes', patch.durationMinutes);
   if (patch.location !== undefined) put('location', patch.location);
+  if (patch.meetingLink !== undefined) put('meeting_link', patch.meetingLink);
   if (patch.status !== undefined) put('status', patch.status);
   /* Une heure proposée qui change est une nouvelle proposition : la réponse
      donnée à l'ancienne ne vaut pas pour celle-ci. */
@@ -488,6 +547,10 @@ export interface MeetingInvitation {
   invite: OneToOneMeeting['invite'];
   rsvpState: OneToOneMeeting['rsvpState'];
   rsvpNote: string;
+  meetingLink: string;
+  /** The day after which the link takes no answer, and whether it has passed. */
+  answerBy: string | null;
+  late: boolean;
   status: OneToOneMeeting['status'];
   /** Whether an answer may still be given. */
   open: boolean;
@@ -509,9 +572,13 @@ export async function invitationFor(token: string): Promise<{ meeting: OneToOneM
   if (!detail || !editionIsVisible(detail.status)) return null;
   /* Répondre à une heure proposée, ou réserver la sienne — et rien quand la
      séance est fixée, passée ou annulée, ou l'édition terminée. */
+  /* « Answer by » : passé ce jour, le lien ne prend plus de réponse. */
+  const answerBy = ((ctx?.block.config ?? {}) as { answerBy?: string | null }).answerBy ?? null;
+  const late = Boolean(answerBy && new Date().toISOString().slice(0, 10) > answerBy);
   const open =
     editionTakesInput(detail.status) &&
     meeting.status === 'planned' &&
+    !late &&
     (meeting.invite === 'confirm' ? Boolean(meeting.heldOn) : meeting.invite === 'slots');
   return {
     meeting,
@@ -525,6 +592,9 @@ export async function invitationFor(token: string): Promise<{ meeting: OneToOneM
       startTime: meeting.startTime,
       durationMinutes: meeting.durationMinutes,
       location: meeting.location,
+      meetingLink: meeting.meetingLink ?? '',
+      answerBy,
+      late,
       invite: meeting.invite,
       rsvpState: meeting.rsvpState,
       rsvpNote: meeting.rsvpNote ?? '',
@@ -539,6 +609,7 @@ export async function invitationFor(token: string): Promise<{ meeting: OneToOneM
 export async function answerInvitation(token: string, accept: boolean, note = ''): Promise<MeetingInvitation> {
   const found = await invitationFor(token);
   if (!found) throw new HttpError(404, 'This invitation does not exist.');
+  if (found.page.late) throw new HttpError(403, 'The deadline to answer has passed. Get in touch with the team.');
   if (!found.page.open) throw new HttpError(403, 'This meeting can no longer be answered here. Get in touch with the team.');
   /* Le mot laissé en refusant reste pour l'équipe ; confirmer l'efface. */
   await all(`update one_to_one_meetings set rsvp_state = $2, rsvp_note = $3, responded_at = now() where id = $1`, [
@@ -601,6 +672,7 @@ export async function tellMeeting(
         programme,
         quand: m.invite === 'slots' && !m.heldOn ? '' : quand,
         lieu,
+        visio: m.meetingLink ? `Lien de la réunion : ${m.meetingLink}` : '',
         action,
         lien: link,
       };
@@ -631,6 +703,7 @@ export async function tellMeeting(
         programme,
         quand: m.invite === 'slots' && !m.heldOn ? 'La startup choisira son créneau parmi vos disponibilités.' : quand,
         lieu,
+        visio: m.meetingLink ? `Lien de la réunion : ${m.meetingLink}` : '',
         lien: origin ? `${origin}/meeting/${m.id}` : '',
         acces: config.messages.person.includes('{{acces}}') ? await accessFor(m.personId, config.messages.access) : '',
       };
@@ -658,14 +731,14 @@ export async function tellMeeting(
 /* ------------------------------------------------------------------ */
 
 const DAY_COLS = `id, block_id as "blockId", name, held_on::text as "heldOn", windows,
-  minutes_per_meeting as "minutesPerMeeting", location, interlocutors, position`;
+  minutes_per_meeting as "minutesPerMeeting", location, meeting_link as "meetingLink", interlocutors, position`;
 
 export const listDays = (blockId: string) =>
   all<OneToOneDay>(`select ${DAY_COLS} from one_to_one_days where block_id = $1 order by held_on nulls last, position`, [blockId]);
 
 export const getDay = (id: string) => one<OneToOneDay>(`select ${DAY_COLS} from one_to_one_days where id = $1`, [id]);
 
-type DayFields = { name: string; heldOn: string | null; windows: { startsAt: string; endsAt: string }[]; minutesPerMeeting: number; location: string; interlocutors: string[] };
+type DayFields = { name: string; heldOn: string | null; windows: { startsAt: string; endsAt: string }[]; minutesPerMeeting: number; location: string; meetingLink?: string; interlocutors: string[] };
 
 /** Les interlocuteurs d'une journée sont ceux de la brique : un inconnu n'y reçoit pas. */
 async function checkInterlocutors(blockId: string, ids: string[]) {
@@ -680,9 +753,9 @@ export async function createDay(blockId: string, input: DayFields): Promise<OneT
   const id = newId('day');
   const last = await one<{ n: number }>('select coalesce(max(position), -1)::int as n from one_to_one_days where block_id = $1', [blockId]);
   await all(
-    `insert into one_to_one_days (id, block_id, name, held_on, windows, minutes_per_meeting, location, interlocutors, position)
-     values ($1,$2,$3,$4::date,$5::jsonb,$6,$7,$8::jsonb,$9)`,
-    [id, blockId, input.name, input.heldOn, input.windows, input.minutesPerMeeting, input.location, input.interlocutors, (last?.n ?? -1) + 1],
+    `insert into one_to_one_days (id, block_id, name, held_on, windows, minutes_per_meeting, location, interlocutors, position, meeting_link)
+     values ($1,$2,$3,$4::date,$5::jsonb,$6,$7,$8::jsonb,$9,$10)`,
+    [id, blockId, input.name, input.heldOn, input.windows, input.minutesPerMeeting, input.location, input.interlocutors, (last?.n ?? -1) + 1, input.meetingLink ?? ''],
   );
   return (await getDay(id))!;
 }
@@ -706,6 +779,7 @@ export async function updateDay(id: string, input: Partial<DayFields>): Promise<
   if (input.windows !== undefined) put('windows', input.windows, '::jsonb');
   if (input.minutesPerMeeting !== undefined) put('minutes_per_meeting', input.minutesPerMeeting);
   if (input.location !== undefined) put('location', input.location);
+  if (input.meetingLink !== undefined) put('meeting_link', input.meetingLink);
   if (input.interlocutors !== undefined) put('interlocutors', input.interlocutors, '::jsonb');
   if (sets.length) await all(`update one_to_one_days set ${sets.join(', ')} where id = $1`, params);
   if (input.heldOn !== undefined && input.heldOn !== current.heldOn) {
@@ -753,6 +827,7 @@ export async function slotsFor(meeting: OneToOneMeeting): Promise<BookableCell[]
 export async function bookSlot(token: string, cell: { dayId: string; startTime: string; personId: string }): Promise<MeetingInvitation> {
   const found = await invitationFor(token);
   if (!found) throw new HttpError(404, 'This invitation does not exist.');
+  if (found.page.late) throw new HttpError(403, 'The deadline to answer has passed. Get in touch with the team.');
   if (found.meeting.invite !== 'slots' || !found.page.open) {
     throw new HttpError(403, 'This meeting can no longer be booked here. Get in touch with the team.');
   }

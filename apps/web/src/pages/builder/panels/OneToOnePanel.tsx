@@ -17,6 +17,7 @@ import {
   type OneToOneDay,
   type PersonRef,
   inviteLetterGap,
+  pairingOf,
 } from '@ceed/shared';
 import { useState } from 'react';
 import { api } from '../../../lib/api';
@@ -25,26 +26,29 @@ import { useAsync } from '../../../lib/useAsync';
 import { ConfirmDialog, useToast } from '../../../ui/Overlays';
 import { AccessTemplate, Template } from './Template';
 import { PeoplePicker } from '../../directory/PeoplePicker';
-import { NumberField, TextField } from '../../../ui/Field';
+import { DateField, NumberField, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
 import { QuestionsEditor } from '../../../ui/QuestionsEditor';
 
-export const ONE_TO_ONE_TABS = ['Overview', 'Interlocutors', 'Startups', 'Days', 'Report', 'Messages'] as const;
+export const ONE_TO_ONE_TABS = ['Overview', 'Invitations', 'Interlocutors', 'Sessions', 'Report', 'Messages'] as const;
 export type OneToOneTab = (typeof ONE_TO_ONE_TABS)[number];
 
-/** The three ways a meeting is set, in the words of the person setting it. */
+/**
+ * The three ways a meeting is set — titled exactly as the Selection
+ * Committee titles its own, so the same choice reads the same in both bricks.
+ */
 export const INVITE_WORDS: Record<(typeof RSVP_MODES)[number], { title: string; line: string }> = {
   slots: {
-    title: 'The startup books',
-    line: 'You set the days; you invite the startups and each picks a free slot — like Calendly.',
+    title: 'The startup picks its own time',
+    line: 'Its link shows the free slots of your sessions and it takes one, Calendly-style. Two startups cannot hold the same slot.',
   },
   confirm: {
-    title: 'You propose, they confirm',
-    line: 'You give a time, the startup confirms or declines it.',
+    title: 'You give it a time, it confirms',
+    line: 'You place each meeting; its link shows the time you set and asks it to confirm or decline — with a word if it declines.',
   },
   none: {
-    title: 'You fix it',
-    line: 'You give a time and nobody is asked: it is in the diary.',
+    title: 'No invitation',
+    line: 'You place each meeting and the startup is simply told. Nothing to answer.',
   },
 };
 
@@ -59,10 +63,11 @@ export function OneToOneSetup({
   patch: (partial: Partial<OneToOneConfig>) => void;
   tab?: OneToOneTab;
 }) {
-  if (tab === 'Days') return <DaysTab block={block} />;
-  if (tab === 'Startups') return <StartupsTab block={block} config={config} patch={patch} />;
+  if (tab === 'Sessions') return <SessionsTab block={block} config={config} patch={patch} />;
+  if (tab === 'Invitations') return <InvitationsTab config={config} patch={patch} />;
 
   if (tab === 'Interlocutors') {
+    const pairing = pairingOf(config);
     return (
       <>
         <div className="callout">
@@ -76,8 +81,30 @@ export function OneToOneSetup({
           label="Interlocutors"
           value={config.interlocutors}
           onChange={(ids) => patch({ interlocutors: ids })}
-          help="Anybody in the directory. A startup’s mentor is suggested first when you plan its meetings."
+          help="Anybody in the directory."
         />
+
+        <div className="field">
+          <label>Who meets whom</label>
+          <div className="pick-list">
+            <button type="button" className={pairing === 'all' ? 'pick on' : 'pick'} onClick={() => patch({ pairing: 'all' })}>
+              <Icon name={pairing === 'all' ? 'check' : 'square'} />
+              <div>
+                <strong>Every interlocutor meets every startup</strong>
+                <span>Like an expert’s office hours: any startup may see any of them.</span>
+              </div>
+            </button>
+            <button type="button" className={pairing === 'assigned' ? 'pick on' : 'pick'} onClick={() => patch({ pairing: 'assigned' })}>
+              <Icon name={pairing === 'assigned' ? 'check' : 'square'} />
+              <div>
+                <strong>They share the startups</strong>
+                <span>Each startup has its own interlocutors — one or several — and meets only them, once each.</span>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {pairing === 'assigned' && <Pairs block={block} config={config} patch={patch} />}
       </>
     );
   }
@@ -145,13 +172,62 @@ export function OneToOneSetup({
 
   return (
     <>
+      {/* Quand la brique vit : avant, personne ne voit rien ; après, les
+          interlocuteurs relisent leurs comptes rendus sans les changer. */}
+      <h3 className="section-title">When it runs</h3>
+      <div className="grid-2">
+        <DateField label="Opens on" value={config.opensAt} onChange={(v) => patch({ opensAt: v })} />
+        <DateField label="Closes on" value={config.closesAt} onChange={(v) => patch({ closesAt: v })} />
+      </div>
+      <p className="faint" style={{ margin: 0, fontSize: 12 }}>
+        While it is open, interlocutors see their meetings and write their reports, and startups answer their links.
+        Once closed, reports can be read but no longer changed.
+      </p>
+
       <IntakeChoice block={block} config={config} patch={patch} />
 
       <div className="field">
-        <label>How a new meeting is set</label>
-        <div className="help">The default for this brick — each meeting can still be set another way.</div>
+        <label>One-off or recurring</label>
         <div className="pick-list">
-          {(['confirm', 'none', 'slots'] as const).map((mode) => (
+          <button type="button" className={config.cadence === 'single' ? 'pick on' : 'pick'} onClick={() => patch({ cadence: 'single' })}>
+            <Icon name={config.cadence === 'single' ? 'check' : 'square'} />
+            <div>
+              <strong>One-off meetings</strong>
+              <span>A meeting with a startup, once — set on the days you plan in Sessions.</span>
+            </div>
+          </button>
+          <button type="button" className={config.cadence === 'recurring' ? 'pick on' : 'pick'} onClick={() => patch({ cadence: 'recurring' })}>
+            <Icon name={config.cadence === 'recurring' ? 'check' : 'square'} />
+            <div>
+              <strong>A regular follow-up</strong>
+              <span>The same startup and interlocutor every week, every two weeks or every month, until an end.</span>
+            </div>
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Invitations                                                         */
+/* ------------------------------------------------------------------ */
+
+/** How a meeting is set, for the whole brick — the Selection Committee's choice, in its words. */
+function InvitationsTab({
+  config,
+  patch,
+}: {
+  config: OneToOneConfig;
+  patch: (partial: Partial<OneToOneConfig>) => void;
+}) {
+  const pairing = pairingOf(config);
+  return (
+    <>
+      <h3 className="section-title">How each startup gets its time</h3>
+      <div className="field">
+        <div className="pick-list">
+          {(['slots', 'confirm', 'none'] as const).map((mode) => (
             <button
               key={mode}
               type="button"
@@ -167,7 +243,54 @@ export function OneToOneSetup({
           ))}
         </div>
       </div>
+      {config.invite !== 'none' && (
+        <DateField
+          label="Answer by"
+          value={config.answerBy}
+          onChange={(v) => patch({ answerBy: v })}
+          help="Optional. After this date the link stops accepting answers."
+        />
+      )}
 
+      {config.cadence === 'single' &&
+        (pairing === 'all' ? (
+          <NumberField
+            label="Meetings per startup"
+            value={config.perStartup}
+            min={1}
+            max={20}
+            onChange={(v) => patch({ perStartup: Math.max(1, v || 1) })}
+            help="How many meetings a startup may have in this brick, all interlocutors together."
+          />
+        ) : (
+          <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+            The startups are shared (Interlocutors tab): each meets each of its own interlocutors once.
+          </p>
+        ))}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Sessions                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Où et quand les rendez-vous se tiennent. Ponctuels : des journées, comme
+ * les séances d'un comité. Récurrents : chaque série naît de son premier
+ * rendez-vous, dans l'onglet One to One.
+ */
+function SessionsTab({
+  block,
+  config,
+  patch,
+}: {
+  block: Block;
+  config: OneToOneConfig;
+  patch: (partial: Partial<OneToOneConfig>) => void;
+}) {
+  return (
+    <>
       <div className="grid-2">
         <NumberField
           label="Length of a meeting, in minutes"
@@ -177,17 +300,28 @@ export function OneToOneSetup({
           onChange={(v) => patch({ durationMinutes: v || 45 })}
         />
         <TextField
-          label="Where"
+          label="Where, by default"
           value={config.location}
           onChange={(v) => patch({ location: v })}
-          placeholder="CEED, Casablanca — or a video link"
+          placeholder="CEED, Casablanca"
         />
       </div>
-
-      <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
-        The switch at the top opens the meetings to the interlocutors: they see them, and write their reports, while it
-        is open.
+      <p className="faint" style={{ margin: 0, fontSize: 12 }}>
+        Each meeting can say otherwise — its place and its video link are set on the meeting itself, in the One to One tab.
       </p>
+
+      {config.cadence === 'recurring' ? (
+        <div className="callout">
+          <Icon name="calendar" size={15} />
+          <div>
+            A regular follow-up: each startup’s series is created from the <strong>One to One</strong> tab —{' '}
+            <em>+ Meeting</em>, then <em>Repeat</em> — with its rhythm and its end. Every session is a meeting of its own,
+            with its own report.
+          </div>
+        </div>
+      ) : (
+        <DaysTab block={block} />
+      )}
     </>
   );
 }
@@ -218,9 +352,9 @@ function DaysTab({ block }: { block: Block }) {
   const name = (id: string) => interlocutors.find((p) => p.id === id)?.name ?? '—';
 
   const copy = async (d: OneToOneDay) => {
-    const { name: n, heldOn, windows, minutesPerMeeting, location, interlocutors: who } = d;
+    const { name: n, heldOn, windows, minutesPerMeeting, location, meetingLink, interlocutors: who } = d;
     const made = await api.post<OneToOneDay>(`/api/blocks/${block.id}/days`, {
-      name: `${n || 'Day'} (copy)`, heldOn, windows, minutesPerMeeting, location, interlocutors: who,
+      name: `${n || 'Day'} (copy)`, heldOn, windows, minutesPerMeeting, location, meetingLink, interlocutors: who,
     });
     view.reload();
     setEditing(made.id);
@@ -353,6 +487,7 @@ function DayEditor({
     windows: day?.windows ?? [{ startsAt: '09:00', endsAt: '12:30' }],
     minutesPerMeeting: day?.minutesPerMeeting ?? 45,
     location: day?.location ?? '',
+    meetingLink: day?.meetingLink ?? '',
     interlocutors: day?.interlocutors ?? interlocutors.map((p) => p.id),
   });
   const [saving, setSaving] = useState(false);
@@ -431,6 +566,13 @@ function DayEditor({
         />
         <TextField label="Where" value={draft.location} onChange={(v) => set({ location: v })} placeholder="CEED, Casablanca" />
       </div>
+      <TextField
+        label="Video link"
+        value={draft.meetingLink}
+        onChange={(v) => set({ meetingLink: v })}
+        placeholder="https://meet.google.com/… — optional"
+        help="Given to every meeting of the day; a meeting can still have its own."
+      />
 
       <div className="field">
         <label>Who receives on this day</label>
@@ -525,10 +667,11 @@ function IntakeChoice({
 }
 
 /**
- * Les mentors de chaque startup : un ou plusieurs, parmi les interlocuteurs.
- * Inviter une startup, c'est alors lui donner un rendez-vous avec chacun.
+ * Les interlocuteurs de chaque startup, quand ils se les partagent : un ou
+ * plusieurs. « Répartir » donne à chaque startup qui n'en a pas celui qui en
+ * a le moins — on corrige ensuite à la main.
  */
-function StartupsTab({
+function Pairs({
   block,
   config,
   patch,
@@ -549,16 +692,24 @@ function StartupsTab({
     patch({ mentors: { ...config.mentors, [candidate.id]: next } });
   };
 
+  /* Équilibré : chacune des startups sans interlocuteur va à celui qui en a le moins. */
+  const distribute = () => {
+    const load = new Map(people.map((p) => [p.id, 0]));
+    for (const { candidate } of pool) for (const id of mentorsOf(config, candidate)) load.set(id, (load.get(id) ?? 0) + 1);
+    const next = { ...config.mentors };
+    for (const { candidate } of pool) {
+      if (mentorsOf(config, candidate).length) continue;
+      const [least] = [...load.entries()].sort((a, b) => a[1] - b[1]);
+      if (!least) break;
+      next[candidate.id] = [least[0]];
+      load.set(least[0], least[1] + 1);
+    }
+    patch({ mentors: next });
+  };
+  const unpaired = pool.filter(({ candidate }) => !mentorsOf(config, candidate).length).length;
+
   return (
     <>
-      <div className="callout">
-        <Icon name="users" size={15} />
-        <div>
-          Who each startup meets. Inviting a startup gives it a meeting with each of its mentors, and the timetable says
-          whose mentor is whose. The mentor the cohort gave it is suggested until you change it.
-        </div>
-      </div>
-
       {!pool.length ? (
         <div className="empty" style={{ padding: 22 }}>
           <p style={{ margin: 0 }}>
@@ -571,36 +722,47 @@ function StartupsTab({
       ) : !people.length ? (
         <div className="callout warn">
           <Icon name="alert" size={15} />
-          <div>Name the interlocutors first, in the Interlocutors tab — and save.</div>
+          <div>Name the interlocutors above first.</div>
         </div>
       ) : (
-        <div className="rows">
-          {pool.map(({ candidate }) => {
-            const mine = mentorsOf(config, candidate);
-            const suggested = !config.mentors[candidate.id] && mine.length > 0;
-            return (
-              <div className="rowcard card-pad stack" key={candidate.id} style={{ gap: 6 }}>
-                <div className="row">
-                  <strong style={{ flex: 1, fontSize: 13 }}>{candidate.orgName}</strong>
-                  {suggested && <span className="faint" style={{ fontSize: 11.5 }}>the cohort’s mentor</span>}
-                  {!mine.length && <span className="badge">No mentor</span>}
+        <>
+          <div className="row">
+            <span className="faint" style={{ flex: 1, fontSize: 12.5 }}>
+              {unpaired ? `${unpaired} startup${unpaired > 1 ? 's have' : ' has'} nobody yet.` : 'Every startup has its interlocutors.'}{' '}
+              The mentor the cohort gave a startup is suggested until you change it.
+            </span>
+            <button className="btn sm" disabled={!unpaired} onClick={distribute}>
+              <Icon name="users" size={12} /> Distribute automatically
+            </button>
+          </div>
+          <div className="rows">
+            {pool.map(({ candidate }) => {
+              const mine = mentorsOf(config, candidate);
+              const suggested = !config.mentors[candidate.id] && mine.length > 0;
+              return (
+                <div className="rowcard card-pad stack" key={candidate.id} style={{ gap: 6 }}>
+                  <div className="row">
+                    <strong style={{ flex: 1, fontSize: 13 }}>{candidate.orgName}</strong>
+                    {suggested && <span className="faint" style={{ fontSize: 11.5 }}>the cohort’s mentor</span>}
+                    {!mine.length && <span className="badge warn">Nobody yet</span>}
+                  </div>
+                  <div className="work-pick">
+                    {people.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className={mine.includes(p.id) ? 'track on' : 'track'}
+                        onClick={() => toggle(candidate, p.id)}
+                      >
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="work-pick">
-                  {people.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      className={mine.includes(p.id) ? 'track on' : 'track'}
-                      onClick={() => toggle(candidate, p.id)}
-                    >
-                      {p.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        </>
       )}
     </>
   );

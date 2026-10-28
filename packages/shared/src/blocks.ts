@@ -1530,6 +1530,7 @@ export const ONE_TO_ONE_STARTUP_VARIABLES = [
   { name: 'programme', label: 'Programme', what: 'The programme and its edition', example: 'Grow — 2026' },
   { name: 'quand', label: 'Date sentence', what: 'The whole sentence — empty when the startup picks the time', example: 'Le mardi 3 novembre à 10:00, pour 45 minutes.', byMode: [{ mode: 'Slot picking', text: '(vide tant qu’elle n’a pas choisi — puis « Le mardi 3 novembre à 10:00, pour 45 minutes. »)' }, { mode: 'RSVP', text: 'Le mardi 3 novembre à 10:00, pour 45 minutes.' }, { mode: 'No RSVP', text: 'Le mardi 3 novembre à 10:00, pour 45 minutes.' }] },
   { name: 'lieu', label: 'Where', what: 'The whole sentence — empty when no place is set', example: 'Lieu : CEED, Casablanca.' },
+  { name: 'visio', label: 'Video link', what: 'The whole sentence with the meeting’s video link — empty when there is none', example: 'Lien de la réunion : https://meet.google.com/abc-defg-hij' },
   { name: 'action', label: 'Answer sentence + link (per mode)', what: 'Book a time, or confirm the one proposed — with the link. Empty when nothing is asked', example: 'Choisissez votre créneau ici : https://www.ceedflow.com/meet/…', byMode: [{ mode: 'Slot picking', text: 'Choisissez votre créneau ici : https://www.ceedflow.com/meet/…' }, { mode: 'RSVP', text: 'Confirmez, ou dites-nous si l’heure ne convient pas : https://www.ceedflow.com/meet/…' }, { mode: 'No RSVP', text: '(rien — la lettre ne fait qu’informer)' }] },
   { name: 'lien', label: 'Booking / RSVP link', what: 'The startup’s own page: the free slots to book from, or the time to confirm', example: 'https://www.ceedflow.com/meet/…', byMode: [{ mode: 'Slot picking', text: 'https://www.ceedflow.com/meet/… — la page des créneaux libres' }, { mode: 'RSVP', text: 'https://www.ceedflow.com/meet/… — la page pour confirmer ou refuser' }, { mode: 'No RSVP', text: 'https://www.ceedflow.com/meet/… — la page du rendez-vous, sans rien à répondre' }] },
 ] as const;
@@ -1540,6 +1541,7 @@ export const ONE_TO_ONE_PERSON_VARIABLES = [
   { name: 'programme', label: 'Programme', what: 'The programme and its edition', example: 'Grow — 2026' },
   { name: 'quand', label: 'Date sentence', what: 'The whole sentence — or that the startup will pick a time', example: 'Le mardi 3 novembre à 10:00, pour 45 minutes.' },
   { name: 'lieu', label: 'Where', what: 'The whole sentence — empty when no place is set', example: 'Lieu : CEED, Casablanca.' },
+  { name: 'visio', label: 'Video link', what: 'The whole sentence with the meeting’s video link — empty when there is none', example: 'Lien de la réunion : https://meet.google.com/abc-defg-hij' },
   { name: 'lien', label: 'Meeting & report link', what: 'Where they open the meeting and write the report', example: 'https://www.ceedflow.com/meeting/…' },
   { name: 'acces', label: 'First login (email + password)', what: 'The password somebody with no account yet needs — empty for everybody else', example: '' },
 ] as const;
@@ -1552,6 +1554,8 @@ Dans le cadre de {{programme}}, {{startup}} a rendez-vous avec {{interlocuteur}}
 {{quand}}
 
 {{lieu}}
+
+{{visio}}
 
 {{action}}
 
@@ -1566,13 +1570,34 @@ Vous avez rendez-vous avec {{startup}}, dans le cadre de {{programme}}.
 
 {{lieu}}
 
+{{visio}}
+
 Vous retrouvez la startup et le compte rendu à remplir ici : {{lien}}
 
 {{acces}}`;
 
+export const ONE_TO_ONE_CADENCES = ['single', 'recurring'] as const;
+export type OneToOneCadence = (typeof ONE_TO_ONE_CADENCES)[number];
+
 export const oneToOneConfigSchema = z.object({
   ...brickWindowFields,
+  /**
+   * Des rendez-vous ponctuels, ou un suivi régulier — chaque semaine, toutes
+   * les deux semaines, chaque mois. Le reste de la brique en découle : les
+   * sessions se règlent en journées, ou en calendrier de suivi.
+   */
+  cadence: z.enum(ONE_TO_ONE_CADENCES).default('single'),
+  /** How a meeting is set — for the whole brick, as a committee's is. */
   invite: z.enum(RSVP_MODES).default('confirm'),
+  /** Until when a startup may answer its link. Empty: until the brick closes. */
+  answerBy: z.string().nullable().default(null),
+  /**
+   * Les interlocuteurs reçoivent toutes les startups, ou se les partagent.
+   * Absent sur les briques d'avant : déduit de l'attribution (voir pairingOf).
+   */
+  pairing: z.enum(['all', 'assigned']).optional(),
+  /** Quand tous reçoivent tout : combien de rendez-vous une startup peut avoir ici. */
+  perStartup: z.number().int().min(1).max(20).default(1),
   durationMinutes: z.number().int().min(5).max(480).default(45),
   location: z.string().default(''),
   /** The people startups meet here, by directory record id. */
@@ -1612,6 +1637,14 @@ export const oneToOneConfigSchema = z.object({
     })
     .default({}),
 });
+
+/**
+ * Partagées ou non : ce que la brique dit, ou, pour une brique d'avant ce
+ * réglage, ce que son attribution laissait entendre — des mentors attribués,
+ * c'était un partage.
+ */
+export const pairingOf = (config: { pairing?: 'all' | 'assigned'; mentors: Record<string, string[]> }): 'all' | 'assigned' =>
+  config.pairing ?? (Object.values(config.mentors).some((ids) => ids.length > 0) ? 'assigned' : 'all');
 
 export const blockConfigSchemas = {
   sourcing: sourcingConfigSchema,

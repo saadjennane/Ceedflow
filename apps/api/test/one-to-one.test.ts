@@ -143,6 +143,53 @@ describe('a One to One', { skip: skipWithoutServer }, () => {
     assert.equal(confirmed.rsvpNote, '');
   });
 
+  it('holds a startup to the meetings the brick allows: N in all, once each of its own when shared', async () => {
+    const { block, mentor, expert, a, b } = await setUp();
+    // Tous reçoivent tout, un rendez-vous par startup.
+    const [first] = await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, invite: 'none', heldOn: '2030-07-01', startTime: '09:00' });
+    await assert.rejects(
+      planMeetings(block.id, { candidateIds: [a.id], personId: expert.id, invite: 'none', heldOn: '2030-07-01', startTime: '10:00' }),
+      /the most the Invitations tab allows/,
+    );
+    await changeMeeting(first!.id, { status: 'cancelled' });
+    await planMeetings(block.id, { candidateIds: [a.id], personId: expert.id, invite: 'none', heldOn: '2030-07-01', startTime: '10:00' });
+
+    // Partagées : seulement les siens, une fois chacun.
+    const config = (await repo.getBlock(block.id))!.config as object;
+    await repo.updateBlock(block.id, { config: { ...config, pairing: 'assigned', mentors: { [b.id]: [mentor.id] } } });
+    await assert.rejects(
+      planMeetings(block.id, { candidateIds: [b.id], personId: expert.id, invite: 'none', heldOn: '2030-07-02', startTime: '09:00' }),
+      /not paired with this interlocutor/,
+    );
+    await planMeetings(block.id, { candidateIds: [b.id], personId: mentor.id, invite: 'none', heldOn: '2030-07-02', startTime: '09:00' });
+    await assert.rejects(
+      planMeetings(block.id, { candidateIds: [b.id], personId: mentor.id, invite: 'none', heldOn: '2030-07-03', startTime: '09:00' }),
+      /already has a meeting with this interlocutor/,
+    );
+  });
+
+  it('stops taking answers after the “answer by” date', async () => {
+    const { block, mentor, a } = await setUp();
+    const config = (await repo.getBlock(block.id))!.config as object;
+    await repo.updateBlock(block.id, { config: { ...config, answerBy: '2020-01-01' } });
+    const [m] = await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, invite: 'confirm', heldOn: '2030-08-01', startTime: '11:00' });
+    const page = (await invitationFor(m!.token))!.page;
+    assert.equal(page.late, true);
+    await assert.rejects(answerInvitation(m!.token, true), /deadline to answer has passed/);
+  });
+
+  it('gives a day’s video link to its meetings, and says it in the letter', async () => {
+    const { block, mentor, a } = await setUp();
+    const day = await createDay(block.id, {
+      name: 'Day', heldOn: '2030-09-01', windows: [{ startsAt: '09:00', endsAt: '10:00' }], minutesPerMeeting: 30,
+      location: 'CEED', meetingLink: 'https://meet.example/abc', interlocutors: [mentor.id],
+    });
+    const [m] = await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, dayId: day.id, invite: 'none', heldOn: '2030-09-01', startTime: '09:00' });
+    assert.equal(m!.meetingLink, 'https://meet.example/abc');
+    const moved = await changeMeeting(m!.id, { meetingLink: 'https://zoom.example/xyz' });
+    assert.equal(moved!.meetingLink, 'https://zoom.example/xyz', 'and a meeting can have its own');
+  });
+
   it('asks again when a proposed time moves', async () => {
     const { block, mentor, a } = await setUp();
     const [m] = await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, invite: 'confirm', heldOn: '2026-11-04', startTime: '11:00' });

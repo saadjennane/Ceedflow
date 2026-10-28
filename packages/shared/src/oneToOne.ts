@@ -35,6 +35,8 @@ export interface OneToOneMeeting {
   startTime: string | null;
   durationMinutes: number;
   location: string;
+  /** The video link, when it is held online — or both. */
+  meetingLink: string;
   /** How it was set: booked by the startup, proposed and confirmed, or simply fixed. */
   invite: (typeof RSVP_MODES)[number];
   token: string;
@@ -90,6 +92,8 @@ export interface OneToOneDay {
   windows: TimeWindow[];
   minutesPerMeeting: number;
   location: string;
+  /** The video link its meetings take, unless one says otherwise. */
+  meetingLink: string;
   interlocutors: string[];
   position: number;
 }
@@ -100,6 +104,7 @@ export const dayInput = z.object({
   windows: z.array(timeWindowSchema).min(1, 'Give at least one stretch of the day.').default([{ startsAt: '09:00', endsAt: '12:30' }]),
   minutesPerMeeting: z.number().int().min(5).max(480).default(45),
   location: z.string().default(''),
+  meetingLink: z.string().trim().default(''),
   interlocutors: z.array(z.string()).default([]),
 });
 
@@ -154,6 +159,7 @@ export const planMeetingsInput = z.object({
   startTime: clock.nullable().default(null),
   durationMinutes: z.number().int().min(5).max(480).optional(),
   location: z.string().optional(),
+  meetingLink: z.string().trim().optional(),
   /** A series: one startup, the same time, at a rhythm, until an end. */
   repeat: z.lazy(() => repeatInput).nullable().default(null),
   /** Write to them now — the startup, and the interlocutor. */
@@ -167,6 +173,7 @@ export const meetingPatch = z.object({
   startTime: clock.nullable().optional(),
   durationMinutes: z.number().int().min(5).max(480).optional(),
   location: z.string().optional(),
+  meetingLink: z.string().trim().optional(),
   status: z.enum(MEETING_STATUSES).optional(),
 });
 

@@ -96,6 +96,7 @@ export function MemberHome({
       case 'answer_committee':
         return `${a.answer === 'book' ? t('act.bookCommittee') : t('act.confirmCommittee')} — ${a.label}`;
       case 'answer_meeting':
+        if (!a.label) return t('act.bookMeetingAny');
         return `${a.answer === 'book' ? t('act.bookMeeting') : t('act.confirmMeeting')} ${a.label}`;
     }
   };

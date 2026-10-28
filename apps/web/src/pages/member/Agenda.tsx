@@ -20,6 +20,10 @@ export interface AgendaEntry {
   startsAt: string | null;
   endsAt: string | null;
   location: string;
+  /** When the link asks for something: to pick a time, or to confirm one. */
+  answer?: 'book' | 'confirm';
+  answerBy?: string | null;
+  meetingLink?: string;
 }
 
 export function Agenda({ entries }: { entries: AgendaEntry[] }) {
@@ -40,7 +44,7 @@ export function Agenda({ entries }: { entries: AgendaEntry[] }) {
           <Icon name={entry.kind === 'one_to_one' ? 'users' : 'calendar'} size={15} />
           <span style={{ flex: 1, minWidth: 0 }}>
             <strong style={{ fontSize: 13.5 }}>
-              {entry.kind === 'one_to_one' ? `${t('prog.meeting')} ${entry.with}` : t('prog.jury')}
+              {entry.kind === 'one_to_one' ? (entry.with ? `${t('prog.meeting')} ${entry.with}` : t('act.bookMeetingAny')) : t('prog.jury')}
             </strong>
             <span className="faint" style={{ display: 'block', fontSize: 12.5 }}>
               {[entry.blockName, entry.name].filter(Boolean).join(' · ')}
@@ -48,9 +52,10 @@ export function Agenda({ entries }: { entries: AgendaEntry[] }) {
           </span>
           <span style={{ fontSize: 12.5, textAlign: 'right' }}>
             {entry.on ? longDate(entry.on) : entry.link ? '' : '—'}
-            {entry.link && (
+            {/* Le bouton seulement quand une réponse est attendue : choisir son heure, ou la confirmer. */}
+            {entry.link && entry.answer && (
               <a className="btn primary sm" href={entry.link} style={{ display: 'inline-flex', marginTop: entry.on ? 4 : 0 }}>
-                {entry.on ? t('prog.meetConfirm') : t('prog.meetBook')}
+                {entry.answer === 'confirm' ? t('prog.meetConfirm') : t('prog.meetBook')}
               </a>
             )}
             {entry.startsAt && (
@@ -59,6 +64,11 @@ export function Agenda({ entries }: { entries: AgendaEntry[] }) {
                 {entry.endsAt ? `–${entry.endsAt}` : ''}
                 {entry.location ? ` · ${entry.location}` : ''}
               </span>
+            )}
+            {entry.meetingLink && (
+              <a href={entry.meetingLink} target="_blank" rel="noreferrer" style={{ display: 'block', fontSize: 12 }}>
+                {t('prog.videoLink')}
+              </a>
             )}
           </span>
         </div>

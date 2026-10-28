@@ -66,7 +66,13 @@ export function MeetingPage() {
           <span className="faint" style={{ display: 'block', fontSize: 12 }}>
             {data.programName} · {data.blockName}
             {data.heldOn ? ` · ${formatDate(data.heldOn)}${data.startTime ? ` ${data.startTime}` : ''}` : ''}
+            {data.location ? ` · ${data.location}` : ''}
           </span>
+          {data.meetingLink && (
+            <a href={data.meetingLink} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
+              Join the video call
+            </a>
+          )}
         </span>
       </div>
 

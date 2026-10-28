@@ -25,6 +25,9 @@ interface Invitation {
   location: string;
   invite: 'slots' | 'confirm' | 'none';
   rsvpState: 'pending' | 'confirmed' | 'declined';
+  meetingLink?: string;
+  answerBy?: string | null;
+  late?: boolean;
   /** Ce qu'elle a dit en refusant. */
   rsvpNote?: string;
   status: 'planned' | 'held' | 'cancelled' | 'no_show';
@@ -124,7 +127,25 @@ export function MeetPage() {
               <span className="faint" style={{ fontSize: 13 }}>
                 {data.durationMinutes} minutes{data.location ? ` · ${data.location}` : ''}
               </span>
+              {data.meetingLink && (
+                <a href={data.meetingLink} target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>
+                  Join the video call
+                </a>
+              )}
             </div>
+          )}
+
+          {data.late ? (
+            <div className="callout warn">
+              <Icon name="clock" size={15} /> The deadline to answer has passed. Get in touch with the team.
+            </div>
+          ) : (
+            data.answerBy &&
+            data.open && (
+              <span className="badge warn" style={{ alignSelf: 'flex-start' }}>
+                <Icon name="clock" size={13} /> Answer by {formatDate(data.answerBy)}
+              </span>
+            )
           )}
 
           {error && (

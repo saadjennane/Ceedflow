@@ -688,7 +688,10 @@ function PlanModal({
   const mentor = first?.mentorId && data.config.interlocutors.includes(first.mentorId) ? first.mentorId : '';
   const [picked, setPicked] = useState<string[]>(preselected);
   const [personId, setPersonId] = useState(mentor || data.interlocutors[0]?.id || '');
-  const [invite, setInvite] = useState<'confirm' | 'none' | 'slots'>(data.config.invite === 'slots' ? 'confirm' : data.config.invite);
+  /* Le mode est celui de la brique (onglet Invitations). Dans une brique où les
+     startups choisissent leur heure, un rendez-vous placé à la main leur est
+     proposé à confirmer. */
+  const invite: 'confirm' | 'none' = data.config.invite === 'none' ? 'none' : 'confirm';
   const [heldOn, setHeldOn] = useState('');
   const [startTime, setStartTime] = useState('');
   const [repeats, setRepeats] = useState(false);
@@ -699,7 +702,7 @@ function PlanModal({
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
-  const books = invite === 'slots';
+  const books = false;
   /* Laisser réserver : autant de startups qu'on veut, chacune prendra son
      créneau. Une heure donnée : une startup, et une série possible. */
   const ready = picked.length > 0 && personId && (books || (heldOn && startTime && picked.length === 1));
@@ -752,28 +755,13 @@ function PlanModal({
         </>
       }
     >
-      <div className="field">
-        <label>How it is set</label>
-        <div className="pick-list">
-          {(['confirm', 'none'] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              className={invite === mode ? 'pick on' : 'pick'}
-              onClick={() => {
-                setInvite(mode);
-                setPicked((p) => p.slice(0, 1));
-              }}
-            >
-              <Icon name={invite === mode ? 'check' : 'square'} />
-              <div>
-                <strong>{INVITE_WORDS[mode].title}</strong>
-                <span>{INVITE_WORDS[mode].line}</span>
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
+      <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+        {data.config.invite === 'none'
+          ? 'No invitation in this brick: the startup is told, nothing to answer.'
+          : data.config.invite === 'confirm'
+            ? 'The startup is asked to confirm the time, as set in the Invitations tab.'
+            : 'In this brick the startups pick their own time; a meeting placed by hand is proposed to them to confirm.'}
+      </p>
 
       <div className="field">
         <label>{books ? 'Startups' : 'Startup'}</label>
@@ -900,6 +888,10 @@ function MeetingDrawer({
   const [heldOn, setHeldOn] = useState(meeting.heldOn ?? '');
   const [startTime, setStartTime] = useState(meeting.startTime ?? '');
   const [personId, setPersonId] = useState(meeting.personId ?? '');
+  /* Où, et le lien de la visio : propres à chaque rendez-vous, pré-remplis par
+     sa journée ou la brique. */
+  const [place, setPlace] = useState(meeting.location ?? '');
+  const [videoLink, setVideoLink] = useState(meeting.meetingLink ?? '');
   const [answers, setAnswers] = useState<Record<string, unknown>>(meeting.report);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -1065,6 +1057,33 @@ function MeetingDrawer({
             </select>
           </div>
         </div>
+        <div className="grid-2">
+          <div className="field">
+            <label>Where</label>
+            <input className="input" value={place} placeholder="CEED, Casablanca" onChange={(e) => setPlace(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Video link</label>
+            <input
+              className="input"
+              value={videoLink}
+              placeholder="https://meet.google.com/…"
+              onChange={(e) => setVideoLink(e.target.value)}
+            />
+          </div>
+        </div>
+        {(place !== (meeting.location ?? '') || videoLink !== (meeting.meetingLink ?? '')) && (
+          <div className="row">
+            <span className="faint" style={{ flex: 1, fontSize: 12 }}>Said in the letters and in both diaries.</span>
+            <button
+              className="btn primary sm"
+              disabled={busy}
+              onClick={() => change({ location: place, meetingLink: videoLink.trim() }, 'Place saved.')}
+            >
+              Save the place
+            </button>
+          </div>
+        )}
         <div className="row wrap" style={{ gap: 6 }}>
           {moved && (
             <button

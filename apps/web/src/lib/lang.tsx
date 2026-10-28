@@ -67,6 +67,8 @@ const WORDS = {
   'act.bookCommittee': { fr: 'Choisir l’heure de votre passage', en: 'Pick your time in front of the jury' },
   'act.confirmCommittee': { fr: 'Confirmer votre passage devant le jury', en: 'Confirm your time in front of the jury' },
   'act.bookMeeting': { fr: 'Choisir un créneau avec', en: 'Pick a time with' },
+  'prog.videoLink': { fr: 'Rejoindre la visio', en: 'Join the video call' },
+  'act.bookMeetingAny': { fr: 'Choisir un créneau de rendez-vous', en: 'Pick a meeting time' },
   'act.confirmMeeting': { fr: 'Confirmer le rendez-vous avec', en: 'Confirm the meeting with' },
   'act.left': { fr: 'restant(s) sur', en: 'left of' },
   'act.missing': { fr: 'élément(s) à compléter', en: 'item(s) to complete' },
