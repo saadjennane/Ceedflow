@@ -16,7 +16,7 @@ import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
 import {
-  bookSlot, cancelFollowing, changeMeeting, createDay, historyOf, informAll, invitationFor, meetingFor,
+  answerInvitation, bookSlot, cancelFollowing, changeMeeting, createDay, historyOf, informAll, invitationFor, meetingFor,
   meetingsFor, oneToOneView, planMeetings, saveReport, tellMeeting, updateDay,
 } from '../src/services/oneToOne.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
@@ -131,6 +131,16 @@ describe('a One to One', { skip: skipWithoutServer }, () => {
     await changeMeeting(first!.id, { status: 'cancelled' });
     const [again] = await planMeetings(block.id, { candidateIds: [b.id], personId: mentor.id, invite: 'none', heldOn: '2026-11-03', startTime: '10:00' });
     assert.ok(again);
+  });
+
+  it('keeps the word a startup leaves when it declines, and forgets it when it confirms', async () => {
+    const { block, mentor, a } = await setUp();
+    const [m] = await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, invite: 'confirm', heldOn: '2030-02-04', startTime: '11:00' });
+    const declined = await answerInvitation(m!.token, false, '  En déplacement jusqu’au 12, libres ensuite.  ');
+    assert.equal(declined.rsvpState, 'declined');
+    assert.equal(declined.rsvpNote, 'En déplacement jusqu’au 12, libres ensuite.');
+    const confirmed = await answerInvitation(m!.token, true, 'ignored');
+    assert.equal(confirmed.rsvpNote, '');
   });
 
   it('asks again when a proposed time moves', async () => {

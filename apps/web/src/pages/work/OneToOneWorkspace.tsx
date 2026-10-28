@@ -326,7 +326,15 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
                                 </span>
                                 <button className="seated-main oto-seat" onClick={() => setOpenId(m.id)} title="Open the meeting and its report">
                                   <div className="seated-name">{m.orgName}</div>
-                                  <div className="seated-meta">{state && <span className={state.tone}>{state.label}</span>}</div>
+                                  <div className="seated-meta">
+                                    {state && (
+                                      <span className={state.tone} title={m.rsvpState === 'declined' && m.rsvpNote ? m.rsvpNote : undefined}>
+                                        {state.label}
+                                        {/* Un mot laissé en refusant : lu au survol, ou en ouvrant le rendez-vous. */}
+                                        {m.rsvpState === 'declined' && m.rsvpNote ? ' 💬' : ''}
+                                      </span>
+                                    )}
+                                  </div>
                                 </button>
                                 <div className="seat-actions">
                                   <button
@@ -983,7 +991,14 @@ function MeetingDrawer({
           <div className="callout">
             <Icon name="link" size={15} />
             <div style={{ flex: 1 }}>
-              {meeting.heldOn ? 'The startup booked this time.' : 'Waiting for the startup to book a time. Their link:'}
+              {meeting.heldOn
+                ? 'The startup booked this time.'
+                : meeting.rsvpState === 'declined'
+                  ? 'The startup says none of the times work — open more, or place them by hand. Their link:'
+                  : 'Waiting for the startup to book a time. Their link:'}
+              {!meeting.heldOn && meeting.rsvpState === 'declined' && meeting.rsvpNote && (
+                <div style={{ marginTop: 4, fontStyle: 'italic' }}>“{meeting.rsvpNote}”</div>
+              )}
               {!meeting.heldOn && (
                 <div className="row" style={{ gap: 6, marginTop: 6 }}>
                   <code className="public-link">{link}</code>
@@ -1010,6 +1025,9 @@ function MeetingDrawer({
                 : meeting.rsvpState === 'confirmed'
                   ? 'The startup confirmed.'
                   : 'The startup declined — propose another time.'}
+              {meeting.rsvpState === 'declined' && meeting.rsvpNote && (
+                <div style={{ marginTop: 4, fontStyle: 'italic' }}>“{meeting.rsvpNote}”</div>
+              )}
               {meeting.rsvpState === 'pending' && (
                 <div className="row" style={{ gap: 6, marginTop: 6 }}>
                   <code className="public-link">{link}</code>

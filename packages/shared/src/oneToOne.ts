@@ -40,6 +40,8 @@ export interface OneToOneMeeting {
   token: string;
   rsvpState: 'pending' | 'confirmed' | 'declined';
   respondedAt: string | null;
+  /** Ce que la startup a dit en refusant — facultatif, vide sinon. */
+  rsvpNote: string;
   status: MeetingStatus;
   /** The report's answers, by question id. Empty until somebody writes. */
   report: Record<string, unknown>;

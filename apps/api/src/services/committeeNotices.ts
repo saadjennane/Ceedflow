@@ -24,6 +24,7 @@ import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { committeeView, type SessionView } from './committee.js';
 import { appLink } from './deliverables.js';
+import { publicOrigin } from './platform.js';
 import { accessFor, wouldAccess } from './invitations.js';
 import { suppressedAmong } from './mail.js';
 import type { Gate, NoticeSource, NoticeTargetRow } from './notices.js';
@@ -192,16 +193,48 @@ export async function committeeValues(
   const sitting = sittingOf(view.sessions, (s) => s.assignments.some((a) => a.candidate.id === subjectId));
   if (!sitting) return null;
   const seat = sitting.assignments.find((a) => a.candidate.id === subjectId)!;
+  const mode = (view.block.config as CommitteeConfig).rsvpMode;
+  const date = longDate(sitting.session.heldOn);
+  // Nothing rather than a half sentence when the slot has not been given out.
+  const heure = seat.slot ? ` à ${seat.slot.startsAt}` : '';
+  const lieu = placeOf(sitting);
+  const origin = await publicOrigin();
+  const answer = mode !== 'none' && origin ? `${origin}/book/${seat.assignment.token}` : '';
+  const state = seat.assignment.rsvpState;
+  /* La phrase et le geste suivent le mode d'invitation. En créneaux, tant
+     que l'heure n'est pas prise, on donne le jour et le lien pour la choisir ;
+     en confirmation, l'heure proposée et le lien pour dire oui ou non ; sans
+     invitation, l'heure fixée, et rien à faire. */
+  const fixed = `Votre passage devant le jury est fixé au ${date}${heure}${lieu}. Merci d'arriver dix minutes en avance.`;
+  const quand =
+    mode === 'slots' && !seat.slot
+      ? `Le jury se réunit le ${date}${lieu}.`
+      : mode === 'confirm' && state !== 'confirmed'
+        ? `Nous vous proposons de passer devant le jury le ${date}${heure}${lieu}.`
+        : fixed;
+  const action = !answer
+    ? ''
+    : mode === 'slots'
+      ? seat.slot
+        ? `Pour changer d'heure : ${answer}`
+        : `Choisissez l'heure de votre passage ici : ${answer}`
+      : state === 'confirmed'
+        ? ''
+        : state === 'declined'
+          ? `Si vous pouvez finalement venir, confirmez ici : ${answer}`
+          : `Confirmez votre présence, ou dites-nous si vous ne pouvez pas venir : ${answer}`;
   return {
     phase: view.block.name,
     prenom: firstNameOf(seat.candidate.contactName, seat.candidate.contactFirstName),
     acces: preview ? '' : await accessFor(seat.candidate.personId, letters(view).access),
     startup: seat.candidate.orgName,
     panel: sitting.session.name,
-    date: longDate(sitting.session.heldOn),
-    // Nothing rather than a half sentence when the slot has not been given out.
-    heure: seat.slot ? ` à ${seat.slot.startsAt}` : '',
-    lieu: placeOf(sitting),
+    date,
+    heure,
+    lieu,
+    quand,
+    action,
+    reponse: answer,
     lien: link,
   };
 }

@@ -10,6 +10,8 @@ import {
   type CommitteeSession,
   type PersonRef,
   type TimeWindow,
+  committeeStartupLetter,
+  inviteLetterGap,
 } from '@ceed/shared';
 import { useState } from 'react';
 import { api } from '../../../lib/api';
@@ -932,16 +934,32 @@ function MessagesTab({
       />
 
       {config.format === 'event' && (
+        <>
+        {/* La lettre suit le mode d'invitation ; ce qui manque pour que la
+            startup puisse répondre se dit ici, avant l'envoi. */}
+        {inviteLetterGap(config.rsvpMode, committeeStartupLetter(config.messages.startup), ['action', 'reponse']) && (
+          <div className="callout warn">
+            <Icon name="alert" size={15} />
+            <div>{inviteLetterGap(config.rsvpMode, committeeStartupLetter(config.messages.startup), ['action', 'reponse'])}</div>
+          </div>
+        )}
         <Template
           label="To the startups"
-          help="When they are expected. The slot appears only once you have given them one."
-          value={config.messages.startup}
+          help={
+            config.rsvpMode === 'slots'
+              ? 'Invitation mode: they pick their time. {{quand}} gives the day, {{action}} the link to choose — once they have, the same letter says the time.'
+              : config.rsvpMode === 'confirm'
+                ? 'Invitation mode: they confirm or decline. {{quand}} gives the time proposed, {{action}} the link to answer — and they can leave a word when they decline.'
+                : 'Invitation mode: the team fixes everything. {{quand}} gives the time, and {{action}} stays empty — the letter only informs.'
+          }
+          value={committeeStartupLetter(config.messages.startup)}
           onChange={(v) => set('startup', v)}
           subject={config.messages.subjects.startup}
           onSubject={(v) => setSubject('startup', v)}
           variables={COMMITTEE_STARTUP_VARIABLES}
           example={{ panel: 'Séance 1', lien: where }}
         />
+        </>
       )}
 
       <AccessTemplate value={config.messages.access} onChange={(v) => set('access', v)} />

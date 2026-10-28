@@ -868,6 +868,9 @@ export const COMMITTEE_STARTUP_VARIABLES = [
   { name: 'date', label: 'Date', what: 'The day, written out', example: '15 novembre 2026' },
   { name: 'heure', label: 'Their slot', what: 'The time they are expected, when one is set', example: ' à 09:20' },
   { name: 'lieu', label: 'Where', what: 'The location, when one is set', example: ', à la Villa des Arts' },
+  { name: 'quand', label: 'When', what: 'The whole sentence, worded for the invitation mode: the day to pick a time on, the time proposed, or the time fixed', example: 'Votre passage devant le jury est fixé au 15 novembre 2026 à 09:20, à la Villa des Arts.' },
+  { name: 'action', label: 'What to do', what: 'Pick a time, or confirm — with their link. Empty when the team fixes everything', example: 'Choisissez l’heure de votre passage ici : https://www.ceedflow.com/book/…' },
+  { name: 'reponse', label: 'Answer link', what: 'Their own link to pick a time or to confirm — empty when nothing is asked', example: 'https://www.ceedflow.com/book/…' },
   { name: 'lien', label: 'Link', what: 'Their own space on this platform', example: 'https://www.ceedflow.com/me?tab=Programs' },
 ] as const;
 
@@ -887,7 +890,8 @@ Merci de votre temps.
 
 L'équipe CEED`;
 
-const COMMITTEE_STARTUP = `Bonjour {{prenom}},
+/** La lettre d'avant les modes d'invitation : reconnue pour être remplacée, jamais réécrite si on l'a changée. */
+export const LEGACY_COMMITTEE_STARTUP = `Bonjour {{prenom}},
 
 Votre passage devant le jury est fixé au {{date}}{{heure}}{{lieu}}.
 
@@ -898,6 +902,42 @@ Merci d'arriver dix minutes en avance. Tout le détail est dans votre espace : {
 À très bientôt,
 
 L'équipe CEED`;
+
+/**
+ * La convocation d'une startup, qui suit le mode d'invitation sans qu'on la
+ * réécrive : {{quand}} dit le jour à choisir, l'heure proposée ou l'heure
+ * fixée, et {{action}} porte le lien pour choisir ou confirmer — vide quand
+ * l'équipe fixe tout, et la lettre ne fait alors qu'informer.
+ */
+const COMMITTEE_STARTUP = `Bonjour {{prenom}},
+
+{{quand}}
+
+{{action}}
+
+Tout le détail est dans votre espace : {{lien}}
+
+{{acces}}
+
+À très bientôt,
+
+L'équipe CEED`;
+
+/** The startup letter as it should read: a block still holding the old default gets the new one. */
+export const committeeStartupLetter = (text: string): string =>
+  text.trim() === LEGACY_COMMITTEE_STARTUP.trim() ? COMMITTEE_STARTUP : text;
+
+/**
+ * Ce qui manque à une lettre pour que la startup puisse répondre : en mode
+ * créneaux ou confirmation, il lui faut son lien. Vide quand tout va.
+ */
+export function inviteLetterGap(mode: RsvpMode, text: string, linkVariables: readonly string[]): string {
+  if (mode === 'none') return '';
+  if (linkVariables.some((v) => text.includes(`{{${v}}}`))) return '';
+  return mode === 'slots'
+    ? `The startups pick their time from their own link — add ${linkVariables.map((v) => `{{${v}}}`).join(' or ')} so the letter carries it.`
+    : `The startups confirm or decline from their own link — add ${linkVariables.map((v) => `{{${v}}}`).join(' or ')} so the letter carries it.`;
+}
 
 export const committeeConfigSchema = z.preprocess(
   (value) => {
@@ -1037,6 +1077,8 @@ export const committeeAssignmentSchema = z.object({
    */
   position: z.number().int().default(0),
   respondedAt: z.string().nullable().default(null),
+  /** Ce que la startup a dit en refusant — facultatif, vide sinon. */
+  rsvpNote: z.string().default(''),
 });
 
 export type CommitteeAssignment = z.infer<typeof committeeAssignmentSchema>;

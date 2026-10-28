@@ -140,6 +140,8 @@ export async function oneToOnePublicRoutes(app: FastifyInstance) {
     const body = parse(
       z.object({
         accept: z.boolean().optional(),
+        /** Un mot en refusant, facultatif. */
+        note: z.string().max(1000, 'A thousand characters at most.').optional(),
         dayId: z.string().optional(),
         startTime: z.string().optional(),
         personId: z.string().optional(),
@@ -151,6 +153,6 @@ export async function oneToOnePublicRoutes(app: FastifyInstance) {
       return bookSlot(token, { dayId: body.dayId, startTime: body.startTime, personId: body.personId });
     }
     if (body.accept === undefined) throw new HttpError(422, 'Pick a time, or answer.');
-    return answerInvitation(token, body.accept);
+    return answerInvitation(token, body.accept, body.note ?? '');
   });
 }

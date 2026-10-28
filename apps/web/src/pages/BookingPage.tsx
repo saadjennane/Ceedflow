@@ -17,6 +17,8 @@ interface BookingPayload {
   session: { name: string; heldOn: string | null; location: string; minutesPerStartup: number };
   slots: { index: number; startsAt: string; endsAt: string; taken: boolean }[];
   rsvpState: 'pending' | 'confirmed' | 'declined';
+  /** Ce qu'elle a dit en refusant. */
+  rsvpNote?: string;
   slotIndex: number | null;
 }
 
@@ -26,7 +28,11 @@ export function BookingPage() {
   const [chosen, setChosen] = useState<number | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ state: string; slotIndex: number | null } | null>(null);
+  const [done, setDone] = useState<{ state: string; slotIndex: number | null; note?: string } | null>(null);
+  /* Refuser ouvre un mot facultatif — pourquoi, et quand on pourrait —, pour
+     que l'équipe n'ait pas à rappeler pour l'apprendre. */
+  const [declining, setDeclining] = useState(false);
+  const [note, setNote] = useState('');
 
   if (page.loading) {
     return (
@@ -66,9 +72,11 @@ export function BookingPage() {
       const result = await api.post<{ rsvpState: string; slotIndex: number | null }>(`/api/public/book/${token}`, {
         rsvpState,
         slotIndex: rsvpState === 'confirmed' && data.mode === 'slots' ? chosen : null,
+        note: rsvpState === 'declined' ? note : '',
       });
       setChosen(null);
-      setDone({ state: result.rsvpState, slotIndex: result.slotIndex });
+      setDeclining(false);
+      setDone({ state: result.rsvpState, slotIndex: result.slotIndex, note: rsvpState === 'declined' ? note.trim() : '' });
       window.scrollTo({ top: 0 });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : (err as Error).message);
@@ -131,6 +139,9 @@ export function BookingPage() {
               <Icon name="alert" size={15} />
               <div>
                 <strong>You have declined.</strong> If that was a mistake, you can still confirm below.
+                {(done ? done.note : data.rsvpNote) && (
+                  <div style={{ marginTop: 4, fontStyle: 'italic' }}>“{done ? done.note : data.rsvpNote}”</div>
+                )}
               </div>
             </div>
           )}
@@ -188,18 +199,42 @@ export function BookingPage() {
             </div>
           )}
 
-          <div className="row" style={{ marginTop: 6 }}>
-            <button
-              className="btn primary"
-              disabled={sending || (picks && chosen === null && bookedIndex === null)}
-              onClick={() => respond('confirmed')}
-            >
-              {sending ? 'Sending…' : booked || picks ? 'Confirm this time' : 'Confirm I can attend'}
-            </button>
-            <button className="btn" disabled={sending} onClick={() => respond('declined')}>
-              I cannot make it
-            </button>
-          </div>
+          {declining ? (
+            <div className="stack" style={{ gap: 8, marginTop: 6 }}>
+              <label className="field" style={{ margin: 0 }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>A word for the team (optional)</span>
+                <textarea
+                  className="textarea"
+                  rows={3}
+                  maxLength={1000}
+                  value={note}
+                  placeholder="Why you cannot come, and when you could — e.g. “Away that week, free the next one.”"
+                  onChange={(e) => setNote(e.target.value)}
+                />
+              </label>
+              <div className="row">
+                <button className="btn primary" disabled={sending} onClick={() => respond('declined')}>
+                  {sending ? 'Sending…' : 'Send my answer'}
+                </button>
+                <button className="btn ghost" disabled={sending} onClick={() => setDeclining(false)}>
+                  Back
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="row" style={{ marginTop: 6 }}>
+              <button
+                className="btn primary"
+                disabled={sending || (picks && chosen === null && bookedIndex === null)}
+                onClick={() => respond('confirmed')}
+              >
+                {sending ? 'Sending…' : booked || picks ? 'Confirm this time' : 'Confirm I can attend'}
+              </button>
+              <button className="btn" disabled={sending} onClick={() => setDeclining(true)}>
+                I cannot make it
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

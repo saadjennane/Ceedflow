@@ -9,6 +9,7 @@ import {
   type CommitteeSession,
   type CommitteeSlot,
   type PersonRef,
+  committeeStartupLetter,
 } from '@ceed/shared';
 import { useRef, useState } from 'react';
 import { api } from '../../lib/api';
@@ -81,7 +82,7 @@ export function CommitteeWorkspace({
     label: 'Inform',
     bodyOf: (kind) => {
       const c = block.config as CommitteeConfig;
-      return kind === 'committee_jury' ? c.messages.jury : c.messages.startup;
+      return kind === 'committee_jury' ? c.messages.jury : committeeStartupLetter(c.messages.startup);
     },
     subjectOf: (kind) => {
       const c = block.config as CommitteeConfig;
@@ -490,7 +491,10 @@ export function CommitteeWorkspace({
                     </span>
                     <span className="chip-name">{row.candidate.orgName}</span>
                     {config.rsvpMode !== 'none' && (
-                      <span className={RSVP_TONE[row.assignment.rsvpState]}>{row.assignment.rsvpState}</span>
+                      <span className={RSVP_TONE[row.assignment.rsvpState]} title={row.assignment.rsvpNote || undefined}>
+                        {row.assignment.rsvpState}
+                        {row.assignment.rsvpNote ? ' 💬' : ''}
+                      </span>
                     )}
                     <button
                       className="chip-x"
@@ -698,6 +702,10 @@ function Seat({
             >
               {row.assignment.rsvpState}
             </span>
+          )}
+          {/* Ce qu'elle a dit en refusant : pourquoi, et quand elle pourrait. */}
+          {rsvp && row.assignment.rsvpState === 'declined' && row.assignment.rsvpNote && (
+            <span className="faint" style={{ fontSize: 12, fontStyle: 'italic' }}>“{row.assignment.rsvpNote}”</span>
           )}
           {row.score !== null && (
             <span className="num faint" title={scoredBy ? `Score out of 100 from ${scoredBy}` : 'Score out of 100'}>

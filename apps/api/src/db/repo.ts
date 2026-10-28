@@ -1430,7 +1430,7 @@ async function patchRow(
 
 const SESSION_COLS = `id, block_id as "blockId", name, held_on::text as "heldOn", windows,
   minutes_per_startup as "minutesPerStartup", location, jury, position`;
-const ASSIGNMENT_COLS = `id, session_id as "sessionId", candidate_id as "candidateId", token,
+const ASSIGNMENT_COLS = `id, session_id as "sessionId", candidate_id as "candidateId", token, rsvp_note as "rsvpNote",
   rsvp_state as "rsvpState", slot_index as "slotIndex", position, responded_at::text as "respondedAt"`;
 /** The order they were put on the sitting — never the order the heap holds them. */
 const ASSIGNMENT_ORDER = 'order by position, id';
@@ -1613,18 +1613,21 @@ export async function respondToAssignment(
   id: string,
   rsvpState: string,
   slotIndex?: number | null,
+  /** Le mot laissé en refusant ; une confirmation l'efface. */
+  note = '',
 ): Promise<void> {
   const conn = await db();
+  const kept = rsvpState === 'declined' ? note.trim().slice(0, 1000) : '';
   if (slotIndex === undefined) {
-    await conn.query('update committee_assignments set rsvp_state = $2, responded_at = now() where id = $1', [
-      id,
-      rsvpState,
-    ]);
+    await conn.query(
+      'update committee_assignments set rsvp_state = $2, rsvp_note = $3, responded_at = now() where id = $1',
+      [id, rsvpState, kept],
+    );
     return;
   }
   await conn.query(
-    'update committee_assignments set rsvp_state = $2, slot_index = $3, responded_at = now() where id = $1',
-    [id, rsvpState, slotIndex],
+    'update committee_assignments set rsvp_state = $2, slot_index = $3, rsvp_note = $4, responded_at = now() where id = $1',
+    [id, rsvpState, slotIndex, kept],
   );
 }
 

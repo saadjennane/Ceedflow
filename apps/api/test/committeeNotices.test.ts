@@ -202,4 +202,75 @@ describe('convening a committee', { skip: skipWithoutServer }, () => {
     assert.match(letter!.body, /Villa des Arts/);
     assert.ok(!letter!.body.includes('{{'), 'and nothing left unfilled');
   });
+
+  describe('the startup letter follows the invitation mode', () => {
+    const withAppUrl = async (run: () => Promise<void>) => {
+      const before = process.env.APP_URL;
+      process.env.APP_URL = 'https://app.example.test';
+      try {
+        await run();
+      } finally {
+        if (before === undefined) delete process.env.APP_URL;
+        else process.env.APP_URL = before;
+      }
+    };
+    const mode = async (panelId: string, rsvpMode: string) => {
+      const block = (await repo.getBlock(panelId))!;
+      await repo.updateBlock(panelId, { config: { ...(block.config as object), rsvpMode } });
+    };
+
+    it('slots: gives the day and the link to pick a time, then the time once picked', () =>
+      withAppUrl(async () => {
+        const { panel, sitting, rafid } = await setUp();
+        await mode(panel.id, 'slots');
+        await repo.assignToSession(sitting.id, [rafid.id]);
+        const open = (await committeeValues(panel.id, COMMITTEE_KINDS.startup, rafid.id, true))!;
+        assert.match(open.quand!, /Le jury se réunit le 20 octobre 2026, à Villa des Arts\./);
+        assert.match(open.action!, /^Choisissez l'heure de votre passage ici : https:\/\/app\.example\.test\/book\//);
+        assert.match(open.reponse!, /\/book\//);
+
+        const seat = (await repo.listAssignments(panel.id)).find((a) => a.candidateId === rafid.id)!;
+        await repo.respondToAssignment(seat.id, 'confirmed', 2);
+        const booked = (await committeeValues(panel.id, COMMITTEE_KINDS.startup, rafid.id, true))!;
+        assert.match(booked.quand!, /fixé au 20 octobre 2026 à 09:40/);
+        assert.match(booked.action!, /^Pour changer d'heure/);
+      }));
+
+    it('confirm: proposes the time and asks to confirm or decline', () =>
+      withAppUrl(async () => {
+        const { panel, sitting, rafid } = await setUp();
+        await mode(panel.id, 'confirm');
+        await repo.assignToSession(sitting.id, [rafid.id]);
+        const placed = (await repo.listAssignments(panel.id)).find((x) => x.candidateId === rafid.id)!;
+        await repo.respondToAssignment(placed.id, 'pending', 0);
+        const values = (await committeeValues(panel.id, COMMITTEE_KINDS.startup, rafid.id, true))!;
+        assert.match(values.quand!, /^Nous vous proposons de passer devant le jury le 20 octobre 2026 à 09:00/);
+        assert.match(values.action!, /^Confirmez votre présence, ou dites-nous si vous ne pouvez pas venir : https:/);
+      }));
+
+    it('none: only informs — the time, and nothing to do', () =>
+      withAppUrl(async () => {
+        const { panel, sitting, rafid } = await setUp();
+        await mode(panel.id, 'none');
+        await repo.assignToSession(sitting.id, [rafid.id]);
+        const placed = (await repo.listAssignments(panel.id)).find((x) => x.candidateId === rafid.id)!;
+        await repo.respondToAssignment(placed.id, 'pending', 0);
+        const values = (await committeeValues(panel.id, COMMITTEE_KINDS.startup, rafid.id, true))!;
+        assert.match(values.quand!, /^Votre passage devant le jury est fixé au 20 octobre 2026 à 09:00/);
+        assert.equal(values.action, '');
+        assert.equal(values.reponse, '');
+      }));
+
+    it('keeps a word left when declining, and forgets it on confirming', async () => {
+      const { panel, sitting, rafid } = await setUp();
+      await repo.assignToSession(sitting.id, [rafid.id]);
+      const seat = (await repo.listAssignments(panel.id)).find((a) => a.candidateId === rafid.id)!;
+      await repo.respondToAssignment(seat.id, 'declined', null, '  Absents cette semaine, libres la suivante.  ');
+      let after = (await repo.listAssignments(panel.id)).find((a) => a.id === seat.id)!;
+      assert.equal(after.rsvpNote, 'Absents cette semaine, libres la suivante.');
+      await repo.respondToAssignment(seat.id, 'confirmed', undefined, 'ignored');
+      after = (await repo.listAssignments(panel.id)).find((a) => a.id === seat.id)!;
+      assert.equal(after.rsvpNote, '');
+    });
+  });
 });

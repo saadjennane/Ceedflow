@@ -25,6 +25,8 @@ interface Invitation {
   location: string;
   invite: 'slots' | 'confirm' | 'none';
   rsvpState: 'pending' | 'confirmed' | 'declined';
+  /** Ce qu'elle a dit en refusant. */
+  rsvpNote?: string;
   status: 'planned' | 'held' | 'cancelled' | 'no_show';
   open: boolean;
   slots: { dayId: string; onDate: string; startTime: string; endTime: string; personId: string; personName: string }[];
@@ -37,6 +39,9 @@ export function MeetPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
+  /* Refuser ouvre un mot facultatif — pourquoi, et quand on pourrait. */
+  const [declining, setDeclining] = useState(false);
+  const [note, setNote] = useState('');
 
   if (page.loading) {
     return (
@@ -86,7 +91,8 @@ export function MeetPage() {
     setSending(true);
     setError(null);
     try {
-      setAnswered(await api.post<Invitation>(`/api/public/meet/${token}`, { accept }));
+      setAnswered(await api.post<Invitation>(`/api/public/meet/${token}`, { accept, note: accept ? '' : note }));
+      setDeclining(false);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -134,7 +140,11 @@ export function MeetPage() {
           )}
           {data.rsvpState === 'declined' && (
             <div className="callout">
-              <Icon name="x" size={15} /> You declined this time. The team will propose another.
+              <Icon name="x" size={15} />
+              <div>
+                You declined this time. The team will propose another.
+                {data.rsvpNote && <div style={{ marginTop: 4, fontStyle: 'italic' }}>“{data.rsvpNote}”</div>}
+              </div>
             </div>
           )}
 
@@ -169,20 +179,52 @@ export function MeetPage() {
                   </div>
                 </div>
               ))}
-              {days.length > 0 && (
-                <button className="btn primary" style={{ alignSelf: 'flex-start' }} disabled={!picked || sending} onClick={book}>
-                  <Icon name="check" size={14} /> {sending ? 'Booking…' : 'Book this time'}
-                </button>
+              {days.length > 0 && !declining && (
+                <div className="row" style={{ gap: 8 }}>
+                  <button className="btn primary" disabled={!picked || sending} onClick={book}>
+                    <Icon name="check" size={14} /> {sending ? 'Booking…' : 'Book this time'}
+                  </button>
+                  {/* Une sortie : aucune heure ne va, et l'équipe le sait — avec pourquoi. */}
+                  {!data.heldOn && (
+                    <button className="btn ghost" disabled={sending} onClick={() => setDeclining(true)}>
+                      None of these times work
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           )}
 
-          {data.open && data.invite === 'confirm' && (
+          {data.open && data.invite !== 'none' && declining && (
+            <div className="stack" style={{ gap: 8 }}>
+              <label className="field" style={{ margin: 0 }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>A word for the team (optional)</span>
+                <textarea
+                  className="textarea"
+                  rows={3}
+                  maxLength={1000}
+                  value={note}
+                  placeholder="Why it does not work, and when you could — e.g. “Travelling until the 12th, any morning after.”"
+                  onChange={(e) => setNote(e.target.value)}
+                />
+              </label>
+              <div className="row" style={{ gap: 8 }}>
+                <button className="btn primary" disabled={sending} onClick={() => answer(false)}>
+                  {sending ? 'Sending…' : 'Send my answer'}
+                </button>
+                <button className="btn ghost" disabled={sending} onClick={() => setDeclining(false)}>
+                  Back
+                </button>
+              </div>
+            </div>
+          )}
+
+          {data.open && data.invite === 'confirm' && !declining && (
             <div className="row" style={{ gap: 8 }}>
               <button className="btn primary" disabled={sending} onClick={() => answer(true)}>
                 <Icon name="check" size={14} /> {data.rsvpState === 'confirmed' ? 'Still confirmed' : 'Confirm'}
               </button>
-              <button className="btn" disabled={sending} onClick={() => answer(false)}>
+              <button className="btn" disabled={sending} onClick={() => setDeclining(true)}>
                 {data.rsvpState === 'declined' ? 'Still declined' : 'This time does not work'}
               </button>
             </div>

@@ -211,6 +211,7 @@ export async function actionRoutes(app: FastifyInstance) {
       },
       slots: slots.map((slot) => ({ ...slot, taken: taken.has(slot.index) })),
       rsvpState: found.assignment.rsvpState,
+      rsvpNote: found.assignment.rsvpNote ?? '',
       slotIndex: found.assignment.slotIndex,
       closed:
         !editionTakesInput(detail.status) ||
@@ -227,6 +228,8 @@ export async function actionRoutes(app: FastifyInstance) {
       z.object({
         rsvpState: z.enum(['confirmed', 'declined']),
         slotIndex: z.number().int().nullable().optional(),
+        /** Un mot en refusant, facultatif. */
+        note: z.string().max(1000, 'A thousand characters at most.').optional(),
       }),
       req.body,
     );
@@ -261,7 +264,7 @@ export async function actionRoutes(app: FastifyInstance) {
       slotIndex = input.slotIndex;
     }
 
-    await repo.respondToAssignment(found.assignment.id, input.rsvpState, slotIndex);
+    await repo.respondToAssignment(found.assignment.id, input.rsvpState, slotIndex, input.note ?? '');
     reply.code(200);
     const after = await repo.findAssignmentById(found.assignment.id);
     return { rsvpState: input.rsvpState, slotIndex: after?.slotIndex ?? null };

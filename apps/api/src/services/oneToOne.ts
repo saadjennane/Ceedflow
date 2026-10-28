@@ -51,7 +51,7 @@ const COLS = `
   m.id, m.block_id as "blockId", m.candidate_id as "candidateId", o.name as "orgName",
   m.person_id as "personId", coalesce(p.name, '') as "personName", m.series_id as "seriesId", m.day_id as "dayId",
   m.held_on::text as "heldOn", m.start_time as "startTime", m.duration_minutes as "durationMinutes",
-  m.location, m.invite, m.token, m.rsvp_state as "rsvpState", m.responded_at::text as "respondedAt",
+  m.location, m.invite, m.token, m.rsvp_state as "rsvpState", m.rsvp_note as "rsvpNote", m.responded_at::text as "respondedAt",
   m.status, m.report, m.report_submitted_at::text as "reportSubmittedAt", m.report_by_name as "reportByName",
   m.created_at::text as "createdAt",
   m.told_startup_at::text as "toldStartupAt", m.told_person_at::text as "toldPersonAt"
@@ -487,6 +487,7 @@ export interface MeetingInvitation {
   location: string;
   invite: OneToOneMeeting['invite'];
   rsvpState: OneToOneMeeting['rsvpState'];
+  rsvpNote: string;
   status: OneToOneMeeting['status'];
   /** Whether an answer may still be given. */
   open: boolean;
@@ -526,6 +527,7 @@ export async function invitationFor(token: string): Promise<{ meeting: OneToOneM
       location: meeting.location,
       invite: meeting.invite,
       rsvpState: meeting.rsvpState,
+      rsvpNote: meeting.rsvpNote ?? '',
       status: meeting.status,
       open,
       slots: open && meeting.invite === 'slots' ? await slotsFor(meeting) : [],
@@ -534,13 +536,15 @@ export async function invitationFor(token: string): Promise<{ meeting: OneToOneM
 }
 
 /** Oui ou non à une heure proposée. Rien d'autre ne s'écrit par ce lien. */
-export async function answerInvitation(token: string, accept: boolean): Promise<MeetingInvitation> {
+export async function answerInvitation(token: string, accept: boolean, note = ''): Promise<MeetingInvitation> {
   const found = await invitationFor(token);
   if (!found) throw new HttpError(404, 'This invitation does not exist.');
   if (!found.page.open) throw new HttpError(403, 'This meeting can no longer be answered here. Get in touch with the team.');
-  await all(`update one_to_one_meetings set rsvp_state = $2, responded_at = now() where id = $1`, [
+  /* Le mot laissé en refusant reste pour l'équipe ; confirmer l'efface. */
+  await all(`update one_to_one_meetings set rsvp_state = $2, rsvp_note = $3, responded_at = now() where id = $1`, [
     found.meeting.id,
     accept ? 'confirmed' : 'declined',
+    accept ? '' : note.trim().slice(0, 1000),
   ]);
   return (await invitationFor(token))!.page;
 }
@@ -760,7 +764,7 @@ export async function bookSlot(token: string, cell: { dayId: string; startTime: 
     `update one_to_one_meetings
         set held_on = $2::date, start_time = $3, person_id = $4, day_id = $5, duration_minutes = $6,
             location = case when $7 <> '' then $7 else location end,
-            rsvp_state = 'confirmed', responded_at = now()
+            rsvp_state = 'confirmed', rsvp_note = '', responded_at = now()
       where id = $1`,
     [found.meeting.id, pick.onDate, pick.startTime, pick.personId, pick.dayId, theDay?.minutesPerMeeting ?? found.meeting.durationMinutes, theDay?.location ?? ''],
   );

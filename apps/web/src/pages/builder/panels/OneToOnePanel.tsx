@@ -16,6 +16,7 @@ import {
   type OneToOneConfig,
   type OneToOneDay,
   type PersonRef,
+  inviteLetterGap,
 } from '@ceed/shared';
 import { useState } from 'react';
 import { api } from '../../../lib/api';
@@ -92,9 +93,15 @@ export function OneToOneSetup({
             series is announced once, by its first session, with its rhythm.
           </div>
         </div>
+        {inviteLetterGap(config.invite, messages.startup, ['action', 'lien']) && (
+          <div className="callout warn">
+            <Icon name="alert" size={15} />
+            <div>{inviteLetterGap(config.invite, messages.startup, ['action', 'lien'])}</div>
+          </div>
+        )}
         <Template
           label="To the startup"
-          help="When, with whom, where — and, when they are asked something, the link to book or to confirm."
+          help="When, with whom, where — and, when they are asked something, the link to book or to confirm. {{action}} follows each meeting’s mode: the link to pick a time, the link to confirm or decline (with a word), or nothing when the time is fixed."
           value={messages.startup}
           onChange={(v) => patch({ messages: { ...messages, startup: v } })}
           subject={messages.subjects.startup}
