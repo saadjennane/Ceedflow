@@ -11,6 +11,8 @@ import {
   type Me,
   type OrgProfile,
   type Task,
+  type MemberAction,
+  type MemberActivity,
 } from '@ceed/shared';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -65,6 +67,8 @@ export interface MemberPreview {
   agenda: Record<string, AgendaEntry[]>;
   /** La fiche de la startup, pour la lire comme elle la lit. */
   profile: OrgProfile | null;
+  /** Sa page d'accueil, lue comme elle la lit. */
+  home?: { actions: MemberAction[]; upcoming: MemberActivity[] };
 }
 
 export function MemberPage({ preview }: { preview?: MemberPreview } = {}) {
@@ -137,6 +141,7 @@ function MemberSpaceReady({
   reload: () => Promise<void>;
 }) {
   const { lang, setLang, t } = useLang();
+  const toast = useToast();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   /* Kept in the URL so coming back, refreshing or following a link lands where
@@ -212,6 +217,14 @@ function MemberSpaceReady({
             })),
           ),
     `${key}:${preview ? 'preview' : 'mine'}`,
+  );
+
+  /* Tout ce qu'il y a à faire et ce qui vient, lu une fois côté serveur sur
+     les objets eux-mêmes : tâches, livrables, fiche, évaluations, comptes
+     rendus, créneaux à choisir ou à confirmer. */
+  const home = useAsync<{ actions: MemberAction[]; upcoming: MemberActivity[] }>(
+    async () => (preview ? { actions: [], upcoming: [] } : api.get('/api/me/actions')),
+    preview ? 'preview-home' : 'my-home',
   );
 
   /* Ce que CEED demande en propre : les siennes, et celles des sociétés dont
@@ -319,27 +332,29 @@ function MemberSpaceReady({
         )}
         {tab === 'Home' && (
           <MemberHome
-            states={states.data ?? []}
-            tasks={preview ? [] : (tasks.data ?? [])}
+            home={preview ? (preview.home ?? { actions: [], upcoming: [] }) : (home.data ?? null)}
+            error={preview ? null : home.error}
+            programs={programs.data ?? []}
             onTick={async (task) => {
-              await api.patch(`/api/me/tasks/${task.id}`, { state: 'done' });
+              try {
+                await api.patch(`/api/me/tasks/${task.id}`, { state: 'done' });
+              } catch (err) {
+                toast((err as Error).message, true);
+              }
+              home.reload();
               tasks.reload();
             }}
             onTickItem={async (task, item) => {
-              await api.patch(`/api/me/tasks/${task.id}/items/${item.id}`, { done: !item.done });
+              try {
+                await api.patch(`/api/me/tasks/${task.id}/items/${item.id}`, { done: !item.done });
+              } catch (err) {
+                toast((err as Error).message, true);
+              }
+              home.reload();
               tasks.reload();
             }}
-            orgs={
-              preview
-                ? preview.profile
-                  ? [{ name: preview.orgName, profile: preview.profile }]
-                  : []
-                : me!.organisations
-                    .filter((l) => canEditOrg(l.affiliation.access))
-                    .map((l) => ({ name: l.record.name, profile: profileOf(l.record) }))
-            }
             onOpen={setEdition}
-            onProfile={() => setTab('Profile')}
+            onGo={(href) => (preview ? undefined : navigate(href))}
           />
         )}
         {tab === 'Programs' &&

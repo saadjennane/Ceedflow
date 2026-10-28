@@ -10,3 +10,4 @@ export * from './pdf.js';
 export * from './sheets.js';
 export * from './tasks.js';
 export * from './oneToOne.js';
+export * from './member.js';

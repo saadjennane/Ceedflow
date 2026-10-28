@@ -20,6 +20,7 @@ interface AsMember {
   owed: Owed[];
   agenda: MemberPreview['agenda'][string];
   profile: MemberPreview['profile'];
+  home: MemberPreview['home'];
 }
 
 export function AsStartupPage() {
@@ -29,7 +30,7 @@ export function AsStartupPage() {
   if (seen.error) return <div className="member-shell"><div className="empty">{seen.error}</div></div>;
   if (!seen.data) return <div className="member-shell" />;
 
-  const { candidate, who, programs, panels, owed, agenda, profile } = seen.data;
+  const { candidate, who, programs, panels, owed, agenda, profile, home } = seen.data;
   return (
     <MemberPage
       preview={{
@@ -40,6 +41,7 @@ export function AsStartupPage() {
         owed: { [candidate.id]: owed },
         agenda: { [candidate.id]: agenda },
         profile,
+        home,
       }}
     />
   );

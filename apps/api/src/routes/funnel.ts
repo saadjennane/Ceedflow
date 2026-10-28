@@ -44,6 +44,7 @@ import {
 import { programsFor, tellAdminsOfRequest } from './auth.js';
 import { UPLOADS_PER_HOUR, servingHeaders, uploadType } from '../services/uploads.js';
 import { isTestRecord } from '../services/testIdentity.js';
+import { memberActions } from '../services/memberActions.js';
 import { reviewsFor } from '../services/reviews.js';
 import { outcomesByCandidate, outcomesOf, scoresByCandidate, setOutcomeByHand } from '../services/scoring.js';
 import {
@@ -1021,6 +1022,8 @@ export async function funnelRoutes(app: FastifyInstance) {
       panels: candidate.personId ? await reviewsFor(candidate.personId) : [],
       owed: await deliverablesFor(candidate.editionId, candidate),
       agenda: await agendaFor(candidate.id),
+      /* Sa page d'accueil telle qu'il la voit : les mêmes lignes, lues de la même façon. */
+      home: candidate.personId ? await memberActions(candidate.personId) : { actions: [], upcoming: [] },
       profile: org ? profileOf(org) : null,
     };
   });

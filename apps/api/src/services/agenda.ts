@@ -11,7 +11,7 @@
  * candidacy: a sitting moved on Friday has to move on their page too, and a
  * date written down twice is a date that will disagree with itself.
  */
-import { orderedBlocks, type CommitteeConfig } from '@ceed/shared';
+import { blockStatus, editionTakesInput, orderedBlocks, type CommitteeConfig } from '@ceed/shared';
 import { all } from '../db/client.js';
 import * as repo from '../db/repo.js';
 
@@ -37,6 +37,10 @@ export interface AgendaEntry {
   /** For a meeting: who they meet, and where to answer or book. */
   with?: string;
   link?: string | null;
+  /** When the link asks for something: to pick a time, or to confirm one. */
+  answer?: 'book' | 'confirm';
+  /** Until when they may answer, when a deadline is set. */
+  answerBy?: string | null;
 }
 
 /** What is coming for one candidacy, soonest first. */
@@ -51,10 +55,29 @@ export async function agendaFor(candidateId: string): Promise<AgendaEntry[]> {
   for (const block of orderedBlocks(track).filter((b) => b.type === 'committee')) {
     const view = await committeeView(block.id);
     if (!view) continue;
+    const config = block.config as CommitteeConfig;
+    /* Le lien de réponse, tant qu'on peut encore répondre : choisir son heure
+       en créneaux, confirmer celle proposée sinon. Il n'était que dans la
+       lettre — l'espace de la startup ne le montrait nulle part. */
+    const answering =
+      config.rsvpMode !== 'none' &&
+      Boolean(detail && editionTakesInput(detail.status)) &&
+      blockStatus(block, 'rsvp', view.sessions.length) === 'live';
     for (const sitting of view.sessions) {
       const seat = sitting.assignments.find((a) => a.candidate.id === candidateId);
       if (!seat) continue;
+      const asks = answering
+        ? config.rsvpMode === 'slots'
+          ? seat.slot === null
+            ? 'book'
+            : null
+          : seat.assignment.rsvpState === 'pending'
+            ? 'confirm'
+            : null
+        : null;
       out.push({
+        link: answering ? `/book/${seat.assignment.token}` : null,
+        ...(asks ? { answer: asks as 'book' | 'confirm', answerBy: config.rsvp.closesAt ?? null } : {}),
         kind: 'committee',
         name: sitting.session.name,
         blockName: block.name,
@@ -93,6 +116,7 @@ export async function agendaFor(candidateId: string): Promise<AgendaEntry[]> {
       location: m.location,
       with: m.personName,
       link: asks ? `/meet/${m.token}` : null,
+      ...(asks ? { answer: (m.invite === 'slots' ? 'book' : 'confirm') as 'book' | 'confirm' } : {}),
     });
   }
 

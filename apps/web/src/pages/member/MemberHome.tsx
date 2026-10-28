@@ -10,22 +10,21 @@
  * done once you know there is some.
  */
 import {
-  isLate,
   itemComplete,
   longDate,
-  profileDone,
-  profileMissing,
+  type ActionStatus,
   type DeliverableItem,
-  type OrgProfile,
+  type MemberAction,
+  type MemberActivity,
   type Task,
   type TaskItem,
 } from '@ceed/shared';
+import { useState } from 'react';
 import { useLang } from '../../lib/lang';
 import { Icon } from '../../ui/Icon';
 import { type AgendaEntry } from './Agenda';
 import { type MyProgram } from './MemberPage';
 import { type Owed } from './OwedItems';
-import { ASK_WORD } from '../../ui/OrgProfile';
 
 export interface CandidacyState {
   candidateId: string;
@@ -55,178 +54,211 @@ export function owedLine(owed: Owed[]): { left: number; of: number; closesAt: st
   return of === 0 ? null : { left, of, closesAt, back };
 }
 
-/** A day in the near future is a thing to do; one long past is not. */
-const soon = (on: string | null): boolean => {
-  if (!on) return true;
-  const day = new Date(`${on.slice(0, 10)}T23:59:59`);
-  return day.getTime() >= Date.now();
-};
-
 export function MemberHome({
-  states,
-  orgs,
-  tasks,
+  home,
+  error,
+  programs,
   onTick,
   onTickItem,
   onOpen,
-  onProfile,
+  onGo,
 }: {
-  states: CandidacyState[];
-  /** Ce que CEED demande en propre, à côté de ce que le tunnel déduit. */
-  tasks: Task[];
+  /** What the server read for them: null while it loads. */
+  home: { actions: MemberAction[]; upcoming: MemberActivity[] } | null;
+  error?: string | null;
+  /** Their programmes, for the strip at the bottom. */
+  programs: MyProgram[];
   onTick: (task: Task) => void;
   /** Cocher une ligne de sa checklist, sans clore la tâche. */
   onTickItem: (task: Task, item: TaskItem) => void;
-  /** The pages they look after, so an unfinished one can be said out loud. */
-  orgs: { name: string; profile: OrgProfile }[];
   onOpen: (editionId: string) => void;
-  onProfile: () => void;
+  /** Where an action is done — a page of this app. */
+  onGo: (href: string) => void;
 }) {
   const { t, lang } = useLang();
+  const [filter, setFilter] = useState<'all' | ActionStatus>('all');
 
-  /* Une ligne par chose à faire, pas une par programme : ce qui compte est le
-     geste, et le programme n'est que l'endroit où il se fait. */
-  const todo: {
-    key: string; title: string; detail: string; go: () => void; late?: boolean; tick?: boolean;
-    task?: Task;
-  }[] = [];
-
-  /* Ce que CEED a demandé à la main, en premier : une date passée attend
-     quelqu'un, et c'est la seule ligne de cette page qui ait un retard. */
-  for (const task of [...tasks].sort((a, b) => (a.dueOn ?? '9999').localeCompare(b.dueOn ?? '9999'))) {
-    todo.push({
-      key: `task-${task.id}`,
-      title: task.title,
-      detail: [
-        task.detail,
-        task.items.length ? `${task.items.filter((i) => i.done).length}/${task.items.length}` : null,
-        task.dueOn ? `${t('owed.before')} ${longDate(task.dueOn)}` : null,
-      ]
-        .filter(Boolean)
-        .join(' · '),
-      go: () => onTick(task),
-      late: isLate(task),
-      tick: true,
-      task,
-    });
-  }
-
-  /* La fiche ensuite : c'est ce qu'un jury lit avant de rencontrer, et la
-     seule chose de cette liste qui serve à tous les programmes à la fois. */
-  for (const org of orgs) {
-    const missing = profileMissing(org.profile);
-    if (!missing.length) continue;
-    todo.push({
-      key: `profile-${org.name}`,
-      title: t('prof.title'),
-      /* Ce qui manque, nommé : « il reste 4 » n'envoie personne nulle part, et
-         la ligne doit tenir sur un téléphone — d'où les trois premiers. */
-      detail: [
-        org.name,
-        `${profileDone(org.profile)} %`,
-        missing.slice(0, 3).map((ask) => t(ASK_WORD[ask])).join(', ') + (missing.length > 3 ? '…' : ''),
-      ].join(' · '),
-      go: onProfile,
-    });
-  }
-
-  for (const state of states) {
-    const owed = owedLine(state.owed);
-    if (owed && (owed.left > 0 || owed.back)) {
-      todo.push({
-        key: `owed-${state.candidateId}`,
-        title: owed.back ? t('owed.back') : t('owed.fill'),
-        detail: [
-          state.programme.programName,
-          `${owed.of - owed.left}/${owed.of}`,
-          owed.closesAt ? `${t('owed.before')} ${longDate(owed.closesAt)}` : null,
-        ]
-          .filter(Boolean)
-          .join(' · '),
-        go: () => onOpen(state.programme.editionId),
-      });
+  /* Une ligne par chose à faire, tous programmes et rôles confondus, dans
+     l'ordre du plus pressé : ce qui compte est le geste, le programme n'est
+     que l'endroit où il se fait. */
+  const titleOf = (a: MemberAction): string => {
+    switch (a.kind) {
+      case 'task':
+        return a.label;
+      case 'deliverable':
+        return `${a.back ? t('act.deliverableBack') : t('act.deliverable')} — ${a.label}`;
+      case 'profile':
+        return `${t('act.profile')} ${a.label}`;
+      case 'review':
+        return `${t('act.review')} ${a.left} ${t('act.startups')} — ${a.label}`;
+      case 'report':
+        return `${t('act.report')} — ${a.label}`;
+      case 'answer_committee':
+        return `${a.answer === 'book' ? t('act.bookCommittee') : t('act.confirmCommittee')} — ${a.label}`;
+      case 'answer_meeting':
+        return `${a.answer === 'book' ? t('act.bookMeeting') : t('act.confirmMeeting')} ${a.label}`;
     }
-    for (const entry of state.agenda.filter((a) => soon(a.on))) {
-      todo.push({
-        key: `agenda-${state.candidateId}-${entry.name}`,
-        title: t('prog.jury'),
-        detail: [
-          entry.name,
-          entry.on ? longDate(entry.on) : null,
-          entry.startsAt ? `${t('prog.at')} ${entry.startsAt}` : null,
-          entry.location,
-        ]
-          .filter(Boolean)
-          .join(' · '),
-        go: () => onOpen(state.programme.editionId),
-      });
-    }
-  }
+  };
+  const detailOf = (a: MemberAction): string =>
+    [
+      a.programName,
+      a.orgName && a.kind !== 'profile' ? a.orgName : null,
+      a.kind === 'profile' && a.left ? `${a.left} ${t('act.missing')}` : null,
+      a.kind !== 'profile' && a.of ? `${a.left} ${t('act.left')} ${a.of}` : null,
+      a.dueOn ? `${t('owed.before')} ${longDate(a.dueOn)}` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  const ctaOf = (a: MemberAction): string | null =>
+    a.kind === 'task'
+      ? null
+      : a.kind === 'deliverable'
+        ? t('cta.deliverable')
+        : a.kind === 'profile'
+          ? t('cta.profile')
+          : a.kind === 'review'
+            ? t('cta.review')
+            : a.kind === 'report'
+              ? t('cta.report')
+              : a.answer === 'book'
+                ? t('cta.book')
+                : t('cta.confirm');
+
+  const actions = home?.actions ?? [];
+  const shown = filter === 'all' ? actions : actions.filter((a) => a.status === filter);
+  const count = (s: ActionStatus) => actions.filter((a) => a.status === s).length;
+  const pendingByEdition = new Map<string, number>();
+  for (const a of actions) if (a.editionId) pendingByEdition.set(a.editionId, (pendingByEdition.get(a.editionId) ?? 0) + 1);
+  const active = programs.filter((p) => p.mine.length > 0);
 
   return (
     <div className="stack" style={{ gap: 16 }}>
+      {/* ---- À faire ---- */}
       <section className="card card-pad stack" style={{ gap: 10 }}>
-        <div className="eyebrow">{t('home.todo')}</div>
-        {!todo.length ? (
+        <div className="row wrap" style={{ gap: 6 }}>
+          <div className="eyebrow" style={{ flex: 1 }}>{t('home.todo')}</div>
+          {actions.length > 0 &&
+            (['all', 'late', 'in_progress', 'pending'] as const).map((f) =>
+              f !== 'all' && !count(f) ? null : (
+                <button
+                  key={f}
+                  className={filter === f ? 'track on' : 'track'}
+                  aria-pressed={filter === f}
+                  onClick={() => setFilter(f)}
+                >
+                  {f === 'all' ? t('home.all') : t(`status.${f}` as const)}{' '}
+                  <span className="num">{f === 'all' ? actions.length : count(f)}</span>
+                </button>
+              ),
+            )}
+        </div>
+
+        {error ? (
+          <div className="callout warn">
+            <Icon name="alert" size={15} /> {t('home.error')}
+          </div>
+        ) : !home ? (
+          <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{t('home.loading')}</p>
+        ) : !shown.length ? (
           <div className="stack" style={{ gap: 2 }}>
             <p style={{ margin: 0, fontSize: 13.5 }}>{t('home.nothing')}</p>
             <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{t('home.nothingMore')}</p>
           </div>
         ) : (
           <div className="rows">
-            {todo.map((item) => (
-              <div key={item.key} className="stack" style={{ gap: 0 }}>
-              <button
-                className="rowcard row"
-                style={{ padding: '11px 13px', gap: 11, width: '100%', textAlign: 'left' }}
-                onClick={item.go}
-              >
-                {/* Une case pour ce qui se coche, une coche pour le reste :
-                    le geste n'est pas le même, et le dessin doit le dire. */}
-                {item.tick ? (
-                  <input
-                    type="checkbox"
-                    aria-label={item.title}
-                    checked={false}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={item.go}
-                  />
-                ) : (
-                  <Icon name="check" size={15} />
-                )}
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <strong style={{ fontSize: 13.5, color: item.late ? 'var(--stop)' : undefined }}>
-                  {item.title}
-                </strong>
-                  <span className="faint" style={{ display: 'block', fontSize: 12.5 }}>{item.detail}</span>
-                </span>
-                <Icon name="chevronRight" size={15} />
-              </button>
-              {/* Les lignes de la checklist sous la tâche, et non dedans : une
-                  case dans un bouton ne se coche pas sans déclencher le bouton. */}
-              {item.task && item.task.items.length > 0 && (
-                <div className="stack" style={{ gap: 2, padding: '6px 13px 4px 37px' }}>
-                  {item.task.items.map((line) => (
-                    <label key={line.id} className="check" style={{ fontSize: 13 }}>
-                      <input type="checkbox" checked={line.done} onChange={() => onTickItem(item.task!, line)} />
-                      <span style={{ textDecoration: line.done ? 'line-through' : undefined }}>{line.label}</span>
-                    </label>
-                  ))}
+            {shown.map((a) => (
+              <div key={a.id} className="rowcard stack" style={{ gap: 0, padding: 0 }}>
+                <div className="row" style={{ padding: '11px 13px', gap: 11 }}>
+                  {/* Une tâche se coche — et seulement par sa case : un clic sur
+                      la ligne ne la déclare plus faite sans qu'on l'ait voulu. */}
+                  {a.kind === 'task' && a.task ? (
+                    <input type="checkbox" aria-label={a.label} checked={false} onChange={() => onTick(a.task!)} />
+                  ) : null}
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span className="row wrap" style={{ gap: 6 }}>
+                      <strong style={{ fontSize: 13.5, color: a.status === 'late' ? 'var(--stop)' : undefined }}>
+                        {titleOf(a)}
+                      </strong>
+                      <span className={a.status === 'late' ? 'badge stop' : a.status === 'in_progress' ? 'badge warn' : 'badge'}>
+                        {t(`status.${a.status}` as const)}
+                      </span>
+                      {a.role !== 'member' && a.role !== 'startup' && <span className="badge info">{t(`role.${a.role}` as const)}</span>}
+                    </span>
+                    {detailOf(a) && (
+                      <span className="faint" style={{ display: 'block', fontSize: 12.5, marginTop: 2 }}>{detailOf(a)}</span>
+                    )}
+                  </span>
+                  {ctaOf(a) && (
+                    <button className="btn sm primary" onClick={() => onGo(a.href)}>
+                      {ctaOf(a)} <Icon name="chevronRight" size={13} />
+                    </button>
+                  )}
                 </div>
-              )}
+                {/* Les lignes de la checklist sous la tâche. */}
+                {a.task && a.task.items.length > 0 && (
+                  <div className="stack" style={{ gap: 2, padding: '0 13px 10px 37px' }}>
+                    {a.task.detail && <span className="faint" style={{ fontSize: 12.5 }}>{a.task.detail}</span>}
+                    {a.task.items.map((line) => (
+                      <label key={line.id} className="check" style={{ fontSize: 13 }}>
+                        <input type="checkbox" checked={line.done} onChange={() => onTickItem(a.task!, line)} />
+                        <span style={{ textDecoration: line.done ? 'line-through' : undefined }}>{line.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
       </section>
 
+      {/* ---- À venir : le calendrier, qui n'est pas une liste de tâches ---- */}
+      <section className="card card-pad stack" style={{ gap: 10 }}>
+        <div className="eyebrow">{t('home.upcoming')}</div>
+        {!home ? null : !home.upcoming.length ? (
+          <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{t('home.noUpcoming')}</p>
+        ) : (
+          <div className="rows">
+            {home.upcoming.map((u) => (
+              <button
+                key={u.id}
+                className="rowcard row"
+                style={{ padding: '10px 13px', gap: 11, width: '100%', textAlign: 'left' }}
+                disabled={!u.href}
+                onClick={() => u.href && onGo(u.href)}
+              >
+                <span className="num" style={{ minWidth: 92, fontSize: 12.5 }}>
+                  {u.on ? longDate(u.on) : ''}
+                  {u.startsAt && <span className="faint" style={{ display: 'block' }}>{u.startsAt}</span>}
+                </span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <strong style={{ fontSize: 13.5 }}>
+                    {u.kind === 'committee'
+                      ? `${t('up.committee')} — ${u.label}`
+                      : u.kind === 'jury_sitting'
+                        ? `${t('up.sitting')} — ${u.label}`
+                        : `${t('up.meeting')} ${u.label}`}
+                  </strong>
+                  <span className="faint" style={{ display: 'block', fontSize: 12.5 }}>
+                    {[u.programName, u.location].filter(Boolean).join(' · ')}
+                  </span>
+                </span>
+                {u.role !== 'startup' && <span className="badge info">{t(`role.${u.role}` as const)}</span>}
+                {u.href && <Icon name="chevronRight" size={15} />}
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* ---- Ses programmes ---- */}
       <section className="card card-pad stack" style={{ gap: 10 }}>
         <div className="eyebrow">{t('home.programmes')}</div>
         <div className="rows">
-          {states.length === 0 && (
+          {active.length === 0 && (
             <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{t('prog.noneMore')}</p>
           )}
-          {[...new Map(states.map((s) => [s.programme.editionId, s.programme])).values()].map((p) => (
+          {active.map((p) => (
             <button
               className="rowcard row"
               key={p.editionId}
@@ -239,9 +271,10 @@ export function MemberHome({
                   {[p.editionName, p.city, p.startsOn ? longDate(p.startsOn) : null].filter(Boolean).join(' · ')}
                 </span>
               </span>
-              <span className="faint" style={{ fontSize: 12.5 }}>
-                {lang === 'fr' ? 'Ouvrir' : 'Open'}
-              </span>
+              {(pendingByEdition.get(p.editionId) ?? 0) > 0 && (
+                <span className="badge warn num">{pendingByEdition.get(p.editionId)}</span>
+              )}
+              <span className="faint" style={{ fontSize: 12.5 }}>{lang === 'fr' ? 'Ouvrir' : 'Open'}</span>
               <Icon name="chevronRight" size={15} />
             </button>
           ))}

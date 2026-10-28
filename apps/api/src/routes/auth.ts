@@ -36,6 +36,7 @@ import { changeItem, changeTask, getTask, listTasks } from '../services/tasks.js
 import { addOrgDocument, changeOrgDocument, saveNeed } from '../services/orgSheet.js';
 import { meetingFor, meetingsFor, saveReport } from '../services/oneToOne.js';
 import { agendaFor } from '../services/agenda.js';
+import { memberActions } from '../services/memberActions.js';
 import { deliverablesFor } from '../services/deliverables.js';
 import { panelFor, reviewsFor, whyNoPanel } from '../services/reviews.js';
 import {
@@ -475,6 +476,16 @@ export async function authRoutes(app: FastifyInstance) {
    * page : c'est l'intérêt de pouvoir la confier à une société plutôt qu'à
    * quelqu'un en particulier — le premier qui s'en occupe la coche.
    */
+  /**
+   * Tout ce que la personne a à faire, et ce qui l'attend — tâches, livrables,
+   * fiche, évaluations, comptes rendus, réponses à un créneau —, lu sur les
+   * objets eux-mêmes. La page d'accueil n'a plus à le reconstituer.
+   */
+  app.get('/api/me/actions', async (req) => {
+    const account = await require(req);
+    return memberActions(account.recordId);
+  });
+
   app.get('/api/me/tasks', async (req) => {
     const account = await require(req);
     const mine = [account.recordId, ...(await dir.orgIdsOf(account.recordId))];
