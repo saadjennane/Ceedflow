@@ -477,10 +477,10 @@ export const ACCESS_SAMPLE = (email: string, template?: string) =>
 
 /** What an invitation to apply may carry. */
 export const SOURCING_VARIABLES = [
-  { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'acces', label: 'First login (email + password)', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
   { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
   { name: 'nom', label: 'Their name', what: 'The person or organisation written to', example: 'Karim Benali' },
-  { name: 'lien', label: 'Apply link', what: 'The channel’s own link — what makes a candidacy traceable to this call', example: 'https://www.ceedflow.com/me?tab=Programs' },
+  { name: 'lien', label: 'Apply link (this channel)', what: 'The channel’s own link — what makes a candidacy traceable to this call', example: 'https://www.ceedflow.com/me?tab=Programs' },
   { name: 'canal', label: 'Channel', what: 'What this call is counted as', example: 'Réseau CEED' },
   { name: 'cloture', label: 'Closing date', what: 'The day the form shuts, written out', example: '15 novembre 2026' },
 ] as const;
@@ -528,12 +528,12 @@ export type Eligibility = z.infer<typeof eligibilitySchema>;
 
 /** What an acknowledgment of a submitted application may carry. */
 export const APPLICATION_VARIABLES = [
-  { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'acces', label: 'First login (email + password)', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
   { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
   { name: 'startup', label: 'Startup', what: 'The organisation that applied', example: 'Rafid Tech' },
   { name: 'programme', label: 'Programme', what: 'The edition they applied to', example: 'The Builders — Cohorte 1' },
   { name: 'appel', label: 'Call', what: 'The name of this application block', example: 'Appel à candidatures' },
-  { name: 'lien', label: 'Link', what: 'Their own space, where they follow it', example: 'https://www.ceedflow.com/me?tab=Programs' },
+  { name: 'lien', label: 'Link to their space', what: 'Their own space, where they follow it', example: 'https://www.ceedflow.com/me?tab=Programs' },
 ] as const;
 
 /* A receipt, and nothing more. The one thing it has to do is stop somebody
@@ -846,32 +846,32 @@ export type CommitteeFormat = (typeof COMMITTEE_FORMATS)[number];
  */
 /** What a letter to a juror may carry. */
 export const COMMITTEE_JURY_VARIABLES = [
-  { name: 'phase', label: 'Step', what: 'The name of this block, as you named it', example: 'Jury Day' },
-  { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'phase', label: 'Step name', what: 'The name of this block, as you named it', example: 'Jury Day' },
+  { name: 'acces', label: 'First login (email + password)', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
   { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
   { name: 'jure', label: 'Juror', what: 'Their own name', example: 'Nawal Benjelloun' },
-  { name: 'panel', label: 'Sitting', what: 'The name of the sitting they sit on', example: 'Séance 1' },
+  { name: 'panel', label: 'Sitting name', what: 'The name of the sitting they sit on', example: 'Séance 1' },
   { name: 'date', label: 'Date', what: 'The day it is held, written out', example: '15 novembre 2026' },
-  { name: 'heures', label: 'Hours', what: 'When it starts and ends', example: '09:00 à 12:00' },
+  { name: 'heures', label: 'Sitting hours', what: 'When it starts and ends', example: '09:00 à 12:00' },
   { name: 'lieu', label: 'Where', what: 'The location, when one is set', example: ', à la Villa des Arts' },
   { name: 'startups', label: 'Who they see', what: 'The startups on their panel, one per line', example: '  · Rafid Tech\\n  · Nakhla Bio' },
-  { name: 'lien', label: 'Link', what: 'Their own space, where they mark', example: 'https://www.ceedflow.com/me?tab=Programs' },
+  { name: 'lien', label: 'Link to their jury grid', what: 'Their own space, where they mark', example: 'https://www.ceedflow.com/me?tab=Programs' },
 ] as const;
 
 /** What a letter to a startup being convened may carry. */
 export const COMMITTEE_STARTUP_VARIABLES = [
-  { name: 'phase', label: 'Step', what: 'The name of this block, as you named it', example: 'Jury Day' },
-  { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'phase', label: 'Step name', what: 'The name of this block, as you named it', example: 'Jury Day' },
+  { name: 'acces', label: 'First login (email + password)', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
   { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
   { name: 'startup', label: 'Startup', what: 'The organisation’s name', example: 'Rafid Tech' },
-  { name: 'panel', label: 'Sitting', what: 'The name of the sitting', example: 'Séance 1' },
+  { name: 'panel', label: 'Sitting name', what: 'The name of the sitting', example: 'Séance 1' },
   { name: 'date', label: 'Date', what: 'The day, written out', example: '15 novembre 2026' },
-  { name: 'heure', label: 'Their slot', what: 'The time they are expected, when one is set', example: ' à 09:20' },
+  { name: 'heure', label: 'Their time slot', what: 'The time they are expected, when one is set', example: ' à 09:20' },
   { name: 'lieu', label: 'Where', what: 'The location, when one is set', example: ', à la Villa des Arts' },
-  { name: 'quand', label: 'When', what: 'The whole sentence, worded for the invitation mode: the day to pick a time on, the time proposed, or the time fixed', example: 'Votre passage devant le jury est fixé au 15 novembre 2026 à 09:20, à la Villa des Arts.' },
-  { name: 'action', label: 'What to do', what: 'Pick a time, or confirm — with their link. Empty when the team fixes everything', example: 'Choisissez l’heure de votre passage ici : https://www.ceedflow.com/book/…' },
-  { name: 'reponse', label: 'Answer link', what: 'Their own link to pick a time or to confirm — empty when nothing is asked', example: 'https://www.ceedflow.com/book/…' },
-  { name: 'lien', label: 'Link', what: 'Their own space on this platform', example: 'https://www.ceedflow.com/me?tab=Programs' },
+  { name: 'quand', label: 'Date sentence (per mode)', what: 'The whole sentence, worded for the invitation mode: the day to pick a time on, the time proposed, or the time fixed', example: 'Votre passage devant le jury est fixé au 15 novembre 2026 à 09:20, à la Villa des Arts.', byMode: [{ mode: 'Slot picking', text: 'Le jury se réunit le 15 novembre 2026, à la Villa des Arts.' }, { mode: 'RSVP', text: 'Nous vous proposons de passer devant le jury le 15 novembre 2026 à 09:20, à la Villa des Arts.' }, { mode: 'No RSVP', text: 'Votre passage devant le jury est fixé au 15 novembre 2026 à 09:20, à la Villa des Arts. Merci d’arriver dix minutes en avance.' }] },
+  { name: 'action', label: 'Answer sentence + link (per mode)', what: 'Pick a time, or confirm — with their link. Empty when the team fixes everything', example: 'Choisissez l’heure de votre passage ici : https://www.ceedflow.com/book/…', byMode: [{ mode: 'Slot picking', text: 'Choisissez l’heure de votre passage ici : https://www.ceedflow.com/book/…' }, { mode: 'RSVP', text: 'Confirmez votre présence, ou dites-nous si vous ne pouvez pas venir : https://www.ceedflow.com/book/…' }, { mode: 'No RSVP', text: '(rien — la lettre ne fait qu’informer)' }] },
+  { name: 'reponse', label: 'Slot-picking / RSVP link', what: 'Their own link to pick a time or to confirm — empty when nothing is asked', example: 'https://www.ceedflow.com/book/…', byMode: [{ mode: 'Slot picking', text: 'https://www.ceedflow.com/book/… — la page où elle choisit son heure' }, { mode: 'RSVP', text: 'https://www.ceedflow.com/book/… — la page où elle confirme ou refuse' }, { mode: 'No RSVP', text: '(vide)' }] },
+  { name: 'lien', label: 'Link to their space', what: 'Their own space on this platform', example: 'https://www.ceedflow.com/me?tab=Programs' },
 ] as const;
 
 const COMMITTEE_JURY = `Bonjour {{jure}},
@@ -1090,12 +1090,12 @@ export type CommitteeAssignment = z.infer<typeof committeeAssignmentSchema>;
  */
 /** The names a selection's letters may carry. */
 export const SELECTION_VARIABLES = [
-  { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'acces', label: 'First login (email + password)', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
   { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
   { name: 'startup', label: 'Startup', what: 'The organisation’s name', example: 'Rafid Tech' },
   { name: 'decision', label: 'Decision', what: 'What this selection called them — your own label', example: 'Retenue' },
-  { name: 'phase', label: 'Step', what: 'The name of this selection block', example: 'Comité de sélection' },
-  { name: 'lien', label: 'Link', what: 'Their own space on this platform', example: 'https://www.ceedflow.com/me?tab=Programs' },
+  { name: 'phase', label: 'Step name', what: 'The name of this selection block', example: 'Comité de sélection' },
+  { name: 'lien', label: 'Link to their space', what: 'Their own space on this platform', example: 'https://www.ceedflow.com/me?tab=Programs' },
 ] as const;
 
 /* Whole letters by default, in the language the founders are written to. A
@@ -1338,8 +1338,8 @@ export function uploadIdsIn(value: unknown): string[] {
  * three and not the others is a letter that goes out saying `{{lien}}`.
  */
 export const DELIVERABLE_VARIABLES = [
-  { name: 'phase', label: 'Step', what: 'The name of this block, as you named it', example: 'Due diligence administrative' },
-  { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'phase', label: 'Step name', what: 'The name of this block, as you named it', example: 'Due diligence administrative' },
+  { name: 'acces', label: 'First login (email + password)', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
   { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
   { name: 'startup', label: 'Startup', what: 'The organisation’s name', example: 'Rafid Tech' },
   {
@@ -1352,18 +1352,18 @@ export const DELIVERABLE_VARIABLES = [
     example: '  · (the items this startup still owes)',
   },
   { name: 'date', label: 'Closing date', what: 'The day this list shuts, written out', example: '15 novembre 2026' },
-  { name: 'lien', label: 'Link', what: 'Their own space on this platform, where this list is', example: 'https://www.ceedflow.com/me?tab=Programs' },
+  { name: 'lien', label: 'Link to upload the items', what: 'Their own space on this platform, where this list is', example: 'https://www.ceedflow.com/me?tab=Programs' },
 ] as const;
 
 /** Only in a letter about one item sent back. */
 export const DELIVERABLE_RETURN_VARIABLES = [
-  { name: 'phase', label: 'Step', what: 'The name of this block, as you named it', example: 'Due diligence administrative' },
-  { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'phase', label: 'Step name', what: 'The name of this block, as you named it', example: 'Due diligence administrative' },
+  { name: 'acces', label: 'First login (email + password)', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
   { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
   { name: 'startup', label: 'Startup', what: 'The organisation’s name', example: 'Rafid Tech' },
   { name: 'piece', label: 'The item', what: 'What was sent back', example: 'Registre de commerce' },
   { name: 'motif', label: 'Reason', what: 'What you wrote when you sent it back', example: 'Le registre date de 2024 — il nous en faut un de moins de trois mois.' },
-  { name: 'lien', label: 'Link', what: 'Their own space on this platform, where this list is', example: 'https://www.ceedflow.com/me?tab=Programs' },
+  { name: 'lien', label: 'Link to upload the items', what: 'Their own space on this platform, where this list is', example: 'https://www.ceedflow.com/me?tab=Programs' },
 ] as const;
 
 /* The defaults are whole letters, in the language the founders are written to.
@@ -1528,20 +1528,20 @@ export const ONE_TO_ONE_STARTUP_VARIABLES = [
   { name: 'startup', label: 'Startup', what: 'The startup’s name', example: 'Rafid Tech' },
   { name: 'interlocuteur', label: 'Interlocutor', what: 'Who they meet', example: 'Nadia Berrada' },
   { name: 'programme', label: 'Programme', what: 'The programme and its edition', example: 'Grow — 2026' },
-  { name: 'quand', label: 'When', what: 'The whole sentence — empty when the startup picks the time', example: 'Le mardi 3 novembre à 10:00, pour 45 minutes.' },
+  { name: 'quand', label: 'Date sentence', what: 'The whole sentence — empty when the startup picks the time', example: 'Le mardi 3 novembre à 10:00, pour 45 minutes.', byMode: [{ mode: 'Slot picking', text: '(vide tant qu’elle n’a pas choisi — puis « Le mardi 3 novembre à 10:00, pour 45 minutes. »)' }, { mode: 'RSVP', text: 'Le mardi 3 novembre à 10:00, pour 45 minutes.' }, { mode: 'No RSVP', text: 'Le mardi 3 novembre à 10:00, pour 45 minutes.' }] },
   { name: 'lieu', label: 'Where', what: 'The whole sentence — empty when no place is set', example: 'Lieu : CEED, Casablanca.' },
-  { name: 'action', label: 'What to do', what: 'Book a time, or confirm the one proposed — with the link. Empty when nothing is asked', example: 'Choisissez votre créneau ici : https://www.ceedflow.com/meet/…' },
-  { name: 'lien', label: 'Link', what: 'The startup’s own page: the free slots to book from, or the time to confirm', example: 'https://www.ceedflow.com/meet/…' },
+  { name: 'action', label: 'Answer sentence + link (per mode)', what: 'Book a time, or confirm the one proposed — with the link. Empty when nothing is asked', example: 'Choisissez votre créneau ici : https://www.ceedflow.com/meet/…', byMode: [{ mode: 'Slot picking', text: 'Choisissez votre créneau ici : https://www.ceedflow.com/meet/…' }, { mode: 'RSVP', text: 'Confirmez, ou dites-nous si l’heure ne convient pas : https://www.ceedflow.com/meet/…' }, { mode: 'No RSVP', text: '(rien — la lettre ne fait qu’informer)' }] },
+  { name: 'lien', label: 'Booking / RSVP link', what: 'The startup’s own page: the free slots to book from, or the time to confirm', example: 'https://www.ceedflow.com/meet/…', byMode: [{ mode: 'Slot picking', text: 'https://www.ceedflow.com/meet/… — la page des créneaux libres' }, { mode: 'RSVP', text: 'https://www.ceedflow.com/meet/… — la page pour confirmer ou refuser' }, { mode: 'No RSVP', text: 'https://www.ceedflow.com/meet/… — la page du rendez-vous, sans rien à répondre' }] },
 ] as const;
 
 export const ONE_TO_ONE_PERSON_VARIABLES = [
   { name: 'prenom', label: 'First name', what: 'The interlocutor’s first name', example: 'Nadia' },
   { name: 'startup', label: 'Startup', what: 'The startup they meet', example: 'Rafid Tech' },
   { name: 'programme', label: 'Programme', what: 'The programme and its edition', example: 'Grow — 2026' },
-  { name: 'quand', label: 'When', what: 'The whole sentence — or that the startup will pick a time', example: 'Le mardi 3 novembre à 10:00, pour 45 minutes.' },
+  { name: 'quand', label: 'Date sentence', what: 'The whole sentence — or that the startup will pick a time', example: 'Le mardi 3 novembre à 10:00, pour 45 minutes.' },
   { name: 'lieu', label: 'Where', what: 'The whole sentence — empty when no place is set', example: 'Lieu : CEED, Casablanca.' },
-  { name: 'lien', label: 'Link', what: 'Where they open the meeting and write the report', example: 'https://www.ceedflow.com/meeting/…' },
-  { name: 'acces', label: 'First login', what: 'The password somebody with no account yet needs — empty for everybody else', example: '' },
+  { name: 'lien', label: 'Meeting & report link', what: 'Where they open the meeting and write the report', example: 'https://www.ceedflow.com/meeting/…' },
+  { name: 'acces', label: 'First login (email + password)', what: 'The password somebody with no account yet needs — empty for everybody else', example: '' },
 ] as const;
 
 export const ONE_TO_ONE_STARTUP_SUBJECT = 'Un rendez-vous avec {{interlocuteur}} — {{programme}}';

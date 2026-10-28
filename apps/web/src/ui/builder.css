@@ -1668,3 +1668,25 @@ dl.answers dd {
 .rowcard.in-flight {
   opacity: 0.45;
 }
+
+/* Une variable de lettre, et son petit « i » qui dit ce qu'elle écrit. */
+.var-chip { position: relative; display: inline-flex; align-items: center; gap: 2px; }
+.var-info { position: relative; display: inline-flex; }
+.var-info-btn {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 1px solid var(--line-strong); background: var(--surface);
+  color: var(--ink-3); font: 600 11px/1 var(--body); font-style: italic;
+  cursor: pointer; padding: 0;
+}
+.var-info-btn:hover, .var-info-btn[aria-expanded='true'] { color: var(--blue); border-color: var(--blue); }
+.var-bubble {
+  position: absolute; z-index: 30; top: calc(100% + 6px); left: -8px;
+  width: min(320px, 80vw); padding: 10px 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+  box-shadow: var(--shadow-2); font-size: 12px; line-height: 1.45; color: var(--ink-2);
+  text-align: left; white-space: normal;
+}
+.var-sample {
+  display: block; margin-top: 2px; padding: 6px 8px; border-radius: var(--r-sm);
+  background: var(--wash); color: var(--ink); white-space: pre-wrap; font-size: 12px;
+}

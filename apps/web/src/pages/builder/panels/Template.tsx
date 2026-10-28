@@ -35,7 +35,7 @@ export function Template({
    */
   subject?: string;
   onSubject?: (next: string) => void;
-  variables: readonly { name: string; label: string; what: string; example?: string }[];
+  variables: readonly Variable[];
   /** Only what this block knows — its own name, its own labels. The rest comes
       from the variables themselves, so a new one can never be forgotten here. */
   example?: Record<string, string | undefined>;
@@ -122,10 +122,13 @@ export function Template({
           pendant qu'il est le premier de la rangée. */}
       <div className="row wrap" style={{ gap: 5, marginTop: 6 }}>
         {variables.map((v) => (
-          <button key={v.name} className="btn ghost sm" title={v.what} onClick={() => insert(v.name)}>
-            <Icon name="plus" size={11} /> {v.label}
-            <span className="faint" style={{ fontSize: 11, fontFamily: 'var(--mono)' }}>{`{{${v.name}}}`}</span>
-          </button>
+          <span key={v.name} className="var-chip">
+            <button className="btn ghost sm" onClick={() => insert(v.name)}>
+              <Icon name="plus" size={11} /> {v.label}
+              <span className="faint" style={{ fontSize: 11, fontFamily: 'var(--mono)' }}>{`{{${v.name}}}`}</span>
+            </button>
+            <VariableInfo variable={v} />
+          </span>
         ))}
       </div>
       {/* A name nobody replaces goes out written exactly as typed. Said here
@@ -137,7 +140,16 @@ export function Template({
         </p>
       )}
       {show && (
-        <pre className="letter" style={{ marginTop: 6 }}>
+        <>
+        {/* Refermer là où on lit, plutôt que de remonter chercher le lien
+            au-dessus d'une lettre de deux cents mots. */}
+        <div className="row" style={{ marginTop: 8 }}>
+          <span className="eyebrow" style={{ flex: 1 }}>Preview</span>
+          <button className="btn ghost sm" onClick={() => setShow(false)}>
+            <Icon name="x" size={12} /> Hide preview
+          </button>
+        </div>
+        <pre className="letter" style={{ marginTop: 4 }}>
           {/* L'objet au-dessus, comme dans une boîte mail. */}
           {onSubject && (
             <strong style={{ display: 'block', marginBottom: 8 }}>
@@ -146,8 +158,62 @@ export function Template({
           )}
           {fillTemplate(value, filled)}
         </pre>
+        </>
       )}
     </div>
+  );
+}
+
+/** A variable as a letter editor offers it. */
+interface Variable {
+  name: string;
+  label: string;
+  what: string;
+  example?: string;
+  /** Ce qu'elle devient selon le mode d'invitation, quand elle en dépend. */
+  byMode?: readonly { mode: string; text: string }[];
+}
+
+/**
+ * Le petit « i » d'une variable : ce qu'elle contient, et la phrase qu'elle
+ * devient — pour chaque mode d'invitation quand elle en dépend. Ouvert au
+ * survol ou au clic, parce qu'un lien de créneau et un lien de rendez-vous
+ * se ressemblent tant qu'on n'a pas vu ce qu'ils écrivent.
+ */
+function VariableInfo({ variable }: { variable: Variable }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="var-info" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <button
+        type="button"
+        className="var-info-btn"
+        aria-label={`What ${variable.label} writes`}
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        onBlur={() => setOpen(false)}
+      >
+        i
+      </button>
+      {open && (
+        <span className="var-bubble" role="tooltip">
+          <strong style={{ display: 'block', fontSize: 12.5 }}>{variable.label}</strong>
+          <span style={{ display: 'block', margin: '3px 0 6px' }}>{variable.what}</span>
+          {variable.byMode?.length ? (
+            variable.byMode.map((m) => (
+              <span key={m.mode} style={{ display: 'block', marginTop: 4 }}>
+                <span className="eyebrow">{m.mode}</span>
+                <span className="var-sample">{m.text}</span>
+              </span>
+            ))
+          ) : variable.example ? (
+            <>
+              <span className="eyebrow">Becomes</span>
+              <span className="var-sample">{variable.example.replace(/\\n/g, '\n')}</span>
+            </>
+          ) : null}
+        </span>
+      )}
+    </span>
   );
 }
 
