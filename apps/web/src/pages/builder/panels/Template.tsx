@@ -8,7 +8,8 @@
  * programme to drift.
  */
 import { ACCESS_VARIABLES, fillTemplate } from '@ceed/shared';
-import { useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '../../../ui/Icon';
 
 /** One template, with its variables a click away and said back filled in. */
@@ -181,38 +182,93 @@ interface Variable {
  * se ressemblent tant qu'on n'a pas vu ce qu'ils écrivent.
  */
 function VariableInfo({ variable }: { variable: Variable }) {
-  const [open, setOpen] = useState(false);
+  /* Ouverte au survol ; un clic la garde ouverte, un second la referme. Le
+     clic ne fait plus que fixer ce que le survol a déjà ouvert — il la
+     refermait aussitôt, et il fallait cliquer deux fois. */
+  const [hover, setHover] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const open = hover || pinned;
+  const button = useRef<HTMLButtonElement>(null);
+  const bubble = useRef<HTMLSpanElement>(null);
+  const [place, setPlace] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  /* Placée par rapport à la fenêtre, et ramenée dedans : près du bord droit
+     d'un panneau, elle sortait du cadre et n'était plus lisible. */
+  useLayoutEffect(() => {
+    if (!open || !button.current) return;
+    const r = button.current.getBoundingClientRect();
+    const width = Math.min(320, window.innerWidth - 16);
+    const left = Math.max(8, Math.min(r.left - 8, window.innerWidth - width - 8));
+    const height = bubble.current?.offsetHeight ?? 0;
+    const below = r.bottom + 6;
+    const top = below + height > window.innerHeight - 8 && r.top - height - 6 > 8 ? r.top - height - 6 : below;
+    setPlace({ top, left, width });
+  }, [open]);
+
+  /* Un clic ailleurs ou un défilement la referme : posée sur la fenêtre, elle
+     resterait sinon flotter loin de son « i ». */
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => {
+      if (!button.current?.contains(e.target as Node)) {
+        setPinned(false);
+        setHover(false);
+      }
+    };
+    const scrolled = () => {
+      setPinned(false);
+      setHover(false);
+    };
+    document.addEventListener('mousedown', away);
+    window.addEventListener('scroll', scrolled, true);
+    return () => {
+      document.removeEventListener('mousedown', away);
+      window.removeEventListener('scroll', scrolled, true);
+    };
+  }, [open]);
+
   return (
-    <span className="var-info" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+    <span className="var-info" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       <button
+        ref={button}
         type="button"
         className="var-info-btn"
         aria-label={`What ${variable.label} writes`}
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        onBlur={() => setOpen(false)}
+        onClick={() => setPinned((p) => !p)}
+        onBlur={() => {
+          setPinned(false);
+          setHover(false);
+        }}
       >
         i
       </button>
-      {open && (
-        <span className="var-bubble" role="tooltip">
-          <strong style={{ display: 'block', fontSize: 12.5 }}>{variable.label}</strong>
-          <span style={{ display: 'block', margin: '3px 0 6px' }}>{variable.what}</span>
-          {variable.byMode?.length ? (
-            variable.byMode.map((m) => (
-              <span key={m.mode} style={{ display: 'block', marginTop: 4 }}>
-                <span className="eyebrow">{m.mode}</span>
-                <span className="var-sample">{m.text}</span>
-              </span>
-            ))
-          ) : variable.example ? (
-            <>
-              <span className="eyebrow">Becomes</span>
-              <span className="var-sample">{variable.example.replace(/\\n/g, '\n')}</span>
-            </>
-          ) : null}
-        </span>
-      )}
+      {open &&
+        createPortal(
+          <span
+            ref={bubble}
+            className="var-bubble"
+            role="tooltip"
+            style={place ? { top: place.top, left: place.left, width: place.width } : { visibility: 'hidden' }}
+          >
+            <strong style={{ display: 'block', fontSize: 12.5 }}>{variable.label}</strong>
+            <span style={{ display: 'block', margin: '3px 0 6px' }}>{variable.what}</span>
+            {variable.byMode?.length ? (
+              variable.byMode.map((m) => (
+                <span key={m.mode} style={{ display: 'block', marginTop: 4 }}>
+                  <span className="eyebrow">{m.mode}</span>
+                  <span className="var-sample">{m.text}</span>
+                </span>
+              ))
+            ) : variable.example ? (
+              <>
+                <span className="eyebrow">Becomes</span>
+                <span className="var-sample">{variable.example.replace(/\\n/g, '\n')}</span>
+              </>
+            ) : null}
+          </span>,
+          document.body,
+        )}
     </span>
   );
 }
