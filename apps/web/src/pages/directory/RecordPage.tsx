@@ -21,6 +21,7 @@ import { ConfirmDialog, Modal, useToast } from '../../ui/Overlays';
 import '../../ui/builder.css';
 import '../../ui/directory.css';
 import { AccountCard } from './AccountCard';
+import { MailsCard } from './MailsCard';
 import { initials } from './DirectoryPage';
 import { RecordModal } from './RecordModal';
 import { TaskDrawer } from '../../ui/TaskDrawer';
@@ -261,6 +262,9 @@ export function RecordPage() {
                 : 'Kept by the CEED team.'}
             </p>
           </div>
+
+          {/* Ce qui lui a été écrit, et ce qu'il en est advenu. */}
+          <MailsCard recordId={record.id} />
 
           <div className="card card-pad stack" style={{ gap: 8 }}>
             <div className="eyebrow">Program history</div>

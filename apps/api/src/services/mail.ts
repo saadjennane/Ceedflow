@@ -295,6 +295,29 @@ export async function letters(
   return (await rawLetters(where, limit)).map((row) => ({ ...row, body: redactPasswords(row.body) }));
 }
 
+/**
+ * Tout ce qui a été écrit à propos d'une fiche : à ses adresses, en son nom,
+ * ou pour ses candidatures — avec ce qu'il en est advenu. C'est la page où
+ * l'on vient comprendre pourquoi quelqu'un dit n'avoir rien reçu.
+ */
+export async function lettersAbout(
+  recordId: string,
+  emails: string[],
+  candidateIds: string[],
+  limit = 100,
+): Promise<OutboxRow[]> {
+  const rows = await (await db()).query<OutboxRow>(
+    `select id, kind, to_email as "to", to_name as "toName", subject, body,
+            state, error, attempts, created_at::text as "createdAt", sent_at::text as "sentAt",
+            delivered_at::text as "deliveredAt"
+       from outbox
+      where to_email = any($1::text[]) or record_id = $2 or candidate_id = any($3::text[])
+      order by created_at desc limit $4`,
+    [emails.map((e) => e.trim().toLowerCase()).filter(Boolean), recordId, candidateIds, limit],
+  );
+  return rows.map((row) => ({ ...row, body: redactPasswords(row.body) }));
+}
+
 async function rawLetters(
   where: { email?: string; candidateId?: string; blockId?: string },
   limit = 50,

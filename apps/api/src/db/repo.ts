@@ -760,6 +760,10 @@ export async function inTestProgram(where: { blockId?: string | null; candidateI
 /* Candidates                                                          */
 /* ------------------------------------------------------------------ */
 
+/** The candidacies of one organisation, every edition — just their ids, for what reads about them. */
+export const candidatesOfOrg = (orgId: string) =>
+  all<{ id: string }>('select id from candidates where org_id = $1 and deleted_at is null', [orgId]);
+
 export async function listCandidates(editionId: string, trackId?: string): Promise<Candidate[]> {
   return trackId
     ? all<Candidate>(

@@ -22,6 +22,7 @@ import {
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import * as dir from '../db/directory.js';
+import * as repo from '../db/repo.js';
 import { addOrgDocument, changeOrgDocument, saveNeed } from '../services/orgSheet.js';
 import {
   accountOfRecord,
@@ -34,7 +35,7 @@ import {
   reissueProvisionalPassword,
   setAccountDisabled,
 } from '../services/auth.js';
-import { post, sendingIsLive } from '../services/mail.js';
+import { lettersAbout, post, sendingIsLive } from '../services/mail.js';
 import { directoryRows } from '../services/people.js';
 import { invite, inviteBlock, inviteMany } from '../services/invitations.js';
 import { HttpError, notFound, parse } from './util.js';
@@ -459,6 +460,24 @@ export async function directoryRoutes(app: FastifyInstance) {
     if (!account) return notFound(reply, 'This person has no account.');
     await closeAccount(account.id);
     reply.code(204);
+  });
+
+  /* ---- Ce qui lui a été écrit ---- */
+
+  /**
+   * Les mails d'une fiche : à ses adresses, en son nom, pour ses candidatures.
+   * Une organisation y ajoute ceux de ses candidatures — ses lettres partent
+   * le plus souvent à la personne qui la tient.
+   */
+  app.get('/api/records/:id/letters', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const record = await dir.getRecord(id);
+    if (!record) return notFound(reply, 'Record not found.');
+    const candidateIds =
+      record.kind === 'org'
+        ? (await repo.candidatesOfOrg(id)).map((c) => c.id)
+        : [];
+    return lettersAbout(id, record.emails, candidateIds);
   });
 
   /* ---- Demandes pour rejoindre une organisation ---- */

@@ -63,6 +63,19 @@ describe('inviting somebody into an account', { skip: skipWithoutServer }, () =>
       cookies: { [SESSION_COOKIE]: session },
     });
 
+  it('shows a record’s letters and what became of them — never the password they carried', async () => {
+    const { record, email } = await somebody('Lina');
+    const res = await invite(record.id);
+    const { password } = res.json() as { password: string };
+    const history = await app.inject({ method: 'GET', url: `/api/records/${record.id}/letters`, cookies: { [SESSION_COOKIE]: session } });
+    assert.equal(history.statusCode, 200);
+    const [letter] = history.json() as { kind: string; to: string; state: string; body: string }[];
+    assert.equal(letter?.kind, 'account_invite');
+    assert.equal(letter?.to, email.toLowerCase());
+    assert.ok(letter?.state, 'its state is said');
+    assert.doesNotMatch(letter!.body, new RegExp(password));
+  });
+
   it('writes to them, with a password that works', async () => {
     const { record, email } = await somebody('Karim');
     const res = await invite(record.id);
