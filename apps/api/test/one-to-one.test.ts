@@ -430,6 +430,41 @@ describe('a One to One', { skip: skipWithoutServer }, () => {
     assert.equal(moved.heldOn, '2030-02-05', 'a day moved takes its meetings with it');
   });
 
+  it('meets a startup with all of them at once: a time free for every one, one meeting seen by each, one report', async () => {
+    const { block, mentor, expert, a, b } = await setUp();
+    const config = (await repo.getBlock(block.id))!.config as object;
+    await repo.updateBlock(block.id, { config: { ...config, pairing: 'together' } });
+    const day = await createDay(block.id, {
+      name: 'Day 1', heldOn: '2030-04-08', windows: [{ startsAt: '09:00', endsAt: '10:30' }], minutesPerMeeting: 45,
+      location: 'CEED', interlocutors: [mentor.id, expert.id],
+    });
+    // Omar est pris à 09:00 ailleurs : ce créneau n'est plus offert.
+    const elsewhere = await repo.createBlock((await repo.getBlock(block.id))!.phaseId, 'one_to_one', 'Elsewhere');
+    await repo.updateBlock(elsewhere.id, { config: { interlocutors: [expert.id], report: { fields: REPORT }, visibility: 'open' } });
+    await planMeetings(elsewhere.id, { candidateIds: [b.id], personId: expert.id, invite: 'none', heldOn: '2030-04-08', startTime: '09:00' });
+
+    const [ma] = await planMeetings(block.id, { candidateIds: [a.id], personId: null, invite: 'slots', heldOn: null, startTime: null });
+    const slots = (await invitationFor(ma!.token))!.page.slots;
+    assert.deepEqual(slots.map((c) => c.startTime), ['09:45'], 'only when both are free, once per time');
+    assert.ok(slots[0]!.personName.includes('&'));
+
+    await bookSlot(ma!.token, { dayId: day.id, startTime: '09:45', personId: slots[0]!.personId });
+    const booked = (await oneToOneView(block.id))!.meetings.find((m) => m.id === ma!.id)!;
+    assert.deepEqual([...booked.withIds].sort(), [mentor.id, expert.id].sort());
+    assert.ok(booked.withNames.includes(mentor.name) && booked.withNames.includes(expert.name));
+
+    // Les deux sont pris à cette heure, et chacun voit le rendez-vous.
+    await assert.rejects(planMeetings(elsewhere.id, { candidateIds: [b.id], personId: expert.id, invite: 'none', heldOn: '2030-04-08', startTime: '09:45' }));
+    assert.ok((await meetingsFor(mentor.id)).some((m) => m.id === ma!.id));
+    assert.ok((await meetingsFor(expert.id)).some((m) => m.id === ma!.id));
+
+    // Placé à la main, avec ceux qu'on coche.
+    const [mb] = await planMeetings(block.id, {
+      candidateIds: [b.id], personId: mentor.id, withIds: [mentor.id], invite: 'none', heldOn: '2030-04-09', startTime: '11:00',
+    });
+    assert.deepEqual(mb!.withIds, [mentor.id]);
+  });
+
   it('refuses a day with a stranger, and an interlocutor placed on a day they do not receive', async () => {
     const { block, mentor, expert, a } = await setUp();
     const stranger = await dir.createRecord({ kind: 'person', name: `X ${uniq()}`, origin: 'manual' });

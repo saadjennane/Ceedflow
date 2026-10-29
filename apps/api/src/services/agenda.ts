@@ -101,7 +101,8 @@ export async function agendaFor(candidateId: string): Promise<AgendaEntry[]> {
     meetingLink: string; answerBy: string | null;
   }>(
     `select b.name as "blockName", m.held_on::text as "heldOn", m.start_time as "startTime",
-            m.duration_minutes as "durationMinutes", m.location, coalesce(p.name, '') as "personName", m.token, m.invite,
+            m.duration_minutes as "durationMinutes", m.location, coalesce((select string_agg(w.name, ' & ' order by w.name) from records w
+              where w.id in (select jsonb_array_elements_text(m.with_ids))), p.name, '') as "personName", m.token, m.invite,
             m.meeting_link as "meetingLink", nullif(b.config->>'answerBy', '') as "answerBy",
             m.rsvp_state as "rsvpState"
        from one_to_one_meetings m join blocks b on b.id = m.block_id left join records p on p.id = m.person_id

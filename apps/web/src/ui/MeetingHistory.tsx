@@ -5,7 +5,7 @@
  * and whether the report came back. The report is opened from the brick's own
  * tab — this list says where to look.
  */
-import { MEETING_STATUS_LABEL, meetingState, type OneToOneMeeting } from '@ceed/shared';
+import { MEETING_STATUS_LABEL, meetingState, meetingWith, type OneToOneMeeting } from '@ceed/shared';
 import { api } from '../lib/api';
 import { formatDate } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
@@ -31,7 +31,7 @@ export function MeetingHistory({ url, empty, heading }: { url: string; empty?: s
           <div className="rowcard row" key={m.id} style={{ gap: 9, padding: '8px 11px' }}>
             <Icon name="users" size={13} />
             <span style={{ flex: 1, minWidth: 0, fontSize: 13 }}>
-              <strong>{m.personName}</strong>
+              <strong>{meetingWith(m)}</strong>
               <span className="faint">
                 {' '}
                 · {m.blockName} · {m.heldOn ? `${formatDate(m.heldOn)}${m.startTime ? ` ${m.startTime}` : ''}` : 'no time yet'}

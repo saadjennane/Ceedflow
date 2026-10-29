@@ -1654,7 +1654,7 @@ export const oneToOneConfigSchema = z.object({
    * Les interlocuteurs reçoivent toutes les startups, ou se les partagent.
    * Absent sur les briques d'avant : déduit de l'attribution (voir pairingOf).
    */
-  pairing: z.enum(['all', 'assigned']).optional(),
+  pairing: z.enum(['all', 'assigned', 'together']).optional(),
   /** Quand tous reçoivent tout : combien de rendez-vous une startup peut avoir ici. */
   perStartup: z.number().int().min(1).max(20).default(1),
   durationMinutes: z.number().int().min(5).max(480).default(45),
@@ -1750,7 +1750,7 @@ export const oneToOneConfigSchema = z.object({
  * réglage, ce que son attribution laissait entendre — des mentors attribués,
  * c'était un partage.
  */
-export const pairingOf = (config: { pairing?: 'all' | 'assigned'; mentors: Record<string, string[]> }): 'all' | 'assigned' =>
+export const pairingOf = (config: { pairing?: 'all' | 'assigned' | 'together'; mentors: Record<string, string[]> }): 'all' | 'assigned' | 'together' =>
   config.pairing ?? (Object.values(config.mentors).some((ids) => ids.length > 0) ? 'assigned' : 'all');
 
 type FormShape = { layout: 'single' | 'paged'; pages: FormPage[]; fields: FormField[] };

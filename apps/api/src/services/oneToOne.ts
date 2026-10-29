@@ -28,6 +28,8 @@ import {
   type FreeCell,
   type Frequency,
   type OneToOneDay,
+  peopleOf,
+  meetingWith,
   fillTemplate,
   firstNameOf,
   freeCells,
@@ -59,7 +61,9 @@ import { intakeFor } from './selection.js';
 
 const COLS = `
   m.id, m.block_id as "blockId", m.candidate_id as "candidateId", o.name as "orgName",
-  m.person_id as "personId", coalesce(p.name, '') as "personName", m.series_id as "seriesId", m.day_id as "dayId",
+  m.person_id as "personId", coalesce(p.name, '') as "personName", m.with_ids as "withIds",
+  coalesce((select string_agg(w.name, ' & ' order by w.name) from records w
+             where w.id in (select jsonb_array_elements_text(m.with_ids))), '') as "withNames", m.series_id as "seriesId", m.day_id as "dayId",
   m.held_on::text as "heldOn", m.start_time as "startTime", m.duration_minutes as "durationMinutes",
   m.location, m.meeting_link as "meetingLink", m.invite, m.token, m.rsvp_state as "rsvpState", m.rsvp_note as "rsvpNote", m.responded_at::text as "respondedAt",
   m.status, m.report, m.report_submitted_at::text as "reportSubmittedAt", m.report_by_name as "reportByName",
@@ -154,15 +158,33 @@ export async function oneToOneView(blockId: string): Promise<OneToOneView | null
  * Personne n'est à deux endroits à la fois : un interlocuteur déjà pris à
  * cette heure-là, dans cette brique ou une autre, est refusé.
  */
-async function busy(personId: string | null, heldOn: string | null, startTime: string | null, except?: string) {
-  if (!personId || !heldOn || !startTime) return false;
+/**
+ * Whether one of these people already has a meeting at that time — alone, or
+ * among several receiving together, in any brick.
+ */
+async function busy(people: string | string[] | null, heldOn: string | null, startTime: string | null, except?: string) {
+  const ids = (Array.isArray(people) ? people : people ? [people] : []).filter(Boolean);
+  if (!ids.length || !heldOn || !startTime) return false;
   const row = await one<{ id: string }>(
     `select id from one_to_one_meetings
-      where person_id = $1 and held_on = $2::date and start_time = $3 and status <> 'cancelled'
+      where (person_id = any($1::text[]) or with_ids ?| $1::text[])
+        and held_on = $2::date and start_time = $3 and status <> 'cancelled'
         and ($4::text is null or id <> $4) limit 1`,
-    [personId, heldOn, startTime, except ?? null],
+    [ids, heldOn, startTime, except ?? null],
   );
   return Boolean(row);
+}
+
+/** Who already sits at which time — every person of every meeting, for the free-slot reckoning. */
+async function takenBy(people: string[], except: string | null) {
+  const rows = await all<{ personId: string | null; withIds: string[]; heldOn: string | null; startTime: string | null }>(
+    `select person_id as "personId", with_ids as "withIds", held_on::text as "heldOn", start_time as "startTime"
+       from one_to_one_meetings
+      where (person_id = any($1::text[]) or with_ids ?| $1::text[]) and status <> 'cancelled'
+        and ($2::text is null or id <> $2)`,
+    [people, except],
+  );
+  return rows.flatMap((r) => [...new Set([r.personId, ...(r.withIds ?? [])].filter(Boolean))].map((personId) => ({ personId, heldOn: r.heldOn, startTime: r.startTime })));
 }
 
 export async function planMeetings(
@@ -170,6 +192,8 @@ export async function planMeetings(
   input: {
     candidateIds: string[];
     personId: string | null;
+    /** When they receive together: who is there. */
+    withIds?: string[];
     dayId?: string | null;
     invite: 'slots' | 'confirm' | 'none';
     heldOn: string | null;
@@ -183,6 +207,21 @@ export async function planMeetings(
 ): Promise<OneToOneMeeting[]> {
   const ctx = await brickContext(blockId);
   if (!ctx) throw new HttpError(404, 'One to One not found.');
+  /* Ensemble : le rendez-vous réunit les interlocuteurs du jour — ou ceux
+     qu'on a cochés, ou ceux de la brique —, le premier en est le principal. */
+  const together = pairingOf(ctx.config) === 'together';
+  const dayOf = input.dayId ? await getDay(input.dayId) : null;
+  const participants = together
+    ? input.withIds?.length
+      ? input.withIds
+      : dayOf?.interlocutors.length
+        ? dayOf.interlocutors
+        : ctx.config.interlocutors
+    : [];
+  if (together && participants.some((id) => !ctx.config.interlocutors.includes(id))) {
+    throw new HttpError(422, 'Add them to the brick’s interlocutors first.');
+  }
+  if (together && input.invite !== 'slots' && !input.personId) input = { ...input, personId: participants[0] ?? null };
   const books = input.invite === 'slots';
   /* Sans interlocuteur, seulement pour une startup invitée à réserver : elle
      choisira chez qui en même temps que quand. */
@@ -225,7 +264,7 @@ export async function planMeetings(
   if (recurring && input.candidateIds.length > 1) throw new HttpError(422, 'A series is one startup, at a set time.');
   if (!books) {
     const clashes: string[] = [];
-    for (const date of dates) if (await busy(input.personId, date, input.startTime)) clashes.push(date!);
+    for (const date of dates) if (await busy(together ? participants : input.personId, date, input.startTime)) clashes.push(date!);
     if (clashes.length) {
       throw new HttpError(409, `They already have a meeting at that time on ${clashes.join(', ')}.`, {
         startTime: 'Already taken.',
@@ -262,8 +301,8 @@ export async function planMeetings(
       await all(
         `insert into one_to_one_meetings
            (id, block_id, candidate_id, person_id, series_id, held_on, start_time, duration_minutes, location,
-            invite, token, rsvp_state, day_id, meeting_link)
-         values ($1,$2,$3,$4,$5,$6::date,$7,$8,$9,$10,$11,$12,$13,$14)`,
+            invite, token, rsvp_state, day_id, meeting_link, with_ids)
+         values ($1,$2,$3,$4,$5,$6::date,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
         [
           id, blockId, candidateId, input.personId, seriesId,
           books ? null : date, books ? null : input.startTime, duration, location,
@@ -272,6 +311,7 @@ export async function planMeetings(
           input.invite === 'none' ? 'confirmed' : 'pending',
           books || seriesId ? null : (input.dayId ?? null),
           meetingLink,
+          together && !books ? participants : [],
         ],
       );
       made.push((await getMeeting(id))!);
@@ -366,7 +406,18 @@ export async function changeMeeting(
       throw new HttpError(422, 'Add this person to the brick’s interlocutors first.');
     }
   }
-  if ((patch.heldOn !== undefined || patch.startTime !== undefined || patch.personId) && (await busy(personId, heldOn, startTime, id))) {
+  /* Ensemble : placé dans une journée, le rendez-vous réunit ceux qui y reçoivent. */
+  const cfg = (await brickContext(current.blockId))?.config;
+  const together = cfg ? pairingOf(cfg) === 'together' : false;
+  const placedDay = together && patch.dayId ? await getDay(patch.dayId) : null;
+  const participants = placedDay?.interlocutors.length
+    ? placedDay.interlocutors
+    : current.withIds?.length
+      ? current.withIds
+      : personId
+        ? [personId]
+        : [];
+  if ((patch.heldOn !== undefined || patch.startTime !== undefined || patch.personId) && (await busy(participants, heldOn, startTime, id))) {
     throw new HttpError(409, 'They already have a meeting at that time.', { startTime: 'Already taken.' });
   }
   const moved = heldOn !== current.heldOn || startTime !== current.startTime;
@@ -376,7 +427,10 @@ export async function changeMeeting(
     params.push(value);
     sets.push(`${column} = $${params.length}${cast}`);
   };
-  if (patch.personId !== undefined) put('person_id', patch.personId);
+  if (placedDay?.interlocutors.length) {
+    put('person_id', placedDay.interlocutors[0]);
+    put('with_ids', placedDay.interlocutors, '::jsonb');
+  } else if (patch.personId !== undefined) put('person_id', patch.personId);
   if (patch.dayId !== undefined) put('day_id', patch.dayId);
   if (patch.heldOn !== undefined) put('held_on', patch.heldOn, '::date');
   if (patch.startTime !== undefined) put('start_time', patch.startTime);
@@ -555,7 +609,7 @@ export interface MyMeetingDetail extends MyMeeting {
  * brouillon n'a pas de dehors, même pour lui.
  */
 export async function meetingsFor(recordId: string): Promise<MyMeeting[]> {
-  const mine = await all<OneToOneMeeting>(`select ${COLS} where m.person_id = $1 ${ORDER}`, [recordId]);
+  const mine = await all<OneToOneMeeting>(`select ${COLS} where (m.person_id = $1 or m.with_ids ? $1) ${ORDER}`, [recordId]);
   if (!mine.length) return [];
   const ownOrgs = await dir.orgIdsOf(recordId);
   const out: MyMeeting[] = [];
@@ -697,7 +751,7 @@ export async function invitationFor(token: string): Promise<{ meeting: OneToOneM
       editionName: detail.name,
       colour: detail.program.colour ?? '#2F5BFF',
       orgName: meeting.orgName,
-      personName: meeting.personName,
+      personName: meetingWith(meeting),
       heldOn: meeting.heldOn,
       startTime: meeting.startTime,
       durationMinutes: meeting.durationMinutes,
@@ -803,7 +857,7 @@ export async function tellMeeting(
       const values = {
         prenom: firstNameOf(candidate.contactName, candidate.contactFirstName),
         startup: m.orgName,
-        interlocuteur: m.personName || 'un interlocuteur du programme',
+        interlocuteur: (m.withNames || m.personName) || 'un interlocuteur du programme',
         programme,
         quand: m.invite === 'slots' && !m.heldOn ? '' : quand,
         lieu,
@@ -831,8 +885,10 @@ export async function tellMeeting(
     }
   }
 
-  if (who.person && m.personId) {
-    const person = await dir.getRecord(m.personId);
+  /* Ensemble : chacun de ceux qui mènent la séance reçoit sa lettre. */
+  const people = who.person ? peopleOf(m) : [];
+  for (const personId of people) {
+    const person = await dir.getRecord(personId);
     const to = person?.email?.trim();
     if (person && to) {
       const template =
@@ -849,13 +905,13 @@ export async function tellMeeting(
         lieu,
         visio: m.meetingLink ? `Lien de la réunion : ${m.meetingLink}` : '',
         lien: origin ? `${origin}/meeting/${m.id}` : '',
-        acces: template.body.includes('{{acces}}') ? await accessFor(m.personId, config.messages.access) : '',
+        acces: template.body.includes('{{acces}}') ? await accessFor(personId, config.messages.access) : '',
       };
       const posted = await post({
         kind: letter === 'eve' ? 'one_to_one_eve' : letter === 'late' ? 'one_to_one_late_report' : 'one_to_one_person',
         to,
         toName: person.name,
-        recordId: m.personId,
+        recordId: personId,
         blockId: m.blockId,
         candidateId: m.candidateId,
         subject: fillTemplate(template.subject, values),
@@ -1015,12 +1071,28 @@ export async function slotsFor(meeting: OneToOneMeeting): Promise<BookableCell[]
   const days = await listDays(meeting.blockId);
   const people = [...new Set(days.flatMap((d) => d.interlocutors))];
   if (!people.length) return [];
-  const taken = await all<{ personId: string | null; heldOn: string | null; startTime: string | null }>(
-    `select person_id as "personId", held_on::text as "heldOn", start_time as "startTime" from one_to_one_meetings
-      where person_id = any($1::text[]) and status <> 'cancelled' and id <> $2`,
-    [people, meeting.id],
-  );
+  const taken = await takenBy(people, meeting.id);
   const names = new Map((await peopleByIds(people)).map((p) => [p.id, p.name]));
+  const ctx = await brickContext(meeting.blockId);
+  /* Ensemble : un créneau n'est offert que si tous ceux du jour sont libres —
+     et il se prend chez eux tous, sans choisir chez qui. */
+  if (ctx && pairingOf(ctx.config) === 'together') {
+    const free = freeCells(days, taken, null);
+    const out: BookableCell[] = [];
+    for (const day of days) {
+      const slots = [...new Set(free.filter((c) => c.dayId === day.id).map((c) => c.startTime))];
+      for (const startTime of slots) {
+        const cells = free.filter((c) => c.dayId === day.id && c.startTime === startTime);
+        if (cells.length < day.interlocutors.length) continue;
+        out.push({
+          ...cells[0]!,
+          personId: day.interlocutors[0]!,
+          personName: day.interlocutors.map((id) => names.get(id) ?? '').filter(Boolean).join(' & '),
+        });
+      }
+    }
+    return out.sort((a, b) => (a.onDate + a.startTime).localeCompare(b.onDate + b.startTime));
+  }
   return freeCells(days, taken, meeting.personId).map((c) => ({ ...c, personName: names.get(c.personId) ?? '' }));
 }
 
@@ -1037,14 +1109,23 @@ export async function weeklyFor(meeting: OneToOneMeeting): Promise<(WeeklyCell &
     : pairingOf(ctx.config) === 'assigned' && candidate
       ? mentorsOf(ctx.config, candidate)
       : null;
-  const people = [...new Set(rec.weekly.map((w) => w.personId))];
+  const together = pairingOf(ctx.config) === 'together';
+  const people = [...new Set([...rec.weekly.map((w) => w.personId), ...(together ? ctx.config.interlocutors : [])])];
   if (!people.length) return [];
-  const taken = await all<{ personId: string | null; heldOn: string | null; startTime: string | null }>(
-    `select person_id as "personId", held_on::text as "heldOn", start_time as "startTime" from one_to_one_meetings
-      where person_id = any($1::text[]) and status <> 'cancelled' and id <> $2`,
-    [people, meeting.id],
-  );
+  const taken = await takenBy(people, meeting.id);
   const names = new Map((await peopleByIds(people)).map((p) => [p.id, p.name]));
+  if (together) {
+    /* Ensemble : les créneaux du principal, gardés seulement si chacun des
+       autres est libre à toutes les dates de la série. */
+    const lead = ctx.config.interlocutors[0];
+    if (!lead) return [];
+    const busySet = new Set(taken.map((t) => `${t.personId} ${t.heldOn} ${t.startTime}`));
+    return weeklyCells(rec, ctx.config.durationMinutes, taken, [lead])
+      .filter((c) =>
+        recurringDates(rec, c.firstOn).every((d) => ctx.config.interlocutors.every((p) => !busySet.has(`${p} ${d} ${c.startTime}`))),
+      )
+      .map((c) => ({ ...c, personName: ctx.config.interlocutors.map((id) => names.get(id) ?? '').filter(Boolean).join(' & ') }));
+  }
   return weeklyCells(rec, ctx.config.durationMinutes, taken, only).map((c) => ({ ...c, personName: names.get(c.personId) ?? '' }));
 }
 
@@ -1067,6 +1148,7 @@ export async function bookWeekly(token: string, cell: { weekday: number; startTi
   if (!pick) throw new HttpError(409, 'That time has just been taken. Pick another.');
   const rec = ctx.config.recurrence;
   const dates = recurringDates(rec, pick.firstOn);
+  const withIds = pairingOf(ctx.config) === 'together' ? ctx.config.interlocutors : [];
   const conn = await db();
   await conn.tx(async () => {
     const seriesId = newId('ser');
@@ -1080,18 +1162,18 @@ export async function bookWeekly(token: string, cell: { weekday: number; startTi
     await all(
       `update one_to_one_meetings
           set held_on = $2::date, start_time = $3, person_id = $4, series_id = $5, duration_minutes = $6,
-              rsvp_state = 'confirmed', rsvp_note = '', responded_at = now()
+              with_ids = $7::jsonb, rsvp_state = 'confirmed', rsvp_note = '', responded_at = now()
         where id = $1`,
-      [found.meeting.id, dates[0], pick.startTime, pick.personId, seriesId, ctx.config.durationMinutes],
+      [found.meeting.id, dates[0], pick.startTime, pick.personId, seriesId, ctx.config.durationMinutes, withIds],
     );
     for (const date of dates.slice(1)) {
       await all(
         `insert into one_to_one_meetings
            (id, block_id, candidate_id, person_id, series_id, held_on, start_time, duration_minutes, location,
-            invite, token, rsvp_state, meeting_link)
-         values ($1,$2,$3,$4,$5,$6::date,$7,$8,$9,'slots',$10,'confirmed',$11)`,
+            invite, token, rsvp_state, meeting_link, with_ids)
+         values ($1,$2,$3,$4,$5,$6::date,$7,$8,$9,'slots',$10,'confirmed',$11,$12::jsonb)`,
         [newId('oto'), found.meeting.blockId, found.meeting.candidateId, pick.personId, seriesId, date, pick.startTime,
-          ctx.config.durationMinutes, found.meeting.location, newId('meet').replace('meet_', ''), found.meeting.meetingLink ?? ''],
+          ctx.config.durationMinutes, found.meeting.location, newId('meet').replace('meet_', ''), found.meeting.meetingLink ?? '', withIds],
       );
     }
   });
@@ -1116,13 +1198,18 @@ export async function bookSlot(token: string, cell: { dayId: string; startTime: 
   const pick = free.find((f) => f.dayId === cell.dayId && f.startTime === cell.startTime && f.personId === cell.personId);
   if (!pick) throw new HttpError(409, 'That time has just been taken. Pick another.');
   const theDay = await getDay(pick.dayId);
+  const ctx = await brickContext(found.meeting.blockId);
+  const together = ctx ? pairingOf(ctx.config) === 'together' : false;
   await all(
     `update one_to_one_meetings
         set held_on = $2::date, start_time = $3, person_id = $4, day_id = $5, duration_minutes = $6,
             location = case when $7 <> '' then $7 else location end,
+            meeting_link = case when $9 <> '' then $9 else meeting_link end,
+            with_ids = $8::jsonb,
             rsvp_state = 'confirmed', rsvp_note = '', responded_at = now()
       where id = $1`,
-    [found.meeting.id, pick.onDate, pick.startTime, pick.personId, pick.dayId, theDay?.minutesPerMeeting ?? found.meeting.durationMinutes, theDay?.location ?? ''],
+    [found.meeting.id, pick.onDate, pick.startTime, pick.personId, pick.dayId, theDay?.minutesPerMeeting ?? found.meeting.durationMinutes,
+      theDay?.location ?? '', together && theDay ? theDay.interlocutors : [], theDay?.meetingLink ?? ''],
   );
   return (await invitationFor(token))!.page;
 }

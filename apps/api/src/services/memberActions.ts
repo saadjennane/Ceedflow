@@ -19,6 +19,7 @@ import {
   type ActionStatus,
   type MemberAction,
   type MemberActivity,
+  meetingWith,
 } from '@ceed/shared';
 import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
@@ -125,7 +126,7 @@ export async function memberActions(recordId: string): Promise<{ actions: Member
           dueOn: meeting.heldOn,
           ...where,
           href: `/meet/${meeting.token}`,
-          label: meeting.personName,
+          label: meetingWith(meeting),
           orgName: candidate.orgName,
         });
       }

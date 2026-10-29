@@ -107,6 +107,13 @@ export function OneToOneSetup({
                 <span>Each startup has its own interlocutors — one or several — and meets only them, once each.</span>
               </div>
             </button>
+            <button type="button" className={pairing === 'together' ? 'pick on' : 'pick'} onClick={() => patch({ pairing: 'together' })}>
+              <Icon name={pairing === 'together' ? 'check' : 'square'} />
+              <div>
+                <strong>They meet each startup together</strong>
+                <span>One meeting per startup, facing all of them at once — a time is free only when every one of them is. Either of them can write its report.</span>
+              </div>
+            </button>
           </div>
         </div>
 
@@ -449,14 +456,18 @@ function InvitationsTab({
       )}
 
       {config.cadence === 'single' &&
-        (pairing === 'all' ? (
+        (pairing !== 'assigned' ? (
           <NumberField
             label="Meetings per startup"
             value={config.perStartup}
             min={1}
             max={20}
             onChange={(v) => patch({ perStartup: Math.max(1, v || 1) })}
-            help="How many meetings a startup may have in this brick, all interlocutors together."
+            help={
+              pairing === 'together'
+                ? 'How many meetings a startup may have in this brick, each one with all the interlocutors.'
+                : 'How many meetings a startup may have in this brick, all interlocutors together.'
+            }
           />
         ) : (
           <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>

@@ -26,6 +26,9 @@ import {
   type PersonRef,
   type QuestionSummary,
   WEEKDAY_LABEL,
+  pairingOf,
+  meetingWith,
+  takesPart,
   prepForm,
   reportForm,
   sharedReport,
@@ -79,6 +82,7 @@ function stillToMeet(
   candidate: Candidate,
 ): (string | null)[] {
   const theirs = live.filter((m) => m.candidateId === candidate.id);
+  if (pairingOf(config) === 'together') return theirs.length ? [] : [null];
   const mine = mentorsOf(config, candidate);
   if (!mine.length) return theirs.length ? [] : [null];
   return mine.filter((id) => !theirs.some((m) => m.personId === id));
@@ -132,7 +136,11 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
   const booking = live.filter((m) => m.invite === 'slots' && !m.heldOn);
   const noTime = live.filter((m) => m.invite !== 'slots' && !m.heldOn);
   const onDay = current ? live.filter((m) => m.dayId === current.id) : [];
-  const capacity = current ? daySlots(current).length * current.interlocutors.length : 0;
+  /* Ensemble : une seule colonne — la startup les voit tous à la fois. */
+  const together = pairingOf(config) === 'together';
+  const seats = (d: OneToOneDay) => (together ? Math.min(1, d.interlocutors.length) : d.interlocutors.length);
+  const columns = (d: OneToOneDay) => (together ? d.interlocutors.slice(0, 1) : d.interlocutors);
+  const capacity = current ? daySlots(current).length * seats(current) : 0;
 
   const refresh = async () => view.set(await api.get<View>(`/api/blocks/${block.id}/one-to-one`));
 
@@ -247,7 +255,7 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
                 <span className="faint" style={{ fontWeight: 400 }}>
                   {' '}
                   · {formatDate(d.heldOn)} · {live.filter((m) => m.dayId === d.id).length}/
-                  {daySlots(d).length * d.interlocutors.length}
+                  {daySlots(d).length * seats(d)}
                 </span>
               </button>
             ))}
@@ -337,10 +345,14 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
               {/* Une colonne par interlocuteur du jour : c'est chez lui qu'on
                   pose la startup. */}
               <div className="day">
-                {current.interlocutors.map((personId) => (
+                {columns(current).map((personId) => (
                   <section className="day-col" key={personId}>
                     <header>
-                      <span className="eyebrow">{name(personId) || 'Interlocutor'}</span>
+                      <span className="eyebrow">
+                        {together
+                          ? current.interlocutors.map(name).filter(Boolean).join(' & ') || 'Interlocutors'
+                          : name(personId) || 'Interlocutor'}
+                      </span>
                       <span className="num faint">
                         {live.filter((m) => m.dayId === current.id && m.personId === personId).length}/{daySlots(current).length}
                       </span>
@@ -446,7 +458,7 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
                   </div>
                   {noTime.map((m) => {
                     const c = pool.find((p) => p.candidate.id === m.candidateId)?.candidate;
-                    return c ? chip(c, m.personName ? <span className="badge">{m.personName}</span> : null, m) : null;
+                    return c ? chip(c, meetingWith(m) ? <span className="badge">{meetingWith(m)}</span> : null, m) : null;
                   })}
                   <div className="public-sep" style={{ margin: '12px 0 6px' }} />
                 </>
@@ -461,7 +473,7 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
                   {booking.map((m) => (
                     <div className="pool-chip" key={m.id}>
                       <span className="chip-name">{m.orgName}</span>
-                      {m.personName && <span className="badge">{m.personName}</span>}
+                      {meetingWith(m) && <span className="badge">{meetingWith(m)}</span>}
                       <button
                         className="chip-x"
                         title="Copy their link to book"
@@ -678,7 +690,7 @@ function SeriesBoard({
                 <button key={m.id} className="pick" style={{ width: '100%' }} onClick={() => onOpen(m.id)}>
                   <Icon name="send" size={14} />
                   <div style={{ flex: 1 }}>
-                    <strong>{m.personName || 'Any interlocutor'}</strong>
+                    <strong>{meetingWith(m) || 'Any interlocutor'}</strong>
                     <span>{m.invite === 'slots' ? 'Invited to pick a weekly slot' : 'No time yet'}</span>
                   </div>
                   <span className={state.tone} title={m.rsvpNote || undefined}>{state.label}{m.rsvpNote ? ' 💬' : ''}</span>
@@ -703,13 +715,14 @@ function InviteModal({ data, onClose, onDone }: { data: View; onClose: () => voi
   const live = data.meetings.filter((m) => m.status !== 'cancelled');
   const unplaced = data.pool.filter((p) => stillToMeet(data.config, live, p.candidate).length > 0);
   const [picked, setPicked] = useState<string[]>(unplaced.map((p) => p.candidate.id));
-  const [who, setWho] = useState<string>('mentors');
+  const together = pairingOf(data.config) === 'together';
+  const [who, setWho] = useState<string>(together ? 'anyone' : 'mentors');
   const [tell, setTell] = useState(true);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
   const cells = data.days
     .filter((d) => (d.heldOn ?? '') >= todayIso())
-    .reduce((n, d) => n + daySlots(d).length * d.interlocutors.length, 0);
+    .reduce((n, d) => n + daySlots(d).length * (together ? Math.min(1, d.interlocutors.length) : d.interlocutors.length), 0);
 
   /**
    * Chez qui chacune réserve : un rendez-vous avec chacun de ses mentors — ou,
@@ -765,6 +778,11 @@ function InviteModal({ data, onClose, onDone }: { data: View; onClose: () => voi
           <Icon name="alert" size={15} /> No day coming up — add one in the setup, or they will find nothing to book.
         </div>
       )}
+      {together ? (
+        <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+          They book a time when all the interlocutors are free, and meet them together.
+        </p>
+      ) : (
       <div className="field">
         <label>Who they book with</label>
         <select className="input" value={who} onChange={(e) => setWho(e.target.value)}>
@@ -775,6 +793,7 @@ function InviteModal({ data, onClose, onDone }: { data: View; onClose: () => voi
           ))}
         </select>
       </div>
+      )}
       <div className="field">
         <div className="row">
           <label style={{ flex: 1 }}>Startups</label>
@@ -833,6 +852,9 @@ function PlanModal({
   const mentor = first?.mentorId && data.config.interlocutors.includes(first.mentorId) ? first.mentorId : '';
   const [picked, setPicked] = useState<string[]>(preselected);
   const [personId, setPersonId] = useState(mentor || data.interlocutors[0]?.id || '');
+  /* Ensemble : ceux qui reçoivent cette fois — tous, sauf à décocher un absent. */
+  const together = pairingOf(data.config) === 'together';
+  const [withIds, setWithIds] = useState<string[]>(data.interlocutors.map((p) => p.id));
   /* Le mode est celui de la brique (onglet Invitations). Dans une brique où les
      startups choisissent leur heure, un rendez-vous placé à la main leur est
      proposé à confirmer. */
@@ -850,7 +872,7 @@ function PlanModal({
   const books = false;
   /* Laisser réserver : autant de startups qu'on veut, chacune prendra son
      créneau. Une heure donnée : une startup, et une série possible. */
-  const ready = picked.length > 0 && personId && (books || (heldOn && startTime && picked.length === 1));
+  const ready = picked.length > 0 && (together ? withIds.length > 0 : personId) && (books || (heldOn && startTime && picked.length === 1));
 
   const toggle = (id: string) =>
     setPicked((p) => (books ? (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]) : [id]));
@@ -861,7 +883,8 @@ function PlanModal({
     try {
       const made = await api.post<unknown[]>(`/api/blocks/${data.block.id}/meetings`, {
         candidateIds: picked,
-        personId,
+        personId: together ? withIds[0] : personId,
+        ...(together ? { withIds } : {}),
         invite,
         heldOn: books ? null : heldOn,
         startTime: books ? null : startTime,
@@ -937,6 +960,24 @@ function PlanModal({
         )}
       </div>
 
+      {together ? (
+        <div className="field">
+          <label>Meets, together</label>
+          <div className="rows">
+            {data.interlocutors.map((p) => (
+              <label className="check" key={p.id}>
+                <input
+                  type="checkbox"
+                  checked={withIds.includes(p.id)}
+                  onChange={() => setWithIds((w) => (w.includes(p.id) ? w.filter((x) => x !== p.id) : [...w, p.id]))}
+                />
+                <span>{p.name}</span>
+              </label>
+            ))}
+          </div>
+          {errors.personId && <div className="err">{errors.personId}</div>}
+        </div>
+      ) : (
       <div className="field">
         <label>Meets</label>
         <select className="input" value={personId} onChange={(e) => setPersonId(e.target.value)}>
@@ -949,6 +990,7 @@ function PlanModal({
         </select>
         {errors.personId && <div className="err">{errors.personId}</div>}
       </div>
+      )}
 
       {!books && (
         <>
@@ -1121,7 +1163,7 @@ function MeetingDrawer({
       <Drawer
         wide
         title={meeting.orgName}
-        subtitle={`${meeting.personName || 'Interlocutor not chosen yet'} · ${when(meeting)}`}
+        subtitle={`${meetingWith(meeting) || 'Interlocutor not chosen yet'} · ${when(meeting)}`}
         onClose={onClose}
         footer={
           <>
@@ -1319,7 +1361,7 @@ function MeetingDrawer({
           </button>
           {meeting.personId && (
             <button className="btn ghost sm" disabled={busy} onClick={() => tell({ person: true })}>
-              <Icon name="send" size={12} /> Write to {meeting.personName}
+              <Icon name="send" size={12} /> Write to {meetingWith(meeting)}
             </button>
           )}
         </div>
@@ -1429,7 +1471,7 @@ function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void })
       data.meetings.filter(
         (m) =>
           m.reportSubmittedAt &&
-          (!person || m.personId === person) &&
+          (!person || takesPart(m, person)) &&
           (!startup || m.candidateId === startup) &&
           (!from || (m.heldOn ?? '') >= from) &&
           (!to || (m.heldOn ?? '') <= to),
@@ -1443,7 +1485,7 @@ function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void })
     const rows: Cell[][] = [head];
     for (const m of sent) {
       rows.push([
-        m.heldOn ?? '', m.startTime ?? '', m.orgName, m.personName, MEETING_STATUS_LABEL[m.status],
+        m.heldOn ?? '', m.startTime ?? '', m.orgName, meetingWith(m), MEETING_STATUS_LABEL[m.status],
         ...fields.map((f) => asText(whole(m)[f.id])),
         m.reportSubmittedAt?.slice(0, 10) ?? '',
       ]);
@@ -1511,7 +1553,7 @@ function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void })
                 <tr key={m.id} style={{ cursor: 'pointer' }} onClick={() => onOpen(m.id)}>
                   <td className="num">{when(m)}</td>
                   <td className="name">{m.orgName}</td>
-                  <td className="muted">{m.personName}</td>
+                  <td className="muted">{meetingWith(m)}</td>
                   {fields.map((f) => (
                     <td key={f.id} className="muted" style={{ maxWidth: 280 }}>
                       {asText(whole(m)[f.id]) || '—'}
@@ -1617,7 +1659,7 @@ function ByStartup({
             {theirs.map((m) => (
               <div className="rowcard card-pad stack" key={m.id} style={{ gap: 8 }}>
                 <button className="row oto-report-head" onClick={() => onOpen(m.id)}>
-                  <strong style={{ fontSize: 13 }}>{m.personName}</strong>
+                  <strong style={{ fontSize: 13 }}>{meetingWith(m)}</strong>
                   <span className="faint" style={{ fontSize: 12 }}>· {when(m)}</span>
                   <div className="spacer" />
                   <Icon name="chevronRight" size={13} />

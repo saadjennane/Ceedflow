@@ -27,6 +27,10 @@ export interface OneToOneMeeting {
   /** Null while a startup invited to book has not picked whom, nor when. */
   personId: string | null;
   personName: string;
+  /** Tous les interlocuteurs du rendez-vous, quand ils reçoivent ensemble — vide sinon. */
+  withIds: string[];
+  /** Their names, joined — « Saad Jennane & Ghita Faklani ». Empty when one receives alone. */
+  withNames: string;
   seriesId: string | null;
   /** The day it sits in, when it sits in one. */
   dayId: string | null;
@@ -158,6 +162,8 @@ export const planMeetingsInput = z.object({
   candidateIds: z.array(z.string()).min(1, 'Pick at least one startup.'),
   /** Empty only when the startup is invited to book and may pick whom. */
   personId: z.string().nullable().default(null),
+  /** When they receive together: who is there. Empty: the day's interlocutors, or the brick's. */
+  withIds: z.array(z.string()).optional(),
   dayId: z.string().nullable().default(null),
   invite: z.enum(RSVP_MODES),
   heldOn: day.nullable().default(null),
@@ -389,3 +395,14 @@ export function prepLocked(
   if (prep.lockHoursBefore === null) return now.getTime() > start.getTime();
   return now.getTime() > start.getTime() - prep.lockHoursBefore * 3_600_000;
 }
+
+/** Who a meeting is with, in words: all of them when they receive together. */
+export const meetingWith = (m: Pick<OneToOneMeeting, 'personName' | 'withNames'>): string => m.withNames || m.personName;
+
+/** Whether this person takes part in this meeting — alone, or among those receiving together. */
+export const takesPart = (m: Pick<OneToOneMeeting, 'personId' | 'withIds'>, personId: string): boolean =>
+  m.personId === personId || m.withIds.includes(personId);
+
+/** Everyone a meeting is with: those receiving together, else its one interlocutor. */
+export const peopleOf = (m: Pick<OneToOneMeeting, 'personId' | 'withIds'>): string[] =>
+  m.withIds.length ? m.withIds : m.personId ? [m.personId] : [];
