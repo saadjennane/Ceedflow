@@ -688,6 +688,8 @@ export async function meetingFor(recordId: string, id: string): Promise<MyMeetin
 /* ------------------------------------------------------------------ */
 
 export interface MeetingInvitation {
+  id: string;
+  blockName: string;
   programName: string;
   editionName: string;
   colour: string;
@@ -702,7 +704,9 @@ export interface MeetingInvitation {
   rsvpNote: string;
   meetingLink: string;
   cadence: 'single' | 'recurring';
-  /** The startup's preparation, when the brick asks for one. */
+  /** Where the preparation stands, without its answers — they are read in the member space. */
+  prepare: { state: 'todo' | 'sent' | 'locked' } | null;
+  /** The startup's preparation, when the brick asks for one — member space only. */
   prep: {
     pages: { page: FormPage; fields: FormField[] }[];
     answers: Record<string, unknown>;
@@ -747,6 +751,8 @@ export async function invitationFor(token: string): Promise<{ meeting: OneToOneM
   return {
     meeting,
     page: {
+      id: meeting.id,
+      blockName: ctx?.block.name ?? '',
       programName: detail.program.name,
       editionName: detail.name,
       colour: detail.program.colour ?? '#2F5BFF',
@@ -777,6 +783,7 @@ export async function invitationFor(token: string): Promise<{ meeting: OneToOneM
           editedByName: meeting.prepEditedAt ? meeting.prepEditedByName : '',
         };
       })(),
+      prepare: null,
       slots:
         open && meeting.invite === 'slots' && (ctx?.block.config as OneToOneConfig | undefined)?.cadence !== 'recurring'
           ? await slotsFor(meeting)
@@ -787,6 +794,33 @@ export async function invitationFor(token: string): Promise<{ meeting: OneToOneM
           : [],
     },
   };
+}
+
+/**
+ * La page telle que le lien public la montre : l'heure, et rien de ce que la
+ * startup a écrit — la préparation se remplit dans son espace, connectée.
+ */
+export function publicInvitation(page: MeetingInvitation): MeetingInvitation {
+  const prepare = page.prep
+    ? { state: page.prep.locked ? ('locked' as const) : page.prep.submittedAt ? ('sent' as const) : ('todo' as const) }
+    : null;
+  return { ...page, prep: null, prepare };
+}
+
+/**
+ * La séance à préparer, pour un membre de la startup — par son espace.
+ *
+ * Only someone of the startup reaches it: the person who applied for it, or a
+ * member of its organisation.
+ */
+export async function prepFor(recordId: string, id: string): Promise<MeetingInvitation | null> {
+  const meeting = await getMeeting(id);
+  if (!meeting) return null;
+  const candidate = await repo.getCandidate(meeting.candidateId);
+  if (!candidate) return null;
+  const theirs = candidate.personId === recordId || (await dir.orgIdsOf(recordId)).has(candidate.orgId);
+  if (!theirs) return null;
+  return (await invitationFor(meeting.token))?.page ?? null;
 }
 
 /** Oui ou non à une heure proposée. Rien d'autre ne s'écrit par ce lien. */
@@ -864,7 +898,8 @@ export async function tellMeeting(
         visio: m.meetingLink ? `Lien de la réunion : ${m.meetingLink}` : '',
         action,
         /* La préparation, quand la brique en demande une et que la séance a une heure. */
-        preparation: prepForm(config) && m.heldOn && link ? `Préparez la séance ici : ${link}` : '',
+        /* La préparation se remplit dans son espace, pas par le lien de réservation. */
+        preparation: prepForm(config) && m.heldOn && origin ? `Préparez la séance dans votre espace : ${origin}/prepare/${m.id}` : '',
         lien: link,
       };
       const posted = await post({

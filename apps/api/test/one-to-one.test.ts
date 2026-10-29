@@ -17,7 +17,7 @@ import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
 import {
   answerInvitation, bookSlot, bookWeekly, prepsDueFor, savePrep, sendOneToOneReminders, cancelFollowing, changeMeeting, createDay, historyOf, informAll, invitationFor, meetingFor,
-  meetingsFor, oneToOneView, planMeetings, saveReport, tellMeeting, updateDay,
+  meetingsFor, oneToOneView, planMeetings, prepFor, publicInvitation, saveReport, tellMeeting, updateDay,
 } from '../src/services/oneToOne.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
@@ -284,6 +284,15 @@ describe('a One to One', { skip: skipWithoutServer }, () => {
     const page = (await invitationFor(m!.token))!.page;
     assert.deepEqual(page.prep!.answers, { topics: 'Pricing, and hiring' }, 'the startup reads the corrected version');
     assert.equal(page.prep!.editedByName, 'Nadia');
+
+    // Le lien de réservation n'en montre rien : elle se lit dans l'espace de la startup, et de personne d'autre.
+    const outside = publicInvitation(page);
+    assert.equal(outside.prep, null);
+    assert.deepEqual(outside.prepare, { state: 'sent' });
+    const founder = await dir.createRecord({ kind: 'person', name: `Karim ${uniq()}`, origin: 'manual' });
+    await all(`update candidates set person_id = $2 where id = $1`, [a.id, founder.id]);
+    assert.deepEqual((await prepFor(founder.id, m!.id))!.prep!.answers, { topics: 'Pricing, and hiring' });
+    assert.equal(await prepFor(mentor.id, m!.id), null, 'not someone outside the startup');
 
     const now = (await repo.getBlock(block.id))!.config as { prep: object };
     await repo.updateBlock(block.id, { config: { ...now, prep: { ...now.prep, locked: true } } });

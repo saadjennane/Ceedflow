@@ -28,6 +28,7 @@ import {
   saveReport,
   bookWeekly,
   savePrep,
+  publicInvitation,
 } from '../services/oneToOne.js';
 import { workspaceGuard } from './guard.js';
 import { HttpError, notFound, parse } from './util.js';
@@ -142,17 +143,8 @@ export async function oneToOneRoutes(app: FastifyInstance) {
 export async function oneToOnePublicRoutes(app: FastifyInstance) {
   app.get('/api/public/meet/:token', async (req, reply) => {
     const { token } = req.params as { token: string };
-    return (await invitationFor(token))?.page ?? notFound(reply, 'This invitation does not exist.');
-  });
-
-  /** La startup prépare sa séance, par son lien — tant que ce n'est pas verrouillé. */
-  app.put('/api/public/meet/:token/prep', async (req, reply) => {
-    const { token } = req.params as { token: string };
     const found = await invitationFor(token);
-    if (!found) return notFound(reply, 'This invitation does not exist.');
-    const { answers, submit } = parse(reportInput, req.body);
-    await savePrep(found.meeting.id, answers, { side: 'startup', name: found.meeting.orgName, submit });
-    return (await invitationFor(token))!.page;
+    return found ? publicInvitation(found.page) : notFound(reply, 'This invitation does not exist.');
   });
 
   app.post('/api/public/meet/:token', async (req) => {
@@ -171,13 +163,13 @@ export async function oneToOnePublicRoutes(app: FastifyInstance) {
       req.body,
     );
     if (body.weekday && body.startTime && body.personId) {
-      return bookWeekly(token, { weekday: body.weekday, startTime: body.startTime, personId: body.personId });
+      return publicInvitation(await bookWeekly(token, { weekday: body.weekday, startTime: body.startTime, personId: body.personId }));
     }
     /* Une case choisie, ou un oui ou non à l'heure proposée. */
     if (body.dayId && body.startTime && body.personId) {
-      return bookSlot(token, { dayId: body.dayId, startTime: body.startTime, personId: body.personId });
+      return publicInvitation(await bookSlot(token, { dayId: body.dayId, startTime: body.startTime, personId: body.personId }));
     }
     if (body.accept === undefined) throw new HttpError(422, 'Pick a time, or answer.');
-    return answerInvitation(token, body.accept, body.note ?? '');
+    return publicInvitation(await answerInvitation(token, body.accept, body.note ?? ''));
   });
 }

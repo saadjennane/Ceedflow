@@ -11,6 +11,7 @@ import { AsStartupPage } from './pages/member/AsStartupPage';
 import { MemberPage } from './pages/member/MemberPage';
 import { ReviewPage } from './pages/member/ReviewPage';
 import { MeetingPage } from './pages/member/MeetingPage';
+import { PreparePage } from './pages/member/PreparePage';
 import { DirectoryPage } from './pages/directory/DirectoryPage';
 import { RecordPage } from './pages/directory/RecordPage';
 import { ProgramPage } from './pages/ProgramPage';
@@ -32,6 +33,7 @@ const router = createBrowserRouter([
   { path: '/as/:candidateId', element: <AsStartupPage /> },
   { path: '/review/:sessionId', element: <ReviewPage /> },
   { path: '/meeting/:meetingId', element: <MeetingPage /> },
+  { path: '/prepare/:meetingId', element: <PreparePage /> },
   {
     path: '/',
     element: <Shell />,

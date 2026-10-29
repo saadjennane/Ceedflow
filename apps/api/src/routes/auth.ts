@@ -34,7 +34,7 @@ import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { changeItem, changeTask, getTask, listTasks } from '../services/tasks.js';
 import { addOrgDocument, changeOrgDocument, saveNeed } from '../services/orgSheet.js';
-import { meetingFor, meetingsFor, savePrep, saveReport } from '../services/oneToOne.js';
+import { meetingFor, meetingsFor, prepFor, savePrep, saveReport } from '../services/oneToOne.js';
 import { agendaFor } from '../services/agenda.js';
 import { memberActions } from '../services/memberActions.js';
 import { deliverablesFor } from '../services/deliverables.js';
@@ -564,6 +564,25 @@ export async function authRoutes(app: FastifyInstance) {
     const { answers } = parse(reportInput, req.body);
     const who = await dir.getRecord(account.recordId);
     return savePrep(id, answers, { side: 'team', name: who?.name ?? '' });
+  });
+
+  /* ---- La préparation, du côté de la startup ---- */
+
+  /** La séance à préparer : seulement quelqu'un de la startup, connecté. */
+  app.get('/api/me/prepare/:id', async (req, reply) => {
+    const account = await require(req);
+    const { id } = req.params as { id: string };
+    return (await prepFor(account.recordId, id)) ?? notFound(reply, 'Meeting not found.');
+  });
+
+  app.put('/api/me/prepare/:id', async (req, reply) => {
+    const account = await require(req);
+    const { id } = req.params as { id: string };
+    const page = await prepFor(account.recordId, id);
+    if (!page) return notFound(reply, 'Meeting not found.');
+    const { answers, submit } = parse(reportInput, req.body);
+    await savePrep(id, answers, { side: 'startup', name: page.orgName, submit });
+    return prepFor(account.recordId, id);
   });
 
   app.get('/api/me/programs', async (req) => {

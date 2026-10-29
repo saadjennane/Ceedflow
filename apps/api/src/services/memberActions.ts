@@ -125,7 +125,7 @@ export async function memberActions(recordId: string): Promise<{ actions: Member
           status: statusOf(meeting.heldOn, started),
           dueOn: meeting.heldOn,
           ...where,
-          href: `/meet/${meeting.token}`,
+          href: `/prepare/${meeting.id}`,
           label: meetingWith(meeting),
           orgName: candidate.orgName,
         });
