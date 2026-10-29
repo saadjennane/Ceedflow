@@ -60,6 +60,7 @@ describe('the test space', { skip: skipWithoutServer }, () => {
     assert.equal(await testOwnerOf(`stranger+x@${domain}`), null, 'an alias of nobody at CEED is nobody’s');
     assert.equal(await isTestAddress(`saad+founder@${domain}`), true);
     assert.equal(await isTestAddress(`founder@realstartup.ma`), false);
+    assert.equal(await isTestAddress(`saad@${domain}`), true, 'a colleague’s own address is safe too — the team hears about its test programmes');
   });
 
   it('generates startups with complete pages, held by the colleague', async () => {

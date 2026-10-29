@@ -28,6 +28,13 @@ export async function isTestAddress(email: string): Promise<boolean> {
   const wanted = email.trim().toLowerCase();
   if (!wanted) return false;
   if (await testOwnerOf(wanted)) return true;
+  /* L'adresse d'un collègue de CEED, elle-même : un programme de test peut
+     prévenir l'équipe (« une candidature est arrivée ») sans rien risquer. */
+  const staff = await (await db()).query<{ id: string }>(
+    'select id from accounts where lower(email) = $1 and staff_role is not null and disabled_at is null limit 1',
+    [wanted],
+  );
+  if (staff.length) return true;
   const rows = await (await db()).query<{ id: string }>(
     `select id from records
       where test_owner is not null
