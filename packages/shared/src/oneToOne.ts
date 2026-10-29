@@ -7,7 +7,7 @@
  * startup: it is between the interlocutor and CEED.
  */
 import { z } from 'zod';
-import { RSVP_MODES, sessionSlots, timeWindowSchema, type FormField, type TimeWindow } from './blocks.js';
+import { RSVP_MODES, sessionSlots, timeWindowSchema, type FormField, type Recurrence, type TimeWindow } from './blocks.js';
 
 export const MEETING_STATUSES = ['planned', 'held', 'cancelled', 'no_show'] as const;
 export type MeetingStatus = (typeof MEETING_STATUSES)[number];
@@ -286,4 +286,83 @@ export function mentorsOf(
   const given = config.mentors[candidate.id];
   if (given) return given.filter((id) => config.interlocutors.includes(id));
   return candidate.mentorId && config.interlocutors.includes(candidate.mentorId) ? [candidate.mentorId] : [];
+}
+
+/* ------------------------------------------------------------------ */
+/* A regular follow-up                                                 */
+/* ------------------------------------------------------------------ */
+
+export const WEEKDAY_LABEL = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
+export const WEEKDAY_FR = ['', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'] as const;
+
+/** 1 = Monday … 7 = Sunday, read in UTC so a date means the same day everywhere. */
+export const weekdayOf = (date: string): number => {
+  const d = new Date(`${date.slice(0, 10)}T12:00:00Z`).getUTCDay();
+  return d === 0 ? 7 : d;
+};
+
+const addDays = (date: string, days: number) =>
+  new Date(Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10)) + days)).toISOString().slice(0, 10);
+
+/** The first date on or after `from` that falls on this weekday. */
+export const nextWeekday = (from: string, weekday: number): string => addDays(from, (weekday - weekdayOf(from) + 7) % 7);
+
+const isExcluded = (date: string, excluded: Recurrence['excluded']) => excluded.some((x) => date >= x.from && date <= x.to);
+
+/**
+ * Les dates d'une série dans ce calendrier, à partir de sa première séance :
+ * au rythme choisi, jusqu'à la fin de la période ou au nombre de séances, et
+ * sans les périodes exclues — une séance qui y tombe saute.
+ */
+export function recurringDates(rec: Recurrence, first: string): string[] {
+  /* Large, puis trié : une séance qui saute ne doit pas en retirer une au compte. */
+  const raw = seriesDates(first, rec.frequency, { count: null, until: rec.endsOn });
+  const kept = raw.filter((d) => !isExcluded(d, rec.excluded));
+  return rec.count && !rec.endsOn ? kept.slice(0, rec.count) : kept;
+}
+
+/** Where a series on this weekday would start: its first such day in the period, from today on. */
+export function firstSessionOn(rec: Recurrence, weekday: number, today = new Date().toISOString().slice(0, 10)): string {
+  const from = rec.startsOn && rec.startsOn > today ? rec.startsOn : today;
+  let first = nextWeekday(from, weekday);
+  while (isExcluded(first, rec.excluded)) first = addDays(first, 7);
+  return first;
+}
+
+/** A weekly slot a startup can take: a weekday, a time, someone — free on every date of the series. */
+export interface WeeklyCell {
+  personId: string;
+  weekday: number;
+  startTime: string;
+  endTime: string;
+  firstOn: string;
+  sessions: number;
+}
+
+/**
+ * Les créneaux de la semaine qu'une startup peut prendre pour tout son suivi :
+ * chaque créneau de chaque interlocuteur qui reçoit ce jour-là, libre à toutes
+ * les dates de la série — un seul conflit, et il n'est pas proposé.
+ */
+export function weeklyCells(
+  rec: Recurrence,
+  minutesPerMeeting: number,
+  taken: readonly { personId: string | null; heldOn: string | null; startTime: string | null }[],
+  only: readonly string[] | null = null,
+  today = new Date().toISOString().slice(0, 10),
+): WeeklyCell[] {
+  const busy = new Set(taken.filter((t) => t.personId && t.heldOn && t.startTime).map((t) => `${t.personId} ${t.heldOn} ${t.startTime}`));
+  const out: WeeklyCell[] = [];
+  for (const w of rec.weekly) {
+    if (only && !only.includes(w.personId)) continue;
+    const first = firstSessionOn(rec, w.weekday, today);
+    if (rec.endsOn && first > rec.endsOn) continue;
+    const dates = recurringDates(rec, first);
+    if (!dates.length) continue;
+    for (const slot of sessionSlots({ windows: w.windows, minutesPerStartup: minutesPerMeeting })) {
+      if (dates.some((d) => busy.has(`${w.personId} ${d} ${slot.startsAt}`))) continue;
+      out.push({ personId: w.personId, weekday: w.weekday, startTime: slot.startsAt, endTime: slot.endsAt, firstOn: first, sessions: dates.length });
+    }
+  }
+  return out.sort((a, b) => a.weekday - b.weekday || a.startTime.localeCompare(b.startTime));
 }

@@ -1576,6 +1576,27 @@ Vous retrouvez la startup et le compte rendu à remplir ici : {{lien}}
 
 {{acces}}`;
 
+/**
+ * Le calendrier d'un suivi régulier : une période, un rythme, les semaines où
+ * l'on ne se voit pas, et quand chaque interlocuteur reçoit dans la semaine.
+ * Chaque binôme startup–interlocuteur en tire sa série ; une startup qui
+ * choisit son heure choisit un créneau de la semaine, valable à toutes les dates.
+ */
+export const recurrenceSchema = z.object({
+  startsOn: z.string().nullable().default(null),
+  endsOn: z.string().nullable().default(null),
+  frequency: z.enum(['weekly', 'biweekly', 'monthly']).default('weekly'),
+  /** Une fin en nombre de séances, quand il n'y a pas de date de fin. */
+  count: z.number().int().min(1).max(52).nullable().default(null),
+  /** Les périodes sans séance — vacances, Ramadan — : la séance saute, elle ne se décale pas. */
+  excluded: z.array(z.object({ from: z.string(), to: z.string(), label: z.string().default('') })).default([]),
+  /** Quand chacun reçoit dans la semaine : 1 = lundi … 7 = dimanche. */
+  weekly: z
+    .array(z.object({ personId: z.string(), weekday: z.number().int().min(1).max(7), windows: z.array(timeWindowSchema).default([]) }))
+    .default([]),
+});
+export type Recurrence = z.infer<typeof recurrenceSchema>;
+
 export const ONE_TO_ONE_CADENCES = ['single', 'recurring'] as const;
 export type OneToOneCadence = (typeof ONE_TO_ONE_CADENCES)[number];
 
@@ -1587,6 +1608,8 @@ export const oneToOneConfigSchema = z.object({
    * sessions se règlent en journées, ou en calendrier de suivi.
    */
   cadence: z.enum(ONE_TO_ONE_CADENCES).default('single'),
+  /** Pour un suivi régulier : son calendrier. */
+  recurrence: recurrenceSchema.default({}),
   /** How a meeting is set — for the whole brick, as a committee's is. */
   invite: z.enum(RSVP_MODES).default('confirm'),
   /** Until when a startup may answer its link. Empty: until the brick closes. */

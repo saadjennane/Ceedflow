@@ -5,6 +5,7 @@
  * yes or no. Nothing else is written through this link, and the report of the
  * meeting never shows here.
  */
+import { WEEKDAY_LABEL } from '@ceed/shared';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -28,6 +29,9 @@ interface Invitation {
   meetingLink?: string;
   answerBy?: string | null;
   late?: boolean;
+  cadence?: 'single' | 'recurring';
+  /** A regular follow-up: the weekly slots it may take for the whole series. */
+  weekly?: { personId: string; personName: string; weekday: number; startTime: string; endTime: string; firstOn: string; sessions: number }[];
   /** Ce qu'elle a dit en refusant. */
   rsvpNote?: string;
   status: 'planned' | 'held' | 'cancelled' | 'no_show';
@@ -70,6 +74,22 @@ export function MeetPage() {
   }
 
   const data = answered ?? page.data;
+  /* Un créneau de la semaine, pour tout le suivi. */
+  const bookWeekly = async () => {
+    if (!picked) return;
+    const [weekday, startTime, personId] = picked.split('|');
+    setSending(true);
+    setError(null);
+    try {
+      setAnswered(await api.post<Invitation>(`/api/public/meet/${token}`, { weekday: Number(weekday), startTime, personId }));
+      setPicked(null);
+    } catch (err) {
+      setError((err as Error).message);
+      page.reload();
+    } finally {
+      setSending(false);
+    }
+  };
   const book = async () => {
     if (!picked) return;
     const [dayId, startTime, personId] = picked.split('|');
@@ -169,7 +189,52 @@ export function MeetPage() {
             </div>
           )}
 
-          {data.open && data.invite === 'slots' && (
+          {/* Un suivi régulier : on choisit un jour et une heure de la semaine, pour toutes les séances. */}
+          {data.open && data.invite === 'slots' && data.cadence === 'recurring' && !data.heldOn && (
+            <div className="stack" style={{ gap: 10 }}>
+              <strong style={{ fontSize: 14 }}>Pick your weekly time — for the whole follow-up</strong>
+              {!(data.weekly ?? []).length && (
+                <p className="faint" style={{ margin: 0, fontSize: 13 }}>
+                  No weekly time is free at the moment. The team will open more — come back to this link.
+                </p>
+              )}
+              {[...new Set((data.weekly ?? []).map((c) => c.weekday))].map((weekday) => {
+                const cells = (data.weekly ?? []).filter((c) => c.weekday === weekday);
+                return (
+                  <div key={weekday} className="stack" style={{ gap: 6 }}>
+                    <div className="eyebrow">
+                      Every {WEEKDAY_LABEL[weekday]} · from {formatDate(cells[0]!.firstOn)} · {cells[0]!.sessions} sessions
+                    </div>
+                    <div className="row wrap" style={{ gap: 6 }}>
+                      {cells.map((c) => {
+                        const key = `${c.weekday}|${c.startTime}|${c.personId}`;
+                        return (
+                          <button key={key} type="button" className={picked === key ? 'track on' : 'track'} aria-pressed={picked === key} onClick={() => setPicked(key)}>
+                            {c.startTime}
+                            {new Set((data.weekly ?? []).map((x) => x.personId)).size > 1 && (
+                              <span className="faint" style={{ fontWeight: 400 }}> · {c.personName}</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+              {(data.weekly ?? []).length > 0 && !declining && (
+                <div className="row" style={{ gap: 8 }}>
+                  <button className="btn primary" disabled={!picked || sending} onClick={bookWeekly}>
+                    <Icon name="check" size={14} /> {sending ? 'Booking…' : 'Book this weekly time'}
+                  </button>
+                  <button className="btn ghost" disabled={sending} onClick={() => setDeclining(true)}>
+                    None of these times work
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {data.open && data.invite === 'slots' && data.cadence !== 'recurring' && (
             <div className="stack" style={{ gap: 10 }}>
               <strong style={{ fontSize: 14 }}>{data.heldOn ? 'Pick another time' : 'Pick a time'}</strong>
               {!days.length && (

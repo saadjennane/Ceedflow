@@ -25,6 +25,9 @@ import {
   type OneToOneMeeting,
   type PersonRef,
   type QuestionSummary,
+  WEEKDAY_LABEL,
+  recurringDates,
+  weekdayOf,
 } from '@ceed/shared';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { ApiError, api } from '../../lib/api';
@@ -88,6 +91,8 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
   const [placing, setPlacing] = useState<{ day: OneToOneDay; personId: string; startTime: string } | null>(null);
   const [inviting, setInviting] = useState(false);
   const [planning, setPlanning] = useState(false);
+  /* Une série à créer pour une startup précise, depuis la vue des séries. */
+  const [planningFor, setPlanningFor] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [over, setOver] = useState<string | null>(null);
   const drag = useRef<Dragged | null>(null);
@@ -176,7 +181,7 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
     setBusy(true);
     try {
       const sent = await api.post<{ startups: number; people: number }>(`/api/blocks/${block.id}/one-to-one/inform`, {
-        dayId: current?.id ?? null,
+        dayId: config.cadence === 'recurring' ? null : (current?.id ?? null),
       });
       toast(
         sent.startups || sent.people
@@ -243,7 +248,12 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
                 <Icon name="send" size={13} /> Invite
               </button>
             )}
-            <button className="btn sm" disabled={busy || !current} onClick={inform} title="Write to everyone on this day not told yet">
+            <button
+              className="btn sm"
+              disabled={busy || (!current && config.cadence !== 'recurring')}
+              onClick={inform}
+              title={config.cadence === 'recurring' ? 'Write to everyone not told yet — a series once, by its first session' : 'Write to everyone on this day not told yet'}
+            >
               <Icon name="send" size={13} /> Inform
             </button>
             <button className="btn ghost sm" onClick={() => setPlanning(true)} title="A meeting outside the days — or a series">
@@ -255,6 +265,8 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
 
       {side === 'reporting' ? (
         <Reports data={data} onOpen={setOpenId} />
+      ) : config.cadence === 'recurring' ? (
+        <SeriesBoard data={data} name={name} onOpen={setOpenId} onPlan={(id) => setPlanningFor([id])} />
       ) : !current ? (
         <div className="empty">
           <h3>No day yet</h3>
@@ -522,13 +534,17 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
         />
       )}
 
-      {planning && (
+      {(planning || planningFor) && (
         <PlanModal
           data={data}
-          preselected={[]}
-          onClose={() => setPlanning(false)}
+          preselected={planningFor ?? []}
+          onClose={() => {
+            setPlanning(false);
+            setPlanningFor(null);
+          }}
           onDone={() => {
             setPlanning(false);
+            setPlanningFor(null);
             void refresh();
           }}
         />
@@ -544,6 +560,95 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
         />
       )}
     </>
+  );
+}
+
+/**
+ * Un suivi régulier, startup par startup : ses séries — avec qui, quel jour,
+ * à quelle heure, où elle en est, la prochaine séance — et ce qui attend
+ * encore une réponse. Pas de grille : il n'y a pas de journée, il y a un rythme.
+ */
+function SeriesBoard({
+  data,
+  name,
+  onOpen,
+  onPlan,
+}: {
+  data: View;
+  name: (id: string | null) => string;
+  onOpen: (meetingId: string) => void;
+  onPlan: (candidateId: string) => void;
+}) {
+  const today = todayIso();
+  const live = data.meetings.filter((m) => m.status !== 'cancelled');
+  if (!data.pool.length) {
+    return (
+      <div className="empty">
+        <p style={{ margin: 0 }}>No startup reaches this brick yet.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="rows">
+      {data.pool.map(({ candidate }) => {
+        const mine = live.filter((m) => m.candidateId === candidate.id);
+        const series = [...new Map(mine.filter((m) => m.seriesId).map((m) => [m.seriesId!, m])).keys()].map((id) => {
+          const sessions = mine.filter((m) => m.seriesId === id).sort((a, b) => (a.heldOn ?? '').localeCompare(b.heldOn ?? ''));
+          const next = sessions.find((m) => m.status === 'planned' && (m.heldOn ?? '') >= today) ?? null;
+          const done = sessions.filter((m) => m.status === 'held' || m.reportSubmittedAt).length;
+          return { id, sessions, next, done, first: sessions[0]! };
+        });
+        const waiting = mine.filter((m) => !m.seriesId && !m.heldOn);
+        return (
+          <div className="rowcard card-pad stack" key={candidate.id} style={{ gap: 8 }}>
+            <div className="row">
+              <strong style={{ flex: 1, fontSize: 13.5 }}>{candidate.orgName}</strong>
+              {!series.length && !waiting.length && <span className="badge warn">No follow-up yet</span>}
+              <button className="btn sm" onClick={() => onPlan(candidate.id)}>
+                <Icon name="plus" size={12} /> Series
+              </button>
+            </div>
+            {series.map((s) => {
+              const state = s.next ? STATE_BADGE[meetingState(s.next)] : null;
+              return (
+                <button
+                  key={s.id}
+                  className="pick"
+                  style={{ width: '100%' }}
+                  onClick={() => onOpen((s.next ?? s.first).id)}
+                >
+                  <Icon name="calendar" size={14} />
+                  <div style={{ flex: 1 }}>
+                    <strong>
+                      {name(s.first.personId) || 'Interlocutor'} · {s.first.heldOn ? `${WEEKDAY_LABEL[weekdayOf(s.first.heldOn)]}s` : ''}{' '}
+                      {s.first.startTime ?? ''}
+                    </strong>
+                    <span>
+                      {s.done}/{s.sessions.length} held
+                      {s.next ? ` · next ${formatDate(s.next.heldOn)}` : ' · over'}
+                    </span>
+                  </div>
+                  {state && <span className={state.tone}>{state.label}{s.next?.rsvpNote ? ' 💬' : ''}</span>}
+                </button>
+              );
+            })}
+            {waiting.map((m) => {
+              const state = STATE_BADGE[meetingState(m)];
+              return (
+                <button key={m.id} className="pick" style={{ width: '100%' }} onClick={() => onOpen(m.id)}>
+                  <Icon name="send" size={14} />
+                  <div style={{ flex: 1 }}>
+                    <strong>{m.personName || 'Any interlocutor'}</strong>
+                    <span>{m.invite === 'slots' ? 'Invited to pick a weekly slot' : 'No time yet'}</span>
+                  </div>
+                  <span className={state.tone} title={m.rsvpNote || undefined}>{state.label}{m.rsvpNote ? ' 💬' : ''}</span>
+                </button>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -809,7 +914,7 @@ function PlanModal({
         <>
           <div className="grid-2">
             <div className="field">
-              <label>{repeats ? 'First session' : 'Day'}</label>
+              <label>{repeats || data.config.cadence === 'recurring' ? 'First session' : 'Day'}</label>
               <input className="input" type="date" value={heldOn} onChange={(e) => setHeldOn(e.target.value)} />
               {errors.heldOn && <div className="err">{errors.heldOn}</div>}
             </div>
@@ -820,11 +925,25 @@ function PlanModal({
             </div>
           </div>
 
+          {/* Un suivi régulier : les séances suivent le calendrier de la brique. */}
+          {data.config.cadence === 'recurring' ? (
+            <p className="hint" style={{ margin: 0 }}>
+              {heldOn
+                ? (() => {
+                    const dates = recurringDates(data.config.recurrence, heldOn);
+                    return dates.length
+                      ? `${dates.length} session${dates.length > 1 ? 's' : ''}, ${FREQUENCY_LABEL[data.config.recurrence.frequency].toLowerCase()} on ${WEEKDAY_LABEL[weekdayOf(heldOn)]}s, until ${formatDate(dates[dates.length - 1]!)} — following the calendar set in Sessions, excluded weeks skipped.`
+                      : 'Set the follow-up calendar in Sessions first — its end or its number of sessions.';
+                  })()
+                : 'The first session: the following ones come from the calendar set in Sessions.'}
+            </p>
+          ) : (
           <label className="check">
             <input type="checkbox" checked={repeats} onChange={(e) => setRepeats(e.target.checked)} />
             <span>It repeats — a weekly mentoring, for instance</span>
           </label>
-          {repeats && (
+          )}
+          {repeats && data.config.cadence !== 'recurring' && (
             <div className="sheet-group">
               <div className="grid-2">
                 <div className="field">

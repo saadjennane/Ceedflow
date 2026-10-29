@@ -8,7 +8,7 @@
  */
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { freeCells, mentorsOf, seriesDates, summarise, type FormField, type OneToOneDay } from '@ceed/shared';
+import { freeCells, mentorsOf, recurringDates, recurrenceSchema, seriesDates, summarise, weeklyCells, type FormField, type OneToOneDay } from '@ceed/shared';
 import { all } from '../src/db/client.js';
 import { letters } from '../src/services/mail.js';
 import { agendaFor } from '../src/services/agenda.js';
@@ -16,7 +16,7 @@ import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
 import {
-  answerInvitation, bookSlot, cancelFollowing, changeMeeting, createDay, historyOf, informAll, invitationFor, meetingFor,
+  answerInvitation, bookSlot, bookWeekly, cancelFollowing, changeMeeting, createDay, historyOf, informAll, invitationFor, meetingFor,
   meetingsFor, oneToOneView, planMeetings, saveReport, tellMeeting, updateDay,
 } from '../src/services/oneToOne.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
@@ -75,6 +75,26 @@ describe('a startup’s mentors', () => {
     assert.deepEqual(mentorsOf(config, { id: 'a', mentorId: 'nadia' }), ['omar'], 'given here wins; a non-interlocutor is dropped');
     assert.deepEqual(mentorsOf(config, { id: 'b', mentorId: 'nadia' }), ['nadia'], 'the cohort’s mentor, by default');
     assert.deepEqual(mentorsOf(config, { id: 'c', mentorId: 'stranger' }), []);
+  });
+});
+
+describe('a regular follow-up’s calendar', () => {
+  const rec = recurrenceSchema.parse({
+    startsOn: '2030-01-01', count: 4, frequency: 'weekly',
+    excluded: [{ from: '2030-01-14', to: '2030-01-20' }],
+    weekly: [{ personId: 'nadia', weekday: 1, windows: [{ startsAt: '09:00', endsAt: '10:00' }] }],
+  });
+
+  it('skips the excluded weeks without losing a session', () => {
+    assert.deepEqual(recurringDates(rec, '2030-01-07'), ['2030-01-07', '2030-01-21', '2030-01-28', '2030-02-04']);
+  });
+
+  it('offers a weekly slot only if it is free on every date of the series', () => {
+    const cells = weeklyCells(rec, 30, [], null, '2030-01-01');
+    assert.deepEqual(cells.map((c) => c.startTime), ['09:00', '09:30']);
+    assert.equal(cells[0]!.firstOn, '2030-01-07', 'the first Monday of the period');
+    const busy = weeklyCells(rec, 30, [{ personId: 'nadia', heldOn: '2030-01-28', startTime: '09:00' }], null, '2030-01-01');
+    assert.deepEqual(busy.map((c) => c.startTime), ['09:30'], 'one clash on one date, and 09:00 is not offered');
   });
 });
 
@@ -188,6 +208,51 @@ describe('a One to One', { skip: skipWithoutServer }, () => {
     assert.equal(m!.meetingLink, 'https://meet.example/abc');
     const moved = await changeMeeting(m!.id, { meetingLink: 'https://zoom.example/xyz' });
     assert.equal(moved!.meetingLink, 'https://zoom.example/xyz', 'and a meeting can have its own');
+  });
+
+  const makeRecurring = async (blockId: string, mentorId: string, invite: string) => {
+    const config = (await repo.getBlock(blockId))!.config as object;
+    await repo.updateBlock(blockId, {
+      config: {
+        ...config, cadence: 'recurring', invite, durationMinutes: 30,
+        recurrence: {
+          startsOn: '2030-01-01', count: 4, frequency: 'weekly', endsOn: null,
+          excluded: [{ from: '2030-01-14', to: '2030-01-20', label: '' }],
+          weekly: [{ personId: mentorId, weekday: 1, windows: [{ startsAt: '09:00', endsAt: '10:00' }] }],
+        },
+      },
+    });
+  };
+
+  it('draws a series from the brick’s calendar, excluded weeks skipped', async () => {
+    const { block, mentor, a } = await setUp();
+    await makeRecurring(block.id, mentor.id, 'none');
+    const made = await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, invite: 'none', heldOn: '2030-01-07', startTime: '09:00' });
+    assert.deepEqual(made.map((m) => m.heldOn), ['2030-01-07', '2030-01-21', '2030-01-28', '2030-02-04']);
+    assert.equal(new Set(made.map((m) => m.seriesId)).size, 1, 'one series');
+  });
+
+  it('lets a startup book its weekly time for the whole follow-up', async () => {
+    const { block, mentor, a } = await setUp();
+    await makeRecurring(block.id, mentor.id, 'slots');
+    const [invite] = await planMeetings(block.id, { candidateIds: [a.id], personId: null, invite: 'slots', heldOn: null, startTime: null });
+    const page = (await invitationFor(invite!.token))!.page;
+    assert.equal(page.cadence, 'recurring');
+    assert.deepEqual(page.weekly.map((c) => c.startTime), ['09:00', '09:30']);
+    const booked = await bookWeekly(invite!.token, { weekday: 1, startTime: '09:30', personId: mentor.id });
+    assert.equal(booked.heldOn, '2030-01-07');
+    const series = (await oneToOneView(block.id))!.meetings.filter((m) => m.candidateId === a.id && m.status !== 'cancelled');
+    assert.deepEqual(series.map((m) => m.heldOn).sort(), ['2030-01-07', '2030-01-21', '2030-01-28', '2030-02-04']);
+    assert.ok(series.every((m) => m.startTime === '09:30' && m.personId === mentor.id && m.rsvpState === 'confirmed'));
+  });
+
+  it('confirms a proposed series in one answer', async () => {
+    const { block, mentor, a } = await setUp();
+    await makeRecurring(block.id, mentor.id, 'confirm');
+    const made = await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, invite: 'confirm', heldOn: '2030-01-07', startTime: '09:00' });
+    await answerInvitation(made[0]!.token, true);
+    const after = (await oneToOneView(block.id))!.meetings.filter((m) => m.seriesId === made[0]!.seriesId);
+    assert.ok(after.every((m) => m.rsvpState === 'confirmed'), 'every session follows the first answer');
   });
 
   it('asks again when a proposed time moves', async () => {

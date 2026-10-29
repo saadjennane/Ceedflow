@@ -36,12 +36,15 @@ import {
   CONTACT_FIELD_TYPES,
   mentorsOf,
   pairingOf,
+  recurringDates,
+  weeklyCells,
+  type WeeklyCell,
 } from '@ceed/shared';
 import { accessFor } from './invitations.js';
 import { isTestRecord } from './testIdentity.js';
 import { post } from './mail.js';
 import { publicOrigin } from './platform.js';
-import { all, one } from '../db/client.js';
+import { all, db, one } from '../db/client.js';
 import * as dir from '../db/directory.js';
 import { peopleByIds } from '../db/directory.js';
 import * as repo from '../db/repo.js';
@@ -200,9 +203,19 @@ export async function planMeetings(
 
   /* Les dates : une, ou toutes celles de la série. Une seule déjà prise, et
      rien n'est créé — une série à trous se découvrirait séance après séance. */
-  const dates = !books && input.repeat
-    ? seriesDates(input.heldOn!, input.repeat.frequency, { count: input.repeat.count, until: input.repeat.until })
-    : [input.heldOn];
+  /* Un suivi régulier : la première séance donnée, les suivantes viennent du
+     calendrier de la brique — son rythme, sa fin, ses semaines exclues. */
+  const rec = ctx.config.recurrence;
+  const recurring = ctx.config.cadence === 'recurring' && !books && !input.repeat;
+  if (recurring && !rec.endsOn && !rec.count) {
+    throw new HttpError(422, 'Set the follow-up calendar first — its end date or its number of sessions, in Sessions.');
+  }
+  const dates = recurring
+    ? recurringDates(rec, input.heldOn!)
+    : !books && input.repeat
+      ? seriesDates(input.heldOn!, input.repeat.frequency, { count: input.repeat.count, until: input.repeat.until })
+      : [input.heldOn];
+  if (recurring && input.candidateIds.length > 1) throw new HttpError(422, 'A series is one startup, at a set time.');
   if (!books) {
     const clashes: string[] = [];
     for (const date of dates) if (await busy(input.personId, date, input.startTime)) clashes.push(date!);
@@ -223,14 +236,15 @@ export async function planMeetings(
   const location = input.location ?? (theDay?.location || ctx.config.location);
   const meetingLink = input.meetingLink ?? theDay?.meetingLink ?? '';
   let seriesId: string | null = null;
-  if (!books && input.repeat) {
+  if (!books && (input.repeat || recurring)) {
     seriesId = newId('ser');
+    const rhythm = input.repeat ?? { frequency: rec.frequency, until: rec.endsOn, count: rec.endsOn ? null : rec.count };
     await all(
       `insert into one_to_one_series (id, block_id, candidate_id, person_id, frequency, first_on, start_time,
                                       until_on, count, duration_minutes, location)
        values ($1,$2,$3,$4,$5,$6::date,$7,$8::date,$9,$10,$11)`,
-      [seriesId, blockId, input.candidateIds[0], input.personId, input.repeat.frequency, input.heldOn,
-        input.startTime, input.repeat.until, input.repeat.count, duration, location],
+      [seriesId, blockId, input.candidateIds[0], input.personId, rhythm.frequency, input.heldOn,
+        input.startTime, rhythm.until, rhythm.count, duration, location],
     );
   }
 
@@ -260,7 +274,7 @@ export async function planMeetings(
      cinquante-deux lettres pour un mentoring hebdomadaire, personne ne les lit. */
   if (input.tell) {
     const firsts = seriesId ? made.slice(0, 1) : made;
-    const rhythm = seriesId && input.repeat ? rhythmLine(input.repeat.frequency, dates[dates.length - 1]!) : '';
+    const rhythm = seriesId ? rhythmLine(input.repeat?.frequency ?? rec.frequency, dates[dates.length - 1]!) : '';
     for (const m of firsts) await tellMeeting(m.id, { startup: true, person: true }, rhythm);
   }
   return made;
@@ -548,6 +562,9 @@ export interface MeetingInvitation {
   rsvpState: OneToOneMeeting['rsvpState'];
   rsvpNote: string;
   meetingLink: string;
+  cadence: 'single' | 'recurring';
+  /** For a regular follow-up: the weekly slots it may take for the whole series. */
+  weekly: (WeeklyCell & { personName: string })[];
   /** The day after which the link takes no answer, and whether it has passed. */
   answerBy: string | null;
   late: boolean;
@@ -600,7 +617,15 @@ export async function invitationFor(token: string): Promise<{ meeting: OneToOneM
       rsvpNote: meeting.rsvpNote ?? '',
       status: meeting.status,
       open,
-      slots: open && meeting.invite === 'slots' ? await slotsFor(meeting) : [],
+      cadence: (ctx?.block.config as OneToOneConfig | undefined)?.cadence ?? 'single',
+      slots:
+        open && meeting.invite === 'slots' && (ctx?.block.config as OneToOneConfig | undefined)?.cadence !== 'recurring'
+          ? await slotsFor(meeting)
+          : [],
+      weekly:
+        open && meeting.invite === 'slots' && !meeting.heldOn && (ctx?.block.config as OneToOneConfig | undefined)?.cadence === 'recurring'
+          ? await weeklyFor(meeting)
+          : [],
     },
   };
 }
@@ -612,11 +637,14 @@ export async function answerInvitation(token: string, accept: boolean, note = ''
   if (found.page.late) throw new HttpError(403, 'The deadline to answer has passed. Get in touch with the team.');
   if (!found.page.open) throw new HttpError(403, 'This meeting can no longer be answered here. Get in touch with the team.');
   /* Le mot laissé en refusant reste pour l'équipe ; confirmer l'efface. */
-  await all(`update one_to_one_meetings set rsvp_state = $2, rsvp_note = $3, responded_at = now() where id = $1`, [
-    found.meeting.id,
-    accept ? 'confirmed' : 'declined',
-    accept ? '' : note.trim().slice(0, 1000),
-  ]);
+  /* Une série se confirme — ou se refuse — en une fois : ses séances à venir
+     suivent la réponse donnée à la première. */
+  await all(
+    `update one_to_one_meetings set rsvp_state = $2, rsvp_note = $3, responded_at = now()
+      where id = $1
+         or ($4::text is not null and series_id = $4 and status = 'planned' and held_on >= current_date)`,
+    [found.meeting.id, accept ? 'confirmed' : 'declined', accept ? '' : note.trim().slice(0, 1000), found.meeting.seriesId],
+  );
   return (await invitationFor(token))!.page;
 }
 
@@ -817,6 +845,80 @@ export async function slotsFor(meeting: OneToOneMeeting): Promise<BookableCell[]
   return freeCells(days, taken, meeting.personId).map((c) => ({ ...c, personName: names.get(c.personId) ?? '' }));
 }
 
+/** The weekly slots a startup invited to a regular follow-up may take, named. */
+export async function weeklyFor(meeting: OneToOneMeeting): Promise<(WeeklyCell & { personName: string })[]> {
+  const ctx = await brickContext(meeting.blockId);
+  if (!ctx) return [];
+  const rec = ctx.config.recurrence;
+  const candidate = ctx.intake.find((c) => c.id === meeting.candidateId);
+  /* Chez qui : la personne de l'invitation, sinon ses interlocuteurs quand ils
+     se partagent les startups, sinon n'importe lequel. */
+  const only = meeting.personId
+    ? [meeting.personId]
+    : pairingOf(ctx.config) === 'assigned' && candidate
+      ? mentorsOf(ctx.config, candidate)
+      : null;
+  const people = [...new Set(rec.weekly.map((w) => w.personId))];
+  if (!people.length) return [];
+  const taken = await all<{ personId: string | null; heldOn: string | null; startTime: string | null }>(
+    `select person_id as "personId", held_on::text as "heldOn", start_time as "startTime" from one_to_one_meetings
+      where person_id = any($1::text[]) and status <> 'cancelled' and id <> $2`,
+    [people, meeting.id],
+  );
+  const names = new Map((await peopleByIds(people)).map((p) => [p.id, p.name]));
+  return weeklyCells(rec, ctx.config.durationMinutes, taken, only).map((c) => ({ ...c, personName: names.get(c.personId) ?? '' }));
+}
+
+/**
+ * Réserver un créneau de la semaine pour tout son suivi : « chaque lundi à
+ * 10h ». La première séance prend l'invitation, les suivantes forment la
+ * série — toutes vérifiées libres au moment même.
+ */
+export async function bookWeekly(token: string, cell: { weekday: number; startTime: string; personId: string }): Promise<MeetingInvitation> {
+  const found = await invitationFor(token);
+  if (!found) throw new HttpError(404, 'This invitation does not exist.');
+  if (found.page.late) throw new HttpError(403, 'The deadline to answer has passed. Get in touch with the team.');
+  if (found.meeting.invite !== 'slots' || !found.page.open || found.meeting.heldOn) {
+    throw new HttpError(403, 'This follow-up can no longer be booked here. Get in touch with the team.');
+  }
+  const ctx = (await brickContext(found.meeting.blockId))!;
+  const pick = (await weeklyFor(found.meeting)).find(
+    (c) => c.weekday === cell.weekday && c.startTime === cell.startTime && c.personId === cell.personId,
+  );
+  if (!pick) throw new HttpError(409, 'That time has just been taken. Pick another.');
+  const rec = ctx.config.recurrence;
+  const dates = recurringDates(rec, pick.firstOn);
+  const conn = await db();
+  await conn.tx(async () => {
+    const seriesId = newId('ser');
+    await all(
+      `insert into one_to_one_series (id, block_id, candidate_id, person_id, frequency, first_on, start_time,
+                                      until_on, count, duration_minutes, location)
+       values ($1,$2,$3,$4,$5,$6::date,$7,$8::date,$9,$10,$11)`,
+      [seriesId, found.meeting.blockId, found.meeting.candidateId, pick.personId, rec.frequency, dates[0],
+        pick.startTime, rec.endsOn, rec.endsOn ? null : rec.count, ctx.config.durationMinutes, found.meeting.location],
+    );
+    await all(
+      `update one_to_one_meetings
+          set held_on = $2::date, start_time = $3, person_id = $4, series_id = $5, duration_minutes = $6,
+              rsvp_state = 'confirmed', rsvp_note = '', responded_at = now()
+        where id = $1`,
+      [found.meeting.id, dates[0], pick.startTime, pick.personId, seriesId, ctx.config.durationMinutes],
+    );
+    for (const date of dates.slice(1)) {
+      await all(
+        `insert into one_to_one_meetings
+           (id, block_id, candidate_id, person_id, series_id, held_on, start_time, duration_minutes, location,
+            invite, token, rsvp_state, meeting_link)
+         values ($1,$2,$3,$4,$5,$6::date,$7,$8,$9,'slots',$10,'confirmed',$11)`,
+        [newId('oto'), found.meeting.blockId, found.meeting.candidateId, pick.personId, seriesId, date, pick.startTime,
+          ctx.config.durationMinutes, found.meeting.location, newId('meet').replace('meet_', ''), found.meeting.meetingLink ?? ''],
+      );
+    }
+  });
+  return (await invitationFor(token))!.page;
+}
+
 /**
  * Réserver une case, par le lien de la startup.
  *
@@ -857,10 +959,34 @@ export async function informAll(blockId: string, dayId: string | null): Promise<
   );
   let startups = 0;
   let people = 0;
-  for (const m of meetings) {
-    const sent = await tellMeeting(m.id, { startup: !m.toldStartupAt, person: !m.toldPersonAt && Boolean(m.personId) });
+  /* Une série s'annonce une fois, par sa première séance : cinquante-deux
+     lettres pour un suivi hebdomadaire, personne ne les lit. Les autres
+     séances sont alors tenues pour dites. */
+  const announced = new Set<string>();
+  for (const m of [...meetings].sort((a, b) => (a.heldOn ?? '').localeCompare(b.heldOn ?? ''))) {
+    if (m.seriesId && announced.has(m.seriesId)) continue;
+    if (m.seriesId) announced.add(m.seriesId);
+    /* Et son rythme, dit dans la lettre : « Puis toutes les semaines, jusqu'au… ». */
+    const series = m.seriesId
+      ? await one<{ frequency: Frequency; last: string }>(
+          `select s.frequency, (select max(held_on)::text from one_to_one_meetings where series_id = s.id) as last
+             from one_to_one_series s where s.id = $1`,
+          [m.seriesId],
+        )
+      : null;
+    const rhythm = series ? rhythmLine(series.frequency, series.last) : '';
+    const sent = await tellMeeting(m.id, { startup: !m.toldStartupAt, person: !m.toldPersonAt && Boolean(m.personId) }, rhythm);
     if (sent.startup) startups += 1;
     if (sent.person) people += 1;
+    if (m.seriesId && (sent.startup || sent.person)) {
+      await all(
+        `update one_to_one_meetings
+            set told_startup_at = case when $2 then coalesce(told_startup_at, now()) else told_startup_at end,
+                told_person_at = case when $3 then coalesce(told_person_at, now()) else told_person_at end
+          where series_id = $1`,
+        [m.seriesId, sent.startup, sent.person],
+      );
+    }
   }
   return { startups, people };
 }

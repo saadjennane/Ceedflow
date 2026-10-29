@@ -26,6 +26,7 @@ import {
   oneToOneView,
   planMeetings,
   saveReport,
+  bookWeekly,
 } from '../services/oneToOne.js';
 import { workspaceGuard } from './guard.js';
 import { HttpError, notFound, parse } from './util.js';
@@ -143,11 +144,16 @@ export async function oneToOnePublicRoutes(app: FastifyInstance) {
         /** Un mot en refusant, facultatif. */
         note: z.string().max(1000, 'A thousand characters at most.').optional(),
         dayId: z.string().optional(),
+        /** Un suivi régulier : le jour de la semaine choisi (1 = lundi). */
+        weekday: z.number().int().min(1).max(7).optional(),
         startTime: z.string().optional(),
         personId: z.string().optional(),
       }),
       req.body,
     );
+    if (body.weekday && body.startTime && body.personId) {
+      return bookWeekly(token, { weekday: body.weekday, startTime: body.startTime, personId: body.personId });
+    }
     /* Une case choisie, ou un oui ou non à l'heure proposée. */
     if (body.dayId && body.startTime && body.personId) {
       return bookSlot(token, { dayId: body.dayId, startTime: body.startTime, personId: body.personId });

@@ -18,6 +18,12 @@ import {
   type PersonRef,
   inviteLetterGap,
   pairingOf,
+  firstSessionOn,
+  recurringDates,
+  FREQUENCIES,
+  FREQUENCY_LABEL,
+  WEEKDAY_LABEL,
+  type Recurrence,
 } from '@ceed/shared';
 import { useState } from 'react';
 import { api } from '../../../lib/api';
@@ -311,18 +317,151 @@ function SessionsTab({
       </p>
 
       {config.cadence === 'recurring' ? (
-        <div className="callout">
-          <Icon name="calendar" size={15} />
-          <div>
-            A regular follow-up: each startup’s series is created from the <strong>One to One</strong> tab —{' '}
-            <em>+ Meeting</em>, then <em>Repeat</em> — with its rhythm and its end. Every session is a meeting of its own,
-            with its own report.
-          </div>
-        </div>
+        <RecurrenceEditor block={block} config={config} patch={patch} />
       ) : (
         <DaysTab block={block} />
       )}
     </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* The calendar of a regular follow-up                                 */
+/* ------------------------------------------------------------------ */
+
+const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7] as const;
+
+/**
+ * Le calendrier d'un suivi régulier, réglé une fois pour toute la brique : la
+ * période, le rythme, les semaines sans séance, et quand chaque interlocuteur
+ * reçoit dans la semaine. Chaque binôme en tire sa série ; une startup qui
+ * choisit son heure prend un créneau de la semaine, libre à toutes les dates.
+ */
+function RecurrenceEditor({
+  block,
+  config,
+  patch,
+}: {
+  block: Block;
+  config: OneToOneConfig;
+  patch: (partial: Partial<OneToOneConfig>) => void;
+}) {
+  const view = useAsync(() => api.get<BrickView>(`/api/blocks/${block.id}/one-to-one`), `recurrence:${block.id}`);
+  const rec = config.recurrence;
+  const set = (partial: Partial<Recurrence>) => patch({ recurrence: { ...rec, ...partial } });
+  const people = (view.data?.interlocutors ?? []).filter((p) => config.interlocutors.includes(p.id));
+  const name = (id: string) => people.find((p) => p.id === id)?.name ?? 'Interlocutor';
+
+  /* Ce que donne le calendrier, dit en une ligne : combien de séances, du quand au quand. */
+  const sample = rec.weekly[0]?.weekday ?? 1;
+  const first = firstSessionOn(rec, sample);
+  const dates = rec.endsOn || rec.count ? recurringDates(rec, first) : [];
+
+  const setWeekly = (index: number, partial: Partial<Recurrence['weekly'][number]>) =>
+    set({ weekly: rec.weekly.map((w, i) => (i === index ? { ...w, ...partial } : w)) });
+
+  return (
+    <div className="stack" style={{ gap: 14 }}>
+      <h3 className="section-title">The follow-up calendar</h3>
+      <div className="grid-2">
+        <DateField label="From" value={rec.startsOn} onChange={(v) => set({ startsOn: v })} />
+        <DateField label="Until" value={rec.endsOn} onChange={(v) => set({ endsOn: v })} />
+      </div>
+      <div className="grid-2">
+        <div className="field">
+          <label>Rhythm</label>
+          <select className="select" value={rec.frequency} onChange={(e) => set({ frequency: e.target.value as Recurrence['frequency'] })}>
+            {FREQUENCIES.map((f) => (
+              <option key={f} value={f}>{FREQUENCY_LABEL[f]}</option>
+            ))}
+          </select>
+        </div>
+        {!rec.endsOn && (
+          <NumberField
+            label="Number of sessions"
+            value={rec.count ?? 0}
+            min={1}
+            max={52}
+            onChange={(v) => set({ count: v ? Math.min(52, Math.max(1, v)) : null })}
+            help="When there is no end date."
+          />
+        )}
+      </div>
+      <p className={dates.length ? 'faint' : 'warnline'} style={{ margin: 0, fontSize: 12.5 }}>
+        {dates.length
+          ? `${dates.length} session${dates.length > 1 ? 's' : ''} per startup — on a ${WEEKDAY_LABEL[sample]}, from ${formatDate(dates[0]!)} to ${formatDate(dates[dates.length - 1]!)}.`
+          : 'Give an end date or a number of sessions: a series has to end.'}
+      </p>
+
+      <div className="field">
+        <label>Weeks without sessions</label>
+        <div className="help">Holidays, Ramadan… A session that falls there is skipped, not moved.</div>
+        <div className="stack" style={{ gap: 6, marginTop: 4 }}>
+          {rec.excluded.map((x, i) => (
+            <div className="row wrap" key={i} style={{ gap: 6 }}>
+              <input className="input" style={{ width: 150 }} type="date" value={x.from} aria-label="From"
+                onChange={(e) => set({ excluded: rec.excluded.map((y, j) => (j === i ? { ...y, from: e.target.value } : y)) })} />
+              <span className="faint">to</span>
+              <input className="input" style={{ width: 150 }} type="date" value={x.to} aria-label="To"
+                onChange={(e) => set({ excluded: rec.excluded.map((y, j) => (j === i ? { ...y, to: e.target.value } : y)) })} />
+              <input className="input" style={{ flex: 1, minWidth: 120 }} value={x.label} placeholder="Why — optional" aria-label="Why"
+                onChange={(e) => set({ excluded: rec.excluded.map((y, j) => (j === i ? { ...y, label: e.target.value } : y)) })} />
+              <button className="btn ghost icon sm" aria-label="Remove this period" onClick={() => set({ excluded: rec.excluded.filter((_, j) => j !== i) })}>
+                <Icon name="x" size={12} />
+              </button>
+            </div>
+          ))}
+          <button className="btn sm" style={{ alignSelf: 'flex-start' }}
+            onClick={() => set({ excluded: [...rec.excluded, { from: rec.startsOn ?? '', to: rec.startsOn ?? '', label: '' }] })}>
+            <Icon name="plus" size={12} /> Add a period
+          </button>
+        </div>
+      </div>
+
+      <div className="field">
+        <label>When each interlocutor receives, in the week</label>
+        <div className="help">
+          When the startups pick their own time, they choose among these weekly slots — one that is free on every date of
+          the series. Otherwise it is a guide for you when you set each series.
+        </div>
+        {!people.length ? (
+          <div className="callout warn" style={{ marginTop: 6 }}>
+            <Icon name="alert" size={15} />
+            <div>Name the interlocutors first, in the Interlocutors tab.</div>
+          </div>
+        ) : (
+          <div className="stack" style={{ gap: 6, marginTop: 4 }}>
+            {rec.weekly.map((w, i) => (
+              <div className="row wrap" key={i} style={{ gap: 6 }}>
+                <select className="select" style={{ width: 170 }} value={w.personId} aria-label="Who"
+                  onChange={(e) => setWeekly(i, { personId: e.target.value })}>
+                  {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <select className="select" style={{ width: 130 }} value={w.weekday} aria-label="Day"
+                  onChange={(e) => setWeekly(i, { weekday: Number(e.target.value) })}>
+                  {WEEKDAYS.map((d) => <option key={d} value={d}>{WEEKDAY_LABEL[d]}</option>)}
+                </select>
+                <input className="input" type="time" style={{ width: 110 }} value={w.windows[0]?.startsAt ?? '09:00'} aria-label="From"
+                  onChange={(e) => setWeekly(i, { windows: [{ startsAt: e.target.value, endsAt: w.windows[0]?.endsAt ?? '12:00' }] })} />
+                <span className="faint">to</span>
+                <input className="input" type="time" style={{ width: 110 }} value={w.windows[0]?.endsAt ?? '12:00'} aria-label="To"
+                  onChange={(e) => setWeekly(i, { windows: [{ startsAt: w.windows[0]?.startsAt ?? '09:00', endsAt: e.target.value }] })} />
+                <span className="faint" style={{ fontSize: 12 }}>
+                  {daySlots({ windows: w.windows, minutesPerMeeting: config.durationMinutes }).length} slot(s) · {name(w.personId)}
+                </span>
+                <button className="btn ghost icon sm" aria-label="Remove" onClick={() => set({ weekly: rec.weekly.filter((_, j) => j !== i) })}>
+                  <Icon name="x" size={12} />
+                </button>
+              </div>
+            ))}
+            <button className="btn sm" style={{ alignSelf: 'flex-start' }}
+              onClick={() => set({ weekly: [...rec.weekly, { personId: people[0]!.id, weekday: 1, windows: [{ startsAt: '09:00', endsAt: '12:00' }] }] })}>
+              <Icon name="plus" size={12} /> Add a weekly slot
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
