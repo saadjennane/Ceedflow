@@ -31,7 +31,7 @@ const STATE_WORD: Record<string, string> = {
   live: 'live',
 };
 
-export const APPLICATION_TABS = ['Overview', 'Form', 'Eligibility', 'Settings'] as const;
+export const APPLICATION_TABS = ['Overview', 'Form', 'Eligibility', 'Messages', 'Settings'] as const;
 export type ApplicationTab = (typeof APPLICATION_TABS)[number];
 
 export function ApplicationSetup({
@@ -70,6 +70,7 @@ export function ApplicationSetup({
 
   if (tab === 'Eligibility') return <EligibilityTab config={config} patch={patch} />;
   if (tab === 'Settings') return <SettingsTab block={block} config={config} patch={patch} />;
+  if (tab === 'Messages') return <MessagesTab block={block} config={config} patch={patch} />;
 
   return (
     <>
@@ -315,7 +316,33 @@ function SettingsTab({
         </span>
       </label>
 
-      <div className="public-sep" />
+    </>
+  );
+}
+
+/**
+ * Les lettres de la brique : l'accusé de réception que reçoit la startup en
+ * déposant sa candidature, la première connexion qu'il peut porter, et le mot
+ * qui prévient l'équipe. Rangées ici comme dans toutes les briques.
+ */
+function MessagesTab({
+  block,
+  config,
+  patch,
+}: {
+  block: Block;
+  config: ApplicationConfig;
+  patch: (partial: Partial<ApplicationConfig>) => void;
+}) {
+  return (
+    <>
+      <div className="callout">
+        <Icon name="send" size={15} />
+        <div>
+          The receipt the startup gets the moment it submits — its subject and its words — and who in the team hears
+          about each new application.
+        </div>
+      </div>
 
       <label className="check">
         <input
