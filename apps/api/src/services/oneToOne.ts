@@ -747,6 +747,8 @@ export async function tellMeeting(
   id: string,
   who: { startup?: boolean; person?: boolean },
   extra = '',
+  /** Quelle lettre : l'annonce, le rappel de la veille, ou le compte rendu qui tarde. */
+  letter: 'announce' | 'eve' | 'late' = 'announce',
 ): Promise<{ startup: boolean; person: boolean }> {
   const m = await getMeeting(id);
   if (!m) throw new HttpError(404, 'Meeting not found.');
@@ -790,17 +792,18 @@ export async function tellMeeting(
         lien: link,
       };
       const posted = await post({
-        kind: 'one_to_one_startup',
+        kind: letter === 'eve' ? 'one_to_one_eve' : 'one_to_one_startup',
         to,
         toName: candidate.contactName,
         recordId: candidate.personId,
         blockId: m.blockId,
         candidateId: m.candidateId,
-        subject: fillTemplate(config.messages.subjects.startup, values),
-        body: fillTemplate(config.messages.startup, values),
+        subject: fillTemplate(letter === 'eve' ? config.reminders.subjects.eveStartup : config.messages.subjects.startup, values),
+        body: fillTemplate(letter === 'eve' ? config.reminders.eveStartup : config.messages.startup, values),
       });
       if (posted) {
-        await all('update one_to_one_meetings set told_startup_at = now() where id = $1', [id]);
+        // Un rappel n'est pas une annonce : il ne dit pas « prévenue ».
+        if (letter === 'announce') await all('update one_to_one_meetings set told_startup_at = now() where id = $1', [id]);
         out.startup = true;
       }
     }
@@ -810,6 +813,12 @@ export async function tellMeeting(
     const person = await dir.getRecord(m.personId);
     const to = person?.email?.trim();
     if (person && to) {
+      const template =
+        letter === 'eve'
+          ? { subject: config.reminders.subjects.evePerson, body: config.reminders.evePerson }
+          : letter === 'late'
+            ? { subject: config.reminders.subjects.lateReport, body: config.reminders.lateReport }
+            : { subject: config.messages.subjects.person, body: config.messages.person };
       const values = {
         prenom: firstNameOf(person.name, person.firstName),
         startup: m.orgName,
@@ -818,25 +827,88 @@ export async function tellMeeting(
         lieu,
         visio: m.meetingLink ? `Lien de la réunion : ${m.meetingLink}` : '',
         lien: origin ? `${origin}/meeting/${m.id}` : '',
-        acces: config.messages.person.includes('{{acces}}') ? await accessFor(m.personId, config.messages.access) : '',
+        acces: template.body.includes('{{acces}}') ? await accessFor(m.personId, config.messages.access) : '',
       };
       const posted = await post({
-        kind: 'one_to_one_person',
+        kind: letter === 'eve' ? 'one_to_one_eve' : letter === 'late' ? 'one_to_one_late_report' : 'one_to_one_person',
         to,
         toName: person.name,
         recordId: m.personId,
         blockId: m.blockId,
         candidateId: m.candidateId,
-        subject: fillTemplate(config.messages.subjects.person, values),
-        body: fillTemplate(config.messages.person, values),
+        subject: fillTemplate(template.subject, values),
+        body: fillTemplate(template.body, values),
       });
       if (posted) {
-        await all('update one_to_one_meetings set told_person_at = now() where id = $1', [id]);
+        if (letter === 'announce') await all('update one_to_one_meetings set told_person_at = now() where id = $1', [id]);
         out.person = true;
       }
     }
   }
   return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* Reminders                                                           */
+/* ------------------------------------------------------------------ */
+
+/** L'heure à laquelle les rappels partent — la même que les autres lettres du matin. */
+const SEND_HOUR_UTC = Number(process.env.SEND_HOUR_UTC ?? 7);
+
+/**
+ * Les rappels du matin : la veille de chaque séance, à la startup et à
+ * l'interlocuteur ; et, quelques jours après une séance tenue, à
+ * l'interlocuteur dont le compte rendu n'est pas parti. Chacun une fois —
+ * réclamé avant d'être écrit, si bien que deux passages ne doublent rien.
+ */
+export async function sendOneToOneReminders(now = new Date()): Promise<{ eve: number; late: number }> {
+  if (now.getUTCHours() < SEND_HOUR_UTC) return { eve: 0, late: 0 };
+  const today = now.toISOString().slice(0, 10);
+  const tomorrow = new Date(now.getTime() + 86_400_000).toISOString().slice(0, 10);
+  let eve = 0;
+  let late = 0;
+
+  const eveRows = await all<{ id: string }>(
+    `select m.id from one_to_one_meetings m join blocks b on b.id = m.block_id
+      where m.status = 'planned' and m.held_on = $1::date and m.eve_reminded_at is null
+        and m.rsvp_state <> 'declined' and (b.config->'reminders'->>'eve') = 'true'`,
+    [tomorrow],
+  );
+  for (const { id } of eveRows) {
+    const claimed = await all<{ id: string }>(
+      'update one_to_one_meetings set eve_reminded_at = now() where id = $1 and eve_reminded_at is null returning id',
+      [id],
+    );
+    if (!claimed.length) continue;
+    const sent = await tellMeeting(id, { startup: true, person: true }, '', 'eve');
+    if (sent.startup || sent.person) eve += 1;
+  }
+
+  const lateRows = await all<{ id: string; blockId: string; after: number }>(
+    `select m.id, m.block_id as "blockId", coalesce((b.config->'reminders'->>'lateAfterDays')::int, 2) as after
+       from one_to_one_meetings m join blocks b on b.id = m.block_id
+      where m.report_submitted_at is null and m.report_reminded_at is null and m.person_id is not null
+        and m.status in ('planned', 'held') and m.held_on is not null
+        and (b.config->'reminders'->>'late') = 'true'`,
+    [],
+  );
+  for (const row of lateRows) {
+    const meeting = await getMeeting(row.id);
+    if (!meeting?.heldOn) continue;
+    const due = new Date(Date.parse(`${meeting.heldOn}T00:00:00Z`) + row.after * 86_400_000).toISOString().slice(0, 10);
+    if (due > today) continue;
+    /* Seulement tant que la brique est ouverte : fermée, il ne peut plus l'écrire. */
+    const block = await repo.getBlock(row.blockId);
+    if (!block || blockStatus(block) !== 'live') continue;
+    const claimed = await all<{ id: string }>(
+      'update one_to_one_meetings set report_reminded_at = now() where id = $1 and report_reminded_at is null returning id',
+      [row.id],
+    );
+    if (!claimed.length) continue;
+    const sent = await tellMeeting(row.id, { person: true }, '', 'late');
+    if (sent.person) late += 1;
+  }
+  return { eve, late };
 }
 
 /* ------------------------------------------------------------------ */

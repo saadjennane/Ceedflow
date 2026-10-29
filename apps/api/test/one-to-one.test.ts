@@ -16,7 +16,7 @@ import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
 import {
-  answerInvitation, bookSlot, bookWeekly, prepsDueFor, savePrep, cancelFollowing, changeMeeting, createDay, historyOf, informAll, invitationFor, meetingFor,
+  answerInvitation, bookSlot, bookWeekly, prepsDueFor, savePrep, sendOneToOneReminders, cancelFollowing, changeMeeting, createDay, historyOf, informAll, invitationFor, meetingFor,
   meetingsFor, oneToOneView, planMeetings, saveReport, tellMeeting, updateDay,
 } from '../src/services/oneToOne.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
@@ -290,6 +290,30 @@ describe('a One to One', { skip: skipWithoutServer }, () => {
     assert.equal((await invitationFor(m!.token))!.page.prep!.locked, true);
     await assert.rejects(savePrep(m!.id, { topics: 'late change' }, { side: 'startup', name: 'Atlas' }), /locked/);
     await savePrep(m!.id, { topics: 'Final' }, { side: 'team', name: 'Nadia' });
+  });
+
+  it('reminds both sides the day before, and the interlocutor of a late report — once each', async () => {
+    const { block, a } = await setUp();
+    const mark = Math.random().toString(36).slice(2, 7);
+    const mentor = await dir.createRecord({ kind: 'person', name: `Rim ${mark}`, emails: [`rim.${mark}@example.test`], origin: 'manual' });
+    const config = (await repo.getBlock(block.id))!.config as { interlocutors: string[] };
+    await repo.updateBlock(block.id, {
+      config: { ...config, interlocutors: [...config.interlocutors, mentor.id], reminders: { eve: true, late: true, lateAfterDays: 2 } },
+    });
+    const kinds = async (id: string) =>
+      (await all<{ kind: string }>('select o.kind from outbox o join one_to_one_meetings m on m.block_id = o.block_id where m.id = $1 and o.record_id = $2', [id, mentor.id])).map((r) => r.kind);
+
+    const [soon] = await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, invite: 'none', heldOn: '2030-05-10', startTime: '10:00' });
+    const morning = new Date('2030-05-09T10:00:00Z');
+    assert.equal((await sendOneToOneReminders(morning)).eve, 1);
+    assert.equal((await sendOneToOneReminders(morning)).eve, 0, 'once');
+    assert.ok((await kinds(soon!.id)).includes('one_to_one_eve'));
+
+    const later = new Date('2030-05-12T10:00:00Z');
+    assert.equal((await sendOneToOneReminders(later)).late, 1, 'two days on, the report is late');
+    assert.equal((await sendOneToOneReminders(later)).late, 0, 'once');
+    assert.ok((await kinds(soon!.id)).includes('one_to_one_late_report'));
+    assert.deepEqual(await sendOneToOneReminders(new Date('2030-05-12T03:00:00Z')), { eve: 0, late: 0 }, 'nothing before the morning');
   });
 
   it('asks again when a proposed time moves', async () => {

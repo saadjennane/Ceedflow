@@ -22,6 +22,7 @@ import { bootstrapAdmin } from './services/bootstrap.js';
 import { noteOrigin } from './services/platform.js';
 import { sendDueNotices } from './services/notices.js';
 import { sendLateDigests } from './services/taskNotices.js';
+import { sendOneToOneReminders } from './services/oneToOne.js';
 import { KEPT_DAYS, purgeExpired } from './services/trash.js';
 import { flush, sendingIsLive } from './services/mail.js';
 import { HttpError } from './routes/util.js';
@@ -201,6 +202,22 @@ if (sendingIsLive()) {
       if (sent || skipped) app.log.info({ sent, skipped }, 'task reminders');
     } catch (err) {
       app.log.error(err, 'task reminders');
+    }
+  };
+  setInterval(() => void tick(), EVERY).unref();
+  void tick();
+}
+
+/* Les rappels des One to One — la veille d'une séance, le compte rendu qui
+   tarde —, au même rythme et avec la même garde d'heure que les retards. */
+{
+  const EVERY = 900_000;
+  const tick = async () => {
+    try {
+      const { eve, late } = await sendOneToOneReminders();
+      if (eve || late) app.log.info({ eve, late }, 'one to one reminders');
+    } catch (err) {
+      app.log.error(err, 'one to one reminders');
     }
   };
   setInterval(() => void tick(), EVERY).unref();

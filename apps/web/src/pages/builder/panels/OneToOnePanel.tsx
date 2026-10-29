@@ -151,6 +151,69 @@ export function OneToOneSetup({
           variables={ONE_TO_ONE_PERSON_VARIABLES}
         />
         <AccessTemplate value={messages.access} onChange={(v) => patch({ messages: { ...messages, access: v } })} />
+
+        {/* Les rappels : partent seuls, le matin, une fois chacun. */}
+        <h3 className="section-title" style={{ marginTop: 18 }}>Reminders</h3>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={config.reminders.eve}
+            onChange={(e) => patch({ reminders: { ...config.reminders, eve: e.target.checked } })}
+          />
+          <span>The day before each session, remind the startup and the interlocutor</span>
+        </label>
+        {config.reminders.eve && (
+          <>
+            <Template
+              label="Reminder to the startup"
+              help="Sent the morning before the session — with the place, the video link and, when asked, where to prepare."
+              value={config.reminders.eveStartup}
+              onChange={(v) => patch({ reminders: { ...config.reminders, eveStartup: v } })}
+              subject={config.reminders.subjects.eveStartup}
+              onSubject={(v) => patch({ reminders: { ...config.reminders, subjects: { ...config.reminders.subjects, eveStartup: v } } })}
+              variables={ONE_TO_ONE_STARTUP_VARIABLES}
+            />
+            <Template
+              label="Reminder to the interlocutor"
+              help="Sent the morning before — with where to read the startup’s preparation and write the report."
+              value={config.reminders.evePerson}
+              onChange={(v) => patch({ reminders: { ...config.reminders, evePerson: v } })}
+              subject={config.reminders.subjects.evePerson}
+              onSubject={(v) => patch({ reminders: { ...config.reminders, subjects: { ...config.reminders.subjects, evePerson: v } } })}
+              variables={ONE_TO_ONE_PERSON_VARIABLES}
+            />
+          </>
+        )}
+
+        <label className="check" style={{ marginTop: 8 }}>
+          <input
+            type="checkbox"
+            checked={config.reminders.late}
+            onChange={(e) => patch({ reminders: { ...config.reminders, late: e.target.checked } })}
+          />
+          <span>Remind the interlocutor when the report is late</span>
+        </label>
+        {config.reminders.late && (
+          <>
+            <NumberField
+              label="Days after the session"
+              value={config.reminders.lateAfterDays}
+              min={1}
+              max={30}
+              onChange={(v) => patch({ reminders: { ...config.reminders, lateAfterDays: Math.max(1, v || 2) } })}
+              help="Once, while the brick is open and the report has not been sent."
+            />
+            <Template
+              label="Report reminder"
+              help="To the interlocutor whose report has not gone out."
+              value={config.reminders.lateReport}
+              onChange={(v) => patch({ reminders: { ...config.reminders, lateReport: v } })}
+              subject={config.reminders.subjects.lateReport}
+              onSubject={(v) => patch({ reminders: { ...config.reminders, subjects: { ...config.reminders.subjects, lateReport: v } } })}
+              variables={ONE_TO_ONE_PERSON_VARIABLES}
+            />
+          </>
+        )}
       </>
     );
   }

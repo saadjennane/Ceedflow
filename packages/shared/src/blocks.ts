@@ -1603,6 +1603,39 @@ export type Recurrence = z.infer<typeof recurrenceSchema>;
 export const ONE_TO_ONE_CADENCES = ['single', 'recurring'] as const;
 export type OneToOneCadence = (typeof ONE_TO_ONE_CADENCES)[number];
 
+export const ONE_TO_ONE_EVE_STARTUP_SUBJECT = 'Demain : votre rendez-vous avec {{interlocuteur}}';
+export const ONE_TO_ONE_EVE_STARTUP = `Bonjour {{prenom}},
+
+Petit rappel : {{startup}} a rendez-vous demain avec {{interlocuteur}}, dans le cadre de {{programme}}.
+
+{{quand}}
+
+{{lieu}}
+
+{{visio}}
+
+{{preparation}}
+
+À demain.`;
+export const ONE_TO_ONE_EVE_PERSON_SUBJECT = 'Demain : rendez-vous avec {{startup}}';
+export const ONE_TO_ONE_EVE_PERSON = `Bonjour {{prenom}},
+
+Petit rappel : vous recevez {{startup}} demain, dans le cadre de {{programme}}.
+
+{{quand}}
+
+{{lieu}}
+
+{{visio}}
+
+La startup, sa préparation et le compte rendu : {{lien}}`;
+export const ONE_TO_ONE_REPORT_REMINDER_SUBJECT = 'Compte rendu à écrire — {{startup}}';
+export const ONE_TO_ONE_REPORT_REMINDER = `Bonjour {{prenom}},
+
+Votre rendez-vous avec {{startup}} ({{programme}}) a eu lieu, et son compte rendu n'est pas encore parti. Il ne prend que quelques minutes : {{lien}}
+
+Merci !`;
+
 export const oneToOneConfigSchema = z.object({
   ...brickWindowFields,
   /**
@@ -1660,6 +1693,30 @@ export const oneToOneConfigSchema = z.object({
       layout: z.enum(['single', 'paged']).default('single'),
       pages: z.array(formPageSchema).default([]),
       fields: z.array(formFieldSchema).default([]),
+    })
+    .default({}),
+  /**
+   * Les rappels : la veille de chaque séance, à la startup et à
+   * l'interlocuteur ; et le compte rendu qui tarde, à l'interlocuteur.
+   * Éteints tant qu'on ne les allume pas — une brique existante ne se met
+   * pas à écrire d'elle-même.
+   */
+  reminders: z
+    .object({
+      eve: z.boolean().default(false),
+      late: z.boolean().default(false),
+      /** How many days after the session the report reminder goes. */
+      lateAfterDays: z.number().int().min(1).max(30).default(2),
+      eveStartup: z.string().default(ONE_TO_ONE_EVE_STARTUP),
+      evePerson: z.string().default(ONE_TO_ONE_EVE_PERSON),
+      lateReport: z.string().default(ONE_TO_ONE_REPORT_REMINDER),
+      subjects: z
+        .object({
+          eveStartup: z.string().default(ONE_TO_ONE_EVE_STARTUP_SUBJECT),
+          evePerson: z.string().default(ONE_TO_ONE_EVE_PERSON_SUBJECT),
+          lateReport: z.string().default(ONE_TO_ONE_REPORT_REMINDER_SUBJECT),
+        })
+        .default({}),
     })
     .default({}),
   /**
