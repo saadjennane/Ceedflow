@@ -108,12 +108,12 @@ export function CreateProgramModal({
             label="Program name"
             value={name}
             onChange={setName}
-            placeholder="CEED Grow"
+            placeholder="Programme name"
             error={errors.name}
             help="The parent. Each run of it becomes an edition."
           />
           <div className="grid-2">
-            <TextField label="Short code" value={code} onChange={setCode} placeholder="GROW" hint="optional" />
+            <TextField label="Short code" value={code} onChange={setCode} placeholder="CODE" hint="optional" />
             <SelectField
               label="Type"
               value={type}
@@ -125,7 +125,7 @@ export function CreateProgramModal({
             label="Partner organisation"
             value={partner}
             onChange={setPartner}
-            placeholder="Attijariwafa Bank Foundation"
+            placeholder="Partner name"
             hint="optional"
           />
           <TextArea

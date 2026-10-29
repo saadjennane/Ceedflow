@@ -124,7 +124,7 @@ export function RecordModal({
           value={draft.name}
           onChange={(v) => set({ name: v })}
           error={errors.name}
-          placeholder="Nakhla Bio"
+          placeholder="Organisation name"
         />
       ) : (
         <div className="row" style={{ gap: 10, alignItems: 'flex-start' }}>
@@ -134,7 +134,7 @@ export function RecordModal({
               value={draft.firstName}
               onChange={(v) => set({ firstName: v })}
               error={errors.name}
-              placeholder="Sarah"
+              placeholder="First name"
             />
           </div>
           <div style={{ flex: 1 }}>
@@ -142,7 +142,7 @@ export function RecordModal({
               label="Last name"
               value={draft.lastName}
               onChange={(v) => set({ lastName: v })}
-              placeholder="Benali"
+              placeholder="Last name"
             />
           </div>
         </div>
@@ -157,13 +157,13 @@ export function RecordModal({
             label="Fonction"
             value={draft.jobTitle}
             onChange={(v) => set({ jobTitle: v })}
-            placeholder="Directrice de l'innovation"
+            placeholder="Job title"
           />
           <TextField
             label="Direction"
             value={draft.department}
             onChange={(v) => set({ department: v })}
-            placeholder="Direction des engagements"
+            placeholder="Department"
           />
         </div>
       )}

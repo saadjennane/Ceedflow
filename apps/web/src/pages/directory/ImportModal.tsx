@@ -129,7 +129,7 @@ export function ImportModal({
         <textarea
           className="textarea num"
           rows={4}
-          placeholder={`Name\tEmail\tCity\nNakhla Bio\tzineb@nakhlabio.ma\tAgadir`}
+          placeholder={`Name\tEmail\tCity\nStartup Exemple\tcontact@startup-exemple.ma\tAgadir`}
           value={raw}
           onChange={(e) => {
             setRaw(e.target.value);

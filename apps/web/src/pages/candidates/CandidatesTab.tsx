@@ -904,7 +904,7 @@ function AddCandidateModal({
         </>
       }
     >
-      <TextField label="Organisation" value={draft.orgName} error={errors.orgName} onChange={(v) => set({ orgName: v })} placeholder="SportIQ" />
+      <TextField label="Organisation" value={draft.orgName} error={errors.orgName} onChange={(v) => set({ orgName: v })} placeholder="Organisation name" />
       <div className="grid-2">
         <TextField label="Contact" value={draft.contactName} error={errors['contact.name']} onChange={(v) => set({ contactName: v })} />
         <TextField label="Email" value={draft.email} error={errors['contact.email']} onChange={(v) => set({ email: v })} type="email" />

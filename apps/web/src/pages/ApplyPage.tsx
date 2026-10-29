@@ -295,7 +295,7 @@ export function ApplyPage() {
               className="input"
               value={newOrg.name}
               aria-invalid={Boolean(errors.orgName)}
-              placeholder="Rafid Tech"
+              placeholder="Nom de votre startup"
               onChange={(e) => {
                 setNewOrg((o) => ({ ...o, name: e.target.value }));
                 setErrors(({ orgName: _gone, ...rest }) => rest);
@@ -311,7 +311,7 @@ export function ApplyPage() {
               id="apply-org-site"
               className="input"
               value={newOrg.website}
-              placeholder="rafid.ma"
+              placeholder="votre-site.ma"
               onChange={(e) => setNewOrg((o) => ({ ...o, website: e.target.value }))}
             />
             <div className="hint">Its page is created with your application. You can complete it later, in your space.</div>

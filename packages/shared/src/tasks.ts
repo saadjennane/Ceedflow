@@ -212,8 +212,8 @@ Vous les retrouvez ici : {{lien}}`;
 
 /** Ce qu'une lettre de tâche peut nommer. */
 export const TASK_GIVEN_VARIABLES = [
-  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
-  { name: 'nom', label: 'Their name', what: 'The person or organisation the task is for', example: 'Karim Benali' },
+  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Prénom' },
+  { name: 'nom', label: 'Their name', what: 'The person or organisation the task is for', example: 'Prénom Nom' },
   { name: 'tache', label: 'The task', what: 'What has to be done, as you wrote it', example: 'Relire la grille du jury' },
   { name: 'detail', label: 'Detail', what: 'What you added under it — empty when you added nothing', example: 'Les deux premiers critères ont changé depuis la dernière session.' },
   {
@@ -224,15 +224,15 @@ export const TASK_GIVEN_VARIABLES = [
   },
   { name: 'echeance', label: 'By when', what: 'The whole sentence, and nothing at all when the task has no date', example: 'À faire pour le 15 novembre 2026.' },
   { name: 'apropos', label: 'About', what: 'What the task is attached to — empty when it hangs on nothing', example: 'À propos de : The Builders · Cohorte 1.' },
-  { name: 'donnepar', label: 'Who asked', what: 'The colleague who gave the task', example: 'Rima Arrach' },
-  { name: 'acces', label: 'First login (email + password)', what: 'The password somebody with no account yet needs — empty for everybody who already signs in, and for an organisation', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'donnepar', label: 'Who asked', what: 'The colleague who gave the task', example: 'Prénom Nom' },
+  { name: 'acces', label: 'First login (email + password)', what: 'The password somebody with no account yet needs — empty for everybody who already signs in, and for an organisation', example: accessBlock('prenom@startup-exemple.ma', '••••-••••-••••') },
   { name: 'lien', label: 'Link to their tasks', what: 'Where they read it on this platform', example: 'https://www.ceedflow.com/me' },
 ] as const;
 
 /** Et ce qu'un rappel de retard peut nommer. */
 export const TASK_LATE_VARIABLES = [
-  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Karim' },
-  { name: 'nom', label: 'Their name', what: 'The person or organisation these tasks are for', example: 'Karim Benali' },
+  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Prénom' },
+  { name: 'nom', label: 'Their name', what: 'The person or organisation these tasks are for', example: 'Prénom Nom' },
   {
     name: 'taches',
     label: 'What is late',
@@ -240,7 +240,7 @@ export const TASK_LATE_VARIABLES = [
     example: '  · Relire la grille du jury — pour le 3 octobre 2026\n  · Envoyer le RIB — pour le 7 octobre 2026',
   },
   { name: 'combien', label: 'How many', what: 'Counted and named, for the subject line', example: '2 tâches' },
-  { name: 'acces', label: 'First login (email + password)', what: 'The password somebody with no account yet needs — empty for everybody who already signs in, and for an organisation', example: accessBlock('karim@rafid.ma', '••••-••••-••••') },
+  { name: 'acces', label: 'First login (email + password)', what: 'The password somebody with no account yet needs — empty for everybody who already signs in, and for an organisation', example: accessBlock('prenom@startup-exemple.ma', '••••-••••-••••') },
   { name: 'lien', label: 'Link to their tasks', what: 'Where they read them on this platform', example: 'https://www.ceedflow.com/me' },
 ] as const;
 

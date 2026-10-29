@@ -441,7 +441,7 @@ function FounderPreview({ config }: { config: DeliverableConfig }) {
         <Modal
           wide
           title="What they see"
-          subtitle="Rafid Tech, as an example. Nothing here is saved — no answer, no row."
+          subtitle="An example startup. Nothing here is saved — no answer, no row."
           onClose={() => setOpen(false)}
           footer={
             <>
@@ -455,7 +455,7 @@ function FounderPreview({ config }: { config: DeliverableConfig }) {
           <OwedList
             startOpen
             ask={{ block: { id: 'preview', name: 'Due diligence' }, config, open: true, returns: [] }}
-            orgName="Rafid Tech"
+            orgName="Startup Exemple"
             onSave={() => {}}
           />
         </Modal>

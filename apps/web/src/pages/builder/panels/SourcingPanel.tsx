@@ -360,7 +360,7 @@ function MessageTab({
         label="Subject"
         value={config.outreach.subject}
         onChange={(v) => setOutreach({ subject: v })}
-        placeholder="Grow 2026 is open — six months of support for Moroccan startups"
+        placeholder="Applications are open — what the programme offers, in one line"
       />
       <TextArea
         label="Message"

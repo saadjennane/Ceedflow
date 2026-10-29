@@ -590,7 +590,7 @@ function FormPreview({ block, config }: { block: Block; config: ApplicationConfi
                 <div className="rowcard link-row">
                   <span className="rec-mark">RT</span>
                   <span style={{ flex: 1 }}>
-                    <strong style={{ fontSize: 13 }}>Rafid Tech</strong>
+                    <strong style={{ fontSize: 13 }}>Startup Exemple</strong>
                     <span className="faint" style={{ display: 'block', fontSize: 12 }}>
                       An example — whoever applies sees their own page here.
                     </span>

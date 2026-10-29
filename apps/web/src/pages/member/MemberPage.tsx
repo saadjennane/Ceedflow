@@ -1296,7 +1296,7 @@ function OrgModal({
         </>
       }
     >
-      <Text label={t('org.name')} value={draft.name} error={errors.name} onChange={(v) => set({ name: v })} placeholder="Nakhla Bio" />
+      <Text label={t('org.name')} value={draft.name} error={errors.name} onChange={(v) => set({ name: v })} placeholder={t('org.name')} />
 
       <div className="field">
         <label>{t('org.what')}</label>
