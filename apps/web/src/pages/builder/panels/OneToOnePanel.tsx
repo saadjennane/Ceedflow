@@ -36,7 +36,7 @@ import { DateField, NumberField, TextField } from '../../../ui/Field';
 import { Icon } from '../../../ui/Icon';
 import { QuestionsEditor } from '../../../ui/QuestionsEditor';
 
-export const ONE_TO_ONE_TABS = ['Overview', 'Invitations', 'Interlocutors', 'Sessions', 'Report', 'Messages'] as const;
+export const ONE_TO_ONE_TABS = ['Overview', 'Invitations', 'Interlocutors', 'Sessions', 'Preparation', 'Report', 'Messages'] as const;
 export type OneToOneTab = (typeof ONE_TO_ONE_TABS)[number];
 
 /**
@@ -218,42 +218,26 @@ export function OneToOneSetup({
     );
   }
 
-  if (tab === 'Report') {
+  if (tab === 'Preparation') {
     return (
       <>
         <div className="callout">
           <Icon name="form" size={15} />
           <div>
-            What the interlocutor writes after each meeting, in front of the startup or just after. It stays between
-            them and CEED — the startup does not read it. The answers add up in the One to One tab, question by
-            question.
+            What the startup prepares before each session — the topics to cover, its progress, what blocks it. It answers
+            from its link and its Home; the interlocutor reads it, and can correct or complete it.
           </div>
         </div>
-        <QuestionsEditor
-          value={config.report}
-          onChange={(partial) => patch({ report: { ...config.report, ...partial } })}
-          emptyText="No question yet. A topic discussed, the next steps, how the startup is doing — add what you want to follow."
-          firstPageName="The meeting"
-        />
-
-        {/* La préparation : ce que la startup écrit avant, que l'interlocuteur
-            lit et corrige — la première moitié du compte rendu final. */}
-        <h3 className="section-title" style={{ marginTop: 18 }}>Preparation by the startup</h3>
         <label className="check">
           <input
             type="checkbox"
             checked={config.prep.enabled}
             onChange={(e) => patch({ prep: { ...config.prep, enabled: e.target.checked } })}
           />
-          <span>The startup prepares each session — it answers these questions beforehand</span>
+          <span>The startup prepares each session</span>
         </label>
         {config.prep.enabled && (
           <>
-            <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
-              The startup answers from its link and its Home. The interlocutor reads it before the session and can correct
-              or complete it; the startup sees the corrected version. Together with the interlocutor’s report, it makes
-              the final record of the meeting.
-            </p>
             <QuestionsEditor
               value={config.prep}
               onChange={(partial) => patch({ prep: { ...config.prep, ...partial } })}
@@ -281,6 +265,101 @@ export function OneToOneSetup({
                 </label>
               </div>
             </div>
+          </>
+        )}
+      </>
+    );
+  }
+
+  if (tab === 'Report') {
+    const prepared = config.prep.enabled && config.prep.fields.length > 0;
+    const shared = prepared && config.report.shared;
+    const known = new Set(config.report.fields.map((f) => f.id));
+    const missing = config.prep.fields.filter((f) => !known.has(f.id));
+    /* Dupliquer : les questions de la préparation, avec les mêmes identifiants
+       — c'est ce qui laisse le compte rendu partir de ce que la startup a écrit. */
+    const duplicate = () =>
+      patch({
+        report: {
+          ...config.report,
+          fields: [...missing.map((f) => ({ ...f, page: config.report.pages[0]?.id ?? '' })), ...config.report.fields],
+        },
+      });
+    return (
+      <>
+        <div className="callout">
+          <Icon name="form" size={15} />
+          <div>
+            What the interlocutor writes after each meeting. The answers add up in the One to One tab, question by question.
+          </div>
+        </div>
+
+        {prepared ? (
+          <div className="field">
+            <label>The report and the startup’s preparation</label>
+            <div className="pick-list">
+              <button
+                type="button"
+                className={shared ? 'pick on' : 'pick'}
+                onClick={() => patch({ report: { ...config.report, shared: true } })}
+              >
+                <Icon name={shared ? 'check' : 'square'} />
+                <div>
+                  <strong>One shared document</strong>
+                  <span>
+                    The report is the preparation itself: the startup fills it in, it is locked for the startup, and the
+                    interlocutor completes it. One document, read by both.
+                  </span>
+                </div>
+              </button>
+              <button
+                type="button"
+                className={!shared ? 'pick on' : 'pick'}
+                onClick={() => patch({ report: { ...config.report, shared: false } })}
+              >
+                <Icon name={!shared ? 'check' : 'square'} />
+                <div>
+                  <strong>A document of its own</strong>
+                  <span>
+                    Two versions: the startup’s preparation, and the interlocutor’s report — private. Duplicate the
+                    preparation’s questions and add your own; the report then opens already filled with what the startup
+                    wrote.
+                  </span>
+                </div>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+            Private: the startup does not read it. Turn on the Preparation tab to have the startup prepare each session.
+          </p>
+        )}
+
+        {shared ? (
+          <div className="callout">
+            <Icon name="check" size={15} />
+            <div>
+              The report uses the preparation’s questions — edit them in the <strong>Preparation</strong> tab.
+            </div>
+          </div>
+        ) : (
+          <>
+            {prepared && missing.length > 0 && (
+              <div className="row">
+                <span className="faint" style={{ flex: 1, fontSize: 12.5 }}>
+                  {missing.length} question{missing.length > 1 ? 's' : ''} of the preparation {missing.length > 1 ? 'are' : 'is'} not in the report.
+                </span>
+                <button className="btn sm" onClick={duplicate}>
+                  <Icon name="copy" size={12} /> Duplicate the preparation’s questions
+                </button>
+              </div>
+            )}
+            <QuestionsEditor
+              value={config.report}
+              onChange={(partial) => patch({ report: { ...config.report, ...partial } })}
+              emptyText="No question yet. A topic discussed, the next steps, how the startup is doing — add what you want to follow."
+              firstPageName="The meeting"
+            />
           </>
         )}
       </>

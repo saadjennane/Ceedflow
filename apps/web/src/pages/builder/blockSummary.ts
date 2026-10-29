@@ -4,6 +4,8 @@ import {
   blockStatus,
   heldOpenPast,
   orderedBlocks,
+  reportForm,
+  sharedReport,
   type BrickStatus,
   type BrickWindow,
   type TrackWithPhases,
@@ -198,7 +200,7 @@ export function blockLine(block: Block, track?: TrackWithPhases): BlockLine {
         description: [
           'Meetings with a report',
           plural(c.interlocutors.length, 'interlocutor'),
-          plural(c.report.fields.length, 'question'),
+          sharedReport(c) ? 'one shared document' : plural(reportForm(c).fields.length, 'question'),
         ].join(' · '),
         date: c.opensAt ?? null,
         progress: null,

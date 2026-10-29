@@ -39,6 +39,9 @@ import {
   recurringDates,
   weeklyCells,
   prepLocked,
+  prepForm,
+  reportForm,
+  sharedReport,
   type FormPage,
   type WeeklyCell,
 } from '@ceed/shared';
@@ -429,7 +432,8 @@ export async function saveReport(
   const meeting = await getMeeting(id);
   if (!meeting) throw new HttpError(404, 'Meeting not found.');
   const block = await repo.getBlock(meeting.blockId);
-  const fields = ((block?.config as OneToOneConfig | undefined)?.report.fields ?? []) as FormField[];
+  const config = block?.config as OneToOneConfig | undefined;
+  const fields = (config ? reportForm(config).fields : []) as FormField[];
   /* Seules les questions du compte rendu s'enregistrent : une clé inventée
      par un client ne se glisse pas dans le rapport. */
   const kept = Object.fromEntries(Object.entries(answers).filter(([k]) => fields.some((f) => f.id === k)));
@@ -451,6 +455,14 @@ export async function saveReport(
       where id = $1`,
     [id, kept, by.id, by.name, submit],
   );
+  /* Un seul document : ce que l'interlocuteur y écrit est aussi ce que la
+     startup relit. */
+  if (config && sharedReport(config)) {
+    await all(
+      `update one_to_one_meetings set prep = $2::jsonb, prep_edited_at = now(), prep_edited_by_name = $3 where id = $1`,
+      [id, kept, by.name],
+    );
+  }
   return (await getMeeting(id))!;
 }
 
@@ -469,12 +481,13 @@ export async function savePrep(
   if (!meeting) throw new HttpError(404, 'Meeting not found.');
   const block = await repo.getBlock(meeting.blockId);
   const config = block?.config as OneToOneConfig | undefined;
-  if (!config?.prep.enabled) throw new HttpError(422, 'This brick asks for no preparation.');
+  const form = config ? prepForm(config) : null;
+  if (!config || !form) throw new HttpError(422, 'This brick asks for no preparation.');
   if (meeting.status === 'cancelled') throw new HttpError(403, 'This meeting was cancelled.');
   if (who.side === 'startup' && prepLocked(meeting, config.prep)) {
     throw new HttpError(403, 'The preparation is locked — it can be read, no longer changed.');
   }
-  const fields = config.prep.fields as FormField[];
+  const fields = form.fields as FormField[];
   const kept = Object.fromEntries(Object.entries(answers).filter(([k]) => fields.some((f) => f.id === k)));
   if (who.side === 'startup' && who.submit) {
     const missing = fields.filter((f) => f.required && blank(kept[f.id]));
@@ -494,6 +507,10 @@ export async function savePrep(
   return (await getMeeting(id))!;
 }
 
+/** Ce que la préparation dit déjà, pour les questions du compte rendu qui sont les siennes. */
+export const prefillFromPrep = (prep: Record<string, unknown>, fields: readonly { id: string }[]) =>
+  Object.fromEntries(fields.filter((f) => prep[f.id] !== undefined && prep[f.id] !== '').map((f) => [f.id, prep[f.id]]));
+
 /** The preparations a startup still owes: scheduled, not locked, not sent. */
 export async function prepsDueFor(candidateId: string): Promise<{ meeting: OneToOneMeeting; started: boolean }[]> {
   const meetings = await all<OneToOneMeeting>(
@@ -505,7 +522,7 @@ export async function prepsDueFor(candidateId: string): Promise<{ meeting: OneTo
   for (const m of meetings) {
     const block = await repo.getBlock(m.blockId);
     const config = block?.config as OneToOneConfig | undefined;
-    if (!config?.prep.enabled || !config.prep.fields.length || prepLocked(m, config.prep)) continue;
+    if (!config || !prepForm(config) || prepLocked(m, config.prep)) continue;
     out.push({ meeting: m, started: Object.keys(m.prep ?? {}).length > 0 });
   }
   return out;
@@ -597,8 +614,12 @@ export async function meetingFor(recordId: string, id: string): Promise<MyMeetin
   const profile = org ? forEcosystem(profileOf(org)) : null;
   return {
     ...meeting,
-    questions: { pages: formPages(config.report) },
-    prepQuestions: config.prep.enabled && config.prep.fields.length ? { pages: formPages(config.prep) } : null,
+    questions: { pages: formPages(reportForm(config)) },
+    /* Un seul document : pas de préparation à part, elle est le compte rendu. */
+    prepQuestions: prepForm(config) && !sharedReport(config) ? { pages: formPages(prepForm(config)!) } : null,
+    /* Un compte rendu encore vide part de ce que la startup a préparé — les
+       mêmes questions gardent les mêmes réponses, rien n'est à retaper. */
+    report: Object.keys(meeting.report).length ? meeting.report : prefillFromPrep(meeting.prep ?? {}, reportForm(config).fields),
     profile: profile && profileStarted(profile) ? profile : null,
     answers: candidate
       ? questions
@@ -692,9 +713,10 @@ export async function invitationFor(token: string): Promise<{ meeting: OneToOneM
       cadence: (ctx?.block.config as OneToOneConfig | undefined)?.cadence ?? 'single',
       prep: (() => {
         const c = ctx?.block.config as OneToOneConfig | undefined;
-        if (!c?.prep.enabled || !c.prep.fields.length || meeting.status === 'cancelled') return null;
+        const form = c ? prepForm(c) : null;
+        if (!c || !form || meeting.status === 'cancelled') return null;
         return {
-          pages: formPages(c.prep),
+          pages: formPages(form),
           answers: meeting.prep ?? {},
           locked: prepLocked(meeting, c.prep),
           submittedAt: meeting.prepSubmittedAt,
@@ -788,7 +810,7 @@ export async function tellMeeting(
         visio: m.meetingLink ? `Lien de la réunion : ${m.meetingLink}` : '',
         action,
         /* La préparation, quand la brique en demande une et que la séance a une heure. */
-        preparation: config.prep.enabled && config.prep.fields.length && m.heldOn && link ? `Préparez la séance ici : ${link}` : '',
+        preparation: prepForm(config) && m.heldOn && link ? `Préparez la séance ici : ${link}` : '',
         lien: link,
       };
       const posted = await post({

@@ -1690,6 +1690,13 @@ export const oneToOneConfigSchema = z.object({
   /** The report, as a form: one page or several. */
   report: z
     .object({
+      /**
+       * Le compte rendu est la préparation elle-même : un seul document, que
+       * la startup remplit puis ne touche plus, et que l'interlocuteur
+       * complète. Sinon il a ses propres questions — souvent celles de la
+       * préparation dupliquées, et pré-remplies de ce que la startup a écrit.
+       */
+      shared: z.boolean().default(false),
       layout: z.enum(['single', 'paged']).default('single'),
       pages: z.array(formPageSchema).default([]),
       fields: z.array(formFieldSchema).default([]),
@@ -1745,6 +1752,23 @@ export const oneToOneConfigSchema = z.object({
  */
 export const pairingOf = (config: { pairing?: 'all' | 'assigned'; mentors: Record<string, string[]> }): 'all' | 'assigned' =>
   config.pairing ?? (Object.values(config.mentors).some((ids) => ids.length > 0) ? 'assigned' : 'all');
+
+type FormShape = { layout: 'single' | 'paged'; pages: FormPage[]; fields: FormField[] };
+
+/** The startup's preparation questions, or null when the brick asks for none. */
+export function prepForm(config: { prep: { enabled: boolean } & FormShape }): FormShape | null {
+  if (!config.prep.enabled || !config.prep.fields.length) return null;
+  return { layout: config.prep.layout, pages: config.prep.pages, fields: config.prep.fields };
+}
+
+/** Whether the report is the preparation itself — one document for both. */
+export const sharedReport = (config: { prep: { enabled: boolean } & FormShape; report: { shared?: boolean } }): boolean =>
+  Boolean(config.report.shared && prepForm(config));
+
+/** The interlocutor's report questions: the preparation's when they share one document, its own otherwise. */
+export function reportForm(config: { prep: { enabled: boolean } & FormShape; report: { shared?: boolean } & FormShape }): FormShape {
+  return sharedReport(config) ? prepForm(config)! : { layout: config.report.layout, pages: config.report.pages, fields: config.report.fields };
+}
 
 export const blockConfigSchemas = {
   sourcing: sourcingConfigSchema,
@@ -1837,7 +1861,7 @@ export function blockConfigured(
     case 'one_to_one': {
       /* Quelqu'un à rencontrer, et de quoi écrire un compte rendu. */
       const c = block.config as OneToOneConfig;
-      return c.interlocutors.length > 0 && c.report.fields.length > 0;
+      return c.interlocutors.length > 0 && reportForm(c).fields.length > 0;
     }
     default:
       return true;

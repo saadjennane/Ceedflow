@@ -26,6 +26,9 @@ import {
   type PersonRef,
   type QuestionSummary,
   WEEKDAY_LABEL,
+  prepForm,
+  reportForm,
+  sharedReport,
   recurringDates,
   weekdayOf,
 } from '@ceed/shared';
@@ -108,7 +111,7 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
   const name = (id: string | null) => interlocutors.find((p) => p.id === id)?.name ?? '';
   const live = meetings.filter((m) => m.status !== 'cancelled');
 
-  if (!config.interlocutors.length || !config.report.fields.length) {
+  if (!config.interlocutors.length || !reportForm(config).fields.length) {
     return (
       <div className="empty" style={{ padding: 26 }}>
         <h3>{config.interlocutors.length ? 'The report has no question yet' : 'Nobody to meet yet'}</h3>
@@ -1012,12 +1015,19 @@ function MeetingDrawer({
      sa journée ou la brique. */
   const [place, setPlace] = useState(meeting.location ?? '');
   const [videoLink, setVideoLink] = useState(meeting.meetingLink ?? '');
-  const [answers, setAnswers] = useState<Record<string, unknown>>(meeting.report);
+  /* Un compte rendu encore vide part de ce que la startup a préparé. */
+  const [answers, setAnswers] = useState<Record<string, unknown>>(() =>
+    Object.keys(meeting.report).length
+      ? meeting.report
+      : Object.fromEntries(
+          reportForm(data.config).fields.filter((f) => (meeting.prep ?? {})[f.id] !== undefined).map((f) => [f.id, meeting.prep[f.id]]),
+        ),
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState(false);
   const toast = useToast();
-  const pages = formPages(data.config.report);
+  const pages = formPages(reportForm(data.config));
   const state = STATE_BADGE[meetingState(meeting)];
   const link = `${window.location.origin}/meet/${meeting.token}`;
 
@@ -1281,7 +1291,8 @@ function MeetingDrawer({
         {/* Le compte rendu, que CEED peut écrire à la place de l'interlocuteur
             — dicté au téléphone, ou repris d'une note. */}
         {/* La préparation de la startup, que CEED peut corriger ou compléter. */}
-        {data.config.prep.enabled && data.config.prep.fields.length > 0 && (
+        {/* Un seul document : la préparation est le compte rendu, montré une fois, plus bas. */}
+        {prepForm(data.config) && !sharedReport(data.config) && (
           <>
             <h3 className="section-title" style={{ marginTop: 6 }}>
               Preparation{' '}
@@ -1292,7 +1303,7 @@ function MeetingDrawer({
             </h3>
             <PrepForm
               key={meeting.prepEditedAt ?? meeting.prepSubmittedAt ?? 'prep'}
-              pages={formPages(data.config.prep)}
+              pages={formPages(prepForm(data.config)!)}
               answers={meeting.prep ?? {}}
               readOnly={false}
               saveLabel="Save the preparation"
@@ -1364,14 +1375,17 @@ function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void })
   /* Le compte rendu final a deux parties : la préparation de la startup, puis
      le compte rendu de l'interlocuteur. Le reporting lit les deux, la
      préparation sous son propre nom. */
-  const prepFields: FormField[] = data.config.prep.enabled
-    ? data.config.prep.fields.map((f) => ({ ...f, id: `prep:${f.id}`, label: `Preparation — ${f.label}` }))
-    : [];
-  const fields = [...prepFields, ...data.config.report.fields];
-  const whole = (m: OneToOneMeeting): Record<string, unknown> => ({
-    ...Object.fromEntries(Object.entries(m.prep ?? {}).map(([k, v]) => [`prep:${k}`, v])),
-    ...m.report,
-  });
+  /* Un seul document partagé : il se lit une fois. Deux versions : la
+     préparation de la startup, sous son propre nom, puis le compte rendu. */
+  const shared = sharedReport(data.config);
+  const prepFields: FormField[] = shared
+    ? []
+    : (prepForm(data.config)?.fields ?? []).map((f) => ({ ...f, id: `prep:${f.id}`, label: `Preparation — ${f.label}` }));
+  const fields = [...prepFields, ...reportForm(data.config).fields];
+  const whole = (m: OneToOneMeeting): Record<string, unknown> =>
+    shared
+      ? Object.keys(m.report).length ? m.report : (m.prep ?? {})
+      : { ...Object.fromEntries(Object.entries(m.prep ?? {}).map(([k, v]) => [`prep:${k}`, v])), ...m.report };
 
   /* Les comptes rendus envoyés : un brouillon n'est pas encore une réponse. */
   const sent = useMemo(

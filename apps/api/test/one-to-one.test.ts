@@ -316,6 +316,41 @@ describe('a One to One', { skip: skipWithoutServer }, () => {
     assert.deepEqual(await sendOneToOneReminders(new Date('2030-05-12T03:00:00Z')), { eve: 0, late: 0 }, 'nothing before the morning');
   });
 
+  const PREP = [{ id: 'topics', label: 'Topics', type: 'long_text', required: false, options: [], help: '' }];
+
+  it('shares one document: the startup prepares it, the interlocutor completes it, both read it', async () => {
+    const { block, mentor, a } = await setUp();
+    const config = (await repo.getBlock(block.id))!.config as { report: object };
+    await repo.updateBlock(block.id, { config: { ...config, prep: { enabled: true, fields: PREP }, report: { ...config.report, shared: true } } });
+    const [m] = await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, invite: 'none', heldOn: '2030-11-11', startTime: '10:00' });
+    await savePrep(m!.id, { topics: 'Pricing' }, { side: 'startup', name: 'Atlas' });
+
+    const detail = (await meetingFor(mentor.id, m!.id))!;
+    assert.equal(detail.prepQuestions, null, 'no separate preparation: it is the report');
+    assert.deepEqual(detail.questions.pages.flatMap((p) => p.fields).map((f) => f.id), ['topics']);
+    assert.deepEqual(detail.report, { topics: 'Pricing' }, 'the document opens with what the startup wrote');
+
+    await saveReport(m!.id, { topics: 'Pricing, then hiring' }, true, { id: mentor.id, name: 'Nadia' });
+    const page = (await invitationFor(m!.token))!.page;
+    assert.deepEqual(page.prep!.answers, { topics: 'Pricing, then hiring' }, 'the startup reads the same document');
+  });
+
+  it('keeps a report of its own, opening on what the startup prepared', async () => {
+    const { block, mentor, a } = await setUp();
+    const config = (await repo.getBlock(block.id))!.config as { report: { fields: object[] } };
+    await repo.updateBlock(block.id, {
+      config: { ...config, prep: { enabled: true, fields: PREP }, report: { ...config.report, shared: false, fields: [...PREP, ...config.report.fields] } },
+    });
+    const [m] = await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, invite: 'none', heldOn: '2030-11-12', startTime: '10:00' });
+    await savePrep(m!.id, { topics: 'Pricing' }, { side: 'startup', name: 'Atlas' });
+    const detail = (await meetingFor(mentor.id, m!.id))!;
+    assert.ok(detail.prepQuestions, 'the preparation stays its own');
+    assert.equal(detail.report.topics, 'Pricing', 'the duplicated question opens filled');
+    await saveReport(m!.id, { topics: 'Mentor version' }, false, { id: mentor.id, name: 'Nadia' });
+    const page = (await invitationFor(m!.token))!.page;
+    assert.deepEqual(page.prep!.answers, { topics: 'Pricing' }, 'two versions: the startup keeps its own');
+  });
+
   it('asks again when a proposed time moves', async () => {
     const { block, mentor, a } = await setUp();
     const [m] = await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, invite: 'confirm', heldOn: '2026-11-04', startTime: '11:00' });
