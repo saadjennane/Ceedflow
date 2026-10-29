@@ -54,7 +54,21 @@ export function PreparePage() {
     return (
       <div className="member-shell">
         <div className="member-body">
-          <div className="empty">{page.error ?? 'Not found.'}</div>
+          <div className="empty stack" style={{ gap: 10, alignItems: 'center' }}>
+            <span>{page.error ?? 'Not found.'}</span>
+            {/* Connectée sous un autre compte : en changer, et revenir ici. */}
+            {page.error?.includes('not part of') && (
+              <button
+                className="btn primary sm"
+                onClick={async () => {
+                  await api.post('/api/auth/logout');
+                  navigate(`/login?next=${encodeURIComponent(`/prepare/${meetingId}`)}`);
+                }}
+              >
+                Sign in with another account
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );

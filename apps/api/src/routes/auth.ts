@@ -34,7 +34,7 @@ import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { changeItem, changeTask, getTask, listTasks } from '../services/tasks.js';
 import { addOrgDocument, changeOrgDocument, saveNeed } from '../services/orgSheet.js';
-import { meetingFor, meetingsFor, prepFor, savePrep, saveReport } from '../services/oneToOne.js';
+import { getMeeting, meetingFor, meetingsFor, prepFor, savePrep, saveReport } from '../services/oneToOne.js';
 import { agendaFor } from '../services/agenda.js';
 import { memberActions } from '../services/memberActions.js';
 import { deliverablesFor } from '../services/deliverables.js';
@@ -572,7 +572,17 @@ export async function authRoutes(app: FastifyInstance) {
   app.get('/api/me/prepare/:id', async (req, reply) => {
     const account = await require(req);
     const { id } = req.params as { id: string };
-    return (await prepFor(account.recordId, id)) ?? notFound(reply, 'Meeting not found.');
+    const page = await prepFor(account.recordId, id);
+    if (page) return page;
+    /* Le rendez-vous existe, mais pas pour ce compte : le plus souvent, le
+       navigateur est resté connecté sous un autre compte. Le dire. */
+    const meeting = await getMeeting(id);
+    if (!meeting) return notFound(reply, 'Meeting not found.');
+    throw new HttpError(
+      403,
+      `You are signed in as ${account.email}, who is not part of ${meeting.orgName}. Sign in with ${meeting.orgName}’s account to prepare this session.`,
+      { otherAccount: 'true' },
+    );
   });
 
   app.put('/api/me/prepare/:id', async (req, reply) => {
