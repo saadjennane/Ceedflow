@@ -295,7 +295,7 @@ export const BRICK_STATUSES = ['not_configured', 'scheduled', 'live', 'closed'] 
 export type BrickStatus = (typeof BRICK_STATUSES)[number];
 
 export const BRICK_STATUS_LABEL: Record<BrickStatus, string> = {
-  not_configured: 'Not configured',
+  not_configured: 'Not set up yet',
   scheduled: 'Scheduled',
   live: 'Live',
   closed: 'Closed',

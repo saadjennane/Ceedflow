@@ -24,10 +24,40 @@ import { formatDate, todayIso } from '../../lib/format';
  * still taking input, what is merely shut, and what somebody has called done —
  * which is how a form nobody remembered to close makes itself visible.
  */
-const statusChip = (status: BrickStatus) => ({
-  label: BRICK_STATUS_LABEL[status],
-  tone: BRICK_STATUS_TONE[status] as 'ok' | 'info' | 'warn' | '',
-});
+const statusChip = (status: BrickStatus, block?: Block) =>
+  status === 'not_configured' && block ? unsetChip(block) : {
+    label: BRICK_STATUS_LABEL[status],
+    tone: BRICK_STATUS_TONE[status] as 'ok' | 'info' | 'warn' | '',
+  };
+
+/**
+ * Ce qu'une brique pas encore en place laisse dans le parcours — dit sans
+ * alarme, sauf quand elle bloque vraiment. Seule une sélection fait barrage :
+ * une évaluation sans grille se remplit de statuts posés à la main, un comité
+ * sans séance est traversé, et rien de cela n'arrête personne. Un formulaire
+ * sans question, lui, ne peut pas s'ouvrir.
+ */
+function unsetChip(block: Block): { label: string; tone: 'ok' | 'info' | 'warn' | '' } {
+  switch (block.type) {
+    case 'application':
+      return { label: 'Add a question — the form cannot open', tone: 'warn' };
+    case 'evaluation':
+      return (block.config as EvaluationConfig).method === 'verdict'
+        ? { label: 'Name a status', tone: '' }
+        : { label: 'Statuses by hand', tone: 'info' };
+    case 'committee':
+      return { label: 'No sitting — skipped', tone: '' };
+    case 'deliverable':
+      return { label: 'Nothing asked yet', tone: '' };
+    case 'one_to_one':
+      return {
+        label: (block.config as OneToOneConfig).interlocutors.length ? 'Add a report question' : 'Name an interlocutor',
+        tone: '',
+      };
+    default:
+      return { label: 'Not set up yet', tone: '' };
+  }
+}
 
 export type Progress = 'Completed' | 'In progress' | 'Upcoming' | null;
 
@@ -92,7 +122,7 @@ export function blockLine(block: Block, track?: TrackWithPhases): BlockLine {
     }
     case 'application': {
       const c = block.config as ApplicationConfig;
-      chips.push(statusChip(blockStatus(block)));
+      chips.push(statusChip(blockStatus(block), block));
       return {
         description: `Collect applications through a form · ${
           c.fields.length ? plural(c.fields.length, 'question') : 'no question yet'
@@ -112,7 +142,7 @@ export function blockLine(block: Block, track?: TrackWithPhases): BlockLine {
           : ['Score candidates against a grid'];
       if (c.method === 'score' && c.criteria.length) bits.push(`${c.criteria.length} criteria`);
       const status = blockStatus(block);
-      chips.push(statusChip(status));
+      chips.push(statusChip(status, block));
       // An evaluation has no jury of its own: it borrows the one sitting on the
       // committee it scores. Said here because "6 criteria" tells you what is
       // being judged and nothing about how many people will judge it.
@@ -137,7 +167,7 @@ export function blockLine(block: Block, track?: TrackWithPhases): BlockLine {
       if (sittings) bits.push(block.jurors ? plural(block.jurors, 'juror') : 'nobody on them yet');
       if (c.rsvpMode === 'slots') bits.push('startups pick their time');
       else if (c.rsvpMode === 'confirm') bits.push('startups confirm');
-      chips.push(statusChip(blockStatus(block, 'main', sittings)));
+      chips.push(statusChip(blockStatus(block, 'main', sittings), block));
       return { description: bits.join(' · '), date: block.nextSittingOn ?? null, progress: null, chips };
     }
     case 'selection': {
@@ -151,7 +181,15 @@ export function blockLine(block: Block, track?: TrackWithPhases): BlockLine {
         description: `Outputs ${c.outputKind === 'cohort' ? 'the selected cohort' : 'a shortlist'} · ${method}`,
         date: c.publishedAt ? c.publishedAt.slice(0, 10) : null,
         progress: c.publishedAt ? 'Completed' : null,
-        chips: c.publishedAt ? chips : [...chips, { label: 'Not published', tone: 'warn' as const }],
+        /* La seule brique qui fait barrage : sans statut qui passe, personne ne
+           va plus loin — c'est là, et là seulement, qu'un manque se signale.
+           Ne pas avoir annoncé les résultats n'arrête personne : le parcours
+           lit la règle, pas l'annonce. */
+        chips: [
+          ...chips,
+          ...(c.passOutcomeIds.length ? [] : [{ label: 'Passes nobody yet', tone: 'warn' as const }]),
+          ...(c.publishedAt ? [] : [{ label: 'Not announced', tone: '' as const }]),
+        ],
       };
     }
     case 'one_to_one': {
