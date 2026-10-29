@@ -49,6 +49,9 @@ const DOOR_LABEL: Partial<Record<string, string>> = {
   one_to_one: 'the meetings, for the interlocutors',
 };
 
+/** What opens or closes a door — the only part of a brick saved the moment it changes. */
+const DOOR_KEYS = ['visibility', 'visibilitySetAt', 'openedAt'];
+
 export function BlockDrawer({
   block,
   track,
@@ -95,7 +98,42 @@ export function BlockDrawer({
     [name, draft, block],
   );
 
-  const patch = (partial: Record<string, unknown>) => setDraft((d) => ({ ...d, ...partial }));
+  /**
+   * Ouvrir ou fermer une porte prend effet tout de suite, sans « Save
+   * changes » : un interrupteur qu'on bascule et qui n'agit qu'au bouton
+   * suivant, c'est une brique qu'on croit ouverte et qui ne l'est pas. Le
+   * reste du brouillon, lui, attend toujours le bouton.
+   */
+  const persistDoor = async (config: Record<string, unknown>) => {
+    try {
+      await api.patch(`/api/blocks/${block.id}`, { config });
+      onChanged();
+      const visibility = config.visibility ?? (config.rsvp as { visibility?: string } | undefined)?.visibility;
+      toast(
+        visibility === 'open' ? 'Open now — saved.' : visibility === 'closed' ? 'Closed now — saved.' : 'Following its dates — saved.',
+      );
+    } catch (err) {
+      toast((err as Error).message, true);
+    }
+  };
+  const patch = (partial: Record<string, unknown>) => {
+    const keys = Object.keys(partial);
+    const saved = block.config as Record<string, unknown>;
+    if (keys.length && keys.every((k) => DOOR_KEYS.includes(k))) {
+      void persistDoor(partial);
+    } else if (keys.length === 1 && keys[0] === 'rsvp') {
+      /* La porte des créneaux d'un comité : seulement ce qui l'ouvre ou la
+         ferme part tout de suite — une date de réponse modifiée attend le bouton. */
+      const next = partial.rsvp as Record<string, unknown>;
+      const prev = (draft.rsvp ?? {}) as Record<string, unknown>;
+      const changed = Object.keys(next).filter((k) => next[k] !== prev[k]);
+      if (changed.length && changed.every((k) => DOOR_KEYS.includes(k))) {
+        const door = Object.fromEntries(changed.map((k) => [k, next[k]]));
+        void persistDoor({ rsvp: { ...((saved.rsvp ?? {}) as object), ...door } });
+      }
+    }
+    setDraft((d) => ({ ...d, ...partial }));
+  };
 
   const save = async () => {
     setSaving(true);
@@ -242,6 +280,57 @@ export function BlockDrawer({
           </>
         }
       >
+        {/* Deux portes sur un comité : la liste des jurés, et la page où les
+            startups prennent leur créneau. La seconde s'oublie facilement —
+            dite ici, dès qu'on ouvre la brique. */}
+        {block.type === 'committee' && (() => {
+          const c = draft as unknown as CommitteeConfig;
+          if (c.format !== 'event' || c.rsvpMode === 'none') return null;
+          const facts = { type: block.type, config: draft, nextSittingOn: block.nextSittingOn };
+          const main = blockStatus(facts, 'main', block.sittings ?? 0);
+          const rsvp = blockStatus(facts, 'rsvp', block.sittings ?? 0);
+          if (rsvp === 'live') return null;
+          return (
+            <div className={main === 'live' ? 'callout warn' : 'callout'}>
+              <Icon name="alert" size={15} />
+              <div style={{ flex: 1 }}>
+                {main === 'live' ? (
+                  <>
+                    <strong>The jurors see their list, but the startups cannot pick their slot yet.</strong> The
+                    booking page is a separate switch — it is {rsvp === 'scheduled' ? 'scheduled, not open yet' : 'closed'}.
+                  </>
+                ) : (
+                  <>
+                    Two switches here: the block (what the jurors see) and the booking page (where startups{' '}
+                    {c.rsvpMode === 'slots' ? 'pick their slot' : 'confirm their time'}). The booking page is not open.
+                  </>
+                )}
+                <div className="row" style={{ gap: 6, marginTop: 7 }}>
+                  {(block.sittings ?? 0) > 0 && (
+                    <button
+                      className="btn sm primary"
+                      onClick={() =>
+                        patch({
+                          rsvp: {
+                            ...((draft.rsvp ?? {}) as object),
+                            visibility: 'open',
+                            visibilitySetAt: new Date().toISOString().slice(0, 10),
+                          },
+                        })
+                      }
+                    >
+                      Open the booking page now
+                    </button>
+                  )}
+                  <button className="btn sm" onClick={() => setCommTab('Invitations')}>
+                    See Invitations
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {workTab && workTab.tab !== currentTab && appTab === 'Overview' && evalTab === 'Overview' && committeeTab === 'Overview' && srcTab === 'Channels' && (
           <div className="callout">
             <Icon name="arrowRight" size={15} />
