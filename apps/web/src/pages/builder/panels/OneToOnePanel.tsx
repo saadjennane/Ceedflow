@@ -172,6 +172,54 @@ export function OneToOneSetup({
           emptyText="No question yet. A topic discussed, the next steps, how the startup is doing — add what you want to follow."
           firstPageName="The meeting"
         />
+
+        {/* La préparation : ce que la startup écrit avant, que l'interlocuteur
+            lit et corrige — la première moitié du compte rendu final. */}
+        <h3 className="section-title" style={{ marginTop: 18 }}>Preparation by the startup</h3>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={config.prep.enabled}
+            onChange={(e) => patch({ prep: { ...config.prep, enabled: e.target.checked } })}
+          />
+          <span>The startup prepares each session — it answers these questions beforehand</span>
+        </label>
+        {config.prep.enabled && (
+          <>
+            <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+              The startup answers from its link and its Home. The interlocutor reads it before the session and can correct
+              or complete it; the startup sees the corrected version. Together with the interlocutor’s report, it makes
+              the final record of the meeting.
+            </p>
+            <QuestionsEditor
+              value={config.prep}
+              onChange={(partial) => patch({ prep: { ...config.prep, ...partial } })}
+              emptyText="No question yet. The topics to cover, progress since last time, what blocks them — add what you want them to prepare."
+              firstPageName="Preparation"
+            />
+            <div className="grid-2">
+              <NumberField
+                label="Lock it automatically, hours before the session"
+                value={config.prep.lockHoursBefore ?? 0}
+                min={0}
+                max={720}
+                onChange={(v) => patch({ prep: { ...config.prep, lockHoursBefore: v ? Math.max(0, v) : null } })}
+                help="Empty or 0: it stays open until the session starts."
+              />
+              <div className="field">
+                <label>Lock now</label>
+                <label className="check" style={{ marginTop: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={config.prep.locked}
+                    onChange={(e) => patch({ prep: { ...config.prep, locked: e.target.checked } })}
+                  />
+                  <span>Startups can no longer change their preparations</span>
+                </label>
+              </div>
+            </div>
+          </>
+        )}
       </>
     );
   }

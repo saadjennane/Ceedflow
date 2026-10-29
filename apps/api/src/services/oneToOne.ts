@@ -38,6 +38,8 @@ import {
   pairingOf,
   recurringDates,
   weeklyCells,
+  prepLocked,
+  type FormPage,
   type WeeklyCell,
 } from '@ceed/shared';
 import { accessFor } from './invitations.js';
@@ -58,6 +60,8 @@ const COLS = `
   m.held_on::text as "heldOn", m.start_time as "startTime", m.duration_minutes as "durationMinutes",
   m.location, m.meeting_link as "meetingLink", m.invite, m.token, m.rsvp_state as "rsvpState", m.rsvp_note as "rsvpNote", m.responded_at::text as "respondedAt",
   m.status, m.report, m.report_submitted_at::text as "reportSubmittedAt", m.report_by_name as "reportByName",
+  m.prep, m.prep_submitted_at::text as "prepSubmittedAt", m.prep_edited_at::text as "prepEditedAt",
+  m.prep_edited_by_name as "prepEditedByName",
   m.created_at::text as "createdAt",
   m.told_startup_at::text as "toldStartupAt", m.told_person_at::text as "toldPersonAt"
   from one_to_one_meetings m
@@ -450,6 +454,63 @@ export async function saveReport(
   return (await getMeeting(id))!;
 }
 
+/**
+ * La préparation d'une séance. La startup l'écrit tant qu'elle n'est pas
+ * verrouillée ; l'interlocuteur et CEED la corrigent toujours — et la
+ * startup relit leur version. Seules les questions de la préparation
+ * s'enregistrent.
+ */
+export async function savePrep(
+  id: string,
+  answers: Record<string, unknown>,
+  who: { side: 'startup' | 'team'; name: string; submit?: boolean },
+): Promise<OneToOneMeeting> {
+  const meeting = await getMeeting(id);
+  if (!meeting) throw new HttpError(404, 'Meeting not found.');
+  const block = await repo.getBlock(meeting.blockId);
+  const config = block?.config as OneToOneConfig | undefined;
+  if (!config?.prep.enabled) throw new HttpError(422, 'This brick asks for no preparation.');
+  if (meeting.status === 'cancelled') throw new HttpError(403, 'This meeting was cancelled.');
+  if (who.side === 'startup' && prepLocked(meeting, config.prep)) {
+    throw new HttpError(403, 'The preparation is locked — it can be read, no longer changed.');
+  }
+  const fields = config.prep.fields as FormField[];
+  const kept = Object.fromEntries(Object.entries(answers).filter(([k]) => fields.some((f) => f.id === k)));
+  if (who.side === 'startup' && who.submit) {
+    const missing = fields.filter((f) => f.required && blank(kept[f.id]));
+    if (missing.length) {
+      throw new HttpError(422, 'Some answers are missing.', Object.fromEntries(missing.map((f) => [`answers.${f.id}`, 'This answer is required.'])));
+    }
+  }
+  await all(
+    `update one_to_one_meetings
+        set prep = $2::jsonb,
+            prep_submitted_at = case when $3 then coalesce(prep_submitted_at, now()) else prep_submitted_at end,
+            prep_edited_at = case when $4 then now() else prep_edited_at end,
+            prep_edited_by_name = case when $4 then $5 else prep_edited_by_name end
+      where id = $1`,
+    [id, kept, who.side === 'startup' && Boolean(who.submit), who.side === 'team', who.name],
+  );
+  return (await getMeeting(id))!;
+}
+
+/** The preparations a startup still owes: scheduled, not locked, not sent. */
+export async function prepsDueFor(candidateId: string): Promise<{ meeting: OneToOneMeeting; started: boolean }[]> {
+  const meetings = await all<OneToOneMeeting>(
+    `select ${COLS} where m.candidate_id = $1 and m.status = 'planned' and m.held_on >= current_date
+       and m.prep_submitted_at is null ${ORDER}`,
+    [candidateId],
+  );
+  const out: { meeting: OneToOneMeeting; started: boolean }[] = [];
+  for (const m of meetings) {
+    const block = await repo.getBlock(m.blockId);
+    const config = block?.config as OneToOneConfig | undefined;
+    if (!config?.prep.enabled || !config.prep.fields.length || prepLocked(m, config.prep)) continue;
+    out.push({ meeting: m, started: Object.keys(m.prep ?? {}).length > 0 });
+  }
+  return out;
+}
+
 /* ------------------------------------------------------------------ */
 /* The interlocutor's side                                             */
 /* ------------------------------------------------------------------ */
@@ -464,6 +525,8 @@ export interface MyMeeting extends OneToOneMeeting {
 
 export interface MyMeetingDetail extends MyMeeting {
   questions: { pages: ReturnType<typeof formPages> };
+  /** The startup's preparation questions, when the brick asks for one. */
+  prepQuestions: { pages: ReturnType<typeof formPages> } | null;
   /** The startup as the ecosystem reads it — never how to reach it. */
   profile: OrgProfile | null;
   answers: { label: string; value: unknown; type: string }[];
@@ -535,6 +598,7 @@ export async function meetingFor(recordId: string, id: string): Promise<MyMeetin
   return {
     ...meeting,
     questions: { pages: formPages(config.report) },
+    prepQuestions: config.prep.enabled && config.prep.fields.length ? { pages: formPages(config.prep) } : null,
     profile: profile && profileStarted(profile) ? profile : null,
     answers: candidate
       ? questions
@@ -563,6 +627,14 @@ export interface MeetingInvitation {
   rsvpNote: string;
   meetingLink: string;
   cadence: 'single' | 'recurring';
+  /** The startup's preparation, when the brick asks for one. */
+  prep: {
+    pages: { page: FormPage; fields: FormField[] }[];
+    answers: Record<string, unknown>;
+    locked: boolean;
+    submittedAt: string | null;
+    editedByName: string;
+  } | null;
   /** For a regular follow-up: the weekly slots it may take for the whole series. */
   weekly: (WeeklyCell & { personName: string })[];
   /** The day after which the link takes no answer, and whether it has passed. */
@@ -618,6 +690,17 @@ export async function invitationFor(token: string): Promise<{ meeting: OneToOneM
       status: meeting.status,
       open,
       cadence: (ctx?.block.config as OneToOneConfig | undefined)?.cadence ?? 'single',
+      prep: (() => {
+        const c = ctx?.block.config as OneToOneConfig | undefined;
+        if (!c?.prep.enabled || !c.prep.fields.length || meeting.status === 'cancelled') return null;
+        return {
+          pages: formPages(c.prep),
+          answers: meeting.prep ?? {},
+          locked: prepLocked(meeting, c.prep),
+          submittedAt: meeting.prepSubmittedAt,
+          editedByName: meeting.prepEditedAt ? meeting.prepEditedByName : '',
+        };
+      })(),
       slots:
         open && meeting.invite === 'slots' && (ctx?.block.config as OneToOneConfig | undefined)?.cadence !== 'recurring'
           ? await slotsFor(meeting)
@@ -702,6 +785,8 @@ export async function tellMeeting(
         lieu,
         visio: m.meetingLink ? `Lien de la réunion : ${m.meetingLink}` : '',
         action,
+        /* La préparation, quand la brique en demande une et que la séance a une heure. */
+        preparation: config.prep.enabled && config.prep.fields.length && m.heldOn && link ? `Préparez la séance ici : ${link}` : '',
         lien: link,
       };
       const posted = await post({

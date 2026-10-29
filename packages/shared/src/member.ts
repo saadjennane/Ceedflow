@@ -11,7 +11,7 @@ export type ActionRole = 'startup' | 'jury' | 'mentor' | 'member';
 export interface MemberAction {
   /** Stable across reloads: the kind and the object it is about. */
   id: string;
-  kind: 'task' | 'deliverable' | 'profile' | 'review' | 'report' | 'answer_committee' | 'answer_meeting';
+  kind: 'task' | 'deliverable' | 'profile' | 'review' | 'report' | 'answer_committee' | 'answer_meeting' | 'prepare';
   role: ActionRole;
   status: ActionStatus;
   dueOn: string | null;

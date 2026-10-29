@@ -27,6 +27,7 @@ import {
   planMeetings,
   saveReport,
   bookWeekly,
+  savePrep,
 } from '../services/oneToOne.js';
 import { workspaceGuard } from './guard.js';
 import { HttpError, notFound, parse } from './util.js';
@@ -124,6 +125,14 @@ export async function oneToOneRoutes(app: FastifyInstance) {
     const { answers, submit } = parse(reportInput, req.body);
     return saveReport(id, answers, submit, await actor(req));
   });
+
+  /** La préparation de la startup, corrigée ou complétée par CEED. */
+  app.put('/api/meetings/:id/prep', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!(await getMeeting(id))) return notFound(reply, 'Meeting not found.');
+    const { answers } = parse(reportInput, req.body);
+    return savePrep(id, answers, { side: 'team', name: (await actor(req)).name });
+  });
 }
 
 /**
@@ -134,6 +143,16 @@ export async function oneToOnePublicRoutes(app: FastifyInstance) {
   app.get('/api/public/meet/:token', async (req, reply) => {
     const { token } = req.params as { token: string };
     return (await invitationFor(token))?.page ?? notFound(reply, 'This invitation does not exist.');
+  });
+
+  /** La startup prépare sa séance, par son lien — tant que ce n'est pas verrouillé. */
+  app.put('/api/public/meet/:token/prep', async (req, reply) => {
+    const { token } = req.params as { token: string };
+    const found = await invitationFor(token);
+    if (!found) return notFound(reply, 'This invitation does not exist.');
+    const { answers, submit } = parse(reportInput, req.body);
+    await savePrep(found.meeting.id, answers, { side: 'startup', name: found.meeting.orgName, submit });
+    return (await invitationFor(token))!.page;
   });
 
   app.post('/api/public/meet/:token', async (req) => {

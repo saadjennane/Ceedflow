@@ -8,7 +8,7 @@
  */
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { freeCells, mentorsOf, recurringDates, recurrenceSchema, seriesDates, summarise, weeklyCells, type FormField, type OneToOneDay } from '@ceed/shared';
+import { freeCells, mentorsOf, prepLocked, recurringDates, recurrenceSchema, seriesDates, summarise, weeklyCells, type FormField, type OneToOneDay } from '@ceed/shared';
 import { all } from '../src/db/client.js';
 import { letters } from '../src/services/mail.js';
 import { agendaFor } from '../src/services/agenda.js';
@@ -16,7 +16,7 @@ import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
 import {
-  answerInvitation, bookSlot, bookWeekly, cancelFollowing, changeMeeting, createDay, historyOf, informAll, invitationFor, meetingFor,
+  answerInvitation, bookSlot, bookWeekly, prepsDueFor, savePrep, cancelFollowing, changeMeeting, createDay, historyOf, informAll, invitationFor, meetingFor,
   meetingsFor, oneToOneView, planMeetings, saveReport, tellMeeting, updateDay,
 } from '../src/services/oneToOne.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
@@ -95,6 +95,18 @@ describe('a regular follow-up’s calendar', () => {
     assert.equal(cells[0]!.firstOn, '2030-01-07', 'the first Monday of the period');
     const busy = weeklyCells(rec, 30, [{ personId: 'nadia', heldOn: '2030-01-28', startTime: '09:00' }], null, '2030-01-01');
     assert.deepEqual(busy.map((c) => c.startTime), ['09:30'], 'one clash on one date, and 09:00 is not offered');
+  });
+});
+
+describe('a preparation’s lock', () => {
+  const at = new Date('2030-03-03T08:00:00');
+  const meeting = { heldOn: '2030-03-03', startTime: '10:00', status: 'planned' as const };
+  it('locks by hand, at the set hours before, or once the session has begun', () => {
+    assert.equal(prepLocked(meeting, { locked: true, lockHoursBefore: null }, at), true);
+    assert.equal(prepLocked(meeting, { locked: false, lockHoursBefore: null }, at), false, 'open until the session starts');
+    assert.equal(prepLocked(meeting, { locked: false, lockHoursBefore: 3 }, at), true, 'two hours before, a 3-hour lock has closed it');
+    assert.equal(prepLocked(meeting, { locked: false, lockHoursBefore: 1 }, at), false);
+    assert.equal(prepLocked({ ...meeting, status: 'held' }, { locked: false, lockHoursBefore: null }, at), true);
   });
 });
 
@@ -253,6 +265,31 @@ describe('a One to One', { skip: skipWithoutServer }, () => {
     await answerInvitation(made[0]!.token, true);
     const after = (await oneToOneView(block.id))!.meetings.filter((m) => m.seriesId === made[0]!.seriesId);
     assert.ok(after.every((m) => m.rsvpState === 'confirmed'), 'every session follows the first answer');
+  });
+
+  it('lets the startup prepare, the interlocutor correct it, and shows the startup the corrected version — read-only once locked', async () => {
+    const { block, mentor, a } = await setUp();
+    const config = (await repo.getBlock(block.id))!.config as object;
+    await repo.updateBlock(block.id, {
+      config: { ...config, prep: { enabled: true, fields: [{ id: 'topics', label: 'Topics', type: 'long_text', required: true, options: [], help: '' }] } },
+    });
+    const [m] = await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, invite: 'none', heldOn: '2030-10-10', startTime: '10:00' });
+    assert.equal((await prepsDueFor(a.id)).length, 1, 'owed by the startup');
+
+    await assert.rejects(savePrep(m!.id, {}, { side: 'startup', name: 'Atlas', submit: true }), /missing/);
+    await savePrep(m!.id, { topics: 'Pricing', invented: 'x' }, { side: 'startup', name: 'Atlas', submit: true });
+    assert.equal((await prepsDueFor(a.id)).length, 0, 'sent, no longer owed');
+
+    await savePrep(m!.id, { topics: 'Pricing, and hiring' }, { side: 'team', name: 'Nadia' });
+    const page = (await invitationFor(m!.token))!.page;
+    assert.deepEqual(page.prep!.answers, { topics: 'Pricing, and hiring' }, 'the startup reads the corrected version');
+    assert.equal(page.prep!.editedByName, 'Nadia');
+
+    const now = (await repo.getBlock(block.id))!.config as { prep: object };
+    await repo.updateBlock(block.id, { config: { ...now, prep: { ...now.prep, locked: true } } });
+    assert.equal((await invitationFor(m!.token))!.page.prep!.locked, true);
+    await assert.rejects(savePrep(m!.id, { topics: 'late change' }, { side: 'startup', name: 'Atlas' }), /locked/);
+    await savePrep(m!.id, { topics: 'Final' }, { side: 'team', name: 'Nadia' });
   });
 
   it('asks again when a proposed time moves', async () => {

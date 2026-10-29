@@ -45,6 +45,11 @@ export interface OneToOneMeeting {
   /** Ce que la startup a dit en refusant — facultatif, vide sinon. */
   rsvpNote: string;
   status: MeetingStatus;
+  /** La préparation de la startup, telle que l'interlocuteur l'a peut-être corrigée. */
+  prep: Record<string, unknown>;
+  prepSubmittedAt: string | null;
+  prepEditedAt: string | null;
+  prepEditedByName: string;
   /** The report's answers, by question id. Empty until somebody writes. */
   report: Record<string, unknown>;
   reportSubmittedAt: string | null;
@@ -365,4 +370,22 @@ export function weeklyCells(
     }
   }
   return out.sort((a, b) => a.weekday - b.weekday || a.startTime.localeCompare(b.startTime));
+}
+
+/**
+ * Si la préparation d'une séance ne se modifie plus côté startup : verrouillée
+ * à la main pour toutes, ou passée l'heure limite avant la séance, ou la
+ * séance n'étant plus à venir. L'interlocuteur et CEED la corrigent toujours.
+ */
+export function prepLocked(
+  meeting: Pick<OneToOneMeeting, 'heldOn' | 'startTime' | 'status'>,
+  prep: { locked: boolean; lockHoursBefore: number | null },
+  now = new Date(),
+): boolean {
+  if (prep.locked) return true;
+  if (meeting.status !== 'planned') return true;
+  if (!meeting.heldOn) return false;
+  const start = new Date(`${meeting.heldOn}T${meeting.startTime ?? '00:00'}:00`);
+  if (prep.lockHoursBefore === null) return now.getTime() > start.getTime();
+  return now.getTime() > start.getTime() - prep.lockHoursBefore * 3_600_000;
 }

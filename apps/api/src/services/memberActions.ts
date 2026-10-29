@@ -25,7 +25,7 @@ import * as repo from '../db/repo.js';
 import { programsFor } from '../routes/auth.js';
 import { agendaFor } from './agenda.js';
 import { deliverablesFor } from './deliverables.js';
-import { meetingsFor } from './oneToOne.js';
+import { meetingsFor, prepsDueFor } from './oneToOne.js';
 import { reviewsFor } from './reviews.js';
 import { listTasks } from './tasks.js';
 
@@ -112,6 +112,21 @@ export async function memberActions(recordId: string): Promise<{ actions: Member
           left: required.length - sent,
           of: required.length,
           back,
+        });
+      }
+
+      /* La préparation d'une séance à venir, quand la brique en demande une. */
+      for (const { meeting, started } of await prepsDueFor(candidate.id)) {
+        actions.push({
+          id: `prep:${meeting.id}`,
+          kind: 'prepare',
+          role: 'startup',
+          status: statusOf(meeting.heldOn, started),
+          dueOn: meeting.heldOn,
+          ...where,
+          href: `/meet/${meeting.token}`,
+          label: meeting.personName,
+          orgName: candidate.orgName,
         });
       }
 

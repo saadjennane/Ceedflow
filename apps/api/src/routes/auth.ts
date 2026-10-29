@@ -34,7 +34,7 @@ import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { changeItem, changeTask, getTask, listTasks } from '../services/tasks.js';
 import { addOrgDocument, changeOrgDocument, saveNeed } from '../services/orgSheet.js';
-import { meetingFor, meetingsFor, saveReport } from '../services/oneToOne.js';
+import { meetingFor, meetingsFor, savePrep, saveReport } from '../services/oneToOne.js';
 import { agendaFor } from '../services/agenda.js';
 import { memberActions } from '../services/memberActions.js';
 import { deliverablesFor } from '../services/deliverables.js';
@@ -550,6 +550,20 @@ export async function authRoutes(app: FastifyInstance) {
     const { answers, submit } = parse(reportInput, req.body);
     const who = await dir.getRecord(account.recordId);
     return saveReport(id, answers, submit, { id: account.recordId, name: who?.name ?? '' });
+  });
+
+  /** La préparation de la startup, que l'interlocuteur corrige ou complète. */
+  app.put('/api/me/meetings/:id/prep', async (req, reply) => {
+    const account = await require(req);
+    const { id } = req.params as { id: string };
+    const meeting = (await meetingsFor(account.recordId)).find((m) => m.id === id);
+    if (!meeting) return notFound(reply, 'Meeting not found.');
+    if (meeting.state !== 'open') {
+      throw new HttpError(403, 'These meetings are closed. Ask the CEED team if something has to change.');
+    }
+    const { answers } = parse(reportInput, req.body);
+    const who = await dir.getRecord(account.recordId);
+    return savePrep(id, answers, { side: 'team', name: who?.name ?? '' });
   });
 
   app.get('/api/me/programs', async (req) => {

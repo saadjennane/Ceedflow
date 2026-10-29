@@ -5,7 +5,8 @@
  * yes or no. Nothing else is written through this link, and the report of the
  * meeting never shows here.
  */
-import { WEEKDAY_LABEL } from '@ceed/shared';
+import { WEEKDAY_LABEL, type FormField, type FormPage } from '@ceed/shared';
+import { PrepForm } from '../ui/PrepForm';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -30,6 +31,13 @@ interface Invitation {
   answerBy?: string | null;
   late?: boolean;
   cadence?: 'single' | 'recurring';
+  prep?: {
+    pages: { page: FormPage; fields: FormField[] }[];
+    answers: Record<string, unknown>;
+    locked: boolean;
+    submittedAt: string | null;
+    editedByName: string;
+  } | null;
   /** A regular follow-up: the weekly slots it may take for the whole series. */
   weekly?: { personId: string; personName: string; weekday: number; startTime: string; endTime: string; firstOn: string; sessions: number }[];
   /** Ce qu'elle a dit en refusant. */
@@ -153,6 +161,41 @@ export function MeetPage() {
                 </a>
               )}
             </div>
+          )}
+
+          {/* La préparation : ce que la startup écrit avant la séance — et qu'elle
+              relit, corrigée par son interlocuteur, une fois verrouillée. */}
+          {data.prep && (
+            <section className="rowcard card-pad stack" style={{ gap: 10 }}>
+              <div className="row wrap" style={{ gap: 6 }}>
+                <strong style={{ flex: 1, fontSize: 14 }}>Prepare the session</strong>
+                {data.prep.locked ? (
+                  <span className="badge">Locked</span>
+                ) : data.prep.submittedAt ? (
+                  <span className="badge ok">Sent</span>
+                ) : (
+                  <span className="badge warn">To prepare</span>
+                )}
+              </div>
+              <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+                {data.prep.locked
+                  ? 'Your preparation is locked: you can read it, no longer change it.'
+                  : 'Your interlocutor reads it before the session. You can change it until it is locked.'}
+                {data.prep.editedByName && ` Updated by ${data.prep.editedByName}.`}
+              </p>
+              <PrepForm
+                key={`${data.prep.submittedAt}-${data.prep.locked}`}
+                pages={data.prep.pages}
+                answers={data.prep.answers}
+                readOnly={data.prep.locked}
+                saveLabel="Save draft"
+                sendLabel={data.prep.submittedAt ? 'Update' : 'Send to my interlocutor'}
+                savedSay="Saved."
+                onSave={async (answers, send) => {
+                  setAnswered(await api.put<Invitation>(`/api/public/meet/${token}/prep`, { answers, submit: send }));
+                }}
+              />
+            </section>
           )}
 
           {data.late ? (

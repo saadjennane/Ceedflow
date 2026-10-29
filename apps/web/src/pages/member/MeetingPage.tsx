@@ -16,6 +16,7 @@ import { FormFieldInput } from '../../ui/FormField';
 import { FormPageBody } from '../../ui/FormPages';
 import { Icon } from '../../ui/Icon';
 import { ProfileFacts } from '../../ui/OrgProfile';
+import { PrepForm } from '../../ui/PrepForm';
 import { useToast } from '../../ui/Overlays';
 import '../../ui/builder.css';
 import '../../ui/directory.css';
@@ -26,6 +27,7 @@ interface Detail extends OneToOneMeeting {
   blockName: string;
   state: 'open' | 'closed';
   questions: { pages: { page: FormPage; fields: FormField[] }[] };
+  prepQuestions: { pages: { page: FormPage; fields: FormField[] }[] } | null;
   profile: OrgProfile | null;
   answers: { label: string; value: unknown; type: string }[];
 }
@@ -102,6 +104,35 @@ export function MeetingPage() {
             </details>
           )}
         </section>
+
+        {/* Ce que la startup a préparé : l'interlocuteur le lit avant, et le
+            corrige ou le complète — la startup verra sa version. */}
+        {data.prepQuestions && (
+          <section className="card card-pad stack" style={{ gap: 10 }}>
+            <div className="row">
+              <h2 style={{ margin: 0, fontSize: 16, flex: 1 }}>The startup’s preparation</h2>
+              {data.prepSubmittedAt ? (
+                <span className="badge ok">Sent · {formatDate(data.prepSubmittedAt)}</span>
+              ) : (
+                <span className="badge">Not sent yet</span>
+              )}
+            </div>
+            <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+              You can correct or complete it. The startup sees your version; your report below stays private.
+            </p>
+            <PrepForm
+              pages={data.prepQuestions.pages}
+              answers={data.prep}
+              readOnly={data.state === 'closed'}
+              saveLabel="Save the preparation"
+              savedSay="Preparation saved."
+              onSave={async (answers) => {
+                await api.put(`/api/me/meetings/${data.id}/prep`, { answers });
+                meeting.reload();
+              }}
+            />
+          </section>
+        )}
 
         <Report meeting={data} onSent={meeting.reload} />
       </div>

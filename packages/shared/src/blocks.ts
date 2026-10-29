@@ -1531,6 +1531,7 @@ export const ONE_TO_ONE_STARTUP_VARIABLES = [
   { name: 'quand', label: 'Date sentence', what: 'The whole sentence — empty when the startup picks the time', example: 'Le mardi 3 novembre à 10:00, pour 45 minutes.', byMode: [{ mode: 'Slot picking', text: '(vide tant qu’elle n’a pas choisi — puis « Le mardi 3 novembre à 10:00, pour 45 minutes. »)' }, { mode: 'RSVP', text: 'Le mardi 3 novembre à 10:00, pour 45 minutes.' }, { mode: 'No RSVP', text: 'Le mardi 3 novembre à 10:00, pour 45 minutes.' }] },
   { name: 'lieu', label: 'Where', what: 'The whole sentence — empty when no place is set', example: 'Lieu : CEED, Casablanca.' },
   { name: 'visio', label: 'Video link', what: 'The whole sentence with the meeting’s video link — empty when there is none', example: 'Lien de la réunion : https://meet.google.com/abc-defg-hij' },
+  { name: 'preparation', label: 'Preparation sentence + link', what: 'Where the startup prepares the session — empty when the brick asks for no preparation, or the session has no time yet', example: 'Préparez la séance ici : https://www.ceedflow.com/meet/…' },
   { name: 'action', label: 'Answer sentence + link (per mode)', what: 'Book a time, or confirm the one proposed — with the link. Empty when nothing is asked', example: 'Choisissez votre créneau ici : https://www.ceedflow.com/meet/…', byMode: [{ mode: 'Slot picking', text: 'Choisissez votre créneau ici : https://www.ceedflow.com/meet/…' }, { mode: 'RSVP', text: 'Confirmez, ou dites-nous si l’heure ne convient pas : https://www.ceedflow.com/meet/…' }, { mode: 'No RSVP', text: '(rien — la lettre ne fait qu’informer)' }] },
   { name: 'lien', label: 'Booking / RSVP link', what: 'The startup’s own page: the free slots to book from, or the time to confirm', example: 'https://www.ceedflow.com/meet/…', byMode: [{ mode: 'Slot picking', text: 'https://www.ceedflow.com/meet/… — la page des créneaux libres' }, { mode: 'RSVP', text: 'https://www.ceedflow.com/meet/… — la page pour confirmer ou refuser' }, { mode: 'No RSVP', text: 'https://www.ceedflow.com/meet/… — la page du rendez-vous, sans rien à répondre' }] },
 ] as const;
@@ -1558,6 +1559,8 @@ Dans le cadre de {{programme}}, {{startup}} a rendez-vous avec {{interlocuteur}}
 {{visio}}
 
 {{action}}
+
+{{preparation}}
 
 À bientôt.`;
 
@@ -1657,6 +1660,23 @@ export const oneToOneConfigSchema = z.object({
       layout: z.enum(['single', 'paged']).default('single'),
       pages: z.array(formPageSchema).default([]),
       fields: z.array(formFieldSchema).default([]),
+    })
+    .default({}),
+  /**
+   * La préparation par la startup : des questions auxquelles elle répond
+   * avant la séance, que l'interlocuteur lit et corrige. Verrouillée à la
+   * main, ou d'elle-même quelques heures avant la séance.
+   */
+  prep: z
+    .object({
+      enabled: z.boolean().default(false),
+      layout: z.enum(['single', 'paged']).default('single'),
+      pages: z.array(formPageSchema).default([]),
+      fields: z.array(formFieldSchema).default([]),
+      /** Locked for everybody, now. */
+      locked: z.boolean().default(false),
+      /** Locked by itself this many hours before each session. Empty: only by hand. */
+      lockHoursBefore: z.number().int().min(0).max(720).nullable().default(null),
     })
     .default({}),
 });

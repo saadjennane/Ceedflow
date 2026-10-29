@@ -38,6 +38,7 @@ import { FormPageBody } from '../../ui/FormPages';
 import { Icon } from '../../ui/Icon';
 import { ConfirmDialog, Drawer, Modal, useToast } from '../../ui/Overlays';
 import { INVITE_WORDS } from '../builder/panels/OneToOnePanel';
+import { PrepForm } from '../../ui/PrepForm';
 import '../../ui/directory.css';
 
 interface View {
@@ -1279,6 +1280,31 @@ function MeetingDrawer({
 
         {/* Le compte rendu, que CEED peut écrire à la place de l'interlocuteur
             — dicté au téléphone, ou repris d'une note. */}
+        {/* La préparation de la startup, que CEED peut corriger ou compléter. */}
+        {data.config.prep.enabled && data.config.prep.fields.length > 0 && (
+          <>
+            <h3 className="section-title" style={{ marginTop: 6 }}>
+              Preparation{' '}
+              <span className="faint" style={{ fontWeight: 400, fontSize: 12 }}>
+                {meeting.prepSubmittedAt ? `sent ${formatDate(meeting.prepSubmittedAt)}` : 'not sent yet'}
+                {meeting.prepEditedAt ? ` · updated by ${meeting.prepEditedByName}` : ''}
+              </span>
+            </h3>
+            <PrepForm
+              key={meeting.prepEditedAt ?? meeting.prepSubmittedAt ?? 'prep'}
+              pages={formPages(data.config.prep)}
+              answers={meeting.prep ?? {}}
+              readOnly={false}
+              saveLabel="Save the preparation"
+              savedSay="Preparation saved."
+              onSave={async (answers) => {
+                await api.put(`/api/meetings/${meeting.id}/prep`, { answers });
+                onChanged();
+              }}
+            />
+          </>
+        )}
+
         <h3 className="section-title" style={{ marginTop: 6 }}>Report</h3>
         {pages.map((page) => (
           <FormPageBody
@@ -1335,7 +1361,17 @@ function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void })
   const [startup, setStartup] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const fields = data.config.report.fields;
+  /* Le compte rendu final a deux parties : la préparation de la startup, puis
+     le compte rendu de l'interlocuteur. Le reporting lit les deux, la
+     préparation sous son propre nom. */
+  const prepFields: FormField[] = data.config.prep.enabled
+    ? data.config.prep.fields.map((f) => ({ ...f, id: `prep:${f.id}`, label: `Preparation — ${f.label}` }))
+    : [];
+  const fields = [...prepFields, ...data.config.report.fields];
+  const whole = (m: OneToOneMeeting): Record<string, unknown> => ({
+    ...Object.fromEntries(Object.entries(m.prep ?? {}).map(([k, v]) => [`prep:${k}`, v])),
+    ...m.report,
+  });
 
   /* Les comptes rendus envoyés : un brouillon n'est pas encore une réponse. */
   const sent = useMemo(
@@ -1350,7 +1386,7 @@ function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void })
       ),
     [data.meetings, person, startup, from, to],
   );
-  const summaries = fields.map((f) => summarise(f, sent.map((m) => m.report)));
+  const summaries = fields.map((f) => summarise(f, sent.map(whole)));
 
   const exportAll = () => {
     const head: Cell[] = ['Date', 'Time', 'Startup', 'Interlocutor', 'Status', ...fields.map((f) => f.label), 'Sent'];
@@ -1358,7 +1394,7 @@ function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void })
     for (const m of sent) {
       rows.push([
         m.heldOn ?? '', m.startTime ?? '', m.orgName, m.personName, MEETING_STATUS_LABEL[m.status],
-        ...fields.map((f) => asText(m.report[f.id])),
+        ...fields.map((f) => asText(whole(m)[f.id])),
         m.reportSubmittedAt?.slice(0, 10) ?? '',
       ]);
     }
@@ -1400,7 +1436,7 @@ function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void })
           <p style={{ margin: 0 }}>No report sent{person || startup || from || to ? ' for this selection' : ' yet'}.</p>
         </div>
       ) : tab === 'startups' ? (
-        <ByStartup meetings={sent} fields={fields} onOpen={onOpen} />
+        <ByStartup meetings={sent.map((m) => ({ ...m, report: whole(m) }))} fields={fields} onOpen={onOpen} />
       ) : tab === 'summary' ? (
         <div className="stack" style={{ gap: 10 }}>
           {summaries.map((s) => (
@@ -1428,7 +1464,7 @@ function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void })
                   <td className="muted">{m.personName}</td>
                   {fields.map((f) => (
                     <td key={f.id} className="muted" style={{ maxWidth: 280 }}>
-                      {asText(m.report[f.id]) || '—'}
+                      {asText(whole(m)[f.id]) || '—'}
                     </td>
                   ))}
                 </tr>
