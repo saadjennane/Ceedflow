@@ -817,7 +817,9 @@ function DayEditor({
     minutesPerMeeting: day?.minutesPerMeeting ?? 45,
     location: day?.location ?? '',
     meetingLink: day?.meetingLink ?? '',
-    interlocutors: day?.interlocutors ?? interlocutors.map((p) => p.id),
+    /* Une journée où personne ne reçoit ne sert à rien : vide, elle propose
+       tous les interlocuteurs de la brique — on retire ceux qui ne viennent pas. */
+    interlocutors: day?.interlocutors.length ? day.interlocutors : interlocutors.map((p) => p.id),
   });
   const [saving, setSaving] = useState(false);
   const toast = useToast();
@@ -905,6 +907,7 @@ function DayEditor({
 
       <div className="field">
         <label>Who receives on this day</label>
+        <div className="help">Click a name to add or remove them.</div>
         <div className="work-pick">
           {interlocutors.map((p) => {
             const on = draft.interlocutors.includes(p.id);
@@ -913,8 +916,10 @@ function DayEditor({
                 key={p.id}
                 type="button"
                 className={on ? 'track on' : 'track'}
+                aria-pressed={on}
                 onClick={() => set({ interlocutors: on ? draft.interlocutors.filter((x) => x !== p.id) : [...draft.interlocutors, p.id] })}
               >
+                {on ? '✓ ' : '+ '}
                 {p.name}
               </button>
             );
@@ -923,10 +928,16 @@ function DayEditor({
       </div>
 
       <div className="row" style={{ gap: 8 }}>
-        <span className="faint" style={{ flex: 1, fontSize: 12.5 }}>
-          {slots} slot{slots === 1 ? '' : 's'} × {draft.interlocutors.length} interlocutor
-          {draft.interlocutors.length === 1 ? '' : 's'} = {slots * draft.interlocutors.length} meetings at most
-        </span>
+        {draft.interlocutors.length ? (
+          <span className="faint" style={{ flex: 1, fontSize: 12.5 }}>
+            {slots} slot{slots === 1 ? '' : 's'} × {draft.interlocutors.length} interlocutor
+            {draft.interlocutors.length === 1 ? '' : 's'} = {slots * draft.interlocutors.length} meetings at most
+          </span>
+        ) : (
+          <span className="warnline" style={{ flex: 1, fontSize: 12.5 }}>
+            Nobody receives on this day yet — click a name above.
+          </span>
+        )}
         <button className="btn ghost" onClick={onCancel}>Cancel</button>
         <button className="btn primary" disabled={saving || !draft.heldOn} onClick={save}>
           {saving ? 'Saving…' : day ? 'Save the day' : 'Add the day'}
