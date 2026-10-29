@@ -111,15 +111,13 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
   const name = (id: string | null) => interlocutors.find((p) => p.id === id)?.name ?? '';
   const live = meetings.filter((m) => m.status !== 'cancelled');
 
-  if (!config.interlocutors.length || !reportForm(config).fields.length) {
+  /* Planifier ne demande que des interlocuteurs : le reste — questions du
+     compte rendu, journées — se dit sans cacher l'écran. */
+  if (!config.interlocutors.length) {
     return (
       <div className="empty" style={{ padding: 26 }}>
-        <h3>{config.interlocutors.length ? 'The report has no question yet' : 'Nobody to meet yet'}</h3>
-        <p>
-          {config.interlocutors.length
-            ? 'Write what an interlocutor fills in after each meeting, then plan the meetings here.'
-            : 'Name the mentors and experts the startups will meet, set the days, and write the report they fill in.'}
-        </p>
+        <h3>Nobody to meet yet</h3>
+        <p>Name the mentors and experts the startups will meet, in the Interlocutors tab of the setup.</p>
         <button className="btn primary" onClick={() => onOpenSetup(block.id)}>
           <Icon name="settings" size={14} /> Open the setup
         </button>
@@ -217,8 +215,20 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
     </div>
   );
 
+  const noQuestion = !reportForm(config).fields.length;
+
   return (
     <>
+      {noQuestion && (
+        <div className="callout">
+          <Icon name="form" size={15} />
+          <div style={{ flex: 1 }}>
+            The report has no question yet — you can plan meetings now, and add what the interlocutors write afterwards
+            in the <strong>Report</strong> tab of the setup.
+          </div>
+          <button className="btn sm" onClick={() => onOpenSetup(block.id)}>Open the setup</button>
+        </div>
+      )}
       {/* ---- which day, and what to do with it ---- */}
       <div className="work-head">
         <div className="seg" role="group" aria-label="View">
@@ -272,15 +282,41 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
       ) : config.cadence === 'recurring' ? (
         <SeriesBoard data={data} name={name} onOpen={setOpenId} onPlan={(id) => setPlanningFor([id])} />
       ) : !current ? (
-        <div className="empty">
-          <h3>No day yet</h3>
-          <p>
-            The days the meetings happen on — date, hours, who receives — are set on the block, in the <strong>Days</strong>{' '}
-            tab of its setup.
-          </p>
-          <button className="btn primary" onClick={() => onOpenSetup(block.id)}>
-            <Icon name="settings" /> Open the setup
-          </button>
+        /* Pas encore de journée : on peut déjà inviter (les startups réserveront
+           quand les journées existeront) ou placer un rendez-vous hors journée. */
+        <div className="stack" style={{ gap: 12 }}>
+          <div className="callout">
+            <Icon name="calendar" size={15} />
+            <div style={{ flex: 1 }}>
+              No day yet. Set the days — date, hours, who receives — in the <strong>Sessions</strong> tab of the setup to
+              place startups on a timetable{config.invite === 'slots' ? ' and give them slots to book' : ''}. Meanwhile, you
+              can still plan a meeting at a time of its own with <strong>+ Meeting</strong>.
+            </div>
+            <button className="btn sm" onClick={() => onOpenSetup(block.id)}>Open the setup</button>
+          </div>
+          <section className="card card-pad stack" style={{ gap: 8 }}>
+            <strong style={{ fontSize: 13.5 }}>Startups in this brick · {pool.length}</strong>
+            {pool.length ? (
+              <div className="rows">
+                {pool.map(({ candidate }) => (
+                  <div className="rowcard row" key={candidate.id} style={{ padding: '8px 11px', gap: 8 }}>
+                    <span style={{ flex: 1, fontSize: 13 }}>{candidate.orgName}</span>
+                    {stillToMeet(config, live, candidate).length === 0 && <span className="badge ok">Has a meeting</span>}
+                    <button className="btn sm" onClick={() => setPlanningFor([candidate.id])}>
+                      <Icon name="plus" size={12} /> Meeting
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+                No startup reaches this brick yet.
+                {config.intake === 'upstream' && data.reach.from
+                  ? ` It takes those who passed “${data.reach.from}”, and nobody has so far — or choose every startup of the track, in the Overview tab of the setup.`
+                  : ''}
+              </p>
+            )}
+          </section>
         </div>
       ) : (
         <>
