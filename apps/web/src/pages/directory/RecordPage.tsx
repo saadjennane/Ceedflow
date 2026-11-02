@@ -1,3 +1,4 @@
+import { AddedFacts, SheetHistory } from '../../ui/SheetExtras';
 import {
   ORIGIN_LABEL,
   isOpen,
@@ -37,6 +38,8 @@ export function RecordPage() {
   const [editing, setEditing] = useState(false);
   /* La fiche en sections, à part de la fenêtre qui édite les coordonnées. */
   const [filling, setFilling] = useState(false);
+  /* Chaque fermeture de la fiche relit ses attributs et son journal. */
+  const [sheetVersion, setSheetVersion] = useState(0);
   const [linking, setLinking] = useState(false);
   const [unlinking, setUnlinking] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
@@ -153,6 +156,7 @@ export function RecordPage() {
               )}
             </div>
           )}
+          {isOrg && <AddedFacts recordId={record.id} version={sheetVersion} />}
 
           {/* Ce qui l'attend, et ce qu'on attend d'elle : les deux sens du
               mot « concerne », et c'est bien la même liste qu'on vient lire. */}
@@ -266,6 +270,8 @@ export function RecordPage() {
           {/* Ce qui lui a été écrit, et ce qu'il en est advenu. */}
           <MailsCard recordId={record.id} />
 
+          {isOrg && <SheetHistory recordId={record.id} version={sheetVersion} />}
+
           <div className="card card-pad stack" style={{ gap: 8 }}>
             <div className="eyebrow">Program history</div>
             {/* Ses One to One, lus dans les rendez-vous : qui elle a vu, et si
@@ -324,10 +330,12 @@ export function RecordPage() {
             manageTeam: true,
             need: (need) => `/api/records/${record.id}/needs/${need}`,
             documents: (docId) => `/api/records/${record.id}/documents${docId ? `/${docId}` : ''}`,
+            attributes: `/api/records/${record.id}/attributes`,
           }}
           onChanged={() => {}}
           onClose={() => {
             setFilling(false);
+            setSheetVersion((n) => n + 1);
             detail.reload();
           }}
         />

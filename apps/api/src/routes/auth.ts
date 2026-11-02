@@ -65,6 +65,8 @@ import { post } from '../services/mail.js';
 import { markTest, testOwnerOf } from '../services/sandbox.js';
 import { appLink } from '../services/deliverables.js';
 import { HttpError, notFound, parse } from './util.js';
+import { keepSheetHistory } from './sheetHistory.js';
+import { setAttribute, sheetAttributes } from '../services/orgAttributes.js';
 
 /** One published edition, as the person signed in sees it. */
 interface MyProgram {
@@ -820,6 +822,38 @@ export async function authRoutes(app: FastifyInstance) {
       throw new HttpError(422, 'That file did not arrive. Send it again.', { uploadId: 'Missing file.' });
     }
   };
+
+  /* Le journal de la fiche : tout ce que la startup y change, à son nom. */
+  keepSheetHistory(
+    app,
+    /^\/api\/me\/organisations\/:id(\/(needs|documents|fundings|products|programs|revenues)(\/.*)?)?$/,
+    async (req) => {
+      const account = await accountForToken(req.cookies[SESSION_COOKIE]);
+      if (!account) return null;
+      const who = await dir.getRecord(account.recordId);
+      return { kind: 'member', id: account.recordId, name: who?.name ?? account.email };
+    },
+  );
+
+  /** Les attributs ajoutés que la startup voit, et leurs valeurs. Quiconque est de la page les lit. */
+  app.get('/api/me/organisations/:id/attributes', async (req) => {
+    const { id } = req.params as { id: string };
+    await accessTo(req, id);
+    return sheetAttributes(id, true);
+  });
+  app.put('/api/me/organisations/:id/attributes/:attributeId', async (req) => {
+    const { id, attributeId } = req.params as { id: string; attributeId: string };
+    const { account, access } = await accessTo(req, id);
+    if (!canEditOrg(access)) throw new HttpError(403, 'Only an editor or an administrator can change this page.');
+    const who = await dir.getRecord(account.recordId);
+    return setAttribute(
+      id,
+      attributeId,
+      (req.body as { value?: unknown } | null)?.value ?? null,
+      { kind: 'member', id: account.recordId, name: who?.name ?? account.email },
+      { visibleOnly: true, placedBy: account.recordId },
+    );
+  });
 
   app.patch('/api/me/organisations/:id', async (req) => {
     const { id } = req.params as { id: string };

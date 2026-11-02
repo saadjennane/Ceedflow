@@ -65,9 +65,14 @@ import {
   type Revenue,
   type SheetList,
   type TeamMember,
+  attributeLabel,
+  type AttributeFile,
+  type OrgAttribute,
+  type SheetAttributes,
 } from '@ceed/shared';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { formatDate } from '../lib/format';
+import { useAsync } from '../lib/useAsync';
 import { ApiError, api } from '../lib/api';
 import { say, useLang, type Lang, type Word } from '../lib/lang';
 import { EmailLines } from './EmailLines';
@@ -112,6 +117,8 @@ export interface SheetRoutes {
   need: (need: string) => string;
   /** The documents, or one of them. */
   documents: (docId?: string) => string;
+  /** The attributes CEED added — all of them for CEED, the visible ones for the startup. */
+  attributes: string;
 }
 
 /** Les listes que le serveur renvoie avec la fiche, et que l'écran reprend telles quelles. */
@@ -146,7 +153,9 @@ export function OrgSheet({
   const toast = useToast();
 
   const [draft, setDraft] = useState<DirectoryRecord>(initial);
-  const [section, setSection] = useState<ProfileSection>(() => {
+  /* Les attributs ajoutés par CEED : un onglet de plus, seulement s'il y en a. */
+  const extra = useAsync(() => api.get<SheetAttributes>(routes.attributes), routes.attributes);
+  const [section, setSection] = useState<ProfileSection | 'more'>(() => {
     /* On rouvre là où il reste quelque chose : revenir sur une fiche, c'est
        venir finir, pas relire ce qui est fait. */
     const p = profileOf(initial);
@@ -283,9 +292,10 @@ export function OrgSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const at = PROFILE_SECTIONS.indexOf(section);
-  const last = at === PROFILE_SECTIONS.length - 1;
-  const go = async (next: ProfileSection) => {
+  const order: (ProfileSection | 'more')[] = [...PROFILE_SECTIONS, ...(extra.data?.attributes.length ? (['more'] as const) : [])];
+  const at = order.indexOf(section);
+  const last = at === order.length - 1;
+  const go = async (next: ProfileSection | 'more') => {
     await flush();
     setSection(next);
   };
@@ -294,7 +304,7 @@ export function OrgSheet({
     onClose();
   };
 
-  const missingHere = profileMissing(profile, section);
+  const missingHere = section === 'more' ? [] : profileMissing(profile, section);
 
   return (
     <Drawer
@@ -310,7 +320,15 @@ export function OrgSheet({
             {t(SECTION_WORD[s])}
           </button>
         );
-      })}
+      }).concat(
+        extra.data?.attributes.length
+          ? [
+              <button key="more" role="tab" className={section === 'more' ? 'tab on' : 'tab'} onClick={() => go('more')}>
+                {t('sheet.s.more')}
+              </button>,
+            ]
+          : [],
+      )}
       footer={
         <>
           <span className="faint" style={{ fontSize: 12 }} role="status">
@@ -320,7 +338,7 @@ export function OrgSheet({
           <button className="btn ghost" onClick={close}>
             {t('sheet.later')}
           </button>
-          <button className="btn primary" onClick={() => (last ? close() : go(PROFILE_SECTIONS[at + 1]!))}>
+          <button className="btn primary" onClick={() => (last ? close() : go(order[at + 1]!))}>
             {last ? t('sheet.finish') : t('sheet.next')}
             {!last && <Icon name="arrowRight" size={14} />}
           </button>
@@ -337,6 +355,19 @@ export function OrgSheet({
       {section === 'funding' && <FundingSection draft={draft} put={put} lines={lines} t={t} l={l} />}
       {section === 'needs' && <NeedsSection draft={draft} needs={needs} t={t} l={l} />}
       {section === 'documents' && <DocumentsSection draft={draft} docs={docs} errors={errors} t={t} l={l} />}
+      {section === 'more' && extra.data && (
+        <MoreSection
+          data={extra.data}
+          url={routes.attributes}
+          l={l}
+          t={t}
+          onSaved={(next) => {
+            extra.set(next);
+            setSavedOnce(true);
+          }}
+          onPending={(by) => setPending((n) => n + by)}
+        />
+      )}
       {section === 'maturity' && (
         <MaturitySection draft={draft} put={put} putRevenue={putRevenue} errors={errors} t={t} l={l} />
       )}
@@ -2044,6 +2075,161 @@ function Socials({
       <button className="btn sm" style={{ alignSelf: 'flex-start', marginTop: 6 }} onClick={() => setLines([...lines, ''])}>
         <Icon name="plus" size={13} /> {add}
       </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Autres — les attributs que CEED a ajoutés                            */
+/* ------------------------------------------------------------------ */
+
+function MoreSection({
+  data,
+  url,
+  l,
+  t,
+  onSaved,
+  onPending,
+}: {
+  data: SheetAttributes;
+  url: string;
+  l: Lang;
+  t: T;
+  onSaved: (next: SheetAttributes) => void;
+  onPending: (by: 1 | -1) => void;
+}) {
+  const [draft, setDraft] = useState<Record<string, unknown>>(data.values);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const toast = useToast();
+
+  const save = async (id: string, value: unknown) => {
+    onPending(1);
+    try {
+      onSaved(await api.put<SheetAttributes>(`${url}/${id}`, { value }));
+      setErrors(({ [id]: _gone, ...rest }) => rest);
+    } catch (err) {
+      if (err instanceof ApiError) setErrors((e) => ({ ...e, [id]: err.message }));
+      else toast((err as Error).message, true);
+    } finally {
+      onPending(-1);
+    }
+  };
+  /** Un texte part après une pause ; un choix, tout de suite. */
+  const change = (a: OrgAttribute, value: unknown, wait: boolean) => {
+    setDraft((d) => ({ ...d, [a.id]: value }));
+    clearTimeout(timers.current[a.id]);
+    if (!wait) return void save(a.id, value);
+    timers.current[a.id] = setTimeout(() => void save(a.id, value), PAUSE);
+  };
+
+  return (
+    <div className="stack" style={{ gap: 12 }}>
+      <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{t('sheet.more.intro')}</p>
+      {data.attributes.map((a) => {
+        const value = draft[a.id];
+        const label = attributeLabel(a, l);
+        const text = typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+        return (
+          <div className="field" key={a.id}>
+            <label>
+              {label}
+              {!a.visible && <span className="badge" style={{ marginLeft: 6 }}>CEED only</span>}
+            </label>
+            {a.type === 'long_text' ? (
+              <textarea className="textarea" rows={4} value={text} onChange={(e) => change(a, e.target.value, true)} />
+            ) : a.type === 'select' ? (
+              <select className="input" value={text} onChange={(e) => change(a, e.target.value || null, false)}>
+                <option value="">{t('sheet.more.choose')}</option>
+                {a.options.map((o) => (
+                  <option key={o} value={o}>{o}</option>
+                ))}
+              </select>
+            ) : a.type === 'multiselect' ? (
+              <div className="row wrap" style={{ gap: 6 }}>
+                {a.options.map((o) => {
+                  const picked = Array.isArray(value) ? (value as string[]) : [];
+                  const on = picked.includes(o);
+                  return (
+                    <button
+                      key={o}
+                      type="button"
+                      className={on ? 'track on' : 'track'}
+                      aria-pressed={on}
+                      onClick={() => change(a, on ? picked.filter((x) => x !== o) : [...picked, o], false)}
+                    >
+                      {o}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : a.type === 'file' ? (
+              <AttributeFileInput
+                value={value as AttributeFile | null}
+                t={t}
+                onUploaded={(file) => change(a, file, false)}
+                onError={(message) => setErrors((e) => ({ ...e, [a.id]: message }))}
+              />
+            ) : (
+              <div className="row" style={{ gap: 6 }}>
+                <input
+                  className="input"
+                  type={a.type === 'date' ? 'date' : a.type === 'email' ? 'email' : a.type === 'url' ? 'url' : a.type === 'phone' ? 'tel' : 'text'}
+                  inputMode={a.type === 'number' || a.type === 'amount' ? 'decimal' : undefined}
+                  value={text}
+                  onChange={(e) => change(a, e.target.value, a.type !== 'date')}
+                />
+                {a.type === 'amount' && <span className="faint">{a.currency}</span>}
+              </div>
+            )}
+            {errors[a.id] && <div className="err">{errors[a.id]}</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function AttributeFileInput({
+  value,
+  t,
+  onUploaded,
+  onError,
+}: {
+  value: AttributeFile | null;
+  t: T;
+  onUploaded: (file: AttributeFile) => void;
+  onError: (message: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="row wrap" style={{ gap: 8 }}>
+      {value?.uploadId && (
+        <a href={`/api/uploads/${value.uploadId}`} target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>
+          <Icon name="file" size={13} /> {value.filename || 'File'}
+        </a>
+      )}
+      <label className="btn sm" style={{ cursor: busy ? 'wait' : 'pointer' }}>
+        <Icon name="plus" size={13} /> {value?.uploadId ? t('sheet.more.replace') : t('sheet.more.file')}
+        <input
+          type="file"
+          hidden
+          disabled={busy}
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (!file) return;
+            setBusy(true);
+            try {
+              onUploaded({ uploadId: await uploadFile(file, t), filename: file.name });
+            } catch (err) {
+              onError((err as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+      </label>
     </div>
   );
 }

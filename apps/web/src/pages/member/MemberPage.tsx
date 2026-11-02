@@ -1224,6 +1224,7 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
             manageTeam: editing.manage,
             need: (need) => `/api/me/organisations/${editing.record.id}/needs/${need}`,
             documents: (docId) => `/api/me/organisations/${editing.record.id}/documents${docId ? `/${docId}` : ''}`,
+            attributes: `/api/me/organisations/${editing.record.id}/attributes`,
           }}
           onChanged={() => {}}
           onClose={() => {

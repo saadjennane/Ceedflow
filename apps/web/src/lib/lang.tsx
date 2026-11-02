@@ -237,6 +237,14 @@ const WORDS = {
   'sheet.s.funding': { fr: 'Financement & accompagnement', en: 'Funding & support' },
   'sheet.s.needs': { fr: 'Besoins & opportunités', en: 'Needs & opportunities' },
   'sheet.s.documents': { fr: 'Documents', en: 'Documents' },
+  'sheet.s.more': { fr: 'Autres', en: 'Other' },
+  'sheet.more.intro': {
+    fr: 'Ce que CEED souhaite savoir en plus sur votre organisation.',
+    en: 'What CEED would also like to know about your organisation.',
+  },
+  'sheet.more.file': { fr: 'Déposer un fichier', en: 'Upload a file' },
+  'sheet.more.replace': { fr: 'Remplacer', en: 'Replace' },
+  'sheet.more.choose': { fr: 'Choisir…', en: 'Choose…' },
   'sheet.title': { fr: 'La fiche de', en: 'The profile of' },
   'sheet.why': {
     fr: 'Remplie une fois, elle vous suit d’un programme à l’autre. Chaque champ s’enregistre tout seul.',

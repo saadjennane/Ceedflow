@@ -1,4 +1,7 @@
 import {
+  hasOptions,
+  orgAttributeInput,
+  orgAttributePatch,
   ORG_ACCESS,
   affiliationInput,
   createRecordInput,
@@ -40,6 +43,10 @@ import { directoryRows } from '../services/people.js';
 import { invite, inviteBlock, inviteMany } from '../services/invitations.js';
 import { HttpError, notFound, parse } from './util.js';
 import { requireWorkspaceAdmin, workspaceGuard } from './guard.js';
+import * as attrs from '../db/attributes.js';
+import type { Changer } from '../db/attributes.js';
+import { keepSheetHistory } from './sheetHistory.js';
+import { setAttribute, sheetAttributes } from '../services/orgAttributes.js';
 
 /** Opening an account on somebody's behalf, with a password they must replace. */
 const openAccountInput = z.object({
@@ -78,6 +85,56 @@ export async function directoryRoutes(app: FastifyInstance) {
     const record = await dir.getRecord(req.staff.recordId);
     return { id: req.staff.id, name: record?.name?.trim() || req.staff.email };
   };
+
+  /* ---- La fiche startup : son journal, ses attributs ajoutés ---- */
+
+  const changer = async (req: FastifyRequest): Promise<Changer | null> => {
+    const who = await actor(req);
+    return who && req.staff ? { kind: 'staff', id: req.staff.recordId, name: who.name } : null;
+  };
+  keepSheetHistory(app, /^\/api\/records\/:id(\/(needs|documents|fundings|products|programs|revenues)(\/.*)?)?$/, changer);
+
+  /** Les attributs ajoutés à la fiche — archivés compris, pour l'écran qui les règle. */
+  app.get('/api/org-attributes', async () => attrs.listAttributes({ withArchived: true }));
+  app.post('/api/org-attributes', async (req, reply) => {
+    const made = await attrs.createAttribute(parse(orgAttributeInput, req.body));
+    reply.code(201);
+    return made;
+  });
+  app.patch('/api/org-attributes/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const patch = parse(orgAttributePatch, req.body);
+    const current = await attrs.getAttribute(id);
+    if (!current) return notFound(reply, 'No such attribute.');
+    if (patch.options !== undefined && hasOptions(current.type) && !patch.options.length) {
+      throw new HttpError(422, 'Give at least one choice.', { options: 'Give at least one choice.' });
+    }
+    return attrs.updateAttribute(id, patch);
+  });
+
+  const orgRecord = async (id: string) => {
+    const record = await dir.getRecord(id);
+    if (!record || record.kind !== 'org') throw new HttpError(404, 'Organisation not found.');
+    return record;
+  };
+  app.get('/api/records/:id/attributes', async (req) => {
+    const { id } = req.params as { id: string };
+    await orgRecord(id);
+    return sheetAttributes(id, false);
+  });
+  app.put('/api/records/:id/attributes/:attributeId', async (req) => {
+    const { id, attributeId } = req.params as { id: string; attributeId: string };
+    await orgRecord(id);
+    const by = await changer(req);
+    return setAttribute(id, attributeId, (req.body as { value?: unknown } | null)?.value ?? null,
+      by ?? { kind: 'system', id: null, name: '' }, { visibleOnly: false });
+  });
+  /** Ce qui a changé sur la fiche, du plus récent au plus ancien. CEED seulement. */
+  app.get('/api/records/:id/history', async (req) => {
+    const { id } = req.params as { id: string };
+    await orgRecord(id);
+    return attrs.historyOf(id);
+  });
 
   app.get('/api/records', async (req) => {
     const { kind, role, q } = req.query as Record<string, string | undefined>;
