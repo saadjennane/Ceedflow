@@ -1,4 +1,5 @@
 import { AddedFacts, SheetHistory } from '../../ui/SheetExtras';
+import { KpiPanel } from '../../ui/KpiPanel';
 import {
   ORIGIN_LABEL,
   isOpen,
@@ -157,6 +158,11 @@ export function RecordPage() {
             </div>
           )}
           {isOrg && <AddedFacts recordId={record.id} version={sheetVersion} />}
+          {isOrg && (
+            <div className="card card-pad">
+              <KpiPanel key={sheetVersion} url={`/api/records/${record.id}/kpis`} lang="en" editable />
+            </div>
+          )}
 
           {/* Ce qui l'attend, et ce qu'on attend d'elle : les deux sens du
               mot « concerne », et c'est bien la même liste qu'on vient lire. */}

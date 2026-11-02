@@ -8,8 +8,12 @@
 import {
   ATTRIBUTE_TYPES,
   ATTRIBUTE_TYPE_LABEL,
+  KPI_PERIODS,
+  KPI_PERIOD_LABEL,
   PROFILE_SOURCES,
   hasOptions,
+  type FixedKpiSetting,
+  type KpiPeriod,
   type AttributeType,
   type OrgAttribute,
 } from '@ceed/shared';
@@ -90,6 +94,7 @@ export function SheetSettings() {
                   {ATTRIBUTE_TYPE_LABEL[a.type]}
                   {hasOptions(a.type) ? ` — ${a.options.join(', ')}` : ''}
                   {a.type === 'amount' ? ` — ${a.currency}` : ''}
+                  {a.kpiPeriod ? ` · KPI, ${KPI_PERIOD_LABEL[a.kpiPeriod].toLowerCase()}` : ''}
                 </div>
               </div>
               {/* Visible : la startup le voit et le remplit dans son espace. */}
@@ -134,6 +139,8 @@ export function SheetSettings() {
             ))}
         </div>
       </section>
+
+      <FixedKpis />
 
       <section className="card" style={{ maxWidth: 880 }}>
         <div className="rowcard-head" style={{ padding: '13px 16px' }}>
@@ -183,6 +190,7 @@ function AttributeModal({
   const [options, setOptions] = useState((attribute?.options ?? []).join('\n'));
   const [currency, setCurrency] = useState(attribute?.currency ?? 'MAD');
   const [visible, setVisible] = useState(attribute?.visible ?? true);
+  const [kpiPeriod, setKpiPeriod] = useState<KpiPeriod | null>(attribute?.kpiPeriod ?? null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const toast = useToast();
@@ -196,6 +204,7 @@ function AttributeModal({
       options: options.split('\n').map((o) => o.trim()).filter(Boolean),
       currency,
       visible,
+      kpiPeriod,
     };
     try {
       if (attribute) await api.patch(`/api/org-attributes/${attribute.id}`, body);
@@ -263,6 +272,66 @@ function AttributeModal({
         <input type="checkbox" checked={visible} onChange={(e) => setVisible(e.target.checked)} />
         <span>The startup sees it, and fills it in its space</span>
       </label>
+      {/* Un KPI garde une valeur par période, et sa courbe se lit sur la fiche. */}
+      <div className="field">
+        <label className="check">
+          <input type="checkbox" checked={Boolean(kpiPeriod)} onChange={(e) => setKpiPeriod(e.target.checked ? 'year' : null)} />
+          <span>Follow it over time (KPI) — one value per period, and its curve on the sheet</span>
+        </label>
+        {kpiPeriod && (
+          <select className="input" style={{ width: 220, marginTop: 6 }} value={kpiPeriod} onChange={(e) => setKpiPeriod(e.target.value as KpiPeriod)}>
+            {KPI_PERIODS.map((p) => (
+              <option key={p} value={p}>{KPI_PERIOD_LABEL[p]}</option>
+            ))}
+          </select>
+        )}
+      </div>
     </Modal>
+  );
+}
+
+/** Les attributs fixes qu'on peut suivre dans le temps. */
+function FixedKpis() {
+  const list = useAsync(() => api.get<FixedKpiSetting[]>('/api/kpi-settings'), 'kpi-settings');
+  const toast = useToast();
+  const set = async (key: string, period: KpiPeriod | null) => {
+    try {
+      list.set(await api.put<FixedKpiSetting[]>(`/api/kpi-settings/${key}`, { period }));
+    } catch (err) {
+      toast((err as Error).message, true);
+    }
+  };
+  return (
+    <section className="card" style={{ maxWidth: 880 }}>
+      <div className="rowcard-head" style={{ padding: '13px 16px' }}>
+        <div style={{ flex: 1 }}>
+          <h2 style={{ fontSize: 16 }}>KPIs</h2>
+          <p className="faint" style={{ margin: '2px 0 0', fontSize: 12.5 }}>
+            Fixed attributes followed over time: one value per period, a curve on the sheet, and the startup gives the
+            value of any period — not only the current one. Added attributes become KPIs in their own settings.
+          </p>
+        </div>
+      </div>
+      <div className="card-pad stack" style={{ gap: 6 }}>
+        {(list.data ?? []).map((k) => (
+          <div key={k.key} className="row" style={{ gap: 10, minHeight: 34 }}>
+            <label className="check" style={{ flex: 1 }}>
+              <input type="checkbox" checked={Boolean(k.period)} onChange={(e) => set(k.key, e.target.checked ? 'year' : null)} />
+              <span>{k.label}</span>
+            </label>
+            {k.period &&
+              (k.fixedPeriod ? (
+                <span className="faint" style={{ fontSize: 12.5 }}>{KPI_PERIOD_LABEL[k.period]}</span>
+              ) : (
+                <select className="input" style={{ width: 200 }} value={k.period} onChange={(e) => set(k.key, e.target.value as KpiPeriod)}>
+                  {KPI_PERIODS.map((p) => (
+                    <option key={p} value={p}>{KPI_PERIOD_LABEL[p]}</option>
+                  ))}
+                </select>
+              ))}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }

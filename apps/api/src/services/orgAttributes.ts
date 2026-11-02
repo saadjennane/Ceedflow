@@ -9,6 +9,7 @@ import { normaliseAttributeValue, type SheetAttributes } from '@ceed/shared';
 import * as attrs from '../db/attributes.js';
 import * as repo from '../db/repo.js';
 import { HttpError } from '../routes/util.js';
+import { followSheetChange } from './kpis.js';
 
 /** What a sheet shows of its added attributes: all of them to CEED, the visible ones to the startup. */
 export async function sheetAttributes(orgId: string, visibleOnly: boolean): Promise<SheetAttributes> {
@@ -41,6 +42,7 @@ export async function setAttribute(
   if (JSON.stringify(before) !== JSON.stringify(checked.value ?? null)) {
     await attrs.putAttributeValue(orgId, attributeId, checked.value);
     await attrs.recordChanges(orgId, [attrs.attributeChange(attr, before, checked.value)], by);
+    await followSheetChange(orgId, [{ field: `attr:${attr.id}`, after: checked.value }]);
   }
   return sheetAttributes(orgId, opts.visibleOnly);
 }

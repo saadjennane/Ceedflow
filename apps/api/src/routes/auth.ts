@@ -67,6 +67,7 @@ import { appLink } from '../services/deliverables.js';
 import { HttpError, notFound, parse } from './util.js';
 import { keepSheetHistory } from './sheetHistory.js';
 import { setAttribute, sheetAttributes } from '../services/orgAttributes.js';
+import { kpisOf, putKpiPoint } from '../services/kpis.js';
 
 /** One published edition, as the person signed in sees it. */
 interface MyProgram {
@@ -853,6 +854,22 @@ export async function authRoutes(app: FastifyInstance) {
       { kind: 'member', id: account.recordId, name: who?.name ?? account.email },
       { visibleOnly: true, placedBy: account.recordId },
     );
+  });
+
+  /** Les KPI que la startup suit, et les siens à remplir période par période. */
+  app.get('/api/me/organisations/:id/kpis', async (req) => {
+    const { id } = req.params as { id: string };
+    await accessTo(req, id);
+    return kpisOf(id, true);
+  });
+  app.put('/api/me/organisations/:id/kpis/:key/:period', async (req) => {
+    const { id, key, period } = req.params as { id: string; key: string; period: string };
+    const { account, access } = await accessTo(req, id);
+    if (!canEditOrg(access)) throw new HttpError(403, 'Only an editor or an administrator can change this page.');
+    const value = (req.body as { value?: unknown } | null)?.value ?? null;
+    await placeable(account.recordId, id, (value as { uploadId?: unknown } | null)?.uploadId);
+    const who = await dir.getRecord(account.recordId);
+    return putKpiPoint(id, key, period, value, { kind: 'member', id: account.recordId, name: who?.name ?? account.email }, { visibleOnly: true });
   });
 
   app.patch('/api/me/organisations/:id', async (req) => {

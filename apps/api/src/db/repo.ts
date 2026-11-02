@@ -1766,7 +1766,8 @@ export async function claimUploads(
         and candidate_id is null
         and (uploaded_by is null or uploaded_by = $3)
         and not exists (select 1 from org_documents d where d.upload_id = uploads.id)
-        and not exists (select 1 from org_attribute_values av where av.value->>'uploadId' = uploads.id)`,
+        and not exists (select 1 from org_attribute_values av where av.value->>'uploadId' = uploads.id)
+        and not exists (select 1 from org_kpi_points kp where kp.value->>'uploadId' = uploads.id)`,
     [candidateId, ids, by],
   );
 }
@@ -1787,8 +1788,8 @@ export async function getUpload(id: string) {
             /* Le document d'abord : c'est lui qui dit à qui un fichier appartient
                le plus sûrement — un logo qu'on aurait fait pointer dessus ne le
                fait pas changer de main. */
-            coalesce(c.org_id, d.org_id, av.org_id, r.id, pr.org_id) as "orgId",
-            (d.org_id is not null or av.org_id is not null) as "isDocument"
+            coalesce(c.org_id, d.org_id, av.org_id, kp.org_id, r.id, pr.org_id) as "orgId",
+            (d.org_id is not null or av.org_id is not null or kp.org_id is not null) as "isDocument"
        from uploads u
        left join candidates c on c.id = u.candidate_id
        left join records r on r.logo_upload_id = u.id
@@ -1798,6 +1799,8 @@ export async function getUpload(id: string) {
        left join org_products pr on pr.image_upload_id = u.id
        /* Le fichier d'un attribut ajouté à la fiche : à son organisation, comme un document. */
        left join org_attribute_values av on av.value->>'uploadId' = u.id
+       /* Une version d'un KPI fichier — le pitch deck d'une période. */
+       left join org_kpi_points kp on kp.value->>'uploadId' = u.id
       where u.id = $1
       limit 1`,
     [id],

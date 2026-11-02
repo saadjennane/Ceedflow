@@ -87,4 +87,41 @@ describe('a startup sheet CEED can add to', { skip: skipWithoutServer }, () => {
     assert.ok(history.some((h) => h.field.startsWith('attr:') && h.byKind === 'member'), 'an added attribute too');
     assert.equal((await call(founder, 'GET', `/api/records/${orgId}/history`)).status, 401, 'CEED’s alone');
   });
+
+  it('follows a KPI period by period: the latest makes the sheet’s value, an older one is history, a correction replaces', async () => {
+    assert.equal((await call(staff, 'PUT', '/api/kpi-settings/teamSize', { period: 'quarter' })).status, 200);
+    const put = (period: string, value: unknown) => call(founder, 'PUT', `/api/me/organisations/${orgId}/kpis/teamSize/${period}`, { value });
+    await put('2029-Q4', 10);
+    await put('2030-Q1', 14);
+    await put('2028-Q2', 5);
+    assert.equal((await put('2026-13', 3)).status, 422, 'not a quarter');
+    const record = (await call(staff, 'GET', `/api/records/${orgId}`)).body.record;
+    assert.equal(record.teamSize, 14, 'the latest quarter is the headcount');
+
+    await put('2029-Q4', 11);
+    const kpis = (await call(founder, 'GET', `/api/me/organisations/${orgId}/kpis`)).body as { key: string; points: { period: string; value: unknown }[] }[];
+    const team = kpis.find((k) => k.key === 'teamSize')!;
+    assert.deepEqual(team.points.filter((p) => p.period >= '2028').map((p) => [p.period, p.value]), [['2028-Q2', 5], ['2029-Q4', 11], ['2030-Q1', 14]]);
+    const history = (await call(staff, 'GET', `/api/records/${orgId}/history`)).body as { field: string; before: unknown; after: unknown }[];
+    assert.ok(history.some((h) => h.field === 'kpi:teamSize:2029-Q4' && h.before === 10 && h.after === 11), 'the correction, kept');
+
+    // Corrigé sur la fiche elle-même : c'est la valeur du trimestre en cours.
+    await call(staff, 'PATCH', `/api/records/${orgId}`, { teamSize: 20 });
+    const now = (await call(staff, 'GET', `/api/records/${orgId}/kpis`)).body as typeof kpis;
+    assert.ok(now.find((k) => k.key === 'teamSize')!.points.some((p) => p.value === 20));
+
+    // Le chiffre d'affaires est suivi d'office, dans sa table annuelle ; le montant levé se lit, ne s'écrit pas.
+    await call(founder, 'PUT', `/api/me/organisations/${orgId}/kpis/revenue/2023`, { value: 120000 });
+    assert.ok((await call(staff, 'GET', `/api/records/${orgId}`)).body.record.revenues.some((r: { year: number; amount: number }) => r.year === 2023 && r.amount === 120000));
+    await call(staff, 'PUT', '/api/kpi-settings/equityRaised', { period: 'year' });
+    assert.equal((await call(staff, 'PUT', `/api/records/${orgId}/kpis/equityRaised/2025`, { value: 1 })).status, 422);
+  });
+
+  it('makes an added attribute a KPI of its own', async () => {
+    const made = await call(staff, 'POST', '/api/org-attributes', { label: 'Utilisateurs actifs', type: 'number', kpiPeriod: 'month' });
+    await call(staff, 'PUT', `/api/records/${orgId}/kpis/${encodeURIComponent(`attr:${made.body.id}`)}/2026-03`, { value: 300 });
+    await call(staff, 'PUT', `/api/records/${orgId}/kpis/${encodeURIComponent(`attr:${made.body.id}`)}/2026-05`, { value: 450 });
+    const values = (await call(staff, 'GET', `/api/records/${orgId}/attributes`)).body.values;
+    assert.equal(values[made.body.id], 450, 'its value of the moment');
+  });
 });

@@ -53,6 +53,8 @@ export interface OrgAttribute {
   visible: boolean;
   position: number;
   archived: boolean;
+  /** Followed over time, one value per period of this kind. Null: a plain attribute. */
+  kpiPeriod: 'year' | 'quarter' | 'month' | 'day' | null;
 }
 
 export const orgAttributeInput = z
@@ -63,6 +65,7 @@ export const orgAttributeInput = z
     options: z.array(z.string().trim().min(1).max(120)).max(100).default([]),
     currency: z.string().trim().min(1).max(8).default('MAD'),
     visible: z.boolean().default(true),
+    kpiPeriod: z.enum(['year', 'quarter', 'month', 'day']).nullable().default(null),
   })
   .superRefine((a, ctx) => {
     if (hasOptions(a.type) && !a.options.length) {
@@ -80,6 +83,7 @@ export const orgAttributePatch = z.object({
   visible: z.boolean().optional(),
   position: z.number().int().min(0).optional(),
   archived: z.boolean().optional(),
+  kpiPeriod: z.enum(['year', 'quarter', 'month', 'day']).nullable().optional(),
 });
 export type OrgAttributePatch = z.infer<typeof orgAttributePatch>;
 

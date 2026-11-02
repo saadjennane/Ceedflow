@@ -1,4 +1,6 @@
 import {
+  kpiPointInput,
+  kpiSettingInput,
   hasOptions,
   orgAttributeInput,
   orgAttributePatch,
@@ -47,6 +49,7 @@ import * as attrs from '../db/attributes.js';
 import type { Changer } from '../db/attributes.js';
 import { keepSheetHistory } from './sheetHistory.js';
 import { setAttribute, sheetAttributes } from '../services/orgAttributes.js';
+import { fixedKpiSettings, kpisOf, putKpiPoint, setFixedKpi } from '../services/kpis.js';
 
 /** Opening an account on somebody's behalf, with a password they must replace. */
 const openAccountInput = z.object({
@@ -129,6 +132,26 @@ export async function directoryRoutes(app: FastifyInstance) {
     return setAttribute(id, attributeId, (req.body as { value?: unknown } | null)?.value ?? null,
       by ?? { kind: 'system', id: null, name: '' }, { visibleOnly: false });
   });
+  /* Les KPI : quels attributs fixes on suit, et les valeurs d'une fiche. */
+  app.get('/api/kpi-settings', async () => fixedKpiSettings());
+  app.put('/api/kpi-settings/:key', async (req) => {
+    const { key } = req.params as { key: string };
+    await setFixedKpi(key, parse(kpiSettingInput, req.body).period);
+    return fixedKpiSettings();
+  });
+  app.get('/api/records/:id/kpis', async (req) => {
+    const { id } = req.params as { id: string };
+    await orgRecord(id);
+    return kpisOf(id, false);
+  });
+  app.put('/api/records/:id/kpis/:key/:period', async (req) => {
+    const { id, key, period } = req.params as { id: string; key: string; period: string };
+    await orgRecord(id);
+    const by = await changer(req);
+    return putKpiPoint(id, key, period, parse(kpiPointInput, req.body).value ?? null,
+      by ?? { kind: 'system', id: null, name: '' }, { visibleOnly: false });
+  });
+
   /** Ce qui a changé sur la fiche, du plus récent au plus ancien. CEED seulement. */
   app.get('/api/records/:id/history', async (req) => {
     const { id } = req.params as { id: string };

@@ -35,6 +35,7 @@ import { TeamModal } from './TeamPanel';
 import { PhoneLines } from '../../ui/PhoneLines';
 import { PlaceLines } from '../../ui/PlaceLines';
 import { ProfileBar, ProfileFacts } from '../../ui/OrgProfile';
+import { KpiPanel } from '../../ui/KpiPanel';
 import { OrgSheet } from '../../ui/OrgSheet';
 
 /**
@@ -1111,7 +1112,7 @@ function Involvement({
 /* ------------------------------------------------------------------ */
 
 function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [creating, setCreating] = useState(false);
   /* La fiche ouverte : celle d'une page qu'on tient, ou celle qu'on vient de créer. */
   const [editing, setEditing] = useState<{ record: DirectoryRecord; manage: boolean } | null>(null);
@@ -1189,6 +1190,13 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
               {profileStarted(profileOf(link.record)) && (
                 <ProfileFacts profile={profileOf(link.record)} name={link.record.name} />
               )}
+              {/* Ses indicateurs, période par période — remplis par qui peut modifier la page. */}
+              <KpiPanel
+                key={`${link.record.id}:${editing ? 'editing' : 'shown'}`}
+                url={`/api/me/organisations/${link.record.id}/kpis`}
+                lang={lang}
+                editable={canEditOrg(link.affiliation.access)}
+              />
             </div>
           ))}
         </div>

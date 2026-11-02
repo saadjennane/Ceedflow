@@ -10,6 +10,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { DirectoryRecord } from '@ceed/shared';
 import * as dir from '../db/directory.js';
 import { recordChanges, sheetDiff, type Changer } from '../db/attributes.js';
+import { followSheetChange } from '../services/kpis.js';
 
 const before = new WeakMap<FastifyRequest, DirectoryRecord>();
 
@@ -43,6 +44,8 @@ export function keepSheetHistory(
       const changes = sheetDiff(was, now);
       const by = changes.length ? await changer(req) : null;
       if (changes.length) await recordChanges(was.id, changes, by ?? { kind: 'system', id: null, name: '' });
+      /* Un attribut suivi comme KPI : sa nouvelle valeur est celle de la période en cours. */
+      await followSheetChange(was.id, changes);
     } catch (err) {
       req.log.error(err, 'sheet history');
     }

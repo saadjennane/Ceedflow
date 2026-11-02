@@ -18,7 +18,7 @@ import {
 } from '@ceed/shared';
 import { all, one } from './client.js';
 
-const ATTR_COLS = `id, label, label_en as "labelEn", type, options, currency, visible, position,
+const ATTR_COLS = `id, label, label_en as "labelEn", type, options, currency, visible, position, kpi_period as "kpiPeriod",
   archived_at is not null as archived`;
 
 export async function listAttributes(opts: { visibleOnly?: boolean; withArchived?: boolean } = {}): Promise<OrgAttribute[]> {
@@ -38,9 +38,10 @@ export async function createAttribute(input: OrgAttributeInput): Promise<OrgAttr
   const id = newId('att');
   const last = await one<{ n: number }>('select coalesce(max(position), -1)::int as n from org_attributes');
   await all(
-    `insert into org_attributes (id, label, label_en, type, options, currency, visible, position)
-     values ($1,$2,$3,$4,$5::text::jsonb,$6,$7,$8)`,
-    [id, input.label, input.labelEn, input.type, JSON.stringify(input.options), input.currency, input.visible, (last?.n ?? -1) + 1],
+    `insert into org_attributes (id, label, label_en, type, options, currency, visible, position, kpi_period)
+     values ($1,$2,$3,$4,$5::text::jsonb,$6,$7,$8,$9)`,
+    [id, input.label, input.labelEn, input.type, JSON.stringify(input.options), input.currency, input.visible, (last?.n ?? -1) + 1,
+      input.kpiPeriod],
   );
   return (await getAttribute(id))!;
 }
@@ -58,6 +59,7 @@ export async function updateAttribute(id: string, patch: OrgAttributePatch): Pro
   if (patch.currency !== undefined) put('currency', patch.currency);
   if (patch.visible !== undefined) put('visible', patch.visible);
   if (patch.position !== undefined) put('position', patch.position);
+  if (patch.kpiPeriod !== undefined) put('kpi_period', patch.kpiPeriod);
   if (patch.archived !== undefined) sets.push(patch.archived ? 'archived_at = coalesce(archived_at, now())' : 'archived_at = null');
   if (sets.length) await all(`update org_attributes set ${sets.join(', ')} where id = $1`, params);
   return getAttribute(id);
