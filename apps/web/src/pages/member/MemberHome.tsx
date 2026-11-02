@@ -97,6 +97,8 @@ export function MemberHome({
         return `${a.answer === 'book' ? t('act.bookCommittee') : t('act.confirmCommittee')} — ${a.label}`;
       case 'prepare':
         return `${t('act.prepare')} ${a.label}`;
+      case 'kpi':
+        return `${t('act.kpi')} — ${a.label}`;
       case 'answer_meeting':
         if (!a.label) return t('act.bookMeetingAny');
         return `${a.answer === 'book' ? t('act.bookMeeting') : t('act.confirmMeeting')} ${a.label}`;
@@ -125,6 +127,8 @@ export function MemberHome({
               ? t('cta.report')
               : a.kind === 'prepare'
                 ? t('cta.prepare')
+              : a.kind === 'kpi'
+                ? t('cta.kpi')
               : a.answer === 'book'
                 ? t('cta.book')
                 : t('cta.confirm');

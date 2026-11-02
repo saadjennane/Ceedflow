@@ -1,3 +1,4 @@
+import { ReportsTab } from './work/ReportsTab';
 import { EDITION_STATUSES, type EditionStatus, type BlockType, type Candidate, type EditionDetail } from '@ceed/shared';
 import { useCallback, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
@@ -15,7 +16,7 @@ import { WorkTab } from './work/WorkTab';
 import '../ui/builder.css';
 import '../ui/programs.css';
 
-type Tab = 'builder' | 'startups' | 'tasks' | 'outreach' | 'committees' | 'review' | 'deliverables' | 'one-to-one';
+type Tab = 'builder' | 'startups' | 'tasks' | 'reports' | 'outreach' | 'committees' | 'review' | 'deliverables' | 'one-to-one';
 
 /**
  * The builder composes the workflow; these run it. A work tab only appears when
@@ -31,7 +32,7 @@ const WORK_TABS: { key: Tab; label: string; types: BlockType[] }[] = [
 ];
 
 /** Still to build. They stay visible and inert so the shape of the product reads. */
-const LATER_TABS = ['Activities', 'Reports', 'Settings'];
+const LATER_TABS = ['Activities', 'Settings'];
 
 export function EditionPage() {
   const { editionId = '' } = useParams();
@@ -115,7 +116,7 @@ export function EditionPage() {
   const setupBlock = track.phases.flatMap((p) => p.blocks).find((b) => b.id === setupId) ?? null;
   const present = new Set(track.phases.flatMap((p) => p.blocks.map((b) => b.type)));
   const workTabs = WORK_TABS.filter((t) => t.types.some((type) => present.has(type)));
-  const tab: Tab = (['startups', 'tasks', ...workTabs.map((t) => t.key)] as string[]).includes(asked)
+  const tab: Tab = (['startups', 'tasks', 'reports', ...workTabs.map((t) => t.key)] as string[]).includes(asked)
     ? (asked as Tab)
     : 'builder';
 
@@ -179,6 +180,10 @@ export function EditionPage() {
         <button role="tab" className={tab === 'tasks' ? 'tab on' : 'tab'} onClick={() => setTab('tasks')}>
           Tasks
         </button>
+        {/* Le reporting de l'édition : ses indicateurs et ceux de sa cohorte. */}
+        <button role="tab" className={tab === 'reports' ? 'tab on' : 'tab'} onClick={() => setTab('reports')}>
+          Reports
+        </button>
         {LATER_TABS.map((label) => (
           <span key={label} className="tab off" title="Not built yet">
             {label}
@@ -208,6 +213,8 @@ export function EditionPage() {
             <CandidatesTab edition={detail} track={track} candidates={candidates.data ?? []} onChanged={refresh} />
           ) : tab === 'tasks' ? (
             <EditionTasks editionId={detail.id} editionName={`${detail.program.name} · ${detail.name}`} />
+          ) : tab === 'reports' ? (
+            <ReportsTab edition={detail} />
           ) : (
             <WorkTab
               tab={tab}

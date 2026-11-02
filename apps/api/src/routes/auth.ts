@@ -70,6 +70,7 @@ import { keepSheetHistory } from './sheetHistory.js';
 import { setAttribute, sheetAttributes } from '../services/orgAttributes.js';
 import { kpisOf, putKpiPoint } from '../services/kpis.js';
 import { prefillFromSheet, writeBackToSheet } from '../services/formSheet.js';
+import { measureFor, saveMeasure } from '../services/reporting.js';
 
 /** One published edition, as the person signed in sees it. */
 interface MyProgram {
@@ -910,6 +911,19 @@ export async function authRoutes(app: FastifyInstance) {
     }
     if (!orgId || !(await dir.orgIdsOf(account.recordId)).has(orgId)) return {};
     return prefillFromSheet(orgId, input.fields, input.lang);
+  });
+
+  /* ---- Les indicateurs d'un moment du programme, côté startup ---- */
+  app.get('/api/me/kpi/:momentId/:candidateId', async (req, reply) => {
+    const account = await require(req);
+    const { momentId, candidateId } = req.params as { momentId: string; candidateId: string };
+    return (await measureFor(account.recordId, momentId, candidateId)) ?? notFound(reply, 'Nothing is being asked of you there.');
+  });
+  app.put('/api/me/kpi/:momentId/:candidateId', async (req) => {
+    const account = await require(req);
+    const { momentId, candidateId } = req.params as { momentId: string; candidateId: string };
+    const { answers, submit } = parse(reportInput, req.body);
+    return saveMeasure(account.recordId, momentId, candidateId, answers, submit);
   });
 
   /** Les KPI que la startup suit, et les siens à remplir période par période. */

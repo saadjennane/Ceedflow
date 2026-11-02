@@ -142,10 +142,13 @@ export function SheetLinkNote({
   field,
   sources,
   onChange,
+  periodSaid,
 }: {
   field: FormField;
   sources: SheetSource[];
   onChange: (partial: Partial<FormField>) => void;
+  /** Where the period is decided elsewhere — the reporting's moments. */
+  periodSaid?: string;
 }) {
   const source = sources.find((s) => s.key === field.fromProfile);
   return (
@@ -156,7 +159,8 @@ export function SheetLinkNote({
           Linked to the startup sheet — <strong>{source?.label ?? field.fromProfile}</strong>. The form opens on what the
           sheet says, and the answer sent updates it.
         </span>
-        {source?.kpiPeriod && (
+        {source?.kpiPeriod && periodSaid && <span className="faint">{periodSaid}</span>}
+        {source?.kpiPeriod && !periodSaid && (
           <label className="row wrap" style={{ gap: 6 }}>
             <span>Period asked</span>
             <input

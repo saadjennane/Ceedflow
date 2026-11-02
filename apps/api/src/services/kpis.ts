@@ -147,6 +147,11 @@ export async function kpisOf(orgId: string, visibleOnly: boolean): Promise<KpiSe
   });
 }
 
+/** La périodicité de chaque KPI suivi — le réglage, sans aucune fiche. */
+export async function kpiPeriodsByKey(): Promise<Map<string, KpiPeriod>> {
+  return new Map((await definitions(false)).map((d) => [d.key, d.period]));
+}
+
 /** The latest period of a series, after this one is written or removed. */
 const latest = (points: KpiPoint[]) => [...points].sort((a, b) => a.period.localeCompare(b.period)).at(-1) ?? null;
 

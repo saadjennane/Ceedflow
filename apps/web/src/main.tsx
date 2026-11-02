@@ -12,6 +12,7 @@ import { MemberPage } from './pages/member/MemberPage';
 import { ReviewPage } from './pages/member/ReviewPage';
 import { MeetingPage } from './pages/member/MeetingPage';
 import { PreparePage } from './pages/member/PreparePage';
+import { KpiMeasurePage } from './pages/member/KpiMeasurePage';
 import { DirectoryPage } from './pages/directory/DirectoryPage';
 import { RecordPage } from './pages/directory/RecordPage';
 import { ProgramPage } from './pages/ProgramPage';
@@ -34,6 +35,7 @@ const router = createBrowserRouter([
   { path: '/review/:sessionId', element: <ReviewPage /> },
   { path: '/meeting/:meetingId', element: <MeetingPage /> },
   { path: '/prepare/:meetingId', element: <PreparePage /> },
+  { path: '/kpi/:momentId/:candidateId', element: <KpiMeasurePage /> },
   {
     path: '/',
     element: <Shell />,

@@ -29,6 +29,7 @@ import { agendaFor } from './agenda.js';
 import { deliverablesFor } from './deliverables.js';
 import { meetingsFor, prepsDueFor } from './oneToOne.js';
 import { reviewsFor } from './reviews.js';
+import { measuresDueFor } from './reporting.js';
 import { listTasks } from './tasks.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -117,6 +118,21 @@ export async function memberActions(recordId: string): Promise<{ actions: Member
           left: required.length - sent,
           of: required.length,
           back,
+        });
+      }
+
+      /* Les indicateurs d'un moment du programme, envoyés et pas encore rendus. */
+      for (const { moment, started } of await measuresDueFor(candidate.id)) {
+        actions.push({
+          id: `kpi:${moment.id}:${candidate.id}`,
+          kind: 'kpi',
+          role: 'startup',
+          status: statusOf(moment.closesOn, started),
+          dueOn: moment.closesOn,
+          ...where,
+          href: `/kpi/${moment.id}/${candidate.id}`,
+          label: moment.name,
+          orgName: candidate.orgName,
         });
       }
 

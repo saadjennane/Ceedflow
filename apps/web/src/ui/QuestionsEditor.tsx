@@ -36,6 +36,7 @@ export function QuestionsEditor({
   firstPageName = 'Page 1',
   profileLink = false,
   columnToggle = false,
+  kpiPeriodSaid,
 }: {
   value: Questions;
   onChange: (partial: Partial<Questions>) => void;
@@ -46,6 +47,8 @@ export function QuestionsEditor({
   firstPageName?: string;
   /** Offer questions linked to the startup sheet: prefilled from it, and updating it once sent. */
   profileLink?: boolean;
+  /** For a KPI question: where its period comes from, when it is not asked here. */
+  kpiPeriodSaid?: string;
   /** Offer to show a question as a column of the candidates table (applications only). */
   columnToggle?: boolean;
 }) {
@@ -347,7 +350,7 @@ export function QuestionsEditor({
                       )}
                       {/* Reliée à la fiche : reprise à l'ouverture, recopiée à l'envoi. */}
                       {field.fromProfile && (
-                        <SheetLinkNote field={field} sources={sources} onChange={(partial) => setField(field.id, partial)} />
+                        <SheetLinkNote field={field} sources={sources} onChange={(partial) => setField(field.id, partial)} periodSaid={kpiPeriodSaid} />
                       )}
                       <label className="check">
                         <input
