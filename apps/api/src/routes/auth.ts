@@ -1,4 +1,5 @@
 import {
+  formFieldSchema,
   blockStatus,
   canEditOrg,
   canManageTeam,
@@ -68,6 +69,7 @@ import { HttpError, notFound, parse } from './util.js';
 import { keepSheetHistory } from './sheetHistory.js';
 import { setAttribute, sheetAttributes } from '../services/orgAttributes.js';
 import { kpisOf, putKpiPoint } from '../services/kpis.js';
+import { prefillFromSheet, writeBackToSheet } from '../services/formSheet.js';
 
 /** One published edition, as the person signed in sees it. */
 interface MyProgram {
@@ -595,6 +597,22 @@ export async function authRoutes(app: FastifyInstance) {
     if (!page) return notFound(reply, 'Meeting not found.');
     const { answers, submit } = parse(reportInput, req.body);
     await savePrep(id, answers, { side: 'startup', name: page.orgName, submit });
+    /* Envoyée, la préparation recopie sur la fiche ses réponses reliées. */
+    if (submit) {
+      try {
+        const meeting = await getMeeting(id);
+        const candidate = meeting ? await repo.getCandidate(meeting.candidateId) : null;
+        const fields = page.prep?.pages.flatMap((p) => p.fields) ?? [];
+        const who = await dir.getRecord(account.recordId);
+        if (candidate) {
+          await writeBackToSheet(candidate.orgId, fields, answers, {
+            kind: 'member', id: account.recordId, name: who?.name ?? account.email, sourceLabel: page.blockName,
+          });
+        }
+      } catch (err) {
+        req.log.error(err, 'preparation to sheet');
+      }
+    }
     return prepFor(account.recordId, id);
   });
 
@@ -679,6 +697,17 @@ export async function authRoutes(app: FastifyInstance) {
 
     await repo.saveReturn(input.blockId, candidateId, input.itemId, input.value ?? null);
     await repo.claimUploads(candidateId, { [input.itemId]: input.value }, account.recordId);
+    /* Une pièce reliée à la fiche la met à jour, quel que soit le membre qui l'envoie. */
+    if (item.fromProfile && input.value !== null && input.value !== undefined) {
+      try {
+        const who = await dir.getRecord(account.recordId);
+        await writeBackToSheet(candidate.orgId, [item], { [item.id]: input.value }, {
+          kind: 'member', id: account.recordId, name: who?.name ?? account.email, sourceLabel: block.name,
+        });
+      } catch (err) {
+        req.log.error(err, 'deliverable to sheet');
+      }
+    }
     return deliverablesFor(candidate.editionId, candidate);
   });
 
@@ -854,6 +883,33 @@ export async function authRoutes(app: FastifyInstance) {
       { kind: 'member', id: account.recordId, name: who?.name ?? account.email },
       { visibleOnly: true, placedBy: account.recordId },
     );
+  });
+
+  /**
+   * Ce que la fiche dit déjà pour les questions reliées d'un formulaire — une
+   * candidature (par l'organisation choisie), une liste de pièces ou une
+   * préparation (par la candidature). Seulement la fiche d'une organisation
+   * dont on est.
+   */
+  app.post('/api/me/prefill', async (req, reply) => {
+    const account = await require(req);
+    const input = parse(
+      z.object({
+        orgId: z.string().optional(),
+        candidateId: z.string().optional(),
+        fields: z.array(formFieldSchema).max(500),
+        lang: z.enum(['fr', 'en']).default('fr'),
+      }),
+      req.body,
+    );
+    let orgId = input.orgId ?? null;
+    if (input.candidateId) {
+      const candidate = await repo.getCandidate(input.candidateId);
+      if (!candidate) return notFound(reply, 'Candidacy not found.');
+      orgId = candidate.orgId;
+    }
+    if (!orgId || !(await dir.orgIdsOf(account.recordId)).has(orgId)) return {};
+    return prefillFromSheet(orgId, input.fields, input.lang);
   });
 
   /** Les KPI que la startup suit, et les siens à remplir période par période. */

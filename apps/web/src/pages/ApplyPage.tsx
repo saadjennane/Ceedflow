@@ -1,5 +1,4 @@
 
-import { prefillFor, profileOf } from '@ceed/shared';
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError, api } from '../lib/api';
@@ -45,6 +44,23 @@ export function ApplyPage() {
      demande pour la rejoindre attend la réponse de son équipe ou de CEED. */
   const [pending, setPending] = useState(false);
   const [heardFrom, setHeardFrom] = useState('');
+
+  /* La fiche de l'organisation qui postule, pour les questions reliées : celle
+     qu'on a choisie, sinon la première des siennes qui n'a pas encore postulé. */
+  const linked = (form.data?.pages ?? []).flatMap((pg) => pg.fields).filter((f) => f.fromProfile);
+  const alreadyApplied = new Set(applied.data ?? []);
+  const sheetOrg =
+    orgId === NEW
+      ? null
+      : (me?.organisations.find((o) => o.record.id === orgId && !alreadyApplied.has(o.record.id)) ??
+          me?.organisations.find((o) => !alreadyApplied.has(o.record.id)))?.record.id ?? null;
+  const sheet = useAsync(
+    async () =>
+      sheetOrg && linked.length
+        ? { orgId: sheetOrg, values: await api.post<Record<string, unknown>>('/api/me/prefill', { orgId: sheetOrg, fields: linked }) }
+        : null,
+    `sheet:${sheetOrg ?? ''}:${linked.length}`,
+  );
 
   if (form.loading || checkingAccount || (me && applied.loading)) {
     return (
@@ -186,14 +202,8 @@ export function ApplyPage() {
      qu'elle écrit — ou vide la case —, sa réponse gagne. Changer d'organisation
      change ce qui est repris, sans effacer ce qu'elle a tapé. */
   const chosen = naming ? null : me.organisations.find((o) => o.record.id === applyingAs)?.record ?? null;
-  const prefilled: Record<string, unknown> = {};
-  if (chosen) {
-    const profile = profileOf(chosen);
-    for (const field of data.pages.flatMap((pg) => pg.fields)) {
-      const value = prefillFor(field, profile, chosen.name, 'fr');
-      if (value !== undefined) prefilled[field.id] = value;
-    }
-  }
+  /* Lu au serveur : la fiche, ses attributs ajoutés et ses KPI. */
+  const prefilled: Record<string, unknown> = chosen && sheet.data?.orgId === chosen.id ? sheet.data.values : {};
   const answers = { ...prefilled, ...values };
   const notes = Object.fromEntries(
     Object.keys(prefilled)

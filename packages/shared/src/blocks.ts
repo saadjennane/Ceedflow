@@ -167,10 +167,13 @@ export const formFieldSchema = z.object({
   /** Which page of the form the question sits on. Ignored on a one-page form. */
   pageId: z.string().default(''),
   /**
-   * Le champ de la fiche d'organisation qui la préremplit, ou rien.
-   * Une clé de PROFILE_SOURCES (profile.ts).
+   * Le champ de la fiche d'organisation qui la préremplit — et que la réponse
+   * envoyée met à jour —, ou rien. Une clé de PROFILE_SOURCES (profile.ts),
+   * `attr:<id>` pour un attribut ajouté par CEED, `kpi:<clé>` pour un KPI.
    */
   fromProfile: z.string().optional(),
+  /** Pour un KPI : la période demandée (« 2025 »). Vide : la période en cours à l'envoi. */
+  fromPeriod: z.string().optional(),
 });
 
 export type FormField = z.infer<typeof formFieldSchema>;

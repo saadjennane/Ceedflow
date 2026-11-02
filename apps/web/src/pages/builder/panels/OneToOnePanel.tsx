@@ -244,6 +244,7 @@ export function OneToOneSetup({
               onChange={(partial) => patch({ prep: { ...config.prep, ...partial } })}
               emptyText="No question yet. The topics to cover, progress since last time, what blocks them — add what you want them to prepare."
               firstPageName="Preparation"
+              profileLink
             />
             <div className="grid-2">
               <div className="field">

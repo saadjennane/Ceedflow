@@ -196,6 +196,15 @@ export function OwedList({
   /** Les envois promis et pas encore partis, pour les lâcher en quittant. */
   const pending = useRef<Record<string, (leaving?: boolean) => void>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
+  /* Les pièces reliées à la fiche : ce qu'elle en dit déjà. */
+  const linked = ask.config.items.filter((i) => i.kind !== 'group' && i.fromProfile);
+  const sheet = useAsync(
+    () =>
+      candidateId && linked.length && !readOnly
+        ? api.post<Record<string, unknown>>('/api/me/prefill', { candidateId, fields: linked })
+        : Promise.resolve({} as Record<string, unknown>),
+    `prefill:${candidateId ?? ''}:${ask.block.id}`,
+  );
 
   /* Ce qui est en attente part quand même si la page se ferme : une réponse
      écrite puis abandonnée en fermant l'onglet serait pire que pas de champ. */
@@ -409,8 +418,24 @@ export function OwedList({
       <div className="stack" style={{ gap: 14 }}>
         {ask.config.items.map((item) => {
           const mine = mineOf(item.id);
+          /* Ce que la fiche dit déjà, proposé — pas posé : une pièce n'est
+             envoyée que quand on la donne, et un champ prérempli se lirait
+             comme déjà transmis. */
+          const fromSheet = sheet.data?.[item.id];
+          const empty = !(item.id in typed) && (mine?.value === undefined || mine?.value === null || mine?.value === '');
           return (
             <div key={item.id}>
+              {fromSheet !== undefined && empty && ask.open && !readOnly && (
+                <div className="callout" style={{ marginBottom: 6, fontSize: 12.5 }}>
+                  <Icon name="link" size={13} />
+                  <span style={{ flex: 1 }}>
+                    {t('owed.fromSheet')} <strong>{sheetText(fromSheet)}</strong>
+                  </span>
+                  <button className="btn sm" onClick={() => write(item, fromSheet)}>
+                    {t('owed.useSheet')}
+                  </button>
+                </div>
+              )}
               <DeliverableItemInput
                 item={item}
                 value={item.id in typed ? typed[item.id] : (mine?.value ?? null)}
@@ -455,4 +480,12 @@ export function OwedList({
       )}
     </section>
   );
+}
+
+/** Une valeur de la fiche, en mots. */
+function sheetText(value: unknown): string {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return String((value as { filename?: string }).filename ?? '');
+  }
+  return Array.isArray(value) ? value.join(', ') : String(value);
 }

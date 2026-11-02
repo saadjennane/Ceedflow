@@ -19,6 +19,7 @@ import '../../ui/directory.css';
 
 interface Prepare {
   id: string;
+  candidateId?: string;
   blockName: string;
   programName: string;
   orgName: string;
@@ -42,6 +43,15 @@ export function PreparePage() {
   const { meetingId = '' } = useParams();
   const page = useAsync(() => api.get<Prepare>(`/api/me/prepare/${meetingId}`), meetingId);
   const navigate = useNavigate();
+  /* Les questions reliées à la fiche : ce qu'elle en dit déjà, tant que rien n'est écrit. */
+  const linked = (page.data?.prep?.pages ?? []).flatMap((p) => p.fields).filter((f) => f.fromProfile);
+  const sheet = useAsync(
+    () =>
+      page.data?.candidateId && linked.length && !page.data.prep?.submittedAt
+        ? api.post<Record<string, unknown>>('/api/me/prefill', { candidateId: page.data.candidateId, fields: linked })
+        : Promise.resolve({} as Record<string, unknown>),
+    `prep-sheet:${page.data?.candidateId ?? ''}:${linked.length}`,
+  );
 
   useEffect(() => {
     const next = encodeURIComponent(`/prepare/${meetingId}`);
@@ -124,9 +134,9 @@ export function PreparePage() {
               {prep.editedByName && ` Updated by ${prep.editedByName}.`}
             </p>
             <PrepForm
-              key={`${prep.submittedAt}-${prep.locked}`}
+              key={`${prep.submittedAt}-${prep.locked}-${Object.keys(sheet.data ?? {}).length}`}
               pages={prep.pages}
-              answers={prep.answers}
+              answers={{ ...(sheet.data ?? {}), ...prep.answers }}
               readOnly={prep.locked}
               saveLabel="Save draft"
               sendLabel={prep.submittedAt ? 'Update' : 'Send to my interlocutor'}

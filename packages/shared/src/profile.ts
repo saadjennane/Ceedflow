@@ -942,3 +942,80 @@ export function prefillFor(
   }
   return raw;
 }
+
+
+/**
+ * Le sens inverse de `prefillFor` : ce qu'une réponse envoyée écrit sur la
+ * fiche. Seulement les parties de la fiche qui tiennent en une valeur — une
+ * adresse, un téléphone ou une ville vivent dans des listes que la fiche
+ * ordonne elle-même, et un chiffre d'affaires a besoin de son exercice (on le
+ * relie comme KPI). Une valeur qui ne correspond à aucun choix n'écrit rien.
+ */
+export function sheetWriteFor(
+  key: string,
+  value: unknown,
+): { patch: Record<string, unknown> } | { document: string; uploadId: string } | null {
+  if (value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length)) return null;
+  const text = typeof value === 'string' ? value.trim() : null;
+  const num = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN;
+  const choice = (list: readonly Choice[], v: unknown) => {
+    const w = typeof v === 'string' ? fold(v) : '';
+    return list.find((c) => c.key === v || fold(c.fr) === w || fold(c.en) === w)?.key;
+  };
+  const one = (column: string, list: readonly Choice[]) => {
+    const k = choice(list, value);
+    return k ? { patch: { [column]: k } } : null;
+  };
+  const whole = (column: string) => (Number.isFinite(num) ? { patch: { [column]: Math.round(num) } } : null);
+  const file = (kind: string) => {
+    const id = (value as { uploadId?: unknown }).uploadId;
+    return typeof id === 'string' && id ? { document: kind, uploadId: id } : null;
+  };
+  switch (key) {
+    case 'name':
+      return text ? { patch: { name: text } } : null;
+    case 'pitch':
+    case 'bio':
+    case 'website':
+    case 'linkedin':
+      return text ? { patch: { [key]: text } } : null;
+    case 'offering':
+      return text ? { patch: { mainOffering: text } } : null;
+    case 'sector':
+      return one('sector', SECTORS);
+    case 'maturity':
+      return one('maturity', MATURITY_LEVELS);
+    case 'orgType':
+      return one('orgType', ORG_TYPES);
+    case 'legalForm':
+      return one('legalForm', LEGAL_FORMS);
+    case 'targetMarkets': {
+      const words = Array.isArray(value) ? value : String(value).split(',');
+      const keys = words.map((w) => choice(TARGET_MARKETS, typeof w === 'string' ? w.trim() : w)).filter(Boolean);
+      return keys.length ? { patch: { targetMarkets: [...new Set(keys)] } } : null;
+    }
+    case 'foundedOn':
+      return text && /^\d{4}-\d{2}-\d{2}$/.test(text) ? { patch: { foundedOn: text } } : null;
+    case 'foundedYear':
+      return whole('foundedYear');
+    case 'foundersCount':
+    case 'teamSize':
+    case 'womenCount':
+    case 'activeClients':
+      return whole(key);
+    case 'capital':
+      return Number.isFinite(num) ? { patch: { capitalAmount: num } } : null;
+    case 'pitchDeck':
+      return file('pitch_deck');
+    case 'statutes':
+      return file('statutes');
+    case 'rc':
+      return file('rc');
+    case 'financials':
+      return file('financials');
+    case 'catalogue':
+      return file('catalogue');
+    default:
+      return null;
+  }
+}

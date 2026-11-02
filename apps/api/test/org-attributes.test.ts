@@ -12,6 +12,7 @@ import { directoryRoutes } from '../src/routes/directory.js';
 import { authRoutes } from '../src/routes/auth.js';
 import { SESSION_COOKIE, createAccount, createSession, setStaffRole } from '../src/services/auth.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
+import { writeBackToSheet } from '../src/services/formSheet.js';
 
 before(migrate);
 after(closeDb);
@@ -115,6 +116,40 @@ describe('a startup sheet CEED can add to', { skip: skipWithoutServer }, () => {
     assert.ok((await call(staff, 'GET', `/api/records/${orgId}`)).body.record.revenues.some((r: { year: number; amount: number }) => r.year === 2023 && r.amount === 120000));
     await call(staff, 'PUT', '/api/kpi-settings/equityRaised', { period: 'year' });
     assert.equal((await call(staff, 'PUT', `/api/records/${orgId}/kpis/equityRaised/2025`, { value: 1 })).status, 422);
+  });
+
+  it('links a form to the sheet: opens on what it says, and the answer sent updates it — in its history, through the form', async () => {
+    const ice = await call(staff, 'POST', '/api/org-attributes', { label: 'ICE', type: 'short_text' });
+    const field = (id: string, type: string, fromProfile: string, extra: object = {}) =>
+      ({ id, type, label: id, help: '', required: false, options: [], showInTable: false, pageId: '', fromProfile, ...extra });
+    const fields = [
+      field('q_team', 'number', 'teamSize'),
+      field('q_sector', 'select', 'sector', { options: ['Finance & Fintech', 'Santé & Healthtech'] }),
+      field('q_ice', 'short_text', `attr:${ice.body.id}`),
+      field('q_rev', 'number', 'kpi:revenue', { fromPeriod: '2024' }),
+    ];
+    await call(staff, 'PUT', `/api/records/${orgId}/attributes/${ice.body.id}`, { value: 'ICE-1' });
+    const prefill = (await call(founder, 'POST', '/api/me/prefill', { orgId, fields })).body;
+    assert.equal(prefill.q_ice, 'ICE-1');
+    assert.equal(typeof prefill.q_team, 'number');
+    assert.equal((await call(staff, 'POST', '/api/me/prefill', { orgId, fields })).status, 200, 'not theirs: nothing');
+
+    const person = (await call(founder, 'GET', '/api/me')).body;
+    await writeBackToSheet(orgId, fields as never, { q_team: 42, q_sector: 'Finance & Fintech', q_ice: 'ICE-2', q_rev: 900000 }, {
+      kind: 'member', id: person?.record?.id ?? null, name: 'Karim Founder', sourceLabel: 'Formulaire de candidature',
+    });
+    const record = (await call(staff, 'GET', `/api/records/${orgId}`)).body.record;
+    assert.equal(record.teamSize, 42);
+    assert.equal(record.sector, 'fintech', 'the word chosen, as the sheet’s own choice');
+    assert.ok(record.revenues.some((r: { year: number; amount: number }) => r.year === 2024 && r.amount === 900000), 'the KPI, for the period asked');
+    assert.equal((await call(staff, 'GET', `/api/records/${orgId}/attributes`)).body.values[ice.body.id], 'ICE-2');
+    const history = (await call(staff, 'GET', `/api/records/${orgId}/history`)).body as { field: string; source: string; sourceLabel: string }[];
+    for (const f of ['teamSize', 'sector', `attr:${ice.body.id}`, 'kpi:revenue:2024']) {
+      const h = history.find((x) => x.field === f);
+      assert.ok(h, f);
+      assert.equal(h!.source, 'form');
+      assert.equal(h!.sourceLabel, 'Formulaire de candidature');
+    }
   });
 
   it('makes an added attribute a KPI of its own', async () => {

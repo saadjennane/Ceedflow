@@ -1,3 +1,4 @@
+import { SheetLinkNote, SheetSourceMenu, fieldFromSource, useSheetSources } from '../../../ui/SheetLink';
 import {
   DELIVERABLE_RETURN_VARIABLES,
   DELIVERABLE_VARIABLES,
@@ -67,6 +68,7 @@ export function DeliverableSetup({
      same kind of choice: the dropdown says what ONE answer looks like, and a
      group says what counts as one thing. Hiding that distinction in a list
      beside "File" and "Short text" is how it gets missed. */
+  const sources = useSheetSources();
   const add = (kind: 'field' | 'group') => {
     const made: DeliverableItem = {
       ...blank(),
@@ -163,6 +165,17 @@ export function DeliverableSetup({
           <button className="btn sm" onClick={() => add('group')} title="Several fields that count as one thing">
             <Icon name="plus" size={13} /> Add a group
           </button>
+          {/* Une pièce reprise de la fiche : préremplie, et la fiche mise à jour à l'envoi. */}
+          <SheetSourceMenu
+            sources={sources}
+            compact
+            onPick={(source) => {
+              const field = fieldFromSource(source, '');
+              const made: DeliverableItem = { ...field, kind: 'field', fields: [], repeatable: false, each: '' };
+              setOpenId(made.id);
+              patch({ items: [...config.items, made] });
+            }}
+          />
           <div className="spacer" />
           <FounderPreview config={config} />
         </div>
@@ -201,6 +214,7 @@ function FieldRow({
         <select
           className="status-select"
           value={field.type}
+          disabled={Boolean(field.fromProfile)}
           aria-label="Kind of answer"
           onChange={(e) => onChange({ type: e.target.value as FormField['type'] })}
         >
@@ -223,7 +237,7 @@ function FieldRow({
         )}
       </div>
 
-      {(field.type === 'select' || field.type === 'multiselect') && (
+      {(field.type === 'select' || field.type === 'multiselect') && !field.fromProfile && (
         <TextField
           label="Choices"
           value={field.options.join(', ')}
@@ -281,6 +295,7 @@ function ItemEditor({
   onDown: (() => void) | null;
 }) {
   const group = item.kind === 'group';
+  const sources = useSheetSources();
   /* Its own drag state, so hovering a field inside a group moves the field and
      not the group that holds it. */
   const inner = useDragging((fromId, toId) => onChange({ fields: moved(item.fields, fromId, toId) }));
@@ -318,7 +333,10 @@ function ItemEditor({
               placeholder="Associés"
             />
           ) : (
-            <FieldRow field={item} onChange={onChange} />
+            <>
+              <FieldRow field={item} onChange={onChange} />
+              {item.fromProfile && <SheetLinkNote field={item} sources={sources} onChange={onChange} />}
+            </>
           )}
 
           <div className="row" style={{ gap: 10 }}>

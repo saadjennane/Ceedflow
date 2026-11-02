@@ -9,7 +9,6 @@
 import {
   FIELD_TYPES,
   FIELD_TYPE_LABEL,
-  PROFILE_SOURCES,
   formPages,
   idOf,
   type FieldType,
@@ -20,6 +19,7 @@ import { useState, type ReactNode } from 'react';
 import { SelectField, TagField, TextField } from './Field';
 import { Icon } from './Icon';
 import { ConfirmDialog, useToast } from './Overlays';
+import { SheetLinkNote, SheetSourceMenu, fieldFromSource, useSheetSources, type SheetSource } from './SheetLink';
 
 export interface Questions {
   layout: 'single' | 'paged';
@@ -44,7 +44,7 @@ export function QuestionsEditor({
   emptyText: string;
   pagedHint?: string;
   firstPageName?: string;
-  /** Offer to prefill a question from the organisation’s profile (applications only). */
+  /** Offer questions linked to the startup sheet: prefilled from it, and updating it once sent. */
   profileLink?: boolean;
   /** Offer to show a question as a column of the candidates table (applications only). */
   columnToggle?: boolean;
@@ -71,6 +71,17 @@ export function QuestionsEditor({
       pageId,
     };
     // A new question lands at the end of its own page, not at the end of the form.
+    const list = [...value.fields];
+    const lastOfPage = list.map((f) => f.pageId).lastIndexOf(pageId);
+    list.splice(lastOfPage === -1 ? list.length : lastOfPage + 1, 0, field);
+    onChange({ fields: list });
+    setOpenFieldId(field.id);
+  };
+
+  /* Les attributs de la fiche, pour les questions qui la reprennent. */
+  const sources = useSheetSources();
+  const addLinked = (source: SheetSource, pageId: string) => {
+    const field = fieldFromSource(source, pageId);
     const list = [...value.fields];
     const lastOfPage = list.map((f) => f.pageId).lastIndexOf(pageId);
     list.splice(lastOfPage === -1 ? list.length : lastOfPage + 1, 0, field);
@@ -172,6 +183,7 @@ export function QuestionsEditor({
             <Icon name="plus" size={13} /> Add page
           </button>
         )}
+        {!paged && profileLink && <SheetSourceMenu sources={sources} onPick={(src) => addLinked(src, '')} />}
         {!paged && <AddFieldMenu onPick={(type) => addField(type, '')} />}
       </div>
 
@@ -197,6 +209,7 @@ export function QuestionsEditor({
                   }
                 />
                 <span className="badge num">{fields.length}</span>
+                {profileLink && <SheetSourceMenu sources={sources} onPick={(src) => addLinked(src, page.id)} compact />}
                 <AddFieldMenu onPick={(type) => addField(type, page.id)} compact />
                 <button
                   className="btn ghost icon sm"
@@ -307,12 +320,15 @@ export function QuestionsEditor({
                         hint="optional"
                         placeholder="Three or four sentences."
                       />
+                      {/* Reliée à la fiche, la question en garde le type et les choix. */}
+                      {!field.fromProfile && (
                       <SelectField
                         label="Answer type"
                         value={field.type}
                         onChange={(v) => setField(field.id, { type: v as FieldType })}
                         options={FIELD_TYPES.map((t) => ({ value: t, label: FIELD_TYPE_LABEL[t] }))}
                       />
+                      )}
                       {paged && value.pages.length > 1 && (
                         <SelectField
                           label="On page"
@@ -321,7 +337,7 @@ export function QuestionsEditor({
                           options={value.pages.map((p, i) => ({ value: p.id, label: `${i + 1}. ${p.name}` }))}
                         />
                       )}
-                      {(field.type === 'select' || field.type === 'multiselect') && (
+                      {(field.type === 'select' || field.type === 'multiselect') && !field.fromProfile && (
                         <TagField
                           label="Options"
                           values={field.options}
@@ -329,29 +345,9 @@ export function QuestionsEditor({
                           placeholder="Add an option"
                         />
                       )}
-                      {/* La fiche de l'organisation, reprise ici : la startup ne
-                          retape pas ce qu'elle a déjà dit, et garde la main pour
-                          le corriger dans cette candidature. */}
-                      {profileLink && (
-                      <>
-                      <SelectField
-                        label="Prefill from the organisation’s profile"
-                        value={field.fromProfile ?? ''}
-                        onChange={(v) => setField(field.id, { fromProfile: v || undefined })}
-                        options={[
-                          { value: '', label: 'Nothing — the applicant types it' },
-                          ...PROFILE_SOURCES.filter((src) => (src.types as readonly string[]).includes(field.type)).map(
-                            (src) => ({ value: src.key, label: src.en }),
-                          ),
-                        ]}
-                      />
-                      {field.fromProfile &&
-                        !PROFILE_SOURCES.find((src) => src.key === field.fromProfile)?.types.includes(field.type as never) && (
-                          <div className="hint" style={{ color: 'var(--warn)' }}>
-                            This answer type cannot take that part of the profile — choose another, or none.
-                          </div>
-                        )}
-                      </>
+                      {/* Reliée à la fiche : reprise à l'ouverture, recopiée à l'envoi. */}
+                      {field.fromProfile && (
+                        <SheetLinkNote field={field} sources={sources} onChange={(partial) => setField(field.id, partial)} />
                       )}
                       <label className="check">
                         <input

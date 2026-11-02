@@ -57,6 +57,7 @@ import {
   selectionView,
 } from '../services/selection.js';
 import { HttpError, notFound, parse } from './util.js';
+import { writeBackToSheet } from '../services/formSheet.js';
 import { workspaceGuard } from './guard.js';
 import { meetingsFor } from '../services/oneToOne.js';
 
@@ -507,6 +508,19 @@ export async function funnelRoutes(app: FastifyInstance) {
     });
     // Attachments are uploaded before the form is sent, so they are claimed here.
     await repo.claimUploads(candidate.id, input.answers, account.recordId);
+    /* Les réponses reliées à la fiche la mettent à jour — sauf pour une
+       organisation que la personne ne tient pas encore : sa demande de la
+       rejoindre attend, et sa candidature ne réécrit pas la page d'un autre. */
+    if (!pending) {
+      try {
+        const who = await dir.getRecord(account.recordId);
+        await writeBackToSheet(orgId, config.fields, input.answers, {
+          kind: 'member', id: account.recordId, name: who?.name ?? account.email, sourceLabel: found.block.name,
+        });
+      } catch (err) {
+        req.log.error(err, 'application to sheet');
+      }
+    }
     /* The receipt, and whoever at CEED asked to hear about each one. Both are
        posted rather than sent: post() never throws, so a mail provider having
        a bad minute cannot undo an application somebody just filed. */

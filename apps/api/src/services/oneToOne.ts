@@ -679,6 +679,8 @@ export async function meetingFor(recordId: string, id: string): Promise<MyMeetin
 
 export interface MeetingInvitation {
   id: string;
+  /** Member space only: the candidacy, to read its sheet. */
+  candidateId?: string;
   blockName: string;
   programName: string;
   editionName: string;
@@ -739,6 +741,7 @@ export async function invitationFor(token: string): Promise<{ meeting: OneToOneM
     meeting,
     page: {
       id: meeting.id,
+      candidateId: meeting.candidateId,
       blockName: ctx?.block.name ?? '',
       programName: detail.program.name,
       editionName: detail.name,
@@ -783,7 +786,8 @@ export function publicInvitation(page: MeetingInvitation): MeetingInvitation {
   const prepare = page.prep
     ? { state: page.prep.locked ? ('locked' as const) : page.prep.submittedAt ? ('sent' as const) : ('todo' as const) }
     : null;
-  return { ...page, prep: null, prepare };
+  const { candidateId: _hidden, ...shown } = page;
+  return { ...shown, prep: null, prepare };
 }
 
 /**
