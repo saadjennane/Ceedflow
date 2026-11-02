@@ -14,6 +14,7 @@
 import {
   canEditOrg,
   itemComplete,
+  optionalLeft,
   profileMissing,
   profileOf,
   type ActionStatus,
@@ -99,7 +100,10 @@ export async function memberActions(recordId: string): Promise<{ actions: Member
         const valueOf = (id: string) => owed.returns.find((r) => r.itemId === id)?.value;
         const sent = required.filter((i) => itemComplete(i, valueOf(i.id))).length;
         const back = owed.returns.some((r) => r.state === 'rejected');
-        if (sent >= required.length && !back) continue;
+        /* Le décompte ne tient qu'aux pièces obligatoires. Une liste qui n'en a
+           aucune reste demandée tant que ses pièces facultatives manquent. */
+        const optional = required.length ? 0 : optionalLeft(owed.config.items, valueOf);
+        if (sent >= required.length && !back && !optional) continue;
         actions.push({
           id: `deliverable:${owed.block.id}:${candidate.id}`,
           kind: 'deliverable',

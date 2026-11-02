@@ -109,6 +109,7 @@ const WORDS = {
   /* ---- what is asked of a startup ---- */
   'owed.fill': { fr: 'Veuillez remplir ces informations', en: 'Please fill these in' },
   'owed.back': { fr: 'Un élément est à renvoyer', en: 'One thing has to be sent again' },
+  'owed.optional': { fr: 'Facultatif', en: 'Optional' },
   'owed.done': { fr: 'Tout est transmis', en: 'Everything is in' },
   'owed.reading': { fr: 'Tout est transmis — CEED en prend connaissance', en: 'Everything is in — CEED is reading it' },
   'owed.before': { fr: 'avant le', en: 'before' },

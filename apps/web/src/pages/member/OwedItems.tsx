@@ -1,6 +1,7 @@
 import {
   contactProblemsIn,
   itemComplete,
+  optionalLeft,
   itemUnfinished,
   longDate,
   type DeliverableConfig,
@@ -236,6 +237,9 @@ export function OwedList({
     };
   }, []);
   const need = ask.config.items.filter((i) => i.required);
+  /* Rien d'obligatoire : la liste reste à remplir tant que ses pièces
+     facultatives manquent, sans décompte — elles ne bloquent rien. */
+  const optional = need.length ? 0 : optionalLeft(ask.config.items, (id) => ask.returns.find((r) => r.itemId === id)?.value);
   const mineOf = (id: string) => ask.returns.find((r) => r.itemId === id);
   /* What they have sent, over what is asked. That is the only number they can
      act on: a document waiting to be read is not their problem, and showing it
@@ -319,18 +323,21 @@ export function OwedList({
           <h3 style={{ fontSize: 15, margin: 0 }}>
             {back.length > 0
               ? t('owed.back')
-              : left > 0
+              : left > 0 || optional > 0
                 ? t('owed.fill')
                 : read === need.length
                   ? t('owed.done')
                   : t('owed.reading')}
           </h3>
           <p className="faint" style={{ margin: '2px 0 0', fontSize: 12.5 }}>
-            {[ask.block.name, left > 0 && closing ? `${t('owed.before')} ${closing}` : null]
+            {[ask.block.name, (left > 0 || optional > 0) && closing ? `${t('owed.before')} ${closing}` : null]
               .filter(Boolean)
               .join(' · ')}
           </p>
         </div>
+        {need.length === 0 ? (
+          <span className="badge">{t('owed.optional')}</span>
+        ) : (
         <span
           className={read === need.length && need.length > 0 ? 'badge ok num' : 'badge num'}
           title={
@@ -343,6 +350,7 @@ export function OwedList({
         >
           {sent}/{need.length}
         </span>
+        )}
       </button>
 
       {showing && (

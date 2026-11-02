@@ -71,6 +71,33 @@ describe('a member’s Home', { skip: skipWithoutServer }, () => {
     assert.equal(home.actions.some((a) => a.kind === 'report'), false, 'sent, and gone');
   });
 
+  it('asks the startup for a list with no required item, without counting it, until it is sent', async () => {
+    const { block, founder, candidate } = await setUp();
+    const due = await repo.createBlock((await repo.getBlock(block.id))!.phaseId, 'deliverable', 'Pièces');
+    await repo.updateBlock(due.id, {
+      config: { visibility: 'open', items: [{ id: 'deck', type: 'short_text', label: 'Pitch deck', help: '', required: false, options: [], showInTable: false, pageId: '' }] },
+    });
+    let owed = (await memberActions(founder.id)).actions.find((a) => a.kind === 'deliverable');
+    assert.ok(owed, 'nothing marked required, still asked');
+    assert.ok(!owed!.of, 'optional: nothing counted');
+    await repo.saveReturn(due.id, candidate.id, 'deck', 'https://deck.example.test');
+    owed = (await memberActions(founder.id)).actions.find((a) => a.kind === 'deliverable');
+    assert.equal(owed, undefined, 'sent, and gone');
+  });
+
+  it('asks the startup to prepare a session, even past its date when it never locks by itself', async () => {
+    const { block, mentor, founder, candidate } = await setUp();
+    const config = (await repo.getBlock(block.id))!.config as object;
+    await repo.updateBlock(block.id, {
+      config: { ...config, prep: { enabled: true, autoLock: false, fields: [{ id: 't', label: 'Topics', type: 'long_text', required: false, options: [], help: '' }] } },
+    });
+    const [m] = await planMeetings(block.id, { candidateIds: [candidate.id], personId: mentor.id, invite: 'none', heldOn: '2020-03-03', startTime: '10:00' });
+    const prep = (await memberActions(founder.id)).actions.find((a) => a.kind === 'prepare');
+    assert.ok(prep);
+    assert.equal(prep!.href, `/prepare/${m!.id}`);
+    assert.equal(prep!.status, 'late');
+  });
+
   it('lists a task given to the startup, and drops it once done', async () => {
     const { org, founder } = await setUp();
     const [task] = await createTasks(

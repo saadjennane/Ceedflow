@@ -1309,6 +1309,14 @@ export function itemGiven(item: DeliverableItem, value: unknown): boolean {
  * incomplete, which is right, and the screen says so in words rather than by a
  * count that would read as a tally of associés.
  */
+/**
+ * Les pièces facultatives pas encore envoyées. Elles sont demandées — la
+ * startup les voit à faire — mais n'entrent dans aucun décompte et ne
+ * bloquent rien.
+ */
+export const optionalLeft = (items: DeliverableItem[], valueOf: (id: string) => unknown): number =>
+  items.filter((i) => !i.required && !itemComplete(i, valueOf(i.id))).length;
+
 export function itemComplete(item: DeliverableItem, value: unknown): boolean {
   const entries = itemEntries(item, value);
   return entries.length > 0 && entries.every((entry) => entryComplete(item, entry));

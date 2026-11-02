@@ -568,7 +568,9 @@ export const prefillFromPrep = (prep: Record<string, unknown>, fields: readonly 
 /** The preparations a startup still owes: scheduled, not locked, not sent. */
 export async function prepsDueFor(candidateId: string): Promise<{ meeting: OneToOneMeeting; started: boolean }[]> {
   const meetings = await all<OneToOneMeeting>(
-    `select ${COLS} where m.candidate_id = $1 and m.status = 'planned' and m.held_on >= current_date
+    /* Toute séance datée et non verrouillée : une préparation qui ne se
+       verrouille jamais d'elle-même reste à faire après la date, en retard. */
+    `select ${COLS} where m.candidate_id = $1 and m.status = 'planned' and m.held_on is not null and m.rsvp_state <> 'declined'
        and m.prep_submitted_at is null ${ORDER}`,
     [candidateId],
   );
