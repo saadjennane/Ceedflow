@@ -264,6 +264,21 @@ describe('a One to One', { skip: skipWithoutServer }, () => {
     assert.ok(series.every((m) => m.startTime === '09:30' && m.personId === mentor.id && m.rsvpState === 'confirmed'));
   });
 
+  it('offers a weekly time together whoever it was entered for, only when each is free on every date', async () => {
+    const { block, mentor, expert, a, b } = await setUp();
+    await makeRecurring(block.id, expert.id, 'slots');
+    const config = (await repo.getBlock(block.id))!.config as object;
+    await repo.updateBlock(block.id, { config: { ...config, pairing: 'together' } });
+    // Nadia — la première — est prise un des lundis à 09:00 : ce créneau tombe, pour toute la série.
+    await planMeetings(block.id, { candidateIds: [b.id], personId: mentor.id, invite: 'none', heldOn: '2030-01-21', startTime: '09:00', repeat: null });
+    const [invite] = await planMeetings(block.id, { candidateIds: [a.id], personId: null, invite: 'slots', heldOn: null, startTime: null });
+    const weekly = (await invitationFor(invite!.token))!.page.weekly;
+    assert.deepEqual(weekly.map((c) => c.startTime), ['09:30'], 'entered under Omar, offered to both');
+    await bookWeekly(invite!.token, { weekday: 1, startTime: '09:30', personId: weekly[0]!.personId });
+    const series = (await oneToOneView(block.id))!.meetings.filter((m) => m.candidateId === a.id && m.status !== 'cancelled');
+    assert.ok(series.length > 0 && series.every((m) => m.withIds.length === 2), 'every session with both');
+  });
+
   it('confirms a proposed series in one answer', async () => {
     const { block, mentor, a } = await setUp();
     await makeRecurring(block.id, mentor.id, 'confirm');

@@ -1152,16 +1152,25 @@ export async function weeklyFor(meeting: OneToOneMeeting): Promise<(WeeklyCell &
   const taken = await takenBy(people, meeting.id);
   const names = new Map((await peopleByIds(people)).map((p) => [p.id, p.name]));
   if (together) {
-    /* Ensemble : les créneaux du principal, gardés seulement si chacun des
-       autres est libre à toutes les dates de la série. */
+    /* Ensemble : les plages de la semaine sont celles de l'équipe, quel que
+       soit le nom sous lequel elles ont été saisies — une par jour et heure,
+       gardée seulement si chacun est libre à toutes les dates de la série. */
     const lead = ctx.config.interlocutors[0];
     if (!lead) return [];
     const busySet = new Set(taken.map((t) => `${t.personId} ${t.heldOn} ${t.startTime}`));
-    return weeklyCells(rec, ctx.config.durationMinutes, taken, [lead])
-      .filter((c) =>
-        recurringDates(rec, c.firstOn).every((d) => ctx.config.interlocutors.every((p) => !busySet.has(`${p} ${d} ${c.startTime}`))),
-      )
-      .map((c) => ({ ...c, personName: ctx.config.interlocutors.map((id) => names.get(id) ?? '').filter(Boolean).join(' & ') }));
+    const seen = new Set<string>();
+    return weeklyCells(rec, ctx.config.durationMinutes, [], null)
+      .filter((c) => {
+        const key = `${c.weekday} ${c.startTime}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return recurringDates(rec, c.firstOn).every((d) => ctx.config.interlocutors.every((p) => !busySet.has(`${p} ${d} ${c.startTime}`)));
+      })
+      .map((c) => ({
+        ...c,
+        personId: lead,
+        personName: ctx.config.interlocutors.map((id) => names.get(id) ?? '').filter(Boolean).join(' & '),
+      }));
   }
   return weeklyCells(rec, ctx.config.durationMinutes, taken, only).map((c) => ({ ...c, personName: names.get(c.personId) ?? '' }));
 }

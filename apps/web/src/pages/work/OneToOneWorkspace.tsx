@@ -354,12 +354,13 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
                           : name(personId) || 'Interlocutor'}
                       </span>
                       <span className="num faint">
-                        {live.filter((m) => m.dayId === current.id && m.personId === personId).length}/{daySlots(current).length}
+                        {live.filter((m) => m.dayId === current.id && (together || m.personId === personId)).length}/{daySlots(current).length}
                       </span>
                     </header>
                     <div className="day-slots">
                       {daySlots(current).map((slot) => {
-                        const m = onDay.find((x) => x.personId === personId && x.startTime === slot.startsAt);
+                        /* Ensemble : un rendez-vous de la case, chez qui qu'il ait été posé. */
+                        const m = onDay.find((x) => (together || x.personId === personId) && x.startTime === slot.startsAt);
                         const key = `${personId}:${slot.startsAt}`;
                         const state = m ? STATE_BADGE[meetingState(m)] : null;
                         return (
@@ -672,7 +673,7 @@ function SeriesBoard({
                   <Icon name="calendar" size={14} />
                   <div style={{ flex: 1 }}>
                     <strong>
-                      {name(s.first.personId) || 'Interlocutor'} · {s.first.heldOn ? `${WEEKDAY_LABEL[weekdayOf(s.first.heldOn)]}s` : ''}{' '}
+                      {meetingWith(s.first) || name(s.first.personId) || 'Interlocutor'} · {s.first.heldOn ? `${WEEKDAY_LABEL[weekdayOf(s.first.heldOn)]}s` : ''}{' '}
                       {s.first.startTime ?? ''}
                     </strong>
                     <span>
@@ -1255,6 +1256,12 @@ function MeetingDrawer({
             <label>Time</label>
             <input className="input" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
           </div>
+          {pairingOf(data.config) === 'together' ? (
+            <div className="field">
+              <label>Meets</label>
+              <div style={{ fontSize: 13, paddingTop: 7 }}>{meetingWith(meeting) || data.interlocutors.map((p) => p.name).join(' & ')}</div>
+            </div>
+          ) : (
           <div className="field">
             <label>Meets</label>
             <select className="input" value={personId} onChange={(e) => setPersonId(e.target.value)}>
@@ -1264,6 +1271,7 @@ function MeetingDrawer({
               ))}
             </select>
           </div>
+          )}
         </div>
         <div className="grid-2">
           <div className="field">

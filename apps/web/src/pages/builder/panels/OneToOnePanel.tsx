@@ -546,7 +546,7 @@ function SessionsTab({
       {config.cadence === 'recurring' ? (
         <RecurrenceEditor block={block} config={config} patch={patch} />
       ) : (
-        <DaysTab block={block} />
+        <DaysTab block={block} together={pairingOf(config) === 'together'} />
       )}
     </>
   );
@@ -646,7 +646,7 @@ function RecurrenceEditor({
       </div>
 
       <div className="field">
-        <label>When each interlocutor receives, in the week</label>
+        <label>{pairingOf(config) === 'together' ? 'When they receive together, in the week' : 'When each interlocutor receives, in the week'}</label>
         <div className="help">
           When the startups pick their own time, they choose among these weekly slots — one that is free on every date of
           the series. Otherwise it is a guide for you when you set each series.
@@ -660,10 +660,13 @@ function RecurrenceEditor({
           <div className="stack" style={{ gap: 6, marginTop: 4 }}>
             {rec.weekly.map((w, i) => (
               <div className="row wrap" key={i} style={{ gap: 6 }}>
+                {/* Ensemble : une plage est celle de toute l'équipe — pas de « qui ». */}
+                {pairingOf(config) !== 'together' && (
                 <select className="select" style={{ width: 170 }} value={w.personId} aria-label="Who"
                   onChange={(e) => setWeekly(i, { personId: e.target.value })}>
                   {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
+                )}
                 <select className="select" style={{ width: 130 }} value={w.weekday} aria-label="Day"
                   onChange={(e) => setWeekly(i, { weekday: Number(e.target.value) })}>
                   {WEEKDAYS.map((d) => <option key={d} value={d}>{WEEKDAY_LABEL[d]}</option>)}
@@ -674,7 +677,8 @@ function RecurrenceEditor({
                 <input className="input" type="time" style={{ width: 110 }} value={w.windows[0]?.endsAt ?? '12:00'} aria-label="To"
                   onChange={(e) => setWeekly(i, { windows: [{ startsAt: w.windows[0]?.startsAt ?? '09:00', endsAt: e.target.value }] })} />
                 <span className="faint" style={{ fontSize: 12 }}>
-                  {daySlots({ windows: w.windows, minutesPerMeeting: config.durationMinutes }).length} slot(s) · {name(w.personId)}
+                  {daySlots({ windows: w.windows, minutesPerMeeting: config.durationMinutes }).length} slot(s)
+                  {pairingOf(config) === 'together' ? ' · all of them, if each is free' : ` · ${name(w.personId)}`}
                 </span>
                 <button className="btn ghost icon sm" aria-label="Remove" onClick={() => set({ weekly: rec.weekly.filter((_, j) => j !== i) })}>
                   <Icon name="x" size={12} />
@@ -706,7 +710,7 @@ interface DaysView {
  * plages, la durée d'un rendez-vous, un lieu, et qui reçoit ce jour-là.
  * Les créneaux s'en déduisent, et l'onglet One to One les remplit.
  */
-function DaysTab({ block }: { block: Block }) {
+function DaysTab({ block, together }: { block: Block; together: boolean }) {
   const view = useAsync(() => api.get<DaysView>(`/api/blocks/${block.id}/one-to-one`), `days:${block.id}`);
   const [editing, setEditing] = useState<string | null>(null);
   const [removing, setRemoving] = useState<OneToOneDay | null>(null);
@@ -731,8 +735,10 @@ function DaysTab({ block }: { block: Block }) {
       <div className="callout">
         <Icon name="calendar" size={15} />
         <div>
-          The days the meetings happen on. Each interlocutor of a day receives on every slot of it — startups are placed
-          in the One to One tab, or book a free slot themselves.
+          {together
+            ? 'The days the meetings happen on. Those of a day receive each startup together, one per slot'
+            : 'The days the meetings happen on. Each interlocutor of a day receives on every slot of it'}{' '}
+          — startups are placed in the One to One tab, or book a free slot themselves.
         </div>
       </div>
 
@@ -751,6 +757,7 @@ function DaysTab({ block }: { block: Block }) {
               blockId={block.id}
               day={d}
               interlocutors={interlocutors}
+              together={together}
               onDone={() => {
                 setEditing(null);
                 view.reload();
@@ -764,7 +771,7 @@ function DaysTab({ block }: { block: Block }) {
                   {d.name || 'Day'} · {formatDate(d.heldOn)}
                 </strong>
                 <span className="badge num">
-                  {daySlots(d).length * d.interlocutors.length} slots
+                  {daySlots(d).length * (together ? Math.min(1, d.interlocutors.length) : d.interlocutors.length)} slots
                 </span>
                 <button className="btn ghost sm" onClick={() => setEditing(d.id)}>
                   <Icon name="edit" size={12} /> Edit
@@ -800,6 +807,7 @@ function DaysTab({ block }: { block: Block }) {
             blockId={block.id}
             day={null}
             interlocutors={interlocutors}
+            together={together}
             onDone={() => {
               setEditing(null);
               view.reload();
@@ -838,12 +846,15 @@ function DayEditor({
   blockId,
   day,
   interlocutors,
+  together = false,
   onDone,
   onCancel,
 }: {
   blockId: string;
   day: OneToOneDay | null;
   interlocutors: PersonRef[];
+  /** Ils reçoivent ensemble : un rendez-vous par créneau, pas un par personne. */
+  together?: boolean;
   onDone: () => void;
   onCancel: () => void;
 }) {
@@ -967,8 +978,9 @@ function DayEditor({
       <div className="row" style={{ gap: 8 }}>
         {draft.interlocutors.length ? (
           <span className="faint" style={{ flex: 1, fontSize: 12.5 }}>
-            {slots} slot{slots === 1 ? '' : 's'} × {draft.interlocutors.length} interlocutor
-            {draft.interlocutors.length === 1 ? '' : 's'} = {slots * draft.interlocutors.length} meetings at most
+            {together
+              ? `${slots} slot${slots === 1 ? '' : 's'}, with all ${draft.interlocutors.length} together = ${slots} meeting${slots === 1 ? '' : 's'} at most`
+              : `${slots} slot${slots === 1 ? '' : 's'} × ${draft.interlocutors.length} interlocutor${draft.interlocutors.length === 1 ? '' : 's'} = ${slots * draft.interlocutors.length} meetings at most`}
           </span>
         ) : (
           <span className="warnline" style={{ flex: 1, fontSize: 12.5 }}>
