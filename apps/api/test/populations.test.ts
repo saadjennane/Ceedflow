@@ -13,7 +13,7 @@ import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
 import { seatOnFreeSlots } from '../src/services/committee.js';
-import { populationsFor } from '../src/services/selection.js';
+import { funnelFor, populationsFor, rosterAt } from '../src/services/selection.js';
 import { setOutcomeByHand } from '../src/services/scoring.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
@@ -94,6 +94,18 @@ describe('how many each block holds', { skip: skipWithoutServer }, () => {
     const { edition, track, form, kept } = await setUp();
     await repo.updateCandidate(kept.id, { status: 'Withdrawn' });
     assert.equal((await populationsFor(edition.id, track.id))[form.id], 1);
+  });
+
+  it('says at each step of the funnel as many as the list under it', async () => {
+    // Retirée après la sélection : ni dans la liste de l'étape, ni dans son chiffre.
+    const { edition, track, form, pick, kept } = await setUp();
+    await repo.updateCandidate(kept.id, { status: 'Withdrawn' });
+    const steps = await funnelFor(edition.id, track.id);
+    for (const step of steps) {
+      assert.equal(step.count, (await rosterAt(edition.id, track.id, step.blockId)).length, step.name);
+    }
+    assert.equal(steps.find((s) => s.blockId === pick.id)!.count, 0);
+    assert.equal(steps.find((s) => s.blockId === form.id)!.count, 2, 'the form still counts everyone who applied');
   });
 
   it('counts nobody behind a selection that passes nobody', async () => {

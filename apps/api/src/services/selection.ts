@@ -256,12 +256,17 @@ export async function funnelFor(editionId: string, trackId: string) {
   const track = detail?.tracks.find((t) => t.id === trackId);
   if (!track) return [];
   const candidates = await repo.listCandidates(editionId, trackId);
+  /* Les mêmes règles que la liste sous chaque étape (rosterAt) : la première
+     compte tout le monde — un retrait n'efface pas une candidature —, les
+     suivantes seulement ceux qui courent encore. Sans quoi une startup retirée
+     après la sélection faisait dire 25 à l'étape et 24 à sa liste. */
+  const running = candidates.filter((c) => c.status !== 'Withdrawn');
   const steps: { blockId: string; name: string; type: string; count: number }[] = [];
   for (const block of orderedBlocks(track)) {
     if (block.type === 'application') {
       steps.push({ blockId: block.id, name: block.name, type: block.type, count: candidates.length });
     } else if (block.type === 'selection') {
-      const passed = await passSetOf(track, block, candidates);
+      const passed = await passSetOf(track, block, running);
       steps.push({ blockId: block.id, name: block.name, type: block.type, count: passed.size });
     }
   }
