@@ -1647,12 +1647,12 @@ Merci !`;
 export const oneToOneConfigSchema = z.object({
   ...brickWindowFields,
   /**
-   * Des rendez-vous ponctuels, ou un suivi régulier — chaque semaine, toutes
-   * les deux semaines, chaque mois. Le reste de la brique en découle : les
-   * sessions se règlent en journées, ou en calendrier de suivi.
+   * Des rendez-vous ponctuels, sur des journées. Le suivi régulier n'existe
+   * plus : une brique qui l'avait choisi se lit ponctuelle — ses séances déjà
+   * posées restent des rendez-vous comme les autres.
    */
-  cadence: z.enum(ONE_TO_ONE_CADENCES).default('single'),
-  /** Pour un suivi régulier : son calendrier. */
+  cadence: z.literal('single').catch('single').default('single'),
+  /** Ancien calendrier de suivi régulier — gardé pour relire ce qui fut saisi, inutilisé. */
   recurrence: recurrenceSchema.default({}),
   /** How a meeting is set — for the whole brick, as a committee's is. */
   invite: z.enum(RSVP_MODES).default('confirm'),

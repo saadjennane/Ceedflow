@@ -8,9 +8,6 @@
  * by startup.
  */
 import {
-  FREQUENCIES,
-  FREQUENCY_LABEL,
-  MAX_SESSIONS,
   MEETING_STATUS_LABEL,
   daySlots,
   formPages,
@@ -25,15 +22,12 @@ import {
   type OneToOneMeeting,
   type PersonRef,
   type QuestionSummary,
-  WEEKDAY_LABEL,
   pairingOf,
   meetingWith,
   takesPart,
   prepForm,
   reportForm,
   sharedReport,
-  recurringDates,
-  weekdayOf,
 } from '@ceed/shared';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { ApiError, api } from '../../lib/api';
@@ -191,7 +185,7 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
     setBusy(true);
     try {
       const sent = await api.post<{ startups: number; people: number }>(`/api/blocks/${block.id}/one-to-one/inform`, {
-        dayId: config.cadence === 'recurring' ? null : (current?.id ?? null),
+        dayId: current?.id ?? null,
       });
       toast(
         sent.startups || sent.people
@@ -272,13 +266,13 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
             )}
             <button
               className="btn sm"
-              disabled={busy || (!current && config.cadence !== 'recurring')}
+              disabled={busy || !current}
               onClick={inform}
-              title={config.cadence === 'recurring' ? 'Write to everyone not told yet — a series once, by its first session' : 'Write to everyone on this day not told yet'}
+              title="Write to everyone on this day not told yet"
             >
               <Icon name="send" size={13} /> Inform
             </button>
-            <button className="btn ghost sm" onClick={() => setPlanning(true)} title="A meeting outside the days — or a series">
+            <button className="btn ghost sm" onClick={() => setPlanning(true)} title="A meeting outside the days">
               <Icon name="plus" size={13} /> Meeting
             </button>
           </>
@@ -287,8 +281,6 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
 
       {side === 'reporting' ? (
         <Reports data={data} onOpen={setOpenId} />
-      ) : config.cadence === 'recurring' ? (
-        <SeriesBoard data={data} name={name} onOpen={setOpenId} onPlan={(id) => setPlanningFor([id])} />
       ) : !current ? (
         /* Pas encore de journée : on peut déjà inviter (les startups réserveront
            quand les journées existeront) ou placer un rendez-vous hors journée. */
@@ -339,6 +331,7 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
             </span>
             <span className="badge">{INVITE_WORDS[config.invite].title}</span>
           </div>
+          <DayLink key={current.id} day={current} onSaved={refresh} />
 
           <div className="day-split">
             <div className="day-stage">
@@ -621,89 +614,73 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
  * à quelle heure, où elle en est, la prochaine séance — et ce qui attend
  * encore une réponse. Pas de grille : il n'y a pas de journée, il y a un rythme.
  */
-function SeriesBoard({
-  data,
-  name,
-  onOpen,
-  onPlan,
-}: {
-  data: View;
-  name: (id: string | null) => string;
-  onOpen: (meetingId: string) => void;
-  onPlan: (candidateId: string) => void;
-}) {
-  const today = todayIso();
-  const live = data.meetings.filter((m) => m.status !== 'cancelled');
-  if (!data.pool.length) {
+/**
+ * Le lien vidéo de la journée — Google Meet, Teams ou autre. Il va à chacun de
+ * ses rendez-vous, sauf à celui qui a reçu le sien, et dans les lettres.
+ */
+function DayLink({ day, onSaved }: { day: OneToOneDay; onSaved: () => Promise<void> }) {
+  const [value, setValue] = useState(day.meetingLink ?? '');
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.patch(`/api/one-to-one-days/${day.id}`, { meetingLink: value.trim() });
+      await onSaved();
+      setEditing(false);
+      toast(value.trim() ? 'Video link saved — given to the meetings of the day.' : 'Video link removed.');
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setSaving(false);
+    }
+  };
+  if (!editing) {
     return (
-      <div className="empty">
-        <p style={{ margin: 0 }}>No startup reaches this brick yet.</p>
+      <div className="row wrap" style={{ gap: 6, fontSize: 12.5 }}>
+        <Icon name="link" size={13} />
+        {day.meetingLink ? (
+          <a href={day.meetingLink} target="_blank" rel="noreferrer" style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+            {day.meetingLink}
+          </a>
+        ) : (
+          <span className="faint">No video link for this day</span>
+        )}
+        <button className="linkish" onClick={() => setEditing(true)}>
+          {day.meetingLink ? 'Change' : 'Add a video link'}
+        </button>
       </div>
     );
   }
   return (
-    <div className="rows">
-      {data.pool.map(({ candidate }) => {
-        const mine = live.filter((m) => m.candidateId === candidate.id);
-        const series = [...new Map(mine.filter((m) => m.seriesId).map((m) => [m.seriesId!, m])).keys()].map((id) => {
-          const sessions = mine.filter((m) => m.seriesId === id).sort((a, b) => (a.heldOn ?? '').localeCompare(b.heldOn ?? ''));
-          const next = sessions.find((m) => m.status === 'planned' && (m.heldOn ?? '') >= today) ?? null;
-          const done = sessions.filter((m) => m.status === 'held' || m.reportSubmittedAt).length;
-          return { id, sessions, next, done, first: sessions[0]! };
-        });
-        const waiting = mine.filter((m) => !m.seriesId && !m.heldOn);
-        return (
-          <div className="rowcard card-pad stack" key={candidate.id} style={{ gap: 8 }}>
-            <div className="row">
-              <strong style={{ flex: 1, fontSize: 13.5 }}>{candidate.orgName}</strong>
-              {!series.length && !waiting.length && <span className="badge warn">No follow-up yet</span>}
-              <button className="btn sm" onClick={() => onPlan(candidate.id)}>
-                <Icon name="plus" size={12} /> Series
-              </button>
-            </div>
-            {series.map((s) => {
-              const state = s.next ? STATE_BADGE[meetingState(s.next)] : null;
-              return (
-                <button
-                  key={s.id}
-                  className="pick"
-                  style={{ width: '100%' }}
-                  onClick={() => onOpen((s.next ?? s.first).id)}
-                >
-                  <Icon name="calendar" size={14} />
-                  <div style={{ flex: 1 }}>
-                    <strong>
-                      {meetingWith(s.first) || name(s.first.personId) || 'Interlocutor'} · {s.first.heldOn ? `${WEEKDAY_LABEL[weekdayOf(s.first.heldOn)]}s` : ''}{' '}
-                      {s.first.startTime ?? ''}
-                    </strong>
-                    <span>
-                      {s.done}/{s.sessions.length} held
-                      {s.next ? ` · next ${formatDate(s.next.heldOn)}` : ' · over'}
-                    </span>
-                  </div>
-                  {state && <span className={state.tone}>{state.label}{s.next?.rsvpNote ? ' 💬' : ''}</span>}
-                </button>
-              );
-            })}
-            {waiting.map((m) => {
-              const state = STATE_BADGE[meetingState(m)];
-              return (
-                <button key={m.id} className="pick" style={{ width: '100%' }} onClick={() => onOpen(m.id)}>
-                  <Icon name="send" size={14} />
-                  <div style={{ flex: 1 }}>
-                    <strong>{meetingWith(m) || 'Any interlocutor'}</strong>
-                    <span>{m.invite === 'slots' ? 'Invited to pick a weekly slot' : 'No time yet'}</span>
-                  </div>
-                  <span className={state.tone} title={m.rsvpNote || undefined}>{state.label}{m.rsvpNote ? ' 💬' : ''}</span>
-                </button>
-              );
-            })}
-          </div>
-        );
-      })}
+    <div className="row wrap" style={{ gap: 6 }}>
+      <input
+        className="input"
+        style={{ flex: 1, minWidth: 220 }}
+        autoFocus
+        value={value}
+        placeholder="https://meet.google.com/… or a Teams link"
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && void save()}
+      />
+      <button className="btn primary sm" disabled={saving} onClick={save}>
+        {saving ? 'Saving…' : 'Save'}
+      </button>
+      <button
+        className="btn ghost sm"
+        disabled={saving}
+        onClick={() => {
+          setValue(day.meetingLink ?? '');
+          setEditing(false);
+        }}
+      >
+        Cancel
+      </button>
     </div>
   );
 }
+
 
 /**
  * Inviter des startups à réserver.
@@ -862,9 +839,6 @@ function PlanModal({
   const invite: 'confirm' | 'none' = data.config.invite === 'none' ? 'none' : 'confirm';
   const [heldOn, setHeldOn] = useState('');
   const [startTime, setStartTime] = useState('');
-  const [repeats, setRepeats] = useState(false);
-  const [frequency, setFrequency] = useState<(typeof FREQUENCIES)[number]>('weekly');
-  const [count, setCount] = useState(6);
   const [tell, setTell] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -889,17 +863,14 @@ function PlanModal({
         invite,
         heldOn: books ? null : heldOn,
         startTime: books ? null : startTime,
-        repeat: !books && repeats ? { frequency, count, until: null } : null,
         tell,
       });
       toast(
         books
           ? `${made.length} invited to book.`
-          : repeats
-            ? `${made.length} sessions planned.`
-            : invite === 'confirm'
-              ? 'Proposed — waiting for their answer.'
-              : 'In the diary.',
+          : invite === 'confirm'
+            ? 'Proposed — waiting for their answer.'
+            : 'In the diary.',
       );
       onDone();
     } catch (err) {
@@ -913,7 +884,7 @@ function PlanModal({
   return (
     <Modal
       title="A meeting outside the days"
-      subtitle="At a time of its own — or a series, a weekly mentoring for instance."
+      subtitle="At a time of its own, outside the days."
       onClose={onClose}
       footer={
         <>
@@ -997,7 +968,7 @@ function PlanModal({
         <>
           <div className="grid-2">
             <div className="field">
-              <label>{repeats || data.config.cadence === 'recurring' ? 'First session' : 'Day'}</label>
+              <label>Day</label>
               <input className="input" type="date" value={heldOn} onChange={(e) => setHeldOn(e.target.value)} />
               {errors.heldOn && <div className="err">{errors.heldOn}</div>}
             </div>
@@ -1008,52 +979,6 @@ function PlanModal({
             </div>
           </div>
 
-          {/* Un suivi régulier : les séances suivent le calendrier de la brique. */}
-          {data.config.cadence === 'recurring' ? (
-            <p className="hint" style={{ margin: 0 }}>
-              {heldOn
-                ? (() => {
-                    const dates = recurringDates(data.config.recurrence, heldOn);
-                    return dates.length
-                      ? `${dates.length} session${dates.length > 1 ? 's' : ''}, ${FREQUENCY_LABEL[data.config.recurrence.frequency].toLowerCase()} on ${WEEKDAY_LABEL[weekdayOf(heldOn)]}s, until ${formatDate(dates[dates.length - 1]!)} — following the calendar set in Sessions, excluded weeks skipped.`
-                      : 'Set the follow-up calendar in Sessions first — its end or its number of sessions.';
-                  })()
-                : 'The first session: the following ones come from the calendar set in Sessions.'}
-            </p>
-          ) : (
-          <label className="check">
-            <input type="checkbox" checked={repeats} onChange={(e) => setRepeats(e.target.checked)} />
-            <span>It repeats — a weekly mentoring, for instance</span>
-          </label>
-          )}
-          {repeats && data.config.cadence !== 'recurring' && (
-            <div className="sheet-group">
-              <div className="grid-2">
-                <div className="field">
-                  <label>How often</label>
-                  <select className="input" value={frequency} onChange={(e) => setFrequency(e.target.value as typeof frequency)}>
-                    {FREQUENCIES.map((f) => (
-                      <option key={f} value={f}>{FREQUENCY_LABEL[f]}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field">
-                  <label>How many sessions</label>
-                  <input
-                    className="input num"
-                    type="number"
-                    min={2}
-                    max={MAX_SESSIONS}
-                    value={count}
-                    onChange={(e) => setCount(Math.max(2, Math.min(MAX_SESSIONS, Number(e.target.value) || 2)))}
-                  />
-                </div>
-              </div>
-              <p className="hint" style={{ margin: 0 }}>
-                Each session is a meeting of its own, with its own report — moved or cancelled on its own.
-              </p>
-            </div>
-          )}
         </>
       )}
 

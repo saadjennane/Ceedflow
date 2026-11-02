@@ -5,7 +5,6 @@
  * yes or no. Nothing else is written through this link: the preparation is
  * filled in the startup's member space, signed in, and the report never shows.
  */
-import { WEEKDAY_LABEL } from '@ceed/shared';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -31,11 +30,8 @@ interface Invitation {
   meetingLink?: string;
   answerBy?: string | null;
   late?: boolean;
-  cadence?: 'single' | 'recurring';
   /** Où en est la préparation — elle se remplit dans l'espace membre. */
   prepare?: { state: 'todo' | 'sent' | 'locked' } | null;
-  /** A regular follow-up: the weekly slots it may take for the whole series. */
-  weekly?: { personId: string; personName: string; weekday: number; startTime: string; endTime: string; firstOn: string; sessions: number }[];
   /** Ce qu'elle a dit en refusant. */
   rsvpNote?: string;
   status: 'planned' | 'held' | 'cancelled' | 'no_show';
@@ -78,15 +74,11 @@ export function MeetPage() {
   }
 
   const data = answered ?? page.data;
-  const weekly = data.cadence === 'recurring';
-  const cells = weekly ? (data.weekly ?? []) : [];
-  /* Choisir son heure : des créneaux des journées, ou une heure de la semaine
-     pour tout le suivi. */
-  const picks = data.open && data.invite === 'slots' && (weekly ? !data.heldOn : true);
-  const offered = weekly ? cells.length : data.slots.length;
-  const several = new Set((weekly ? cells : data.slots).map((x) => x.personId)).size > 1;
+  /* Choisir son heure parmi les créneaux libres des journées. */
+  const picks = data.open && data.invite === 'slots';
+  const offered = data.slots.length;
+  const several = new Set(data.slots.map((x) => x.personId)).size > 1;
   const days = [...new Set(data.slots.map((x) => x.onDate))];
-  const weekdays = [...new Set(cells.map((c) => c.weekday))];
 
   const post = async (body: object) => {
     setSending(true);
@@ -105,8 +97,8 @@ export function MeetPage() {
   };
   const book = () => {
     if (!picked) return;
-    const [a, startTime, personId] = picked.split('|');
-    void post(weekly ? { weekday: Number(a), startTime, personId } : { dayId: a, startTime, personId });
+    const [dayId, startTime, personId] = picked.split('|');
+    void post({ dayId, startTime, personId });
   };
 
   return (
@@ -133,7 +125,6 @@ export function MeetPage() {
                       <strong className="num">{data.startTime}</strong>
                     </>
                   )}
-                  {weekly && data.heldOn && <span className="faint"> · first session</span>}
                 </>
               ) : (
                 <span className="faint">{picks ? 'pick your time below' : 'to be set by the team'}</span>
@@ -176,7 +167,7 @@ export function MeetPage() {
               <div>
                 <strong>You are confirmed.</strong>
                 {data.startTime ? ` See you at ${data.startTime}.` : ' See you then.'}
-                {picks && !weekly && ' Changing your mind? Pick another time below.'}
+                {picks && ' Changing your mind? Pick another time below.'}
               </div>
             </div>
           )}
@@ -237,15 +228,14 @@ export function MeetPage() {
             <>
               <div className="public-sep" />
               <h3 className="section-title">
-                {weekly ? 'Pick your weekly time — for the whole follow-up' : data.heldOn ? 'Pick another time' : 'Pick your time'}
+                {data.heldOn ? 'Pick another time' : 'Pick your time'}
               </h3>
               {!offered && (
                 <p className="faint" style={{ margin: 0 }}>
                   No time is free at the moment. The team will open more — come back to this link.
                 </p>
               )}
-              {!weekly &&
-                days.map((day) => (
+              {days.map((day) => (
                   <div key={day} className="stack" style={{ gap: 6 }}>
                     {days.length > 1 && <div className="eyebrow">{formatDate(day)}</div>}
                     <div className="slot-grid">
@@ -263,28 +253,6 @@ export function MeetPage() {
                     </div>
                   </div>
                 ))}
-              {weekly &&
-                weekdays.map((weekday) => {
-                  const row = cells.filter((c) => c.weekday === weekday);
-                  return (
-                    <div key={weekday} className="stack" style={{ gap: 6 }}>
-                      <div className="eyebrow">
-                        Every {WEEKDAY_LABEL[weekday]} · from {formatDate(row[0]!.firstOn)} · {row[0]!.sessions} sessions
-                      </div>
-                      <div className="slot-grid">
-                        {row.map((c) => {
-                          const key = `${c.weekday}|${c.startTime}|${c.personId}`;
-                          return (
-                            <button key={key} type="button" className={`slot${picked === key ? ' on' : ''}`} onClick={() => setPicked(key)}>
-                              <span className="num">{c.startTime}</span>
-                              <span className="faint">{several ? c.personName : c.endTime}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
             </>
           )}
 
@@ -322,7 +290,7 @@ export function MeetPage() {
               <div className="row" style={{ marginTop: 6 }}>
                 {picks ? (
                   <button className="btn primary" disabled={sending || !picked} onClick={book}>
-                    {sending ? 'Sending…' : weekly ? 'Book this weekly time' : 'Confirm this time'}
+                    {sending ? 'Sending…' : 'Confirm this time'}
                   </button>
                 ) : (
                   <button className="btn primary" disabled={sending} onClick={() => post({ accept: true, note: '' })}>
