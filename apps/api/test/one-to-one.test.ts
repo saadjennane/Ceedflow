@@ -108,6 +108,12 @@ describe('a preparation’s lock', () => {
     assert.equal(prepLocked(meeting, { locked: false, lockHoursBefore: 1 }, at), false);
     assert.equal(prepLocked({ ...meeting, status: 'held' }, { locked: false, lockHoursBefore: null }, at), true);
   });
+  it('never locks by itself when told not to — only by hand', () => {
+    const late = new Date('2030-03-04T08:00:00');
+    assert.equal(prepLocked(meeting, { locked: false, lockHoursBefore: 3, autoLock: false }, late), false, 'past the session, still open');
+    assert.equal(prepLocked({ ...meeting, status: 'held' }, { locked: false, lockHoursBefore: null, autoLock: false }, late), false);
+    assert.equal(prepLocked(meeting, { locked: true, lockHoursBefore: null, autoLock: false }, late), true, 'by hand, still');
+  });
 });
 
 describe('a One to One', { skip: skipWithoutServer }, () => {

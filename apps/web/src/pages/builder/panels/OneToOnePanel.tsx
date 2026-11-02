@@ -252,14 +252,40 @@ export function OneToOneSetup({
               firstPageName="Preparation"
             />
             <div className="grid-2">
-              <NumberField
-                label="Lock it automatically, hours before the session"
-                value={config.prep.lockHoursBefore ?? 0}
-                min={0}
-                max={720}
-                onChange={(v) => patch({ prep: { ...config.prep, lockHoursBefore: v ? Math.max(0, v) : null } })}
-                help="Empty or 0: it stays open until the session starts."
-              />
+              <div className="field">
+                <label>Lock it on its own</label>
+                <select
+                  className="input"
+                  value={!config.prep.autoLock ? 'never' : config.prep.lockHoursBefore ? 'before' : 'start'}
+                  onChange={(e) =>
+                    patch({
+                      prep: {
+                        ...config.prep,
+                        autoLock: e.target.value !== 'never',
+                        lockHoursBefore: e.target.value === 'before' ? config.prep.lockHoursBefore || 24 : null,
+                      },
+                    })
+                  }
+                >
+                  <option value="never">Never — only when you lock it</option>
+                  <option value="start">When the session starts</option>
+                  <option value="before">Some hours before the session</option>
+                </select>
+                <span className="hint">
+                  {!config.prep.autoLock
+                    ? 'Startups can change it any time, even after the session, until you lock it.'
+                    : 'Startups can change it until then.'}
+                </span>
+              </div>
+              {config.prep.autoLock && Boolean(config.prep.lockHoursBefore) && (
+                <NumberField
+                  label="Hours before the session"
+                  value={config.prep.lockHoursBefore ?? 24}
+                  min={1}
+                  max={720}
+                  onChange={(v) => patch({ prep: { ...config.prep, lockHoursBefore: Math.max(1, v || 1) } })}
+                />
+              )}
               <div className="field">
                 <label>Lock now</label>
                 <label className="check" style={{ marginTop: 6 }}>

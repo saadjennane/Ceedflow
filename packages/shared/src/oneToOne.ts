@@ -381,14 +381,16 @@ export function weeklyCells(
 /**
  * Si la préparation d'une séance ne se modifie plus côté startup : verrouillée
  * à la main pour toutes, ou passée l'heure limite avant la séance, ou la
- * séance n'étant plus à venir. L'interlocuteur et CEED la corrigent toujours.
+ * séance n'étant plus à venir — sauf quand la brique ne verrouille jamais
+ * d'elle-même. L'interlocuteur et CEED la corrigent toujours.
  */
 export function prepLocked(
   meeting: Pick<OneToOneMeeting, 'heldOn' | 'startTime' | 'status'>,
-  prep: { locked: boolean; lockHoursBefore: number | null },
+  prep: { locked: boolean; lockHoursBefore: number | null; autoLock?: boolean },
   now = new Date(),
 ): boolean {
   if (prep.locked) return true;
+  if (prep.autoLock === false) return meeting.status === 'cancelled';
   if (meeting.status !== 'planned') return true;
   if (!meeting.heldOn) return false;
   const start = new Date(`${meeting.heldOn}T${meeting.startTime ?? '00:00'}:00`);

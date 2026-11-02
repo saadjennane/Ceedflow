@@ -1531,7 +1531,7 @@ export const ONE_TO_ONE_STARTUP_VARIABLES = [
   { name: 'quand', label: 'Date sentence', what: 'The whole sentence — empty when the startup picks the time', example: 'Le mardi 3 novembre à 10:00, pour 45 minutes.', byMode: [{ mode: 'Slot picking', text: '(vide tant qu’elle n’a pas choisi — puis « Le mardi 3 novembre à 10:00, pour 45 minutes. »)' }, { mode: 'RSVP', text: 'Le mardi 3 novembre à 10:00, pour 45 minutes.' }, { mode: 'No RSVP', text: 'Le mardi 3 novembre à 10:00, pour 45 minutes.' }] },
   { name: 'lieu', label: 'Where', what: 'The whole sentence — empty when no place is set', example: 'Lieu : CEED, Casablanca.' },
   { name: 'visio', label: 'Video link', what: 'The whole sentence with the meeting’s video link — empty when there is none', example: 'Lien de la réunion : https://meet.google.com/abc-defg-hij' },
-  { name: 'preparation', label: 'Preparation sentence + link', what: 'Where the startup prepares the session — empty when the brick asks for no preparation, or the session has no time yet', example: 'Préparez la séance ici : https://www.ceedflow.com/meet/…' },
+  { name: 'preparation', label: 'Preparation sentence + link', what: 'Where the startup prepares the session: its member space, signed in — empty when the brick asks for no preparation, or the session has no time yet', example: 'Préparez la séance dans votre espace : https://www.ceedflow.com/prepare/…' },
   { name: 'action', label: 'Answer sentence + link (per mode)', what: 'Book a time, or confirm the one proposed — with the link. Empty when nothing is asked', example: 'Choisissez votre créneau ici : https://www.ceedflow.com/meet/…', byMode: [{ mode: 'Slot picking', text: 'Choisissez votre créneau ici : https://www.ceedflow.com/meet/…' }, { mode: 'RSVP', text: 'Confirmez, ou dites-nous si l’heure ne convient pas : https://www.ceedflow.com/meet/…' }, { mode: 'No RSVP', text: '(rien — la lettre ne fait qu’informer)' }] },
   { name: 'lien', label: 'Booking / RSVP link', what: 'The startup’s own page: the free slots to book from, or the time to confirm', example: 'https://www.ceedflow.com/meet/…', byMode: [{ mode: 'Slot picking', text: 'https://www.ceedflow.com/meet/… — la page des créneaux libres' }, { mode: 'RSVP', text: 'https://www.ceedflow.com/meet/… — la page pour confirmer ou refuser' }, { mode: 'No RSVP', text: 'https://www.ceedflow.com/meet/… — la page du rendez-vous, sans rien à répondre' }] },
 ] as const;
@@ -1739,7 +1739,9 @@ export const oneToOneConfigSchema = z.object({
       fields: z.array(formFieldSchema).default([]),
       /** Locked for everybody, now. */
       locked: z.boolean().default(false),
-      /** Locked by itself this many hours before each session. Empty: only by hand. */
+      /** Whether it locks by itself: false, only by hand — open even after the session. */
+      autoLock: z.boolean().default(true),
+      /** Locked by itself this many hours before each session. Empty: when the session starts. */
       lockHoursBefore: z.number().int().min(0).max(720).nullable().default(null),
     })
     .default({}),
