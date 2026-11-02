@@ -86,7 +86,7 @@ import { PlaceLines } from './PlaceLines';
 /** Le temps qu'on laisse finir un mot avant de l'enregistrer. */
 const PAUSE = 700;
 
-const SECTION_WORD: Record<ProfileSection, Word> = {
+export const SECTION_WORD: Record<ProfileSection, Word> = {
   identity: 'sheet.s.identity',
   activity: 'sheet.s.activity',
   team: 'sheet.s.team',
@@ -139,9 +139,12 @@ export function OrgSheet({
   lang,
   onChanged,
   onClose,
+  startAt,
 }: {
   record: DirectoryRecord;
   routes: SheetRoutes;
+  /** Open on this section — the block one chose to edit — rather than the first with something left. */
+  startAt?: ProfileSection | 'more';
   lang?: Lang;
   /** Each time the server has kept something — the page behind stays current. */
   onChanged: (record: DirectoryRecord) => void;
@@ -156,6 +159,7 @@ export function OrgSheet({
   /* Les attributs ajoutés par CEED : un onglet de plus, seulement s'il y en a. */
   const extra = useAsync(() => api.get<SheetAttributes>(routes.attributes), routes.attributes);
   const [section, setSection] = useState<ProfileSection | 'more'>(() => {
+    if (startAt) return startAt;
     /* On rouvre là où il reste quelque chose : revenir sur une fiche, c'est
        venir finir, pas relire ce qui est fait. */
     const p = profileOf(initial);

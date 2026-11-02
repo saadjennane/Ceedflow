@@ -2,9 +2,13 @@ import {
   ORG_ROLES,
   canEditOrg,
   canManageTeam,
+  PROFILE_SECTIONS,
+  profileDone,
+  profileMissing,
   profileOf,
   profileStarted,
   meetingState,
+  type ProfileSection,
   type OneToOneMeeting,
   type AffiliationView,
   type DirectoryRecord,
@@ -23,20 +27,22 @@ import { useAsync, type AsyncState } from '../../lib/useAsync';
 import { stillWaiting } from '../../lib/panels';
 import type { ReviewPanel } from './ReviewPage';
 import { Icon } from '../../ui/Icon';
-import { Modal, useToast } from '../../ui/Overlays';
+import { Modal, useSidebar, useToast } from '../../ui/Overlays';
 import '../../ui/builder.css';
 import '../../ui/directory.css';
 import { initials } from '../directory/DirectoryPage';
 import { OwedItems, type Owed } from './OwedItems';
-import { Agenda, type AgendaEntry } from './Agenda';
+import { type AgendaEntry } from './Agenda';
+import { ProgramJourney } from './ProgramJourney';
+import { ProgramsSection } from './ProgramsSection';
 import { MemberHome, type CandidacyState } from './MemberHome';
 import { LangProvider, useLang } from '../../lib/lang';
 import { TeamModal } from './TeamPanel';
 import { PhoneLines } from '../../ui/PhoneLines';
 import { PlaceLines } from '../../ui/PlaceLines';
-import { ProfileBar, ProfileFacts } from '../../ui/OrgProfile';
+import { ASK_WORD, ProfileBar, ProfileFacts } from '../../ui/OrgProfile';
 import { KpiPanel } from '../../ui/KpiPanel';
-import { OrgSheet } from '../../ui/OrgSheet';
+import { OrgSheet, SECTION_WORD } from '../../ui/OrgSheet';
 
 /**
  * The member space: your profile, and the organisation pages you look after.
@@ -44,10 +50,10 @@ import { OrgSheet } from '../../ui/OrgSheet';
  * whole product already points at.
  */
 /** The four places a member has. Jury only exists for somebody on a panel. */
-const MEMBER_TABS = ['Home', 'Programs', 'Jury', 'Meetings', 'Profile', 'Settings'] as const;
+const MEMBER_TABS = ['Home', 'Profile', 'Programs', 'Jury', 'Mentoring', 'Settings'] as const;
 /** The word each tab wears, in the language the member reads. */
 const TAB_WORD = {
-  Home: 'tab.home', Programs: 'tab.programs', Jury: 'tab.jury', Meetings: 'tab.meetings', Profile: 'tab.profile',
+  Home: 'tab.home', Programs: 'tab.programs', Jury: 'tab.jury', Mentoring: 'tab.mentoring', Profile: 'tab.profile',
   Settings: 'tab.settings',
 } as const;
 type MemberTab = (typeof MEMBER_TABS)[number];
@@ -165,23 +171,30 @@ function MemberSpaceReady({
   /* Settings holds a password and a way out of the account — neither means
      anything about somebody else's page. */
   const tabs = MEMBER_TABS.filter(
-    (t) => (t !== 'Jury' || isJuror) && (t !== 'Meetings' || meets) && (t !== 'Settings' || !preview),
+    (t) => (t !== 'Jury' || isJuror) && (t !== 'Mentoring' || meets) && (t !== 'Settings' || !preview),
   );
-  const asked = params.get('tab') as MemberTab | null;
+  /* « Meetings » est devenu « Mentoring » : un ancien lien y mène encore. */
+  const askedRaw = params.get('tab');
+  const asked = (askedRaw === 'Meetings' ? 'Mentoring' : askedRaw) as MemberTab | null;
   /* On ouvre là où il y a quelque chose à faire.
      Nobody signs in to read their own profile: a founder comes to see what is
      still asked of them, a juror to see what is left to mark. Profile is where
      you end up when neither is true. */
   const landing: MemberTab =
-    (programs.data?.length ?? 0) > 0 ? 'Home' : isJuror ? 'Jury' : meets ? 'Meetings' : 'Profile';
+    (programs.data?.length ?? 0) > 0 ? 'Home' : isJuror ? 'Jury' : meets ? 'Mentoring' : 'Profile';
   const tab: MemberTab = asked && tabs.includes(asked) ? asked : landing;
-  const setTab = (next: MemberTab) =>
+  const [folded, setFolded] = useSidebar();
+  /* Sur un téléphone, le menu s'ouvre par-dessus la page et se referme en choisissant. */
+  const [navOpen, setNavOpen] = useState(false);
+  const setTab = (next: MemberTab) => {
+    setNavOpen(false);
     setParams((p) => {
       const q = new URLSearchParams(p);
       q.set('tab', next);
       q.delete('prog');
       return q;
     });
+  };
   /* Quel programme on regarde, dans l'adresse comme l'onglet : revenir, ou
      recharger, doit ramener là où l'on était. */
   const openEdition = params.get('prog') ?? '';
@@ -236,11 +249,108 @@ function MemberSpaceReady({
   );
 
 
+  /* Ce qui attend dans chaque programme : les lignes de la Home, comptées. */
+  const pendingByEdition = new Map<string, number>();
+  for (const a of home.data?.actions ?? []) if (a.editionId) pendingByEdition.set(a.editionId, (pendingByEdition.get(a.editionId) ?? 0) + 1);
+
   const name = preview ? (preview.who?.name ?? preview.orgName) : me!.record.name;
   const email = preview ? (preview.who?.email ?? '') : me!.account.email;
 
+  const ICON: Record<MemberTab, string> = {
+    Home: 'home', Profile: 'users', Programs: 'layers', Jury: 'gavel', Mentoring: 'compass', Settings: 'settings',
+  };
+  const waitingJury = stillWaiting(panels.data ?? []);
+  const main = tabs.filter((t) => t !== 'Settings');
+
   return (
-    <div className="member-shell">
+    <div className={`shell member-layout${folded ? ' folded' : ''}${navOpen ? ' nav-open' : ''}`}>
+      {/* La navigation de l'espace : à gauche, repliable, et en tiroir sur un téléphone. */}
+      <nav className="sidebar member-side" aria-label={lang === 'fr' ? 'Votre espace' : 'Your space'}>
+        <div className="brand">
+          <div className="brand-mark">C</div>
+          <div className="brand-text">
+            <div className="brand-name">CeedFlow</div>
+            <div className="brand-sub">{lang === 'fr' ? 'Votre espace' : 'Your space'}</div>
+          </div>
+        </div>
+        <button
+          className="fold"
+          onClick={() => setFolded(!folded)}
+          aria-expanded={!folded}
+          aria-label={folded ? 'Open the menu' : 'Fold the menu'}
+          title={folded ? 'Open the menu' : 'Fold the menu'}
+        >
+          <Icon name={folded ? 'chevronRight' : 'chevronLeft'} size={13} />
+        </button>
+        {main.map((name) => (
+          <button
+            key={name}
+            className={name === tab ? 'nav-item on' : 'nav-item'}
+            aria-current={name === tab ? 'page' : undefined}
+            title={t(TAB_WORD[name])}
+            onClick={() => setTab(name)}
+          >
+            <Icon name={ICON[name]} />
+            <span className="nav-label">{t(TAB_WORD[name])}</span>
+            {name === 'Jury' && waitingJury > 0 && <span className="nav-count warn">{waitingJury}</span>}
+            {name === 'Home' && (home.data?.actions.length ?? 0) > 0 && (
+              <span className="nav-count">{home.data!.actions.length}</span>
+            )}
+          </button>
+        ))}
+
+        <div className="sidebar-foot stack" style={{ gap: 6 }}>
+          <div className="who row" style={{ gap: 8 }}>
+            <span className="rec-mark">{initials(name)}</span>
+            <span className="who-text" style={{ minWidth: 0 }}>
+              <strong style={{ fontSize: 12.5, display: 'block' }}>{name}</strong>
+              <span className="faint" style={{ fontSize: 11.5, overflowWrap: 'anywhere' }}>{email}</span>
+            </span>
+          </div>
+          {/* Deux langues, offertes depuis la page : CEED écrit en français à
+              des fondateurs marocains, et un jury ne l'est pas toujours. */}
+          <div className="seg" role="group" aria-label={t('bar.lang')}>
+            <button className={lang === 'fr' ? 'on' : ''} onClick={() => setLang('fr')}>FR</button>
+            <button className={lang === 'en' ? 'on' : ''} onClick={() => setLang('en')}>EN</button>
+          </div>
+          {tabs.includes('Settings') && (
+            <button className={tab === 'Settings' ? 'nav-item on' : 'nav-item'} title={t(TAB_WORD.Settings)} onClick={() => setTab('Settings')}>
+              <Icon name="settings" />
+              <span className="nav-label">{t(TAB_WORD.Settings)}</span>
+            </button>
+          )}
+          {!preview && me!.account.staffRole && (
+            <Link className="nav-item" to="/" title={t('bar.workspace')}>
+              <Icon name="grid" />
+              <span className="nav-label">{t('bar.workspace')}</span>
+            </Link>
+          )}
+          {!preview && (
+            <button
+              className="nav-item"
+              title={t('bar.signOut')}
+              onClick={async () => {
+                await api.post('/api/auth/logout');
+                navigate('/login');
+              }}
+            >
+              <Icon name="arrowRight" />
+              <span className="nav-label">{t('bar.signOut')}</span>
+            </button>
+          )}
+        </div>
+      </nav>
+      {navOpen && <div className="member-scrim" onClick={() => setNavOpen(false)} />}
+
+      <div className="member-main">
+        {/* Sur un téléphone : le titre de la section, et le menu derrière un bouton. */}
+        <div className="member-top">
+          <button className="btn ghost icon sm" aria-label="Menu" onClick={() => setNavOpen(true)}>
+            <Icon name="list" size={16} />
+          </button>
+          <strong style={{ fontSize: 14 }}>{t(TAB_WORD[tab])}</strong>
+        </div>
+
       {preview && (
         <div className="callout" style={{ margin: '10px 14px 0' }}>
           <Icon name="eye" size={15} />
@@ -260,48 +370,6 @@ function MemberSpaceReady({
           </div>
         </div>
       )}
-
-      <div className="member-bar">
-        <span className="rec-mark">{initials(name)}</span>
-        <span style={{ flex: 1, minWidth: 0 }}>
-          <strong style={{ fontSize: 13 }}>{name}</strong>
-          <span className="faint" style={{ display: 'block', fontSize: 12 }}>
-            {email}
-          </span>
-        </span>
-        {/* Somebody at CEED has two places to be, and this page is the smaller
-            one. Without this, the way back is a URL they have to know. */}
-        {/* Deux langues, offertes depuis la page : CEED écrit en français à
-            des fondateurs marocains, et un jury ne l'est pas toujours. */}
-        <div className="seg" role="group" aria-label={t('bar.lang')}>
-          <button className={lang === 'fr' ? 'on' : ''} onClick={() => setLang('fr')}>FR</button>
-          <button className={lang === 'en' ? 'on' : ''} onClick={() => setLang('en')}>EN</button>
-        </div>
-        {!preview && me!.account.staffRole && (
-          <Link className="btn sm" to="/">
-            <Icon name="grid" size={13} /> {t('bar.workspace')}
-          </Link>
-        )}
-        {!preview && (
-          <button
-            className="btn sm"
-            onClick={async () => {
-              await api.post('/api/auth/logout');
-              navigate('/login');
-            }}
-          >
-            {t('bar.signOut')}
-          </button>
-        )}
-      </div>
-
-      <nav className="tabbar" role="tablist" aria-label={lang === 'fr' ? 'Votre espace' : 'Your space'}>
-        {tabs.map((name) => (
-          <button key={name} role="tab" className={name === tab ? 'tab on' : 'tab'} onClick={() => setTab(name)}>
-            {t(TAB_WORD[name])}
-          </button>
-        ))}
-      </nav>
 
       <div className="member-body stack" style={{ gap: 16 }}>
         {tab === 'Profile' && preview && (
@@ -360,22 +428,38 @@ function MemberSpaceReady({
         )}
         {tab === 'Programs' &&
           (openEdition ? (
-            <ProgramPage
+            <ProgramJourney
               state={(states.data ?? []).find((x) => x.programme.editionId === openEdition) ?? null}
+              home={preview ? (preview.home ?? { actions: [], upcoming: [] }) : (home.data ?? null)}
               onOwed={(candidateId, owed) =>
                 states.set((states.data ?? []).map((x) => (x.candidateId === candidateId ? { ...x, owed } : x)))
               }
               readOnly={Boolean(preview)}
               onBack={() => setEdition('')}
+              onTick={async (task) => {
+                await api.patch(`/api/me/tasks/${task.id}`, { state: 'done' }).catch((err) => toast((err as Error).message, true));
+                home.reload();
+              }}
+              onTickItem={async (task, item) => {
+                await api.patch(`/api/me/tasks/${task.id}/items/${item.id}`, { done: !item.done }).catch((err) => toast((err as Error).message, true));
+                home.reload();
+              }}
+              onGo={(href) => (preview ? undefined : navigate(href))}
             />
           ) : (
-            <Programs programs={programs} owedFor={preview?.owed} readOnly={Boolean(preview)} onOpen={setEdition} />
+            <ProgramsSection
+              programs={programs}
+              pendingByEdition={pendingByEdition}
+              readOnly={Boolean(preview)}
+              onOpen={setEdition}
+            />
           ))}
         {tab === 'Jury' && <Jury panels={panels.data ?? []} />}
-        {tab === 'Meetings' && (
+        {tab === 'Mentoring' && (
           <Meetings meetings={meetings.data ?? []} />
         )}
         {tab === 'Settings' && !preview && <Settings me={me!} />}
+      </div>
       </div>
     </div>
   );
@@ -603,82 +687,6 @@ function Settings({ me }: { me: Me }) {
 }
 
 /** One published edition, as the server hands it to a member. */
-/**
- * Un programme, du côté de la startup.
- *
- * Two tabs, because there are two kinds of thing: what is asked of them, and
- * what is coming. The wall will be the third, and it will not disturb either —
- * which is the reason for tabs rather than one long page.
- */
-function ProgramPage({
-  state,
-  onOwed,
-  readOnly,
-  onBack,
-}: {
-  state: CandidacyState | null;
-  /** Ce qu'un envoi a changé, pour que la page ne reparte pas d'avant lui. */
-  onOwed: (candidateId: string, owed: Owed[]) => void;
-  readOnly: boolean;
-  onBack: () => void;
-}) {
-  const { t } = useLang();
-  const [side, setSide] = useState<'todo' | 'agenda'>('todo');
-
-  if (!state) return <div className="empty">{t('prog.none')}</div>;
-
-  return (
-    <div className="stack" style={{ gap: 14 }}>
-      {/* Le nom et les onglets restent pendant qu'on descend la liste : sur dix
-          pièces, savoir où l'on est ne doit pas demander de remonter. */}
-      <div className="member-progbar stack" style={{ gap: 10 }}>
-        <div className="row" style={{ gap: 9 }}>
-          <button className="btn ghost icon sm" onClick={onBack} aria-label={t('prog.back')}>
-            <Icon name="chevronLeft" size={14} />
-          </button>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <strong style={{ fontFamily: 'var(--display)', fontSize: 15.5 }}>
-              {state.programme.programName}
-            </strong>
-            <span className="faint" style={{ display: 'block', fontSize: 12 }}>
-              {[state.programme.editionName, state.orgName].filter(Boolean).join(' · ')}
-            </span>
-          </div>
-        </div>
-
-        <nav className="drawer-tabs" role="tablist">
-          <button role="tab" className={side === 'todo' ? 'tab on' : 'tab'} onClick={() => setSide('todo')}>
-            {t('prog.todo')}
-          </button>
-          <button role="tab" className={side === 'agenda' ? 'tab on' : 'tab'} onClick={() => setSide('agenda')}>
-            {t('prog.agenda')}
-            {state.agenda.length > 0 && (
-              <span className="badge num" style={{ marginLeft: 6 }}>{state.agenda.length}</span>
-            )}
-          </button>
-        </nav>
-      </div>
-
-      {side === 'todo' ? (
-        state.owed.length ? (
-          <OwedItems
-            candidateId={state.candidateId}
-            orgName={state.orgName}
-            given={state.owed}
-            onSaved={(owed) => onOwed(state.candidateId, owed)}
-            readOnly={readOnly}
-          />
-        ) : (
-          <section className="card card-pad">
-            <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{t('prog.noTodo')}</p>
-          </section>
-        )
-      ) : (
-        <Agenda entries={state.agenda} />
-      )}
-    </div>
-  );
-}
 
 export interface MyProgram {
   programId: string;
@@ -692,7 +700,10 @@ export interface MyProgram {
   applications: 'not_configured' | 'scheduled' | 'live' | 'closed' | null;
   opensAt: string | null;
   applyUrl: string | null;
-  mine: { id: string; orgName: string }[];
+  mine: { id: string; orgName: string; status?: string; phase?: string | null }[];
+  eligibility?: string[];
+  closesAt?: string | null;
+  colour?: string;
 }
 
 /**
@@ -806,9 +817,20 @@ interface MyMeeting extends OneToOneMeeting {
 
 function Meetings({ meetings }: { meetings: MyMeeting[] }) {
   const { lang } = useLang();
+  const fr = lang === 'fr';
   const today = new Date().toISOString().slice(0, 10);
-  const upcoming = meetings.filter((m) => !m.heldOn || m.heldOn >= today);
-  const past = meetings.filter((m) => m.heldOn && m.heldOn < today).reverse();
+  const [side, setSide] = useState<'upcoming' | 'due' | 'past'>('upcoming');
+  const [programme, setProgramme] = useState('');
+  const programmes = [...new Set(meetings.map((m) => m.programName))];
+  const scoped = meetings.filter((m) => !programme || m.programName === programme);
+  /* Un CR à écrire : la séance a eu lieu, la brique est ouverte, et rien n'est envoyé. */
+  const due = (m: MyMeeting) =>
+    meetingState(m) !== 'reported' && m.state === 'open' && Boolean(m.heldOn && m.heldOn <= today) && m.status !== 'cancelled';
+  const lists = {
+    upcoming: scoped.filter((m) => (!m.heldOn || m.heldOn >= today) && m.status !== 'cancelled'),
+    due: scoped.filter(due),
+    past: scoped.filter((m) => m.heldOn && m.heldOn < today).reverse(),
+  };
   const row = (m: MyMeeting) => {
     const state = meetingState(m);
     return (
@@ -817,40 +839,65 @@ function Meetings({ meetings }: { meetings: MyMeeting[] }) {
         <span style={{ flex: 1, minWidth: 0 }}>
           <strong style={{ fontSize: 13 }}>{m.orgName}</strong>
           <span className="faint" style={{ display: 'block', fontSize: 12 }}>
-            {[m.heldOn ? `${formatDate(m.heldOn)}${m.startTime ? ` · ${m.startTime}` : ''}` : null, m.programName, m.blockName]
+            {[m.heldOn ? `${formatDate(m.heldOn)}${m.startTime ? ` · ${m.startTime}` : ''}` : null, m.location || null, m.programName, m.blockName]
               .filter(Boolean)
               .join(' · ')}
           </span>
         </span>
         {state === 'reported' ? (
-          <span className="badge ok">{lang === 'fr' ? 'CR envoyé' : 'Report sent'}</span>
-        ) : m.state === 'open' && m.heldOn && m.heldOn <= today ? (
-          <span className="badge warn">{lang === 'fr' ? 'CR à écrire' : 'Report due'}</span>
+          <span className="badge ok">{fr ? 'CR envoyé' : 'Report sent'}</span>
+        ) : due(m) ? (
+          <span className="badge warn">{fr ? 'CR à écrire' : 'Report due'}</span>
         ) : null}
         <Icon name="chevronRight" size={14} />
       </Link>
     );
   };
+  const words = {
+    upcoming: fr ? 'À venir' : 'Coming up',
+    due: fr ? 'Comptes rendus à remplir' : 'Reports to write',
+    past: fr ? 'Historique' : 'History',
+  };
   return (
     <div className="stack" style={{ gap: 14 }}>
+      <div className="row wrap" style={{ gap: 6 }}>
+        {(['upcoming', 'due', 'past'] as const).map((k) => (
+          <button key={k} className={side === k ? 'track on' : 'track'} aria-pressed={side === k} onClick={() => setSide(k)}>
+            {words[k]} <span className="num">{lists[k].length}</span>
+          </button>
+        ))}
+        <div className="spacer" />
+        {programmes.length > 1 && (
+          <select className="input" style={{ width: 'auto' }} value={programme} onChange={(e) => setProgramme(e.target.value)}>
+            <option value="">{fr ? 'Tous les programmes' : 'All programmes'}</option>
+            {programmes.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        )}
+      </div>
       <section className="card card-pad stack" style={{ gap: 8 }}>
-        <div className="eyebrow">{lang === 'fr' ? 'À venir' : 'Coming up'}</div>
-        {upcoming.length ? upcoming.map(row) : (
-          <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{lang === 'fr' ? 'Rien de prévu.' : 'Nothing planned.'}</p>
+        <div className="eyebrow">{fr ? 'Sessions individuelles — One to One' : 'One-to-one sessions'}</div>
+        {lists[side].length ? (
+          lists[side].map(row)
+        ) : (
+          <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+            {side === 'due' ? (fr ? 'Aucun compte rendu en attente.' : 'No report waiting.') : fr ? 'Rien ici.' : 'Nothing here.'}
+          </p>
         )}
       </section>
-      {past.length > 0 && (
-        <section className="card card-pad stack" style={{ gap: 8 }}>
-          <div className="eyebrow">{lang === 'fr' ? 'Passés' : 'Past'}</div>
-          {past.map(row)}
-        </section>
-      )}
     </div>
   );
 }
 
-function Jury({ panels }: { panels: ReviewPanel[] }) {
-  const waiting = stillWaiting(panels);
+function Jury({ panels: all }: { panels: ReviewPanel[] }) {
+  const { lang } = useLang();
+  const fr = lang === 'fr';
+  const waiting = stillWaiting(all);
+  /* À évaluer, ou terminées : une séance l'est quand chaque startup a sa note. */
+  const [side, setSide] = useState<'todo' | 'done' | 'all'>('todo');
+  const finished = (p: ReviewPanel) => p.done === p.items.length || p.state === 'closed';
+  const panels = all.filter((p) => (side === 'all' ? true : side === 'done' ? finished(p) : !finished(p)));
 
   const programmes = [...new Map(panels.map((p) => [`${p.programName}|${p.editionName}`, p])).values()];
 
@@ -865,6 +912,16 @@ function Jury({ panels }: { panels: ReviewPanel[] }) {
           What you write is yours — the others on a panel do not see it, and you do not see theirs.
         </div>
       </div>
+      <div className="row wrap" style={{ gap: 6 }}>
+        {(['todo', 'done', 'all'] as const).map((k) => (
+          <button key={k} className={side === k ? 'track on' : 'track'} aria-pressed={side === k} onClick={() => setSide(k)}>
+            {k === 'todo' ? (fr ? 'À évaluer' : 'To mark') : k === 'done' ? (fr ? 'Terminées' : 'Done') : fr ? 'Toutes' : 'All'}
+          </button>
+        ))}
+      </div>
+      {!panels.length && (
+        <div className="empty">{side === 'todo' ? (fr ? 'Aucune évaluation en attente.' : 'Nothing left to mark.') : fr ? 'Rien ici.' : 'Nothing here.'}</div>
+      )}
 
       {programmes.map((head) => {
         const mine = panels.filter((p) => p.programName === head.programName && p.editionName === head.editionName);
@@ -1115,7 +1172,7 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
   const { t, lang } = useLang();
   const [creating, setCreating] = useState(false);
   /* La fiche ouverte : celle d'une page qu'on tient, ou celle qu'on vient de créer. */
-  const [editing, setEditing] = useState<{ record: DirectoryRecord; manage: boolean } | null>(null);
+  const [editing, setEditing] = useState<{ record: DirectoryRecord; manage: boolean; section?: ProfileSection } | null>(null);
   const [team, setTeam] = useState<AffiliationView | null>(null);
 
   return (
@@ -1186,9 +1243,52 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
                   onFill={() => setEditing({ record: link.record, manage: canManageTeam(link.affiliation.access) })}
                 />
               )}
+              {/* La fiche en blocs : chacun dit où il en est, ce qui lui manque, et s'ouvre seul. */}
+              <div className="profile-blocks">
+                {PROFILE_SECTIONS.map((sec) => {
+                  const p = profileOf(link.record);
+                  const done = profileDone(p, sec);
+                  const missing = profileMissing(p, sec);
+                  return (
+                    <div key={sec} className="rowcard card-pad stack" style={{ gap: 4 }}>
+                      <div className="row" style={{ gap: 6 }}>
+                        <strong style={{ flex: 1, fontSize: 13 }}>{t(SECTION_WORD[sec])}</strong>
+                        {done === 100 ? (
+                          <span className="badge ok">{lang === 'fr' ? 'Complet' : 'Complete'}</span>
+                        ) : (
+                          <span className="badge warn num">{done} %</span>
+                        )}
+                      </div>
+                      {missing.length > 0 && (
+                        <span className="faint" style={{ fontSize: 12 }}>
+                          {lang === 'fr' ? 'À compléter : ' : 'To fill in: '}
+                          {missing.slice(0, 4).map((k) => t(ASK_WORD[k])).join(', ')}
+                          {missing.length > 4 ? '…' : ''}
+                        </span>
+                      )}
+                      {canEditOrg(link.affiliation.access) && (
+                        <button
+                          className="linkish"
+                          style={{ alignSelf: 'flex-start', fontSize: 12.5 }}
+                          onClick={() => setEditing({ record: link.record, manage: canManageTeam(link.affiliation.access), section: sec })}
+                        >
+                          {lang === 'fr' ? 'Modifier' : 'Edit'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
               {/* Sa fiche telle qu'un jury la lit : seulement ce qui est rempli. */}
               {profileStarted(profileOf(link.record)) && (
-                <ProfileFacts profile={profileOf(link.record)} name={link.record.name} />
+                <details>
+                  <summary className="eyebrow" style={{ cursor: 'pointer' }}>
+                    {lang === 'fr' ? 'Voir la fiche telle que les autres la lisent' : 'See the sheet as others read it'}
+                  </summary>
+                  <div style={{ marginTop: 10 }}>
+                    <ProfileFacts profile={profileOf(link.record)} name={link.record.name} />
+                  </div>
+                </details>
               )}
               {/* Ses indicateurs, période par période — remplis par qui peut modifier la page. */}
               <KpiPanel
@@ -1222,6 +1322,7 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
       {editing && (
         <OrgSheet
           record={editing.record}
+          startAt={editing.section}
           routes={{
             record: `/api/me/organisations/${editing.record.id}`,
             revenue: (year) => `/api/me/organisations/${editing.record.id}/revenues/${year}`,

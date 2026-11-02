@@ -62,6 +62,7 @@ export function MemberHome({
   onTickItem,
   onOpen,
   onGo,
+  withProgrammes = true,
 }: {
   /** What the server read for them: null while it loads. */
   home: { actions: MemberAction[]; upcoming: MemberActivity[] } | null;
@@ -74,6 +75,8 @@ export function MemberHome({
   onOpen: (editionId: string) => void;
   /** Where an action is done — a page of this app. */
   onGo: (href: string) => void;
+  /** The programmes block — not on a programme's own page, which is one of them. */
+  withProgrammes?: boolean;
 }) {
   const { t, lang } = useLang();
   const [filter, setFilter] = useState<'all' | ActionStatus>('all');
@@ -261,6 +264,7 @@ export function MemberHome({
       </section>
 
       {/* ---- Ses programmes ---- */}
+      {withProgrammes && (
       <section className="card card-pad stack" style={{ gap: 10 }}>
         <div className="eyebrow">{t('home.programmes')}</div>
         <div className="rows">
@@ -277,7 +281,9 @@ export function MemberHome({
               <span style={{ flex: 1, minWidth: 0 }}>
                 <strong style={{ fontSize: 13.5 }}>{p.programName}</strong>
                 <span className="faint" style={{ display: 'block', fontSize: 12.5 }}>
-                  {[p.editionName, p.city, p.startsOn ? longDate(p.startsOn) : null].filter(Boolean).join(' · ')}
+                  {[p.editionName, p.mine[0]?.phase ? `${lang === 'fr' ? 'Phase' : 'Phase'} : ${p.mine[0].phase}` : null, p.startsOn ? longDate(p.startsOn) : null]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </span>
               </span>
               {(pendingByEdition.get(p.editionId) ?? 0) > 0 && (
@@ -289,6 +295,7 @@ export function MemberHome({
           ))}
         </div>
       </section>
+      )}
     </div>
   );
 }

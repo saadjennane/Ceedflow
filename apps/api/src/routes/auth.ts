@@ -71,6 +71,7 @@ import { setAttribute, sheetAttributes } from '../services/orgAttributes.js';
 import { kpisOf, putKpiPoint } from '../services/kpis.js';
 import { prefillFromSheet, writeBackToSheet } from '../services/formSheet.js';
 import { measureFor, saveMeasure } from '../services/reporting.js';
+import { journeyFor, phasesOf } from '../services/journey.js';
 
 /** One published edition, as the person signed in sees it. */
 interface MyProgram {
@@ -86,8 +87,13 @@ interface MyProgram {
   applications: BrickStatus | null;
   opensAt: string | null;
   applyUrl: string | null;
-  /** Candidacies of the organisations this person belongs to. */
-  mine: { id: string; orgName: string }[];
+  /** Candidacies of the organisations this person belongs to — where each stands. */
+  mine: { id: string; orgName: string; status: string; phase: string | null }[];
+  /** What the open form asks the applicant to confirm, and until when it takes answers. */
+  eligibility: string[];
+  closesAt: string | null;
+  /** The programme's colour, for its mark. */
+  colour: string;
 }
 
 /** Open first, then what is coming, then what is over. */
@@ -168,9 +174,13 @@ export async function programsFor(recordId: string): Promise<MyProgram[]> {
 
       // A candidacy of one of their own organisations, which is the only part
       // of this screen that is about them rather than about the programme.
-      const candidacies = (await repo.listCandidates(edition.id))
-        .filter((c) => mine.has(c.orgId))
-        .map((c) => ({ id: c.id, orgName: c.orgName }));
+      const candidacies = [];
+      for (const c of (await repo.listCandidates(edition.id)).filter((x) => mine.has(x.orgId))) {
+        const track = detail.tracks.find((t) => t.id === c.trackId);
+        const phase = track ? (await phasesOf(track, c)).find((p) => p.state === 'current')?.name ?? null : null;
+        candidacies.push({ id: c.id, orgName: c.orgName, status: c.status, phase });
+      }
+      const form = live ?? forms[0];
 
       out.push({
         programId: program.id,
@@ -188,6 +198,9 @@ export async function programsFor(recordId: string): Promise<MyProgram[]> {
            menait à « This form does not exist ». */
         applyUrl: live ? `/apply/${(live.config as { publicToken?: string }).publicToken ?? ''}` : null,
         mine: candidacies,
+        eligibility: form ? ((form.config as { eligibility?: { criteria?: { label: string }[] } }).eligibility?.criteria ?? []).map((c) => c.label) : [],
+        closesAt: form ? ((form.config as { closesAt?: string | null }).closesAt ?? null) : null,
+        colour: program.colour ?? '#2F5BFF',
       });
     }
   }
@@ -911,6 +924,13 @@ export async function authRoutes(app: FastifyInstance) {
     }
     if (!orgId || !(await dir.orgIdsOf(account.recordId)).has(orgId)) return {};
     return prefillFromSheet(orgId, input.fields, input.lang);
+  });
+
+  /** Le parcours d'une candidature dans son programme : ses phases, et son histoire. */
+  app.get('/api/me/journey/:candidateId', async (req, reply) => {
+    const account = await require(req);
+    const { candidateId } = req.params as { candidateId: string };
+    return (await journeyFor(account.recordId, candidateId)) ?? notFound(reply, 'Candidacy not found.');
   });
 
   /* ---- Les indicateurs d'un moment du programme, côté startup ---- */

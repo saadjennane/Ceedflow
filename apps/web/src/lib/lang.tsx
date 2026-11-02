@@ -29,6 +29,7 @@ const WORDS = {
   /* ---- the shell ---- */
   'tab.home': { fr: 'Accueil', en: 'Home' },
   'tab.meetings': { fr: 'Rendez-vous', en: 'Meetings' },
+  'tab.mentoring': { fr: 'Mentoring', en: 'Mentoring' },
   'tab.profile': { fr: 'Profil', en: 'Profile' },
   'tab.programs': { fr: 'Programmes', en: 'Programs' },
   'tab.jury': { fr: 'Jury', en: 'Jury' },
