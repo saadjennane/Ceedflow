@@ -60,6 +60,7 @@ export function ReportingSetup({
   const [tab, setTab] = useState<SetupTab>('Indicators');
   const [programFields, setProgramFields] = useState<FormField[]>(view.programIndicators);
   const [editionFields, setEditionFields] = useState<FormField[]>(view.editionIndicators);
+  const [teamFields, setTeamFields] = useState<FormField[]>(view.teamIndicators);
   const [moments, setMoments] = useState<KpiMoment[]>(view.moments);
   const [messages, setMessages] = useState(view.messages);
   const [saving, setSaving] = useState(0);
@@ -80,6 +81,12 @@ export function ReportingSetup({
   const saveProgram = useSaver<FormField[]>((indicators) =>
     run(async () => {
       await api.put(`/api/programs/${edition.program.id}/reporting`, { indicators });
+      onChanged(await api.get<ReportingView>(`/api/editions/${edition.id}/reporting`));
+    }),
+  );
+  const saveTeam = useSaver<FormField[]>((teamIndicators) =>
+    run(async () => {
+      await api.put(`/api/programs/${edition.program.id}/reporting`, { teamIndicators });
       onChanged(await api.get<ReportingView>(`/api/editions/${edition.id}/reporting`));
     }),
   );
@@ -152,6 +159,23 @@ export function ReportingSetup({
               emptyText="Nothing more for this edition."
               profileLink
               kpiPeriodSaid="The period is the one of each moment’s opening date."
+            />
+          </section>
+          {/* Ce que CEED mesure lui-même : saisi dans Reports › Programme, à chaque moment. */}
+          <section className="stack" style={{ gap: 6 }}>
+            <h3 className="section-title" style={{ margin: 0 }}>Filled in by CEED</h3>
+            <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+              What the programme measures itself — budget spent, events held, partners involved. Entered in Reports ›
+              Programme, at each moment; shared by every edition of {edition.program.name}.
+            </p>
+            <QuestionsEditor
+              value={{ layout: 'single', pages: [], fields: teamFields }}
+              onChange={(partial) => {
+                if (!partial.fields) return;
+                setTeamFields(partial.fields);
+                saveTeam(partial.fields);
+              }}
+              emptyText="Nothing measured by CEED yet."
             />
           </section>
         </div>

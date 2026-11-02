@@ -20,6 +20,9 @@ import {
   saveProgramSetup,
 } from '../src/services/reporting.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
+import { programMetrics } from '../src/services/programMetrics.js';
+import { putTeamValue } from '../src/services/reporting.js';
+import { changeMeeting, planMeetings } from '../src/services/oneToOne.js';
 
 before(migrate);
 after(closeDb);
@@ -78,6 +81,34 @@ describe('measuring a cohort over its programme', { skip: skipWithoutServer }, (
     const view = await reportingView(edition.id);
     assert.deepEqual(view.cohort.map((c) => c.candidateId), [kept.id]);
     assert.equal(view.responses.find((r) => r.momentId === start.id)!.answers.i_team, 12, 'frozen');
+  });
+
+  it('counts what the platform knows: applications, cohort, One to One attendance and reports', async () => {
+    const { edition, kept } = await setUp();
+    const track = (await repo.getEditionDetail(edition.id))!.tracks[0]!;
+    const brick = await repo.createBlock(track.phases[0]!.id, 'one_to_one', 'Mentoring');
+    const mentor = await dir.createRecord({ kind: 'person', name: `Nadia ${Date.now()}`, origin: 'manual' });
+    await repo.updateBlock(brick.id, { config: { interlocutors: [mentor.id], report: { fields: [field('n', 'long_text')] }, perStartup: 2, visibility: 'open' } });
+    const [a] = await planMeetings(brick.id, { candidateIds: [kept.id], personId: mentor.id, invite: 'none', heldOn: '2030-01-07', startTime: '09:00' });
+    const [b] = await planMeetings(brick.id, { candidateIds: [kept.id], personId: mentor.id, invite: 'none', heldOn: '2030-01-08', startTime: '09:00' });
+    await changeMeeting(a!.id, { status: 'held' });
+    await changeMeeting(b!.id, { status: 'no_show' });
+    const m = await programMetrics(edition.id);
+    assert.equal(m.applications.total, 2);
+    assert.equal(m.cohort, 1);
+    const o = m.oneToOne.find((x) => x.name === 'Mentoring')!;
+    assert.equal(o.held, 1);
+    assert.equal(o.attendance, 50, 'held over held and missed');
+    assert.equal(o.reportRate, 0);
+  });
+
+  it('keeps what CEED measures itself, moment by moment', async () => {
+    const { program, edition } = await setUp();
+    await saveProgramSetup(program.id, { teamIndicators: [field('t_budget', 'number')] });
+    const start = (await editionSetup(edition.id)).moments[0]!;
+    const view = await putTeamValue(edition.id, start.id, 't_budget', 120000, 'Samia');
+    assert.deepEqual(view.teamValues.map((v) => [v.indicatorId, v.value]), [['t_budget', 120000]]);
+    await assert.rejects(putTeamValue(edition.id, start.id, 'nope', 1, 'Samia'), /No such indicator/);
   });
 
   it('will not send a moment without its deadline, and keeps a launched moment launched', async () => {

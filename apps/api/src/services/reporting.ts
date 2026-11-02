@@ -110,6 +110,12 @@ export async function reportingView(editionId: string): Promise<ReportingView> {
     messages: setup.messages,
     cohort: cohort.map((c) => ({ candidateId: c.id, orgId: c.orgId, orgName: c.orgName, contactName: c.contactName })),
     responses: responses.filter((r) => cohort.some((c) => c.id === r.candidateId)),
+    teamIndicators: (await programSetup(detail.program.id)).teamIndicators,
+    teamValues: await all<ReportingView['teamValues'][number]>(
+      `select moment_id as "momentId", indicator_id as "indicatorId", value, by_name as "byName", updated_at::text as "updatedAt"
+         from team_indicator_values where edition_id = $1`,
+      [editionId],
+    ),
   };
 }
 
@@ -171,6 +177,24 @@ export async function launchMoment(editionId: string, momentId: string, reminder
     });
   }
   return { sent };
+}
+
+/** Une valeur que CEED saisit pour un moment — `null` l'efface. */
+export async function putTeamValue(editionId: string, momentId: string, indicatorId: string, value: unknown, byName: string): Promise<ReportingView> {
+  const detail = await context(editionId);
+  const setup = await editionSetup(editionId);
+  if (!setup.moments.some((m) => m.id === momentId)) throw new HttpError(404, 'No such moment.');
+  if (!(await programSetup(detail.program.id)).teamIndicators.some((f) => f.id === indicatorId)) throw new HttpError(404, 'No such indicator.');
+  if (value === null || value === undefined || value === '') {
+    await all('delete from team_indicator_values where edition_id = $1 and moment_id = $2 and indicator_id = $3', [editionId, momentId, indicatorId]);
+  } else {
+    await all(
+      `insert into team_indicator_values (edition_id, moment_id, indicator_id, value, by_name) values ($1,$2,$3,$4::text::jsonb,$5)
+       on conflict (edition_id, moment_id, indicator_id) do update set value = excluded.value, by_name = excluded.by_name, updated_at = now()`,
+      [editionId, momentId, indicatorId, JSON.stringify(value), byName],
+    );
+  }
+  return reportingView(editionId);
 }
 
 /* ------------------------------------------------------------------ */

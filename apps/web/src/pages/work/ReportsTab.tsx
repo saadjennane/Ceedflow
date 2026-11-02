@@ -21,6 +21,8 @@ import { download, toWorkbook, type Cell } from '../../lib/xlsx';
 import { Icon } from '../../ui/Icon';
 import { useToast } from '../../ui/Overlays';
 import { ReportingSetup } from './ReportingSetup';
+import { ProgramView } from './ProgramView';
+import { TeamValues } from './TeamValues';
 
 const numberOf = (v: unknown): number | null => {
   const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v.replace(',', '.')) : NaN;
@@ -39,6 +41,8 @@ export function ReportsTab({ edition }: { edition: EditionDetail }) {
   const [setup, setSetup] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  /* Deux lectures : la cohorte, mesurée ; le programme, compté. */
+  const [side, setSide] = useState<'startups' | 'programme'>('startups');
   const toast = useToast();
 
   if (view.error) return <div className="empty">{view.error}</div>;
@@ -81,8 +85,30 @@ export function ReportsTab({ edition }: { edition: EditionDetail }) {
     download(toWorkbook([{ name: 'KPIs', rows: [head, ...rows] }]), `${edition.program.name} ${edition.name} — KPIs.xlsx`);
   };
 
+  const sides = (
+    <div className="tabbar" role="tablist" style={{ marginBottom: 0 }}>
+      <button role="tab" className={side === 'startups' ? 'tab on' : 'tab'} onClick={() => setSide('startups')}>Startups</button>
+      <button role="tab" className={side === 'programme' ? 'tab on' : 'tab'} onClick={() => setSide('programme')}>Programme</button>
+    </div>
+  );
+  if (side === 'programme') {
+    return (
+      <div className="stack" style={{ gap: 14 }}>
+        <div className="row wrap" style={{ gap: 8 }}>
+          <div style={{ flex: 1 }}>{sides}</div>
+          <button className="btn primary sm" onClick={() => setSetup(true)}>
+            <Icon name="settings" size={13} /> Setup
+          </button>
+        </div>
+        <ProgramView editionId={edition.id} extra={<TeamValues editionId={edition.id} view={data} onChanged={(next) => view.set(next)} />} />
+        {setup && <ReportingSetup edition={edition} view={data} onClose={() => setSetup(false)} onChanged={(next) => view.set(next)} />}
+      </div>
+    );
+  }
+
   return (
     <div className="stack" style={{ gap: 14 }}>
+      {sides}
       <div className="row wrap" style={{ gap: 8 }}>
         <div style={{ flex: 1 }}>
           <h2 style={{ margin: 0, fontSize: 16 }}>The cohort’s KPIs</h2>
