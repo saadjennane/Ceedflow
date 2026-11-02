@@ -520,6 +520,12 @@ export interface TeamInvite {
  */
 export const IMPORT_COLUMNS = [
   { key: 'name', label: 'Name', required: true },
+  /* Une personne : son nom en deux colonnes, sa fonction, son organisation. */
+  { key: 'firstName', label: 'First name' },
+  { key: 'lastName', label: 'Last name' },
+  { key: 'jobTitle', label: 'Job title' },
+  { key: 'department', label: 'Department' },
+  { key: 'organisation', label: 'Organisation' },
   { key: 'email', label: 'Email' },
   { key: 'phone', label: 'Phone' },
   { key: 'city', label: 'City' },

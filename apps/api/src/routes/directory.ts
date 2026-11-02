@@ -650,8 +650,16 @@ async function runImport(
   let skipped = 0;
   let contacts = 0;
 
+  /* Une adresse retrouve une fiche plus sûrement qu'un nom : deux « Mohammed
+     B… » ne sont pas la même personne, une adresse si. */
+  const byEmail = new Map<string, DirectoryRecord>();
+  for (const r of existing) for (const e of r.emails ?? []) byEmail.set(e.trim().toLowerCase(), r);
+  const orgs = kind === 'person' ? new Map((await dir.listRecords({ kind: 'org' })).map((r) => [matchKey(r.name), r] as const)) : null;
+
   for (const [index, row] of rows.entries()) {
-    const name = text(row, 'name');
+    const first = kind === 'person' ? text(row, 'firstName') : '';
+    const last = kind === 'person' ? text(row, 'lastName') : '';
+    const name = text(row, 'name') || [first, last].filter(Boolean).join(' ');
     const at = index + 1;
     if (!name) {
       skipped++;
@@ -660,7 +668,8 @@ async function runImport(
     }
 
     const key = matchKey(name);
-    const hit = known.get(key);
+    const emailsHere = text(row, 'email').split(/[,;]/).map((e) => e.trim().toLowerCase()).filter(Boolean);
+    const hit = emailsHere.map((e) => byEmail.get(e)).find(Boolean) ?? known.get(key);
     const contactName = kind === 'org' ? text(row, 'contactName') : '';
     const patch = {
       emails: text(row, 'email')
@@ -680,6 +689,9 @@ async function runImport(
         : [],
       website: text(row, 'website'),
       bio: text(row, 'bio'),
+      ...(kind === 'person'
+        ? { firstName: first, lastName: last, jobTitle: text(row, 'jobTitle'), department: text(row, 'department') }
+        : {}),
     };
     const roles = parseRoles(text(row, 'roles'), kind);
     const tags = text(row, 'tags')
@@ -724,6 +736,7 @@ async function runImport(
       if (!dryRun) {
         record = await dir.createRecord({ kind, name, roles, tags, origin: 'import', ...patch, by: who });
         known.set(key, record);
+        for (const e of emailsHere) byEmail.set(e, record);
       } else {
         known.set(key, { id: 'preview', name } as DirectoryRecord);
       }
@@ -747,6 +760,28 @@ async function runImport(
           people.set(pKey, person);
         }
         await dir.linkRecords({ personId: person.id, orgId: record.id, role: text(row, 'contactRole') || 'Contact' });
+      }
+    }
+
+    /* Une personne arrive avec son organisation, dans la même ligne : retrouvée
+       par son nom, ou créée — et la personne y est rattachée, sa fonction pour
+       rôle. Un rattachement qui existe déjà n'est pas touché : l'import ne
+       retire à personne l'accès qu'il a à sa page. */
+    const orgName = kind === 'person' ? text(row, 'organisation') : '';
+    if (orgName && orgs) {
+      contacts++;
+      const last = outcomes[outcomes.length - 1];
+      if (last) last.contact = orgName;
+      if (!dryRun && record) {
+        const oKey = matchKey(orgName);
+        let org = orgs.get(oKey) ?? null;
+        if (!org) {
+          org = await dir.createRecord({ by: who, kind: 'org', name: orgName, origin: 'import' });
+          orgs.set(oKey, org);
+        }
+        if (!(await dir.accessOf(record.id, org.id))) {
+          await dir.linkRecords({ personId: record.id, orgId: org.id, role: text(row, 'jobTitle') });
+        }
       }
     }
   }

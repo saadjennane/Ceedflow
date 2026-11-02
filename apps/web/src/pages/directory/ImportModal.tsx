@@ -9,6 +9,11 @@ import { Modal, useToast } from '../../ui/Overlays';
  * copied straight out of Excel arrives tab-separated, which is faster than
  * saving the sheet out and covers the same need.
  */
+/** Les colonnes qui n'ont de sens que pour une personne. */
+const PERSON_ONLY = new Set<string>(['firstName', 'lastName', 'jobTitle', 'department', 'organisation']);
+/** Celles qui font une liste quand plusieurs colonnes y vont. */
+const LISTED = new Set<string>(['email', 'phone', 'tags', 'roles']);
+
 export function ImportModal({
   kind,
   onClose,
@@ -33,7 +38,16 @@ export function ImportModal({
     const hit = IMPORT_COLUMNS.find(
       (c) => c.key.toLowerCase() === key || c.label.toLowerCase().replace(/[^a-z]/g, '') === key,
     );
-    if (hit) return hit.key;
+    if (hit && (isOrg ? !PERSON_ONLY.has(hit.key) : true)) return hit.key;
+    /* Une personne : prénom et nom à part, sa fonction, son organisation. */
+    if (!isOrg) {
+      if (/^(firstname|prenom|givenname)$/.test(key)) return 'firstName';
+      if (/^(lastname|nom|surname|familyname|nomdefamille)$/.test(key)) return 'lastName';
+      if (/fonction|jobtitle|^title$|poste|position/.test(key)) return 'jobTitle';
+      if (/^direction$|department|departement|service/.test(key)) return 'department';
+      if (/organisation|organization|company|societe|entreprise|structure|employeur/.test(key)) return 'organisation';
+      if (/^roles?$/.test(key)) return 'roles';
+    }
     if (/name|nom|organisation|company|societe/.test(key) && !/contact/.test(key)) return 'name';
     if (/mail/.test(key)) return /contact/.test(key) ? 'contactEmail' : 'email';
     if (/tel|phone/.test(key)) return 'phone';
@@ -45,18 +59,24 @@ export function ImportModal({
   };
 
   const columnFor = (header: string, index: number) => mapping[String(index)] ?? guess(header);
+  /* Deux colonnes vers la même case s'ajoutent au lieu de s'écraser : « Email »
+     et « Email 2 » font une liste, « Dossier » et « Rôle » deux étiquettes. */
   const mapped = table
-    ? table.rows.map((row) =>
-        Object.fromEntries(
-          table.headers
-            .map((h, i) => [columnFor(h, i), row[i] ?? ''] as const)
-            .filter(([key]) => key)
-            .map(([key, value]) => [key, value]),
-        ),
-      )
+    ? table.rows.map((row) => {
+        const out: Record<string, string> = {};
+        table.headers.forEach((h, i) => {
+          const key = columnFor(h, i);
+          const value = (row[i] ?? '').trim();
+          if (!key || !value) return;
+          out[key] = out[key] ? `${out[key]}${LISTED.has(key) ? '; ' : ' '}${value}` : value;
+        });
+        return out;
+      })
     : [];
 
-  const hasName = table ? table.headers.some((h, i) => columnFor(h, i) === 'name') : false;
+  const hasName = table
+    ? table.headers.some((h, i) => ['name', ...(isOrg ? [] : ['firstName', 'lastName'])].includes(columnFor(h, i)))
+    : false;
 
   const run = async (dryRun: boolean) => {
     setBusy(true);
@@ -164,7 +184,7 @@ export function ImportModal({
                   }}
                 >
                   <option value="">Ignore this column</option>
-                  {IMPORT_COLUMNS.filter((c) => isOrg || !c.key.startsWith('contact')).map((c) => (
+                  {IMPORT_COLUMNS.filter((c) => (isOrg ? !PERSON_ONLY.has(c.key) : !c.key.startsWith('contact'))).map((c) => (
                     <option key={c.key} value={c.key}>
                       {c.label}
                     </option>
