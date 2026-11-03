@@ -50,6 +50,9 @@ import type { Changer } from '../db/attributes.js';
 import { keepSheetHistory } from './sheetHistory.js';
 import { setAttribute, sheetAttributes } from '../services/orgAttributes.js';
 import { fixedKpiSettings, kpisOf, putKpiPoint, setFixedKpi } from '../services/kpis.js';
+import { orgOverview } from '../services/orgOverview.js';
+import { addNote, changeNote, orgActivity } from '../services/orgActivity.js';
+import { orgCompanions, orgFiles } from '../services/orgFiles.js';
 
 /** Opening an account on somebody's behalf, with a password they must replace. */
 const openAccountInput = z.object({
@@ -150,6 +153,48 @@ export async function directoryRoutes(app: FastifyInstance) {
     const by = await changer(req);
     return putKpiPoint(id, key, period, parse(kpiPointInput, req.body).value ?? null,
       by ?? { kind: 'system', id: null, name: '' }, { visibleOnly: false });
+  });
+
+  /** Tous ses fichiers, avec leur origine ; et ceux qui l'ont accompagnée. */
+  app.get('/api/records/:id/files', async (req) => {
+    const { id } = req.params as { id: string };
+    return orgFiles(id);
+  });
+  app.get('/api/records/:id/companions', async (req) => {
+    const { id } = req.params as { id: string };
+    await orgRecord(id);
+    return orgCompanions(id);
+  });
+
+  /* ---- L'activité d'une organisation, et les notes de l'équipe ---- */
+  app.get('/api/records/:id/activity', async (req) => {
+    const { id } = req.params as { id: string };
+    return orgActivity(id);
+  });
+  app.post('/api/records/:id/notes', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    await orgRecord(id);
+    const { body } = parse(z.object({ body: z.string().trim().min(1, 'Write something.').max(5000) }), req.body);
+    const who = await actor(req);
+    reply.code(201);
+    return addNote(id, body, { id: req.staff!.recordId, name: who?.name ?? '' });
+  });
+  app.patch('/api/notes/:id', async (req) => {
+    const { id } = req.params as { id: string };
+    const { body } = parse(z.object({ body: z.string().trim().min(1, 'Write something.').max(5000) }), req.body);
+    await changeNote(id, req.staff!.recordId, body);
+    return { ok: true };
+  });
+  app.delete('/api/notes/:id', async (req) => {
+    const { id } = req.params as { id: string };
+    await changeNote(id, req.staff!.recordId, null);
+    return { ok: true };
+  });
+
+  /** Ce que l'équipe veut savoir en ouvrant la fiche : ses programmes, ce qui coince, ses besoins, ses chiffres. */
+  app.get('/api/records/:id/overview', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    return (await orgOverview(id)) ?? notFound(reply, 'Organisation not found.');
   });
 
   /** Ce qui a changé sur la fiche, du plus récent au plus ancien. CEED seulement. */

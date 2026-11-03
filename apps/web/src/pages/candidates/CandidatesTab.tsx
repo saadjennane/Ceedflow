@@ -13,7 +13,7 @@ import {
   type TrackWithPhases,
 } from '@ceed/shared';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { AccountBadge } from '../directory/AccountCard';
 import { initials } from '../directory/DirectoryPage';
 import { ApiError, api } from '../../lib/api';
@@ -116,7 +116,9 @@ export function CandidatesTab({
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 }>({ key: 'orgName', dir: 1 });
-  const [openId, setOpenId] = useState<string | null>(null);
+  /* Ouverte directement depuis la fiche d'une organisation : ?candidate=… */
+  const [params] = useSearchParams();
+  const [openId, setOpenId] = useState<string | null>(() => params.get('candidate'));
   const [picking, setPicking] = useState(false);
   const [adding, setAdding] = useState(false);
   /* Les startups cochées, pour leur donner une tâche d'un coup. */

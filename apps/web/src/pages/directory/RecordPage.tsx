@@ -1,6 +1,10 @@
-import { AddedFacts, SheetHistory } from '../../ui/SheetExtras';
+import { AddedFacts } from '../../ui/SheetExtras';
 import { KpiPanel } from '../../ui/KpiPanel';
 import {
+  LEGAL_FORMS,
+  MATURITY_LEVELS,
+  SECTORS,
+  type ProfileSection,
   ORIGIN_LABEL,
   isOpen,
   type Task,
@@ -13,7 +17,7 @@ import {
   type RemovalPlan,
 } from '@ceed/shared';
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
@@ -31,7 +35,27 @@ import { TaskModal } from '../../ui/TaskModal';
 import { Row as TaskRow } from '../TasksPage';
 import { ProfileBar, ProfileFacts, Logo } from '../../ui/OrgProfile';
 import { OrgSheet } from '../../ui/OrgSheet';
-import { MeetingHistory } from '../../ui/MeetingHistory';
+import { ProfileBlocks } from '../../ui/ProfileBlocks';
+import { KeyFigures, OrgOverview, type OrgOverviewData } from './OrgOverview';
+import { OrgActivity } from './OrgActivity';
+import { Companions, OrgFiles } from './OrgFiles';
+
+/** Les vues de la page d'une organisation. */
+type OrgView = 'overview' | 'sheet' | 'activity' | 'team' | 'files';
+const ORG_VIEWS: { key: OrgView; label: string }[] = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'sheet', label: 'Sheet' },
+  { key: 'activity', label: 'Activity' },
+  { key: 'team', label: 'Team' },
+  { key: 'files', label: 'Documents' },
+];
+
+/** Qui elle est, en quelques mots : secteur, maturité, ville, forme. */
+function identityPills(record: DirectoryRecord): string[] {
+  const p = profileOf(record);
+  const word = (list: readonly { key: string; en: string }[], key: string) => list.find((c) => c.key === key)?.en ?? '';
+  return [word(SECTORS, p.sector), word(MATURITY_LEVELS, p.maturity), record.city, word(LEGAL_FORMS, p.legalForm)].filter(Boolean);
+}
 
 export function RecordPage() {
   const { recordId = '' } = useParams();
@@ -47,6 +71,20 @@ export function RecordPage() {
   const [giving, setGiving] = useState(false);
   const [openTask, setOpenTask] = useState<string | null>(null);
   const tasks = useAsync(() => api.get<Task[]>(`/api/tasks?recordId=${recordId}&open=all`), `tasks:${recordId}`);
+  /* Une organisation : ce qu'on veut savoir en l'ouvrant — relu à chaque fermeture de la fiche. */
+  const overview = useAsync(
+    () => api.get<OrgOverviewData>(`/api/records/${recordId}/overview`).catch(() => null),
+    `overview:${recordId}:${sheetVersion}`,
+  );
+  const [params, setParams] = useSearchParams();
+  const view = (params.get('view') as OrgView | null) ?? 'overview';
+  const setView = (next: OrgView) =>
+    setParams((p) => {
+      const q = new URLSearchParams(p);
+      q.set('view', next);
+      return q;
+    }, { replace: true });
+  const [fillAt, setFillAt] = useState<ProfileSection | undefined>(undefined);
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -136,36 +174,101 @@ export function RecordPage() {
                   ))}
                 </div>
               )}
+              {/* Une organisation : qui elle est en quelques mots, et comment la joindre. */}
+              {isOrg && (
+                <div className="row wrap" style={{ gap: 6, marginTop: 8, fontSize: 12.5 }}>
+                  {identityPills(record).map((pill) => (
+                    <span key={pill} className="badge">{pill}</span>
+                  ))}
+                  {record.website && (
+                    <a href={record.website.startsWith('http') ? record.website : `https://${record.website}`} target="_blank" rel="noreferrer">
+                      Website
+                    </a>
+                  )}
+                  {record.linkedin && (
+                    <a href={record.linkedin.startsWith('http') ? record.linkedin : `https://${record.linkedin}`} target="_blank" rel="noreferrer">
+                      LinkedIn
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
+            {isOrg && (
+              <div className="stack" style={{ gap: 6, alignItems: 'flex-end' }}>
+                <button className="btn sm" onClick={() => { setFillAt(undefined); setFilling(true); }}>
+                  <Icon name="edit" size={13} /> Edit the sheet
+                </button>
+                <button className="btn ghost sm" onClick={() => setGiving(true)}>
+                  <Icon name="plus" size={13} /> Task
+                </button>
+                {overview.data?.candidacies[0] && (
+                  <Link className="btn ghost sm" to={`/as/${overview.data.candidacies[0].candidateId}`} target="_blank">
+                    <Icon name="eye" size={13} /> As the startup
+                  </Link>
+                )}
+              </div>
+            )}
           </div>
+
+          {isOrg && overview.data && <KeyFigures figures={overview.data.figures} />}
+
+          {isOrg && (
+            <nav className="tabbar" role="tablist" style={{ position: 'static' }}>
+              {ORG_VIEWS.map((v) => (
+                <button key={v.key} role="tab" className={view === v.key ? 'tab on' : 'tab'} onClick={() => setView(v.key)}>
+                  {v.label}
+                  {v.key === 'overview' && (overview.data?.asked.length ?? 0) + (overview.data?.alerts.length ?? 0) > 0 && (
+                    <span className="badge warn num" style={{ marginLeft: 6 }}>
+                      {overview.data!.asked.length + overview.data!.alerts.length}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </nav>
+          )}
+
+          {isOrg && view === 'overview' && overview.data && (
+            <>
+              <OrgOverview data={overview.data} onFill={() => { setFillAt(undefined); setFilling(true); }} />
+              <OrgActivity key={sheetVersion} recordId={record.id} limit={5} />
+            </>
+          )}
 
           {/* La fiche que le jury lit, et ce qu'il y manque : c'est ici qu'on
               s'en aperçoit avant une séance, et la barre nomme quoi relancer. */}
-          {isOrg && (
-            <div className="card card-pad stack" style={{ gap: 12 }}>
-              <div className="row">
-                <strong style={{ flex: 1, fontFamily: 'var(--display)', fontSize: 13.5 }}>
-                  Profile the jury reads
-                </strong>
-                <button className="btn sm" onClick={() => setFilling(true)}>
-                  <Icon name="edit" size={13} /> {profileStarted(profileOf(record)) ? 'Edit' : 'Fill it in'}
-                </button>
+          {isOrg && view === 'sheet' && (
+            <>
+              <div className="card card-pad stack" style={{ gap: 12 }}>
+                <ProfileBar profile={profileOf(record)} lang="en" />
+                {/* La fiche en blocs : chacun s'ouvre seul dans l'éditeur. */}
+                <ProfileBlocks record={record} lang="en" onEdit={(sec) => { setFillAt(sec); setFilling(true); }} />
+                {profileStarted(profileOf(record)) && (
+                  <details>
+                    <summary className="eyebrow" style={{ cursor: 'pointer' }}>The sheet as the jury reads it</summary>
+                    <div style={{ marginTop: 10 }}>
+                      <ProfileFacts profile={profileOf(record)} name={record.name} lang="en" lead={false} />
+                    </div>
+                  </details>
+                )}
               </div>
-              <ProfileBar profile={profileOf(record)} lang="en" />
-              {profileStarted(profileOf(record)) && (
-                <ProfileFacts profile={profileOf(record)} name={record.name} lang="en" lead={false} />
-              )}
-            </div>
+              <AddedFacts recordId={record.id} version={sheetVersion} />
+              <div className="card card-pad">
+                <KpiPanel key={sheetVersion} url={`/api/records/${record.id}/kpis`} lang="en" editable />
+              </div>
+            </>
           )}
-          {isOrg && <AddedFacts recordId={record.id} version={sheetVersion} />}
-          {isOrg && (
-            <div className="card card-pad">
-              <KpiPanel key={sheetVersion} url={`/api/records/${record.id}/kpis`} lang="en" editable />
-            </div>
+
+          {isOrg && view === 'activity' && (
+            <>
+              <OrgActivity key={sheetVersion} recordId={record.id} />
+              {/* Le détail de chaque lettre — arrivée ou perdue — reste ici. */}
+              <MailsCard recordId={record.id} />
+            </>
           )}
 
           {/* Ce qui l'attend, et ce qu'on attend d'elle : les deux sens du
               mot « concerne », et c'est bien la même liste qu'on vient lire. */}
+          {(!isOrg || view === 'overview') && (
           <div className="card">
             <div className="rowcard-head" style={{ padding: '11px 14px' }}>
               <strong style={{ flex: 1, fontFamily: 'var(--display)', fontSize: 13.5 }}>Tasks</strong>
@@ -198,9 +301,13 @@ export function RecordPage() {
               </div>
             )}
           </div>
+          )}
 
-          {isOrg && <JoinRequests orgId={record.id} onAnswered={detail.reload} />}
+          {isOrg && view === 'team' && <JoinRequests orgId={record.id} onAnswered={detail.reload} />}
+          {isOrg && view === 'team' && <Companions recordId={record.id} />}
+          {isOrg && view === 'files' && <OrgFiles recordId={record.id} />}
 
+          {(!isOrg || view === 'team') && (
           <div className="card">
             <div className="rowcard-head" style={{ padding: '11px 14px' }}>
               <strong style={{ flex: 1, fontFamily: 'var(--display)', fontSize: 13.5 }}>
@@ -255,6 +362,7 @@ export function RecordPage() {
               </div>
             )}
           </div>
+          )}
         </div>
 
         <aside className="stack" style={{ gap: 14 }}>
@@ -273,24 +381,8 @@ export function RecordPage() {
             </p>
           </div>
 
-          {/* Ce qui lui a été écrit, et ce qu'il en est advenu. */}
-          <MailsCard recordId={record.id} />
-
-          {isOrg && <SheetHistory recordId={record.id} version={sheetVersion} />}
-
-          <div className="card card-pad stack" style={{ gap: 8 }}>
-            <div className="eyebrow">Program history</div>
-            {/* Ses One to One, lus dans les rendez-vous : qui elle a vu, et si
-                le compte rendu est revenu. */}
-            {isOrg ? (
-              <MeetingHistory url={`/api/records/${record.id}/meetings`} empty="No One to One yet." />
-            ) : (
-              <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
-                Computed from the editions, never typed. It lights up once candidates and team members point at the
-                directory.
-              </p>
-            )}
-          </div>
+          {/* Ce qui lui a été écrit, et ce qu'il en est advenu — pour une organisation, dans Activité. */}
+          {!isOrg && <MailsCard recordId={record.id} />}
 
           <button className="btn ghost" style={{ color: 'var(--stop)' }} onClick={() => setRemoving(true)}>
             <Icon name="trash" size={13} /> Remove from the directory
@@ -325,6 +417,7 @@ export function RecordPage() {
       {filling && (
         <OrgSheet
           record={record}
+          startAt={fillAt}
           lang="en"
           routes={{
             record: `/api/records/${record.id}`,

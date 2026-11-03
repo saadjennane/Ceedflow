@@ -138,7 +138,7 @@ function KpiCard({
 }
 
 /** La petite courbe de la ligne : la tendance, sans les chiffres. */
-function Spark({ points }: { points: KpiSeries['points'] }) {
+export function Spark({ points }: { points: KpiSeries['points'] }) {
   const ys = points.map((p) => Number(p.value)).filter(Number.isFinite);
   if (ys.length < 2) return null;
   const min = Math.min(...ys);

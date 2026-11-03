@@ -18,6 +18,7 @@ import {
   profileMissing,
   profileOf,
   type ActionStatus,
+  type Candidate,
   type MemberAction,
   type MemberActivity,
   meetingWith,
@@ -94,95 +95,9 @@ export async function memberActions(recordId: string): Promise<{ actions: Member
       const candidate = await repo.getCandidate(mine.id);
       if (!candidate || candidate.status === 'Withdrawn') continue;
       const where = { programName: `${program.programName} — ${program.editionName}`, editionId: program.editionId };
-
-      for (const owed of await deliverablesFor(program.editionId, candidate)) {
-        if (!owed.open) continue;
-        const required = owed.config.items.filter((i) => i.required);
-        const valueOf = (id: string) => owed.returns.find((r) => r.itemId === id)?.value;
-        const sent = required.filter((i) => itemComplete(i, valueOf(i.id))).length;
-        const back = owed.returns.some((r) => r.state === 'rejected');
-        /* Le décompte ne tient qu'aux pièces obligatoires. Une liste qui n'en a
-           aucune reste demandée tant que ses pièces facultatives manquent. */
-        const optional = required.length ? 0 : optionalLeft(owed.config.items, valueOf);
-        if (sent >= required.length && !back && !optional) continue;
-        actions.push({
-          id: `deliverable:${owed.block.id}:${candidate.id}`,
-          kind: 'deliverable',
-          role: 'startup',
-          status: statusOf(owed.config.closesAt ?? null, sent > 0),
-          dueOn: owed.config.closesAt ?? null,
-          ...where,
-          href: `/me?tab=Programs&prog=${program.editionId}`,
-          label: owed.block.name,
-          orgName: candidate.orgName,
-          left: required.length - sent,
-          of: required.length,
-          back,
-        });
-      }
-
-      /* Les indicateurs d'un moment du programme, envoyés et pas encore rendus. */
-      for (const { moment, started } of await measuresDueFor(candidate.id)) {
-        actions.push({
-          id: `kpi:${moment.id}:${candidate.id}`,
-          kind: 'kpi',
-          role: 'startup',
-          status: statusOf(moment.closesOn, started),
-          dueOn: moment.closesOn,
-          ...where,
-          href: `/kpi/${moment.id}/${candidate.id}`,
-          label: moment.name,
-          orgName: candidate.orgName,
-        });
-      }
-
-      /* La préparation d'une séance à venir, quand la brique en demande une. */
-      for (const { meeting, started } of await prepsDueFor(candidate.id)) {
-        actions.push({
-          id: `prep:${meeting.id}`,
-          kind: 'prepare',
-          role: 'startup',
-          status: statusOf(meeting.heldOn, started),
-          dueOn: meeting.heldOn,
-          ...where,
-          href: `/prepare/${meeting.id}`,
-          label: meetingWith(meeting),
-          orgName: candidate.orgName,
-        });
-      }
-
-      /* Ce qui demande une réponse : choisir une heure, ou confirmer celle
-         proposée — au comité comme en One to One. Le reste du calendrier va
-         dans « à venir ». */
-      for (const entry of await agendaFor(candidate.id)) {
-        if (entry.on && entry.on >= now) {
-          upcoming.push({
-            id: `${entry.kind}:${candidate.id}:${entry.blockName}:${entry.on}:${entry.startsAt ?? ''}`,
-            kind: entry.kind,
-            role: 'startup',
-            on: entry.on,
-            startsAt: entry.startsAt,
-            endsAt: entry.endsAt,
-            location: entry.location,
-            ...where,
-            label: entry.kind === 'one_to_one' ? (entry.with ?? entry.name) : entry.name,
-            href: entry.link ?? null,
-          });
-        }
-        if (!entry.link || !entry.answer) continue;
-        actions.push({
-          id: `answer:${entry.link}`,
-          kind: entry.kind === 'committee' ? 'answer_committee' : 'answer_meeting',
-          role: 'startup',
-          status: statusOf(entry.answerBy ?? null, false),
-          dueOn: entry.answerBy ?? null,
-          ...where,
-          href: entry.link,
-          label: entry.kind === 'one_to_one' ? (entry.with ?? '') : entry.blockName,
-          orgName: candidate.orgName,
-          answer: entry.answer,
-        });
-      }
+      const got = await candidacyActions(candidate, where, now);
+      actions.push(...got.actions);
+      upcoming.push(...got.upcoming);
     }
   }
 
@@ -260,5 +175,108 @@ export async function memberActions(recordId: string): Promise<{ actions: Member
     (a, b) => RANK[a.status] - RANK[b.status] || (a.dueOn ?? '9999').localeCompare(b.dueOn ?? '9999'),
   );
   upcoming.sort((a, b) => `${a.on ?? '9999'} ${a.startsAt ?? ''}`.localeCompare(`${b.on ?? '9999'} ${b.startsAt ?? ''}`));
+  return { actions, upcoming };
+}
+
+/**
+ * Ce qui est demandé à une candidature, et ce qui l'attend — les mêmes lignes
+ * pour la Home de la startup et pour sa fiche côté CEED.
+ */
+export async function candidacyActions(
+  candidate: Candidate,
+  where: { programName: string; editionId: string },
+  now = today(),
+): Promise<{ actions: MemberAction[]; upcoming: MemberActivity[] }> {
+  const actions: MemberAction[] = [];
+  const upcoming: MemberActivity[] = [];
+
+  for (const owed of await deliverablesFor(candidate.editionId, candidate)) {
+    if (!owed.open) continue;
+    const required = owed.config.items.filter((i) => i.required);
+    const valueOf = (id: string) => owed.returns.find((r) => r.itemId === id)?.value;
+    const sent = required.filter((i) => itemComplete(i, valueOf(i.id))).length;
+    const back = owed.returns.some((r) => r.state === 'rejected');
+    /* Le décompte ne tient qu'aux pièces obligatoires. Une liste qui n'en a
+       aucune reste demandée tant que ses pièces facultatives manquent. */
+    const optional = required.length ? 0 : optionalLeft(owed.config.items, valueOf);
+    if (sent >= required.length && !back && !optional) continue;
+    actions.push({
+      id: `deliverable:${owed.block.id}:${candidate.id}`,
+      kind: 'deliverable',
+      role: 'startup',
+      status: statusOf(owed.config.closesAt ?? null, sent > 0),
+      dueOn: owed.config.closesAt ?? null,
+      ...where,
+      href: `/me?tab=Programs&prog=${candidate.editionId}`,
+      label: owed.block.name,
+      orgName: candidate.orgName,
+      left: required.length - sent,
+      of: required.length,
+      back,
+    });
+  }
+
+  /* Les indicateurs d'un moment du programme, envoyés et pas encore rendus. */
+  for (const { moment, started } of await measuresDueFor(candidate.id)) {
+    actions.push({
+      id: `kpi:${moment.id}:${candidate.id}`,
+      kind: 'kpi',
+      role: 'startup',
+      status: statusOf(moment.closesOn, started),
+      dueOn: moment.closesOn,
+      ...where,
+      href: `/kpi/${moment.id}/${candidate.id}`,
+      label: moment.name,
+      orgName: candidate.orgName,
+    });
+  }
+
+  /* La préparation d'une séance à venir, quand la brique en demande une. */
+  for (const { meeting, started } of await prepsDueFor(candidate.id)) {
+    actions.push({
+      id: `prep:${meeting.id}`,
+      kind: 'prepare',
+      role: 'startup',
+      status: statusOf(meeting.heldOn, started),
+      dueOn: meeting.heldOn,
+      ...where,
+      href: `/prepare/${meeting.id}`,
+      label: meetingWith(meeting),
+      orgName: candidate.orgName,
+    });
+  }
+
+  /* Ce qui demande une réponse : choisir une heure, ou confirmer celle
+     proposée — au comité comme en One to One. Le reste du calendrier va
+     dans « à venir ». */
+  for (const entry of await agendaFor(candidate.id)) {
+    if (entry.on && entry.on >= now) {
+      upcoming.push({
+        id: `${entry.kind}:${candidate.id}:${entry.blockName}:${entry.on}:${entry.startsAt ?? ''}`,
+        kind: entry.kind,
+        role: 'startup',
+        on: entry.on,
+        startsAt: entry.startsAt,
+        endsAt: entry.endsAt,
+        location: entry.location,
+        ...where,
+        label: entry.kind === 'one_to_one' ? (entry.with ?? entry.name) : entry.name,
+        href: entry.link ?? null,
+      });
+    }
+    if (!entry.link || !entry.answer) continue;
+    actions.push({
+      id: `answer:${entry.link}`,
+      kind: entry.kind === 'committee' ? 'answer_committee' : 'answer_meeting',
+      role: 'startup',
+      status: statusOf(entry.answerBy ?? null, false),
+      dueOn: entry.answerBy ?? null,
+      ...where,
+      href: entry.link,
+      label: entry.kind === 'one_to_one' ? (entry.with ?? '') : entry.blockName,
+      orgName: candidate.orgName,
+      answer: entry.answer,
+    });
+  }
   return { actions, upcoming };
 }

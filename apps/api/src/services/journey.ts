@@ -82,7 +82,11 @@ async function mine(recordId: string, candidateId: string): Promise<Candidate | 
 
 export async function journeyFor(recordId: string, candidateId: string): Promise<Journey | null> {
   const candidate = await mine(recordId, candidateId);
-  if (!candidate) return null;
+  return candidate ? journeyOf(candidate) : null;
+}
+
+/** Le parcours lui-même, sans demander qui le lit — l'équipe CEED, ou la startup après vérification. */
+export async function journeyOf(candidate: Candidate): Promise<Journey | null> {
   const detail = await repo.getEditionDetail(candidate.editionId);
   const track = detail?.tracks.find((t) => t.id === candidate.trackId);
   if (!detail || !track) return null;

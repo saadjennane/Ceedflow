@@ -2,9 +2,6 @@ import {
   ORG_ROLES,
   canEditOrg,
   canManageTeam,
-  PROFILE_SECTIONS,
-  profileDone,
-  profileMissing,
   profileOf,
   profileStarted,
   meetingState,
@@ -40,9 +37,10 @@ import { LangProvider, useLang } from '../../lib/lang';
 import { TeamModal } from './TeamPanel';
 import { PhoneLines } from '../../ui/PhoneLines';
 import { PlaceLines } from '../../ui/PlaceLines';
-import { ASK_WORD, ProfileBar, ProfileFacts } from '../../ui/OrgProfile';
+import { ProfileBar, ProfileFacts } from '../../ui/OrgProfile';
 import { KpiPanel } from '../../ui/KpiPanel';
-import { OrgSheet, SECTION_WORD } from '../../ui/OrgSheet';
+import { OrgSheet } from '../../ui/OrgSheet';
+import { ProfileBlocks } from '../../ui/ProfileBlocks';
 
 /**
  * The member space: your profile, and the organisation pages you look after.
@@ -1244,41 +1242,15 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
                 />
               )}
               {/* La fiche en blocs : chacun dit où il en est, ce qui lui manque, et s'ouvre seul. */}
-              <div className="profile-blocks">
-                {PROFILE_SECTIONS.map((sec) => {
-                  const p = profileOf(link.record);
-                  const done = profileDone(p, sec);
-                  const missing = profileMissing(p, sec);
-                  return (
-                    <div key={sec} className="rowcard card-pad stack" style={{ gap: 4 }}>
-                      <div className="row" style={{ gap: 6 }}>
-                        <strong style={{ flex: 1, fontSize: 13 }}>{t(SECTION_WORD[sec])}</strong>
-                        {done === 100 ? (
-                          <span className="badge ok">{lang === 'fr' ? 'Complet' : 'Complete'}</span>
-                        ) : (
-                          <span className="badge warn num">{done} %</span>
-                        )}
-                      </div>
-                      {missing.length > 0 && (
-                        <span className="faint" style={{ fontSize: 12 }}>
-                          {lang === 'fr' ? 'À compléter : ' : 'To fill in: '}
-                          {missing.slice(0, 4).map((k) => t(ASK_WORD[k])).join(', ')}
-                          {missing.length > 4 ? '…' : ''}
-                        </span>
-                      )}
-                      {canEditOrg(link.affiliation.access) && (
-                        <button
-                          className="linkish"
-                          style={{ alignSelf: 'flex-start', fontSize: 12.5 }}
-                          onClick={() => setEditing({ record: link.record, manage: canManageTeam(link.affiliation.access), section: sec })}
-                        >
-                          {lang === 'fr' ? 'Modifier' : 'Edit'}
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+              <ProfileBlocks
+                record={link.record}
+                lang={lang}
+                onEdit={
+                  canEditOrg(link.affiliation.access)
+                    ? (sec) => setEditing({ record: link.record, manage: canManageTeam(link.affiliation.access), section: sec })
+                    : undefined
+                }
+              />
               {/* Sa fiche telle qu'un jury la lit : seulement ce qui est rempli. */}
               {profileStarted(profileOf(link.record)) && (
                 <details>
