@@ -234,6 +234,11 @@ export async function directoryRoutes(app: FastifyInstance) {
         holders: orgs.get(r.id)?.contacts ?? [],
         alumni: side?.alumni ?? 0,
         current: side?.current ?? [],
+        programmes: side?.programmes ?? [],
+        sessions: people.get(r.id)?.sessions ?? 0,
+        evaluations: people.get(r.id)?.evaluations ?? 0,
+        panels: people.get(r.id)?.panels ?? 0,
+        lastActivity: orgs.get(r.id)?.lastActivity ?? null,
       };
     });
     // Somebody a founder typed onto their own team page is content until they

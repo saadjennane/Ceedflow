@@ -20,12 +20,22 @@ export interface Attached {
   role: string;
 }
 
+/** Un programme d'une ligne, en pastille : en cours, terminé, ou candidature. */
+export interface ProgrammeMark {
+  name: string;
+  colour: string;
+  state: 'now' | 'alumni' | 'applied';
+}
+
 /** Ce qu'une organisation montre d'elle sans qu'on ouvre sa fiche. */
 export interface OrgRow {
   /** Qui la tient, la première personne en premier. */
   contacts: { id: string; name: string; email: string; phones: string[]; role: string }[];
   alumni: number;
   current: string[];
+  programmes: ProgrammeMark[];
+  /** Le dernier changement sur sa fiche. */
+  lastActivity: string | null;
 }
 
 export interface PersonRow {
@@ -41,9 +51,24 @@ export interface PersonRow {
   alumni: number;
   /** Les programmes en cours où il est encore en lice, par leur nom. */
   current: string[];
+  programmes: ProgrammeMark[];
+  /** Ce qu'il a fait pour CEED : séances de mentorat tenues, évaluations rendues, séances de jury. */
+  sessions: number;
+  evaluations: number;
+  panels: number;
 }
 
 const OUT = new Set(['Not selected', 'Withdrawn']);
+
+/** Une pastille par programme : en cours si retenue, terminé, sinon candidature. */
+function mark(list: ProgrammeMark[], c: { programme: string; colour: string | null; status: string; editionStatus: string }) {
+  const state: ProgrammeMark['state'] =
+    c.editionStatus === 'Completed' ? 'alumni' : c.status === 'Selected' ? 'now' : 'applied';
+  const at = list.findIndex((m) => m.name === c.programme);
+  const rank = { now: 0, alumni: 1, applied: 2 } as const;
+  if (at === -1) list.push({ name: c.programme, colour: c.colour ?? '#2F5BFF', state });
+  else if (rank[state] < rank[list[at]!.state]) list[at] = { ...list[at]!, state };
+}
 
 export async function directoryRows(): Promise<{ people: Map<string, PersonRow>; orgs: Map<string, OrgRow> }> {
   const links = await all<{
@@ -65,9 +90,10 @@ export async function directoryRows(): Promise<{ people: Map<string, PersonRow>;
     status: string;
     editionStatus: string;
     programme: string;
+    colour: string | null;
   }>(
     `select c.person_id as "personId", c.org_id as "orgId", c.edition_id as "editionId",
-            c.status, e.status as "editionStatus", p.name as programme
+            c.status, e.status as "editionStatus", p.name as programme, p.colour
        from candidates c
        join editions e on e.id = c.edition_id
        join programs p on p.id = e.program_id
@@ -77,12 +103,12 @@ export async function directoryRows(): Promise<{ people: Map<string, PersonRow>;
   const people = new Map<string, PersonRow>();
   const orgs = new Map<string, OrgRow>();
   const of = (id: string) => {
-    const found = people.get(id) ?? { orgs: [], alumni: 0, current: [] };
+    const found = people.get(id) ?? { orgs: [], alumni: 0, current: [], programmes: [], sessions: 0, evaluations: 0, panels: 0 };
     people.set(id, found);
     return found;
   };
   const org = (id: string) => {
-    const found = orgs.get(id) ?? { contacts: [], alumni: 0, current: [] };
+    const found = orgs.get(id) ?? { contacts: [], alumni: 0, current: [], programmes: [], lastActivity: null };
     orgs.set(id, found);
     return found;
   };
@@ -116,6 +142,7 @@ export async function directoryRows(): Promise<{ people: Map<string, PersonRow>;
       const row = of(person);
       if (c.editionStatus === 'Completed') row.alumni += 1;
       else if (c.editionStatus === 'Live' && !row.current.includes(c.programme)) row.current.push(c.programme);
+      mark(row.programmes, c);
     }
 
     /* La société, elle, compte sa candidature une fois — qui l'a déposée ne
@@ -124,8 +151,35 @@ export async function directoryRows(): Promise<{ people: Map<string, PersonRow>;
       const row = org(c.orgId);
       if (c.editionStatus === 'Completed') row.alumni += 1;
       else if (c.editionStatus === 'Live' && !row.current.includes(c.programme)) row.current.push(c.programme);
+      mark(row.programmes, c);
     }
   }
+
+  /* Ce qu'une personne a fait pour CEED, compté en deux requêtes pour toute la page. */
+  const mentoring = await all<{ personId: string; n: number }>(
+    `select p.person_id as "personId", count(*)::int as n from (
+       select unnest(case when jsonb_array_length(with_ids) > 0
+                          then array(select jsonb_array_elements_text(with_ids))
+                          else array[person_id] end) as person_id
+         from one_to_one_meetings where status = 'held') p
+      where p.person_id is not null group by p.person_id`,
+  );
+  for (const m of mentoring) of(m.personId).sessions = m.n;
+  const juries = await all<{ personId: string; evaluations: number; panels: number }>(
+    `select evaluator_id as "personId", count(*) filter (where submitted_at is not null)::int as evaluations,
+            count(distinct coalesce(session_id, block_id))::int as panels
+       from evaluation_scores group by evaluator_id`,
+  );
+  for (const j of juries) {
+    const row = of(j.personId);
+    row.evaluations = j.evaluations;
+    row.panels = j.panels;
+  }
+  /* La dernière fois que la fiche d'une organisation a bougé. */
+  const touched = await all<{ orgId: string; at: string }>(
+    'select org_id as "orgId", max(created_at)::text as at from org_history group by org_id',
+  );
+  for (const t of touched) org(t.orgId).lastActivity = t.at;
 
   return { people, orgs };
 }

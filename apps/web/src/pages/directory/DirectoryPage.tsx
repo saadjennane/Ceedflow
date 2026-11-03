@@ -1,17 +1,16 @@
-import { ORIGIN_LABEL, rolesFor, type DirectoryRecord, type RecordAccount, type RecordKind } from '@ceed/shared';
+import { profileDone, profileOf, rolesFor, type DirectoryRecord, type RecordAccount, type RecordKind } from '@ceed/shared';
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/api';
-import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
 import { SearchBox } from '../../ui/SearchBox';
 import '../../ui/builder.css';
 import '../../ui/directory.css';
-import { AccountBadge } from './AccountCard';
 import { ImportModal } from './ImportModal';
 import { InviteManyModal } from './InviteManyModal';
 import { RecordModal } from './RecordModal';
+import { OrgCards, OrgTable, PersonCards, PersonTable, Tiles, type Tile } from './DirectoryViews';
 
 /** Ce qu'une audience de sourcing rend : qui on écrit, et qui reste muet. */
 interface AudienceView {
@@ -32,6 +31,38 @@ export interface RecordRow extends DirectoryRecord {
   alumni: number;
   /** Ceux qui tournent et où elle l'est encore. */
   current: string[];
+  /** Ses programmes en pastilles : en cours, terminés, candidatures. */
+  programmes: { name: string; colour: string; state: 'now' | 'alumni' | 'applied' }[];
+  /** Ce qu'une personne a fait pour CEED. */
+  sessions: number;
+  evaluations: number;
+  panels: number;
+  /** Le dernier changement sur la fiche d'une organisation. */
+  lastActivity: string | null;
+}
+
+/** Ce qu'une tuile du résumé garde de la liste. */
+function presetOf(key: string, r: RecordRow): boolean {
+  switch (key) {
+    case 'startups':
+      return r.roles.includes('Startup');
+    case 'running':
+      return r.programmes.some((p) => p.state === 'now');
+    case 'raising':
+      return (r.needs ?? []).some((n) => n.active && n.need === 'fundraising');
+    case 'complete':
+      return profileDone(profileOf(r)) === 100;
+    case 'mentors':
+      return r.roles.includes('Mentor');
+    case 'jury':
+      return r.roles.includes('Jury');
+    case 'teams':
+      return r.orgs.length > 0;
+    case 'active':
+      return r.account?.state === 'claimed';
+    default:
+      return true;
+  }
 }
 
 export const initials = (name: string) =>
@@ -72,6 +103,24 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
   /* Les fiches de l'espace de test restent hors de vue, des comptes et des
      exports, tant qu'on ne demande pas à les voir. */
   const [withTest, setWithTest] = useState(false);
+  /* Tableau ou cartes : gardé d'une visite à l'autre, dans ce navigateur. */
+  const [view, setViewState] = useState<'table' | 'cards'>(() => {
+    try {
+      return localStorage.getItem('dir-view') === 'cards' ? 'cards' : 'table';
+    } catch {
+      return 'table';
+    }
+  });
+  const setView = (v: 'table' | 'cards') => {
+    setViewState(v);
+    try {
+      localStorage.setItem('dir-view', v);
+    } catch {
+      /* rien à garder */
+    }
+  };
+  /* Une tuile du résumé choisie : un filtre de plus. */
+  const [preset, setPreset] = useState('all');
   const loaded = records.data ?? [];
   const testCount = loaded.filter((r) => r.testOwner).length;
   const all = withTest ? loaded : loaded.filter((r) => !r.testOwner);
@@ -92,6 +141,7 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
       (r) =>
         (!fromAudience || fromAudience.has(r.id)) &&
         (hasAccount === 'all' || (hasAccount === 'with' ? Boolean(r.account) : !r.account)) &&
+        presetOf(preset, r) &&
         (!role || (role === '__none' ? !r.roles.length : r.roles.includes(role))) &&
         (!needle ||
           r.name.toLowerCase().includes(needle) ||
@@ -101,12 +151,32 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [all, role, query, audience.data, only, hasAccount]);
+  }, [all, role, query, audience.data, only, hasAccount, preset]);
+
+  const shown = fromAudience ? all.filter((r) => fromAudience.has(r.id)) : all;
+  /* Le résumé, compté sur ce que la page montre. */
+  const month = new Date().toISOString().slice(0, 7);
+  const pct = (n: number, of: number) => (of ? `${Math.round((n / of) * 100)} %` : '—');
+  const added = shown.filter((r) => r.createdAt.slice(0, 7) === month).length;
+  const tiles: Tile[] = isOrg
+    ? [
+        { key: 'all', label: 'All', value: String(shown.length), note: `${added} added this month` },
+        { key: 'startups', label: 'Startups', value: String(shown.filter((r) => presetOf('startups', r)).length), note: pct(shown.filter((r) => presetOf('startups', r)).length, shown.length) },
+        { key: 'running', label: 'In a programme', value: String(shown.filter((r) => presetOf('running', r)).length), note: 'taking part now' },
+        { key: 'raising', label: 'Raising funds', value: String(shown.filter((r) => presetOf('raising', r)).length), note: 'need stated' },
+        { key: 'complete', label: 'Complete sheets', value: pct(shown.filter((r) => presetOf('complete', r)).length, shown.length), note: `${shown.filter((r) => presetOf('complete', r)).length} of ${shown.length}` },
+      ]
+    : [
+        { key: 'all', label: 'All', value: String(shown.length), note: `${added} added this month` },
+        { key: 'mentors', label: 'Mentors', value: String(shown.filter((r) => presetOf('mentors', r)).length), note: `${shown.reduce((n, r) => n + r.sessions, 0)} sessions held` },
+        { key: 'jury', label: 'Jury', value: String(shown.filter((r) => presetOf('jury', r)).length), note: `${shown.reduce((n, r) => n + r.evaluations, 0)} evaluations` },
+        { key: 'teams', label: 'Startup teams', value: String(shown.filter((r) => presetOf('teams', r)).length), note: 'attached to an organisation' },
+        { key: 'active', label: 'Active accounts', value: pct(shown.filter((r) => presetOf('active', r)).length, shown.length), note: `${shown.filter((r) => r.account && r.account.state !== 'claimed').length} invited, not in yet` },
+      ];
 
   /* Comptés sur ce que la page montre : « All 4 » au-dessus d'une seule ligne
      parce qu'on arrive d'une audience de quatre est un compteur qui parle
      d'autre chose que de ce qu'on a sous les yeux. */
-  const shown = fromAudience ? all.filter((r) => fromAudience.has(r.id)) : all;
   const countOf = (r: string) => shown.filter((x) => (r === '__none' ? !x.roles.length : x.roles.includes(r))).length;
 
   const toggle = (id: string) =>
@@ -178,6 +248,8 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
           </div>
         )}
 
+        {all.length > 0 && <Tiles tiles={tiles} on={preset} onPick={setPreset} />}
+
         <div className="row wrap">
           <div className="work-pick">
             <button className={!role ? 'track on' : 'track'} onClick={() => setRole(null)}>
@@ -242,6 +314,10 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
           <span className="faint num" style={{ fontSize: 12.5 }}>
             {rows.length} of {shown.length}
           </span>
+          <div className="seg" role="group" aria-label="Display" style={{ marginLeft: 'auto' }}>
+            <button className={view === 'table' ? 'on' : ''} onClick={() => setView('table')}>Table</button>
+            <button className={view === 'cards' ? 'on' : ''} onClick={() => setView('cards')}>Cards</button>
+          </div>
           {!isOrg && picked.size > 0 && (
             <>
               <div className="spacer" />
@@ -276,239 +352,25 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
           </div>
         ) : !rows.length ? (
           <div className="empty">Nothing matches these filters.</div>
+        ) : view === 'cards' ? (
+          isOrg ? <OrgCards rows={rows} /> : <PersonCards rows={rows} />
+        ) : isOrg ? (
+          <OrgTable rows={rows} />
         ) : (
-          <div className="table-wrap">
-            <table className="data">
-              <thead>
-                <tr>
-                  {!isOrg && (
-                    <th style={{ width: 34 }}>
-                      <input
-                        type="checkbox"
-                        aria-label="Pick everybody shown"
-                        checked={allShown}
-                        onChange={() =>
-                          setPicked((was) => {
-                            const next = new Set(was);
-                            if (allShown) rows.forEach((r) => next.delete(r.id));
-                            else rows.forEach((r) => next.add(r.id));
-                            return next;
-                          })
-                        }
-                      />
-                    </th>
-                  )}
-                  <th>Name</th>
-                  {isOrg && <th>Sector</th>}
-                  {isOrg && <th>Contact</th>}
-                  <th>Phone</th>
-                  <th>Email</th>
-                  <th>Roles</th>
-                  <th>Where</th>
-                  {!isOrg && <th>Company</th>}
-                  <th title="Programmes that are over and where they were still in at the close, and the one running now">
-                    Programmes
-                  </th>
-                  <th>Account</th>
-                  <th>Came from</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id}>
-                    {!isOrg && (
-                      <td>
-                        <input
-                          type="checkbox"
-                          aria-label={`Pick ${r.name}`}
-                          checked={picked.has(r.id)}
-                          onChange={() => toggle(r.id)}
-                        />
-                      </td>
-                    )}
-                    <td className="name">
-                      <Link to={`/directory/${r.id}`} className="rec-name">
-                        {/* La photo là où était la marque, à la même taille :
-                            une ligne sans photo ne décale donc pas les autres. */}
-                        {r.logoUploadId ? (
-                          <img className="rec-photo" src={`/api/uploads/${r.logoUploadId}`} alt="" />
-                        ) : (
-                          <span className="rec-mark">{initials(r.name)}</span>
-                        )}
-                        <span>
-                          {r.name}
-                          {r.testOwner && <span className="badge warn" style={{ marginLeft: 6 }}>TEST</span>}
-                          {isOrg && r.email && (
-                            <span className="faint" style={{ display: 'block', fontWeight: 400, fontSize: 12 }}>
-                              {r.email}
-                            </span>
-                          )}
-                        </span>
-                      </Link>
-                    </td>
-
-                    {isOrg && (
-                      <td className="muted" style={{ fontSize: 12.5 }}>
-                        {r.sector || <span className="faint">—</span>}
-                      </td>
-                    )}
-                    {isOrg && (
-                      <td style={{ fontSize: 12.5 }}>
-                        {r.holders.length ? (
-                          <>
-                            <Link to={`/directory/${r.holders[0]!.id}`}>{r.holders[0]!.name}</Link>
-                            {r.holders.length > 1 && (
-                              <span className="faint" title={r.holders.slice(1).map((h) => h.name).join(' · ')}>
-                                {' '}+{r.holders.length - 1}
-                              </span>
-                            )}
-                          </>
-                        ) : (
-                          <span className="badge warn">None</span>
-                        )}
-                      </td>
-                    )}
-
-                    {(
-                      <td className="muted num" style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>
-                        {/* Le sien, sinon celui de qui la tient — c'est ce
-                            numéro-là qu'on compose. Marqué, pour qu'on sache
-                            qui on appelle. */}
-                        {(() => {
-                          const own = r.phones[0];
-                          const borrowed = own ? null : (r.holders[0]?.phones[0] ?? null);
-                          const shown = own ?? borrowed;
-                          if (!shown) return <span className="faint">—</span>;
-                          const more = own ? r.phones.length - 1 : 0;
-                          return (
-                            <>
-                              {shown}
-                              {more > 0 && (
-                                <span className="faint" title={r.phones.slice(1).join(' · ')}> +{more}</span>
-                              )}
-                              {borrowed && (
-                                <span className="faint" title={`Of ${r.holders[0]!.name}`}> ·{' '}
-                                  {r.holders[0]!.name.split(' ')[0]}
-                                </span>
-                              )}
-                            </>
-                          );
-                        })()}
-                      </td>
-                    )}
-                    {/* Toutes, une par ligne : une fiche qui en porte deux le
-                        fait pour qu'on les voie. Celle de qui la tient quand
-                        elle n'en a aucune. */}
-                    {(
-                      <td className="muted" style={{ fontSize: 12.5 }}>
-                        {r.emails.length ? (
-                          r.emails.map((e) => (
-                            <span key={e} style={{ display: 'block' }}>{e}</span>
-                          ))
-                        ) : r.holders[0]?.email ? (
-                          <span>{r.holders[0]!.email}</span>
-                        ) : (
-                          <span className="faint">—</span>
-                        )}
-                      </td>
-                    )}
-                    <td>
-                      {r.roles.length ? (
-                        r.roles.map((x) => (
-                          <span className="badge" key={x} style={{ marginRight: 5 }}>
-                            {x}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="faint">—</span>
-                      )}
-                    </td>
-                    {/* Le pays seul ne dit pas où : « Morocco » sur une ligne
-                        sans ville se lit comme un renseignement, et n'en est
-                        pas un — le pays est à Morocco par défaut pour tout le
-                        monde. */}
-                    {/* Tous les lieux, un par ligne : une société à Casablanca
-                        et à Agadir est à deux endroits, pas à un. */}
-                    <td className="muted" style={{ fontSize: 12.5 }}>
-                      {r.places.length ? (
-                        r.places.map((p, i) => (
-                          <span key={i} style={{ display: 'block', whiteSpace: 'nowrap' }}>
-                            {[p.city, p.country].filter(Boolean).join(', ')}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="faint">—</span>
-                      )}
-                    </td>
-
-                    {isOrg ? null : (
-                      /* Où il travaille, et ce qu'il y fait : la fonction de sa
-                         fiche, sinon le rôle du lien — « Founder » faute de
-                         mieux vaut mieux que rien du tout. */
-                      <td style={{ fontSize: 12.5 }}>
-                        {r.orgs.length ? (
-                          <>
-                            <Link to={`/directory/${r.orgs[0]!.id}`}>{r.orgs[0]!.name}</Link>
-                            {r.orgs.length > 1 && (
-                              <span className="faint" title={r.orgs.slice(1).map((o) => o.name).join(' · ')}>
-                                {' '}+{r.orgs.length - 1}
-                              </span>
-                            )}
-                            {(r.jobTitle || r.orgs[0]!.role) && (
-                              <span className="faint" style={{ display: 'block' }}>
-                                {r.jobTitle || r.orgs[0]!.role}
-                              </span>
-                            )}
-                          </>
-                        ) : (
-                          <span className="faint">{r.jobTitle || '—'}</span>
-                        )}
-                      </td>
-                    )}
-
-                    {(
-                      <td style={{ fontSize: 12.5 }}>
-                        {r.alumni > 0 && (
-                          <span className="badge" title="Programmes that are over and where they were still in">
-                            {r.alumni} done
-                          </span>
-                        )}
-                        {r.current.map((name) => (
-                          <span className="badge ok" key={name} style={{ marginLeft: r.alumni ? 5 : 0 }}>
-                            {name}
-                          </span>
-                        ))}
-                        {!r.alumni && !r.current.length && <span className="faint">—</span>}
-                      </td>
-                    )}
-                    {(
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        {/* Pour une organisation, c'est le compte de qui la
-                            tient : une société ne se connecte pas. */}
-                        <AccountBadge account={r.account} />
-                        {/* La date qui compte : la dernière fois qu'on les a
-                            vus, sinon le jour où le compte a été ouvert. Un
-                            compte jamais utilisé se lit alors d'un coup d'œil. */}
-                        {r.account && (
-                          <span className="faint" style={{ display: 'block', fontSize: 11.5 }}>
-                            {r.account.lastSeenAt
-                              ? `seen ${formatDate(r.account.lastSeenAt)}`
-                              : `opened ${formatDate(r.account.createdAt)}`}
-                          </span>
-                        )}
-                      </td>
-                    )}
-                    <td className="faint" style={{ fontSize: 12 }} title={ORIGIN_LABEL[r.origin]}>
-                      {/* Qui, quand on le sait ; par quelle porte sinon. Les
-                          fiches d'avant ce champ n'ont que la porte, et c'est
-                          déjà ce qu'elles disaient. */}
-                      {r.createdByName || (r.origin === 'import' ? 'File' : r.origin === 'signup' ? 'Registered' : 'By hand')}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <PersonTable
+            rows={rows}
+            picked={picked}
+            onToggle={toggle}
+            allShown={allShown}
+            onToggleAll={() =>
+              setPicked((was) => {
+                const next = new Set(was);
+                if (allShown) rows.forEach((r) => next.delete(r.id));
+                else rows.forEach((r) => next.add(r.id));
+                return next;
+              })
+            }
+          />
         )}
       </div>
 

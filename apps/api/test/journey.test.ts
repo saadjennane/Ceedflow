@@ -10,6 +10,7 @@ import * as repo from '../src/db/repo.js';
 import { journeyFor } from '../src/services/journey.js';
 import { changeMeeting, planMeetings } from '../src/services/oneToOne.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
+import { directoryRows } from '../src/services/people.js';
 
 before(migrate);
 after(closeDb);
@@ -55,5 +56,10 @@ describe('a startup’s journey through a programme', { skip: skipWithoutServer 
     assert.deepEqual(new Set(j.history.map((h) => h.kind)), new Set(['application', 'selection', 'one_to_one']));
     assert.deepEqual(j.history.map((h) => h.at), [...j.history.map((h) => h.at)].sort().reverse(), 'most recent first');
     assert.equal(j.history.find((h) => h.kind === 'one_to_one')!.phase, 'Accompagnement');
+
+    // L'annuaire le dit sans ouvrir la fiche : la séance du mentor, le programme de la startup.
+    const rows = await directoryRows();
+    assert.equal(rows.people.get(mentor.id)?.sessions, 1);
+    assert.deepEqual(rows.orgs.get(org.id)?.programmes.map((p) => p.state), ['applied']);
   });
 });

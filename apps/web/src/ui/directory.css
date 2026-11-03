@@ -1066,3 +1066,49 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
 /* Une médaille de programme : participante, alumni, candidate. */
 .medal { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12.5px; font-weight: 600; }
 .medal i { width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; color: #fff; font-style: normal; font-family: var(--display); font-weight: 800; font-size: 11px; }
+
+/* ------------------------------------------------------------------ */
+/* L'annuaire : résumé en tuiles, lignes riches, cartes                 */
+/* ------------------------------------------------------------------ */
+.dir-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.dir-tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; text-align: left; cursor: pointer; color: inherit; font: inherit; }
+.dir-tile b { font-size: 22px; }
+.dir-tile small { font-size: 12px; color: var(--ink-3); }
+.dir-tile:hover { border-color: var(--line-strong); }
+.dir-tile.on { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
+.dir-table td { vertical-align: middle; }
+.dir-table tbody tr:hover { background: var(--wash); }
+.dir-table tbody tr.picked { background: var(--blue-soft); }
+.dir-table .right { text-align: right; }
+.dir-who { display: flex; align-items: center; gap: 10px; color: inherit; }
+.dir-min { min-width: 0; display: block; }
+.dir-clip { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 36ch; font-size: 12.5px; }
+.dir-logo { border-radius: 10px; display: inline-grid; place-items: center; color: #fff; font-family: var(--display); font-weight: 800; flex-shrink: 0; object-fit: cover; }
+.dir-pms { display: inline-flex; gap: 4px; }
+.dir-pm { position: relative; width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; color: #fff; font-family: var(--display); font-weight: 800; font-size: 11px; }
+.dir-pm em { position: absolute; right: -3px; bottom: -3px; width: 9px; height: 9px; border-radius: 99px; border: 2px solid var(--surface); background: var(--ink-3); }
+.dir-pm em.now { background: var(--ok); }
+.dir-pm em.applied { background: var(--blue); }
+.dir-ring { width: 34px; height: 34px; border-radius: 99px; display: grid; place-items: center; flex-shrink: 0; }
+.dir-ring b { width: 26px; height: 26px; border-radius: 99px; background: var(--surface); display: grid; place-items: center; font-size: 10.5px; }
+.dir-contact { display: inline-flex; align-items: center; gap: 6px; }
+.dir-av { width: 24px; height: 24px; border-radius: 99px; display: inline-grid; place-items: center; color: #fff; font-family: var(--display); font-weight: 700; font-size: 10px; flex-shrink: 0; }
+.dir-dot { display: inline-block; width: 7px; height: 7px; border-radius: 99px; background: var(--ink-3); }
+.dir-dot.ok { background: var(--ok); }
+.dir-dot.warn { background: var(--warn); }
+.dir-up { color: var(--ok); font-weight: 700; }
+.dir-down { color: var(--stop); font-weight: 700; }
+.dir-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.dir-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shadow-1); color: inherit; display: flex; flex-direction: column; transition: transform 0.15s, box-shadow 0.15s; }
+.dir-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); }
+.dir-band { height: 46px; display: block; }
+.dir-card-body { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 9px; }
+.dir-card-logo { margin-top: -26px; display: inline-flex; border: 3px solid var(--surface); border-radius: 14px; box-shadow: var(--shadow-2); }
+.dir-card-logo .dir-logo { border-radius: 11px; font-size: 20px; }
+.dir-card-name { font-family: var(--display); font-size: 15px; }
+.dir-pitch { font-size: 13px; color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dir-figs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 9px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.dir-figs > span { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.dir-figs b { font-size: 15px; }
+.dir-face .dir-logo { border-radius: 999px; font-size: 20px; border: 3px solid var(--surface); box-shadow: var(--shadow-2); }
+@media (prefers-reduced-motion: reduce) { .dir-card { transition: none; } .dir-card:hover { transform: none; } }
