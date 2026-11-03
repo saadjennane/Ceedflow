@@ -501,6 +501,11 @@ function Identity({
             </div>
             {errors.capitalAmount && <div className="err">{errors.capitalAmount}</div>}
           </div>
+          {/* Les identifiants légaux : privés, à l'organisation et à CEED. */}
+          <div className="grid-2">
+            <Line label={t('sheet.ice')} value={draft.ice} onChange={(v) => put({ ice: v }, { wait: true })} />
+            <Line label={t('sheet.rc')} value={draft.rcNumber} onChange={(v) => put({ rcNumber: v }, { wait: true })} />
+          </div>
         </div>
       )}
 
@@ -806,6 +811,9 @@ function Activity({
       </div>
 
       <Area label={t('sheet.offering')} value={draft.mainOffering} rows={3} onChange={(v) => put({ mainOffering: v }, { wait: true })} />
+      {/* Le problème qu'elle résout, et sa réponse : ce qu'un jury cherche en premier. */}
+      <Area label={t('sheet.problem')} value={draft.problem} rows={3} onChange={(v) => put({ problem: v }, { wait: true })} />
+      <Area label={t('sheet.solution')} value={draft.solution} rows={3} onChange={(v) => put({ solution: v }, { wait: true })} />
 
       <div className="grid-2">
         <Line label={`${t('sheet.catalogue')} · ${t('sheet.optional')}`} value={draft.catalogueUrl} placeholder="https://" onChange={(v) => put({ catalogueUrl: v }, { wait: true })} />

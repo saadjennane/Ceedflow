@@ -23,6 +23,8 @@ export interface OrgOverview {
     trackId: string;
     status: string;
     phase: string | null;
+    /** Every phase of its track, as a strip: done, current, to come. */
+    phases: { name: string; state: 'done' | 'current' | 'upcoming' }[];
     colour: string;
     /** The edition's own page, on its startups, the candidacy open. */
     href: string;
@@ -57,11 +59,12 @@ export async function orgOverview(orgId: string): Promise<OrgOverview | null> {
     const detail = await repo.getEditionDetail(c.editionId);
     const track = detail?.tracks.find((t) => t.id === c.trackId);
     if (!detail || !track) continue;
-    const phase = (await phasesOf(track, c)).find((p) => p.state === 'current')?.name ?? null;
+    const strip = await phasesOf(track, c);
+    const phase = strip.find((p) => p.state === 'current')?.name ?? null;
     const href = `/editions/${c.editionId}?tab=startups&track=${c.trackId}&candidate=${c.id}`;
     candidacies.push({
       candidateId: c.id, programName: detail.program.name, editionName: detail.name, editionId: c.editionId,
-      trackId: c.trackId, status: c.status, phase, colour: detail.program.colour ?? '#2F5BFF', href,
+      trackId: c.trackId, status: c.status, phase, phases: strip.map((p) => ({ name: p.name, state: p.state })), colour: detail.program.colour ?? '#2F5BFF', href,
     });
     if (c.status === 'Withdrawn' || detail.status === 'Completed') continue;
     const where = `${detail.program.name} — ${detail.name}`;

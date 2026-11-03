@@ -30,6 +30,18 @@ const KINDS: { key: Item['kind']; label: string; icon: string }[] = [
   { key: 'task', label: 'Tasks', icon: 'check' },
 ];
 
+/** La période d'un événement, en mots : aujourd'hui, cette semaine, ce mois-ci, plus tôt. */
+function periodOf(at: string): string {
+  const day = at.slice(0, 10);
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const days = (Date.parse(today) - Date.parse(day)) / 86_400_000;
+  if (days <= 0) return 'Today';
+  if (days < 7) return 'This week';
+  if (day.slice(0, 7) === today.slice(0, 7) || days < 31) return 'This month';
+  return 'Earlier';
+}
+
 export function OrgActivity({ recordId, limit }: { recordId: string; limit?: number }) {
   const feed = useAsync(() => api.get<Item[]>(`/api/records/${recordId}/activity`), `activity:${recordId}`);
   const { me } = useAccount();
@@ -93,11 +105,15 @@ export function OrgActivity({ recordId, limit }: { recordId: string; limit?: num
           </div>
         </>
       )}
-      {limit && <div className="eyebrow">Latest activity</div>}
+      {limit && <div className="eyebrow">Activity</div>}
       {feed.data && !shown.length && <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>Nothing yet.</p>}
       <ol className="timeline">
-        {shown.map((i) => (
-          <li key={i.id} className="timeline-item">
+        {shown.map((i, n) => (
+          <li key={i.id} className="timeline-item" style={{ flexWrap: 'wrap' }}>
+            {/* Groupées par période : ce qui vient de se passer se lit d'abord. */}
+            {periodOf(i.at) !== (n > 0 ? periodOf(shown[n - 1]!.at) : '') && (
+              <div className="sc-when" style={{ flexBasis: '100%' }}>{periodOf(i.at)}</div>
+            )}
             <span className={i.kind === 'note' ? 'timeline-dot note' : 'timeline-dot'}>
               <Icon name={icon(i.kind)} size={12} />
             </span>
@@ -110,12 +126,21 @@ export function OrgActivity({ recordId, limit }: { recordId: string; limit?: num
                     <button className="btn ghost sm" onClick={() => setEditing(null)}>Cancel</button>
                   </span>
                 </span>
+              ) : i.kind === 'note' ? (
+                <span className="sc-note" style={{ display: 'block' }}>
+                  <span style={{ whiteSpace: 'pre-wrap', fontSize: 13.5 }}>{i.label}</span>
+                  <span className="faint" style={{ display: 'block', fontSize: 12, marginTop: 4 }}>
+                    {[i.by, formatDate(i.at.slice(0, 10)), i.detail].filter(Boolean).join(' · ')}
+                  </span>
+                </span>
               ) : (
-                <strong style={{ fontSize: 13, whiteSpace: i.kind === 'note' ? 'pre-wrap' : undefined }}>{i.label}</strong>
+                <strong style={{ fontSize: 13 }}>{i.label}</strong>
               )}
-              <span className="faint" style={{ display: 'block', fontSize: 12 }}>
-                {[formatDate(i.at.slice(0, 10)), i.by, i.detail].filter(Boolean).join(' · ')}
-              </span>
+              {i.kind !== 'note' && (
+                <span className="faint" style={{ display: 'block', fontSize: 12 }}>
+                  {[formatDate(i.at.slice(0, 10)), i.by, i.detail].filter(Boolean).join(' · ')}
+                </span>
+              )}
             </span>
             {i.noteId && i.byId && me?.record.id === i.byId && editing?.id !== i.noteId && (
               <span className="row" style={{ gap: 2 }}>

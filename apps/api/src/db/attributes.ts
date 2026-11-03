@@ -149,7 +149,7 @@ const LABEL: Record<string, string> = {
   phones: 'Phones', places: 'Addresses', logoUploadId: 'Logo', tags: 'Tags', roles: 'Roles', activityNature: 'Nature of the activity',
   catalogueUrl: 'Catalogue', demoUrl: 'Demo', hasFunding: 'Has raised funds', pastPrograms: 'Past programmes',
   currentPrograms: 'Current programmes', patent: 'Patent', patentDetails: 'Patent details', mvpUsers: 'MVP users',
-  signedContracts: 'Signed contracts', contractsCount: 'Number of contracts', contractsAmount: 'Contracts amount',
+  signedContracts: 'Signed contracts', problem: 'Problem', solution: 'Solution', ice: 'ICE', rcNumber: 'Commercial register', contractsCount: 'Number of contracts', contractsAmount: 'Contracts amount',
 };
 const LIST_LABEL: Record<string, string> = { fundings: 'Funding', products: 'Product', programs: 'Programme' };
 

@@ -89,6 +89,18 @@ describe('a startup sheet CEED can add to', { skip: skipWithoutServer }, () => {
     assert.equal((await call(founder, 'GET', `/api/records/${orgId}/history`)).status, 401, 'CEED’s alone');
   });
 
+  it('keeps the problem, the solution and the legal identifiers on the sheet, with their history', async () => {
+    const res = await call(founder, 'PATCH', `/api/me/organisations/${orgId}`, {
+      problem: 'Les petites exploitations irriguent à l’œil.', solution: 'Un capteur et un conseil simple.', ice: '001234567000089', rcNumber: 'Fès 12345',
+    });
+    assert.equal(res.status, 200);
+    const record = (await call(staff, 'GET', `/api/records/${orgId}`)).body.record;
+    assert.equal(record.problem, 'Les petites exploitations irriguent à l’œil.');
+    assert.equal(record.rcNumber, 'Fès 12345');
+    const history = (await call(staff, 'GET', `/api/records/${orgId}/history`)).body as { field: string; label: string }[];
+    assert.ok(history.some((h) => h.field === 'problem' && h.label === 'Problem'));
+  });
+
   it('follows a KPI period by period: the latest makes the sheet’s value, an older one is history, a correction replaces', async () => {
     assert.equal((await call(staff, 'PUT', '/api/kpi-settings/teamSize', { period: 'quarter' })).status, 200);
     const put = (period: string, value: unknown) => call(founder, 'PUT', `/api/me/organisations/${orgId}/kpis/teamSize/${period}`, { value });

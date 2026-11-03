@@ -33,6 +33,7 @@ const COLS = `id, kind, name, first_name as "firstName", last_name as "lastName"
                             order by v.year desc)
               from org_revenues v where v.org_id = records.id), '[]'::json) as revenues,
   activity_nature as "activityNature", target_markets as "targetMarkets", main_offering as "mainOffering",
+  problem, solution, ice, rc_number as "rcNumber",
   catalogue_url as "catalogueUrl", sales_zone as "salesZone", sales_countries as "salesCountries",
   demo_url as "demoUrl", founders_count as "foundersCount", women_count as "womenCount",
   has_funding as "hasFunding", past_programs as "pastPrograms", current_programs as "currentPrograms",
@@ -278,6 +279,10 @@ const FIELDS: Record<string, string> = {
   contractsAmount: 'contracts_amount',
   activityNature: 'activity_nature',
   mainOffering: 'main_offering',
+  problem: 'problem',
+  solution: 'solution',
+  ice: 'ice',
+  rcNumber: 'rc_number',
   catalogueUrl: 'catalogue_url',
   salesZone: 'sales_zone',
   demoUrl: 'demo_url',

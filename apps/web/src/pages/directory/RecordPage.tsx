@@ -33,11 +33,12 @@ import { RecordModal } from './RecordModal';
 import { TaskDrawer } from '../../ui/TaskDrawer';
 import { TaskModal } from '../../ui/TaskModal';
 import { Row as TaskRow } from '../TasksPage';
-import { ProfileBar, ProfileFacts, Logo } from '../../ui/OrgProfile';
+import { ProfileBar, ProfileFacts } from '../../ui/OrgProfile';
 import { OrgSheet } from '../../ui/OrgSheet';
 import { ProfileBlocks } from '../../ui/ProfileBlocks';
 import { KeyFigures, OrgOverview, type OrgOverviewData } from './OrgOverview';
 import { OrgActivity } from './OrgActivity';
+import { Coordinates, Hero, OrgContent, PersonContent, Ring } from '../../ui/Showcase';
 import { Companions, OrgFiles } from './OrgFiles';
 
 /** Les vues de la page d'une organisation. */
@@ -112,105 +113,119 @@ export function RecordPage() {
 
       <div className="page rec-layout">
         <div className="stack" style={{ gap: 14 }}>
-          <div className="card card-pad rec-head">
-            {record.logoUploadId ? (
-              <Logo uploadId={record.logoUploadId} name={record.name} size={46} />
-            ) : (
-              <div className="rec-mark big">{initials(record.name)}</div>
-            )}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="row wrap" style={{ gap: 6 }}>
-                {record.roles.length ? (
-                  record.roles.map((r) => (
-                    <span className="badge info" key={r}>
-                      {r}
-                    </span>
-                  ))
-                ) : (
-                  <span className="faint" style={{ fontSize: 12.5 }}>
-                    No role — known through {isOrg ? 'the programs' : 'their organisation'}
-                  </span>
-                )}
-              </div>
-              {/* Au-dessus du reste : c'est ce qu'on lit en premier d'un juré
-                  qu'on envisage d'asseoir sur une séance. */}
-              {(record.jobTitle || record.department) && (
-                <p style={{ margin: '6px 0 0', fontSize: 13 }}>
-                  {record.jobTitle}
-                  {record.jobTitle && record.department ? ' · ' : ''}
-                  <span className="faint">{record.department}</span>
-                </p>
-              )}
-              {/* Pour une organisation, la description et l'adresse sont sur la
-                  fiche juste en dessous : les écrire deux fois sur le même
-                  écran donne deux endroits à corriger pour une faute. */}
-              {record.bio && !isOrg && <p style={{ margin: '8px 0 0', fontSize: 13 }}>{record.bio}</p>}
-              {/* Pour une organisation, la phrase d'accroche : c'est ce qu'on
-                  lit en premier d'une société, et l'en-tête n'avait plus rien. */}
-              {isOrg && record.pitch && (
-                <p style={{ margin: '8px 0 0', fontSize: 14, fontWeight: 600 }}>{record.pitch}</p>
-              )}
-              <div className="row wrap faint" style={{ gap: 14, marginTop: 8, fontSize: 12.5 }}>
-                {/* Toutes : c'est la page où l'on vient chercher comment
-                    joindre quelqu'un, et la seconde adresse est souvent celle
-                    qu'il relève vraiment. */}
-                {record.emails.map((address) => (
-                  <span key={address}>{address}</span>
-                ))}
-                {/* Tous, et pas seulement le premier : c'est la page où l'on
-                    vient chercher comment joindre quelqu'un. */}
-                {record.phones.map((number) => (
-                  <span className="num" key={number}>{number}</span>
-                ))}
-                {!isOrg && record.city && <span>{[record.city, record.country].filter(Boolean).join(', ')}</span>}
-                {!isOrg && record.website && <span>{record.website}</span>}
-              </div>
-              {record.tags.length > 0 && (
-                <div className="row wrap" style={{ gap: 5, marginTop: 8 }}>
-                  {record.tags.map((t) => (
-                    <span className="badge" key={t}>
-                      {t}
-                    </span>
+          {isOrg ? (
+            <Hero
+              name={record.name}
+              imageId={record.logoUploadId}
+              eyebrow={
+                <>
+                  {record.roles.map((r) => (
+                    <span className="badge info" key={r}>{r}</span>
                   ))}
-                </div>
-              )}
-              {/* Une organisation : qui elle est en quelques mots, et comment la joindre. */}
-              {isOrg && (
-                <div className="row wrap" style={{ gap: 6, marginTop: 8, fontSize: 12.5 }}>
+                  {record.testOwner && <span className="badge warn">TEST</span>}
+                </>
+              }
+              pitch={record.pitch || undefined}
+              chips={
+                <>
                   {identityPills(record).map((pill) => (
                     <span key={pill} className="badge">{pill}</span>
                   ))}
-                  {record.website && (
-                    <a href={record.website.startsWith('http') ? record.website : `https://${record.website}`} target="_blank" rel="noreferrer">
-                      Website
-                    </a>
+                  {record.tags.map((t) => (
+                    <span className="badge" key={`tag:${t}`}>{t}</span>
+                  ))}
+                </>
+              }
+              side={
+                <>
+                  {overview.data && <Ring value={overview.data.profile} label="sheet" tone={overview.data.profile === 100 ? 'ok' : 'blue'} />}
+                  <button className="btn primary sm" onClick={() => { setFillAt(undefined); setFilling(true); }}>
+                    <Icon name="edit" size={13} /> Edit the sheet
+                  </button>
+                  <button className="btn ghost sm" onClick={() => setGiving(true)}>
+                    <Icon name="plus" size={13} /> Task
+                  </button>
+                  {overview.data?.candidacies[0] && (
+                    <Link className="btn ghost sm" to={`/as/${overview.data.candidacies[0].candidateId}`} target="_blank">
+                      <Icon name="eye" size={13} /> As the startup
+                    </Link>
                   )}
-                  {record.linkedin && (
-                    <a href={record.linkedin.startsWith('http') ? record.linkedin : `https://${record.linkedin}`} target="_blank" rel="noreferrer">
-                      LinkedIn
-                    </a>
-                  )}
-                </div>
-              )}
-            </div>
-            {isOrg && (
-              <div className="stack" style={{ gap: 6, alignItems: 'flex-end' }}>
-                <button className="btn sm" onClick={() => { setFillAt(undefined); setFilling(true); }}>
-                  <Icon name="edit" size={13} /> Edit the sheet
-                </button>
-                <button className="btn ghost sm" onClick={() => setGiving(true)}>
-                  <Icon name="plus" size={13} /> Task
-                </button>
-                {overview.data?.candidacies[0] && (
-                  <Link className="btn ghost sm" to={`/as/${overview.data.candidacies[0].candidateId}`} target="_blank">
-                    <Icon name="eye" size={13} /> As the startup
-                  </Link>
-                )}
+                </>
+              }
+            />
+          ) : (
+            <>
+              <Hero
+                name={record.name}
+                imageId={record.logoUploadId}
+                round
+                subtitle={
+                  [record.jobTitle, links[0]?.record.name].filter(Boolean).length
+                    ? `${record.jobTitle || 'Member'}${links[0] ? ` @ ${links[0].record.name}` : ''}`
+                    : undefined
+                }
+                chips={
+                  <>
+                    {record.roles.map((r) => (
+                      <span className="badge info" key={r}>{r}</span>
+                    ))}
+                    {record.testOwner && <span className="badge warn">TEST</span>}
+                    {record.tags.map((t) => (
+                      <span className="badge" key={`tag:${t}`}>{t}</span>
+                    ))}
+                  </>
+                }
+              />
+              {/* Ce qu'elle dit d'elle, et comment la joindre. */}
+              <div className="sc-two">
+                <PersonContent
+                  bio={record.bio}
+                  lang="en"
+                  facts={[
+                    ['Job title', record.jobTitle],
+                    ['Department', record.department],
+                    ['Organisations', links.map((l) => l.record.name).join(', ')],
+                  ]}
+                />
+                <Coordinates
+                  emails={record.emails}
+                  phones={record.phones}
+                  places={record.places}
+                  website={record.website}
+                  linkedin={record.linkedin}
+                  lang="en"
+                  copy
+                />
               </div>
-            )}
-          </div>
+            </>
+          )}
 
           {isOrg && overview.data && <KeyFigures figures={overview.data.figures} />}
+
+          {/* Ce qu'elle fait en mots, et comment la joindre. */}
+          {isOrg && (
+            <div className="sc-two">
+              <OrgContent
+                profile={profileOf(record)}
+                lang="en"
+                empty={
+                  <button className="linkish" style={{ alignSelf: 'flex-start' }} onClick={() => { setFillAt('activity'); setFilling(true); }}>
+                    Describe its activity, the problem it solves and its solution
+                  </button>
+                }
+              />
+              <Coordinates
+                emails={record.emails}
+                phones={record.phones}
+                places={record.places}
+                website={record.website}
+                linkedin={record.linkedin}
+                socials={profileOf(record).socials}
+                lang="en"
+                copy
+              />
+            </div>
+          )}
 
           {isOrg && (
             <nav className="tabbar" role="tablist" style={{ position: 'static' }}>

@@ -88,7 +88,7 @@ interface MyProgram {
   opensAt: string | null;
   applyUrl: string | null;
   /** Candidacies of the organisations this person belongs to — where each stands. */
-  mine: { id: string; orgName: string; status: string; phase: string | null }[];
+  mine: { id: string; orgId: string; orgName: string; status: string; phase: string | null }[];
   /** What the open form asks the applicant to confirm, and until when it takes answers. */
   eligibility: string[];
   closesAt: string | null;
@@ -178,7 +178,7 @@ export async function programsFor(recordId: string): Promise<MyProgram[]> {
       for (const c of (await repo.listCandidates(edition.id)).filter((x) => mine.has(x.orgId))) {
         const track = detail.tracks.find((t) => t.id === c.trackId);
         const phase = track ? (await phasesOf(track, c)).find((p) => p.state === 'current')?.name ?? null : null;
-        candidacies.push({ id: c.id, orgName: c.orgName, status: c.status, phase });
+        candidacies.push({ id: c.id, orgId: c.orgId, orgName: c.orgName, status: c.status, phase });
       }
       const form = live ?? forms[0];
 

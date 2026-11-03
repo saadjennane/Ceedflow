@@ -129,6 +129,12 @@ const orgSheetFields = {
   activityNature: oneOf(ACTIVITY_NATURES),
   targetMarkets: z.array(z.enum(TARGET_MARKETS.map((c) => c.key) as [string, ...string[]])).default([]),
   mainOffering: z.string().default(''),
+  /** Le problème qu'elle résout, et sa réponse — en quelques phrases chacun. */
+  problem: z.string().default(''),
+  solution: z.string().default(''),
+  /** Identifiants légaux : l'ICE et le numéro du registre de commerce. */
+  ice: z.string().trim().default(''),
+  rcNumber: z.string().trim().default(''),
   catalogueUrl: z.string().trim().default(''),
   salesZone: oneOf(SALES_ZONES),
   salesCountries: z.array(z.string()).default([]),

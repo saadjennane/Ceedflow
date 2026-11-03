@@ -443,6 +443,10 @@ export interface OrgProfile {
   activityNature: string;
   targetMarkets: string[];
   mainOffering: string;
+  problem: string;
+  solution: string;
+  ice: string;
+  rcNumber: string;
   catalogueUrl: string;
   salesZone: string;
   salesCountries: string[];
@@ -498,6 +502,10 @@ export const profileOf = (record: ProfileSource): OrgProfile => ({
   activityNature: record.activityNature ?? '',
   targetMarkets: record.targetMarkets ?? [],
   mainOffering: record.mainOffering ?? '',
+  problem: record.problem ?? '',
+  solution: record.solution ?? '',
+  ice: record.ice ?? '',
+  rcNumber: record.rcNumber ?? '',
   catalogueUrl: record.catalogueUrl ?? '',
   salesZone: record.salesZone ?? '',
   salesCountries: record.salesCountries ?? [],
@@ -735,6 +743,7 @@ export const VISIBILITY: Record<keyof OrgProfile, 'public' | 'ecosystem' | 'priv
   maturity: 'public', stage: 'public', activityNature: 'public', targetMarkets: 'public', products: 'public',
   legalStatus: 'ecosystem', foundedOn: 'ecosystem', foundedYear: 'ecosystem', legalForm: 'ecosystem',
   capitalAmount: 'ecosystem', capitalCurrency: 'ecosystem', bio: 'ecosystem', mainOffering: 'ecosystem',
+  problem: 'ecosystem', solution: 'ecosystem', ice: 'private', rcNumber: 'private',
   catalogueUrl: 'ecosystem', salesZone: 'ecosystem', salesCountries: 'ecosystem', demoUrl: 'ecosystem',
   teamSize: 'ecosystem', foundersCount: 'ecosystem', womenCount: 'ecosystem', mvpUsers: 'ecosystem',
   activeClients: 'ecosystem', patent: 'ecosystem', patentDetails: 'ecosystem', signedContracts: 'ecosystem',
@@ -866,6 +875,8 @@ export const PROFILE_SOURCES: readonly ProfileLink[] = [
   { key: 'pitch', fr: 'Description courte', en: 'Short description', types: TEXT, value: (p) => nonEmpty(p.pitch) },
   { key: 'bio', fr: 'Description de l’activité', en: 'What the business does', types: TEXT, value: (p) => nonEmpty(p.bio) },
   { key: 'offering', fr: 'Produits et services principaux', en: 'Main products and services', types: TEXT, value: (p) => nonEmpty(p.mainOffering) },
+  { key: 'problem', fr: 'Problème adressé', en: 'Problem addressed', types: TEXT, value: (p) => nonEmpty(p.problem) },
+  { key: 'solution', fr: 'Solution proposée', en: 'Solution', types: TEXT, value: (p) => nonEmpty(p.solution) },
   { key: 'sector', fr: 'Secteur principal', en: 'Main sector', types: ['short_text', 'select'], value: (p) => said(SECTORS, p.sector) },
   { key: 'maturity', fr: 'Niveau de maturité', en: 'Maturity level', types: ['short_text', 'select'], value: (p) => said(MATURITY_LEVELS, p.maturity) },
   { key: 'orgType', fr: 'Type d’organisation', en: 'Type of organisation', types: ['short_text', 'select'], value: (p) => said(ORG_TYPES, p.orgType) },
@@ -981,6 +992,9 @@ export function sheetWriteFor(
       return text ? { patch: { [key]: text } } : null;
     case 'offering':
       return text ? { patch: { mainOffering: text } } : null;
+    case 'problem':
+    case 'solution':
+      return text ? { patch: { [key]: text } } : null;
     case 'sector':
       return one('sector', SECTORS);
     case 'maturity':

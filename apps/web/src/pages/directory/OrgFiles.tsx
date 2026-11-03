@@ -18,20 +18,23 @@ export function OrgFiles({ recordId }: { recordId: string }) {
   if (files.error) return <div className="empty">{files.error}</div>;
   return (
     <section className="card card-pad stack" style={{ gap: 8 }}>
-      <div className="eyebrow">Every file it gave</div>
+      <div className="eyebrow">Files</div>
       {files.data && !files.data.length && <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>No file yet.</p>}
-      {(files.data ?? []).map((f, i) => (
-        <a key={`${f.uploadId}:${i}`} className="rowcard link-row" href={`/api/uploads/${f.uploadId}`} target="_blank" rel="noreferrer">
-          <Icon name="file" size={14} />
-          <span style={{ flex: 1, minWidth: 0 }}>
-            <strong style={{ fontSize: 13 }}>{f.label}</strong>
-            <span className="faint" style={{ display: 'block', fontSize: 12, overflowWrap: 'anywhere' }}>
-              {[f.filename, kb(f.size), f.at ? formatDate(f.at.slice(0, 10)) : null].filter(Boolean).join(' · ')}
-            </span>
-          </span>
-          <span className="badge">{f.origin}</span>
-        </a>
-      ))}
+      <div className="sc-files">
+        {(files.data ?? []).map((f, i) => {
+          const ext = (f.filename.split('.').pop() ?? '').toLowerCase();
+          const kind = ext === 'pdf' ? 'pdf' : ['ppt', 'pptx', 'key'].includes(ext) ? 'ppt' : ['xls', 'xlsx', 'csv'].includes(ext) ? 'xls' : ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext) ? 'img' : ['doc', 'docx'].includes(ext) ? 'doc' : '';
+          return (
+            <a key={`${f.uploadId}:${i}`} className="sc-file" href={`/api/uploads/${f.uploadId}`} target="_blank" rel="noreferrer" title={f.filename}>
+              <span className={`sc-ftype ${kind}`}>{(ext || 'file').slice(0, 4).toUpperCase()}</span>
+              <strong style={{ fontSize: 12.5, overflowWrap: 'anywhere' }}>{f.label}</strong>
+              <span className="faint" style={{ fontSize: 11.5 }}>
+                {[f.origin, kb(f.size), f.at ? formatDate(f.at.slice(0, 10)) : null].filter(Boolean).join(' · ')}
+              </span>
+            </a>
+          );
+        })}
+      </div>
     </section>
   );
 }
@@ -41,7 +44,7 @@ export function Companions({ recordId }: { recordId: string }) {
   if (!list.data?.length) return null;
   return (
     <section className="card card-pad stack" style={{ gap: 8 }}>
-      <div className="eyebrow">Who accompanied it</div>
+      <div className="eyebrow">Mentors</div>
       {list.data.map((c) => (
         <Link key={c.personId} className="rowcard link-row" to={`/directory/${c.personId}`}>
           <Icon name="users" size={14} />

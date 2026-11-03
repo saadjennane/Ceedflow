@@ -980,3 +980,89 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
   background: var(--warn-soft, #fff4d6);
   color: var(--warn, #b7791f);
 }
+
+/* ------------------------------------------------------------------ */
+/* Fiches : l'en-tête, le contenu en blocs, les coordonnées            */
+/* ------------------------------------------------------------------ */
+.sc-hero { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-1); overflow: hidden; }
+.sc-band { height: 84px; position: relative; }
+.sc-band::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.08) 0 2px, transparent 2px 18px); }
+.sc-hero-body { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 16px; padding: 0 20px 18px; align-items: end; }
+.sc-mark { width: 80px; height: 80px; border-radius: 20px; margin-top: -40px; border: 4px solid var(--surface); box-shadow: var(--shadow-2); display: grid; place-items: center; font-family: var(--display); font-weight: 800; font-size: 28px; color: #fff; position: relative; z-index: 1; overflow: hidden; }
+.sc-mark.round { border-radius: 999px; }
+.sc-mark img { width: 100%; height: 100%; object-fit: cover; }
+.sc-hero-text { min-width: 0; padding-top: 10px; }
+.sc-hero-text h2 { font-size: 24px; }
+.sc-sub { margin: 2px 0 0; color: var(--ink-2); font-size: 14px; }
+.sc-pitch { margin: 4px 0 8px; font-size: 15px; font-weight: 600; color: var(--ink-2); max-width: 68ch; }
+.sc-hero-side { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+.sc-ring { width: 72px; height: 72px; border-radius: 999px; display: grid; place-items: center; flex-shrink: 0; }
+.sc-ring > span { width: 56px; height: 56px; border-radius: 999px; background: var(--surface); display: grid; place-items: center; text-align: center; line-height: 1.05; }
+.sc-ring b { font-size: 15px; }
+.sc-ring small { font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+
+.sc-two { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.sc-txt { padding: 12px 14px; border-radius: var(--r); background: var(--wash); display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.sc-txt p { margin: 0; white-space: pre-wrap; max-width: 72ch; }
+.sc-txt.pb { background: var(--stop-wash); }
+.sc-txt.sol { background: var(--ok-wash); }
+.sc-lbl { font-family: var(--display); font-size: 11px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--blue); }
+.sc-txt.pb .sc-lbl { color: var(--stop); }
+.sc-txt.sol .sc-lbl { color: var(--ok); }
+.sc-lbl.plain { display: block; margin-bottom: 6px; color: var(--ink-3); }
+.sc-split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sc-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 7px 14px; margin: 0; font-size: 13px; }
+.sc-facts dt { color: var(--ink-3); font-weight: 600; font-size: 12px; }
+.sc-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.sc-coord { display: flex; align-items: center; gap: 9px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.sc-coord:last-child { border-bottom: 0; }
+.sc-ci { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--wash); color: var(--ink-2); flex-shrink: 0; }
+.sc-v { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.sc-v small { display: block; color: var(--ink-3); font-size: 11.5px; }
+.sc-copy { border: 0; background: var(--blue-soft); color: var(--blue); border-radius: 999px; padding: 3px 10px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+
+/* Une demande, et son statut en liseré. */
+.sc-ask { display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; gap: 0 12px; align-items: center; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--surface); color: inherit; }
+.sc-ask .stripe { align-self: stretch; background: var(--line-strong); }
+.sc-ask.late .stripe { background: var(--stop); }
+.sc-ask.going .stripe { background: var(--warn); }
+.sc-ask .body { padding: 9px 0; min-width: 0; }
+.sc-ask .right { padding-right: 12px; display: flex; gap: 8px; align-items: center; }
+
+/* L'activité groupée par période ; les notes de l'équipe en post-it. */
+.sc-when { font-family: var(--display); font-size: 11px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-3); margin: 8px 0 0; }
+.sc-note { background: var(--warn-wash); border: 1px solid var(--line-strong); border-radius: 4px 12px 12px 12px; padding: 10px 12px; box-shadow: var(--shadow-1); flex: 1; min-width: 0; }
+
+/* Les documents en tuiles, une couleur par format. */
+.sc-files { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+.sc-file { border: 1px solid var(--line); border-radius: var(--r); padding: 10px; background: var(--surface); display: flex; flex-direction: column; gap: 6px; min-width: 0; color: inherit; }
+.sc-file:hover { border-color: var(--line-strong); }
+.sc-ftype { width: 34px; height: 40px; border-radius: 4px 10px 4px 4px; display: grid; place-items: end center; padding-bottom: 5px; font-family: var(--mono); font-size: 9.5px; font-weight: 700; color: #fff; background: var(--ink-3); }
+.sc-ftype.pdf { background: #d8305a; } .sc-ftype.ppt { background: #e0782a; } .sc-ftype.xls { background: #12915d; } .sc-ftype.img { background: #7a5cff; } .sc-ftype.doc { background: #2f5bff; }
+
+/* Les organisations d'un membre, en onglets quand il y en a plusieurs. */
+.sc-orgtabs { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 4px; overflow-x: auto; }
+.sc-orgtabs button { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: var(--r); font-weight: 600; font-size: 13px; color: var(--ink-2); white-space: nowrap; border: 0; background: none; cursor: pointer; }
+.sc-orgtabs button.on { background: var(--blue-soft); color: var(--ink); }
+.sc-mini { width: 18px; height: 18px; border-radius: 5px; display: inline-grid; place-items: center; color: #fff; font-family: var(--display); font-weight: 800; font-size: 10px; flex-shrink: 0; overflow: hidden; }
+.sc-mini img { width: 100%; height: 100%; object-fit: cover; }
+.member-side .nav-item.sub { padding-left: 30px; font-size: 13px; }
+.sc-nudge { display: flex; gap: 10px; align-items: baseline; padding: 8px 12px; border-radius: var(--r); background: var(--warn-wash); color: var(--warn); font-size: 13px; font-weight: 600; }
+.sc-nudge span { color: var(--ink); font-weight: 500; }
+
+@media (max-width: 860px) {
+  .sc-two, .sc-split { grid-template-columns: 1fr; }
+  .sc-hero-body { grid-template-columns: auto minmax(0, 1fr); }
+  .sc-hero-side { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; }
+}
+@media (max-width: 480px) {
+  .sc-hero-body { grid-template-columns: 1fr; }
+}
+.phase-strip { display: flex; gap: 4px; align-items: center; margin-top: 6px; }
+.phase-strip i { width: 24px; height: 6px; border-radius: 99px; background: var(--line); }
+.phase-strip i.done { background: var(--ok); }
+.phase-strip i.current { background: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
+.phase-strip em { font-style: normal; font-size: 12px; color: var(--ink-3); margin-left: 6px; }
+/* Une médaille de programme : participante, alumni, candidate. */
+.medal { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12.5px; font-weight: 600; }
+.medal i { width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; color: #fff; font-style: normal; font-family: var(--display); font-weight: 800; font-size: 11px; }

@@ -2,8 +2,9 @@ import {
   ORG_ROLES,
   canEditOrg,
   canManageTeam,
+  profileDone,
+  profileMissing,
   profileOf,
-  profileStarted,
   meetingState,
   type ProfileSection,
   type OneToOneMeeting,
@@ -39,7 +40,9 @@ import { PhoneLines } from '../../ui/PhoneLines';
 import { PlaceLines } from '../../ui/PlaceLines';
 import { ProfileBar, ProfileFacts } from '../../ui/OrgProfile';
 import { KpiPanel } from '../../ui/KpiPanel';
-import { OrgSheet } from '../../ui/OrgSheet';
+import { OrgSheet, type SheetRoutes } from '../../ui/OrgSheet';
+import { Coordinates, Hero, OrgContent, PersonContent, Ring, colourOf } from '../../ui/Showcase';
+import { ASK_WORD } from '../../ui/OrgProfile';
 import { ProfileBlocks } from '../../ui/ProfileBlocks';
 
 /**
@@ -48,10 +51,11 @@ import { ProfileBlocks } from '../../ui/ProfileBlocks';
  * whole product already points at.
  */
 /** The four places a member has. Jury only exists for somebody on a panel. */
-const MEMBER_TABS = ['Home', 'Profile', 'Programs', 'Jury', 'Mentoring', 'Settings'] as const;
+const MEMBER_TABS = ['Home', 'Profile', 'Organisation', 'Programs', 'Jury', 'Mentoring', 'Settings'] as const;
 /** The word each tab wears, in the language the member reads. */
 const TAB_WORD = {
   Home: 'tab.home', Programs: 'tab.programs', Jury: 'tab.jury', Mentoring: 'tab.mentoring', Profile: 'tab.profile',
+  Organisation: 'tab.organisation',
   Settings: 'tab.settings',
 } as const;
 type MemberTab = (typeof MEMBER_TABS)[number];
@@ -169,7 +173,11 @@ function MemberSpaceReady({
   /* Settings holds a password and a way out of the account — neither means
      anything about somebody else's page. */
   const tabs = MEMBER_TABS.filter(
-    (t) => (t !== 'Jury' || isJuror) && (t !== 'Mentoring' || meets) && (t !== 'Settings' || !preview),
+    (t) =>
+      (t !== 'Jury' || isJuror) &&
+      (t !== 'Mentoring' || meets) &&
+      (t !== 'Settings' || !preview) &&
+      (t !== 'Organisation' || (!preview && (me?.organisations.length ?? 0) > 0)),
   );
   /* « Meetings » est devenu « Mentoring » : un ancien lien y mène encore. */
   const askedRaw = params.get('tab');
@@ -255,10 +263,28 @@ function MemberSpaceReady({
   const email = preview ? (preview.who?.email ?? '') : me!.account.email;
 
   const ICON: Record<MemberTab, string> = {
-    Home: 'home', Profile: 'users', Programs: 'layers', Jury: 'gavel', Mentoring: 'compass', Settings: 'settings',
+    Home: 'home', Profile: 'users', Organisation: 'layers', Programs: 'layers', Jury: 'gavel', Mentoring: 'compass', Settings: 'settings',
   };
   const waitingJury = stillWaiting(panels.data ?? []);
   const main = tabs.filter((t) => t !== 'Settings');
+  /* Ses organisations : une seule a son nom dans le menu ; plusieurs, une entrée et chacune dessous. */
+  const orgs = me?.organisations ?? [];
+  const currentOrg = params.get('org') ?? orgs[0]?.record.id ?? '';
+  const setOrg = (orgId: string) => {
+    setNavOpen(false);
+    setParams((p) => {
+      const q = new URLSearchParams(p);
+      q.set('tab', 'Organisation');
+      q.set('org', orgId);
+      q.delete('prog');
+      return q;
+    });
+  };
+  const orgMark = (r: DirectoryRecord) => (
+    <span className="sc-mini" style={{ background: colourOf(r.name) }}>
+      {r.logoUploadId ? <img src={`/api/uploads/${r.logoUploadId}`} alt="" /> : r.name.slice(0, 1).toUpperCase()}
+    </span>
+  );
 
   return (
     <div className={`shell member-layout${folded ? ' folded' : ''}${navOpen ? ' nav-open' : ''}`}>
@@ -280,7 +306,43 @@ function MemberSpaceReady({
         >
           <Icon name={folded ? 'chevronRight' : 'chevronLeft'} size={13} />
         </button>
-        {main.map((name) => (
+        {main.map((name) =>
+          name === 'Organisation' ? (
+            orgs.length === 1 ? (
+              <button
+                key={name}
+                className={tab === 'Organisation' ? 'nav-item on' : 'nav-item'}
+                title={orgs[0]!.record.name}
+                onClick={() => setOrg(orgs[0]!.record.id)}
+              >
+                {orgMark(orgs[0]!.record)}
+                <span className="nav-label">{orgs[0]!.record.name}</span>
+              </button>
+            ) : (
+              <div key={name} className="stack" style={{ gap: 2 }}>
+                <button
+                  className={tab === 'Organisation' ? 'nav-item on' : 'nav-item'}
+                  title={t(TAB_WORD.Organisation)}
+                  onClick={() => setOrg(currentOrg)}
+                >
+                  <Icon name="layers" />
+                  <span className="nav-label">{t(TAB_WORD.Organisation)}</span>
+                  <span className="nav-count">{orgs.length}</span>
+                </button>
+                {orgs.map((l) => (
+                  <button
+                    key={l.record.id}
+                    className={tab === 'Organisation' && currentOrg === l.record.id ? 'nav-item sub on' : 'nav-item sub'}
+                    title={l.record.name}
+                    onClick={() => setOrg(l.record.id)}
+                  >
+                    {orgMark(l.record)}
+                    <span className="nav-label">{l.record.name}</span>
+                  </button>
+                ))}
+              </div>
+            )
+          ) : (
           <button
             key={name}
             className={name === tab ? 'nav-item on' : 'nav-item'}
@@ -295,7 +357,8 @@ function MemberSpaceReady({
               <span className="nav-count">{home.data!.actions.length}</span>
             )}
           </button>
-        ))}
+          ),
+        )}
 
         <div className="sidebar-foot stack" style={{ gap: 6 }}>
           <div className="who row" style={{ gap: 8 }}>
@@ -393,7 +456,7 @@ function MemberSpaceReady({
         {tab === 'Profile' && !preview && (
           <>
             <Profile me={me!} onSaved={reload} />
-            <Organisations me={me!} onChanged={reload} />
+            <Organisations me={me!} onChanged={reload} onOpen={setOrg} />
             <Involvement panels={panels.data ?? []} programs={programs.data ?? []} onGo={setTab} />
           </>
         )}
@@ -455,6 +518,9 @@ function MemberSpaceReady({
         {tab === 'Jury' && <Jury panels={panels.data ?? []} />}
         {tab === 'Mentoring' && (
           <Meetings meetings={meetings.data ?? []} />
+        )}
+        {tab === 'Organisation' && me && (
+          <OrgShowcase me={me} orgId={currentOrg} programs={programs.data ?? []} onPick={setOrg} onChanged={reload} />
         )}
         {tab === 'Settings' && !preview && <Settings me={me!} />}
       </div>
@@ -698,7 +764,7 @@ export interface MyProgram {
   applications: 'not_configured' | 'scheduled' | 'live' | 'closed' | null;
   opensAt: string | null;
   applyUrl: string | null;
-  mine: { id: string; orgName: string; status?: string; phase?: string | null }[];
+  mine: { id: string; orgId?: string; orgName: string; status?: string; phase?: string | null }[];
   eligibility?: string[];
   closesAt?: string | null;
   colour?: string;
@@ -984,43 +1050,54 @@ function splitName(record: { firstName: string; lastName: string; name: string }
  */
 function Profile({ me, onSaved }: { me: Me; onSaved: () => void }) {
   const [editing, setEditing] = useState(false);
-  const { t } = useLang();
-  const place = [me.record.city, me.record.country].filter(Boolean).join(', ');
+  const { t, lang } = useLang();
 
   return (
     <>
-      <section className="card card-pad profile-head">
-        {/* The mark stands where a photograph will, at the same size, so
-            adding one later moves nothing else on the page. */}
-        <span className="profile-mark">{initials(me.record.name)}</span>
-
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="row" style={{ alignItems: 'flex-start' }}>
-            <h1 className="profile-name">{me.record.name || t('my.noName')}</h1>
-            <div className="spacer" />
-            <button className="btn sm" onClick={() => setEditing(true)}>
-              <Icon name="edit" size={13} /> {t('my.edit')}
-            </button>
-          </div>
-
-          <p className="profile-line">
-            {me.record.roles.length > 0 && <strong>{me.record.roles.join(' · ')}</strong>}
-            {me.record.roles.length > 0 && place && ' — '}
-            {place}
-          </p>
-          <p className="profile-line faint">{me.account.email}</p>
-
-          {/* Highest thing on the page after the name, because it is the one
-              a jury actually reads. */}
-          {me.record.bio ? (
-            <p className="profile-bio">{me.record.bio}</p>
-          ) : (
+      <Hero
+        name={me.record.name || t('my.noName')}
+        imageId={me.record.logoUploadId}
+        round
+        subtitle={
+          me.record.jobTitle || me.organisations[0]
+            ? `${me.record.jobTitle || me.organisations[0]?.affiliation.role || ''}${me.organisations[0] ? ` @ ${me.organisations[0].record.name}` : ''}`
+            : undefined
+        }
+        chips={me.record.roles.map((r) => (
+          <span key={r} className="badge info">{r}</span>
+        ))}
+        side={
+          <button className="btn primary sm" onClick={() => setEditing(true)}>
+            <Icon name="edit" size={13} /> {t('my.edit')}
+          </button>
+        }
+      />
+      <div className="sc-two">
+        {me.record.bio ? (
+          <PersonContent
+            bio={me.record.bio}
+            lang={lang}
+            facts={[
+              [lang === 'fr' ? 'Fonction' : 'Job title', me.record.jobTitle],
+              [lang === 'fr' ? 'Organisations' : 'Organisations', me.organisations.map((o) => o.record.name).join(', ')],
+            ]}
+          />
+        ) : (
+          <section className="card card-pad">
             <button className="profile-bio-empty" onClick={() => setEditing(true)}>
               {t('my.aboutEmpty')}
             </button>
-          )}
-        </div>
-      </section>
+          </section>
+        )}
+        <Coordinates
+          emails={[me.account.email, ...me.record.emails.filter((e) => e !== me.account.email)]}
+          phones={me.record.phones}
+          places={me.record.places}
+          linkedin={me.record.linkedin}
+          website={me.record.website}
+          lang={lang}
+        />
+      </div>
 
       {editing && (
         <ProfileModal me={me} onClose={() => setEditing(false)} onSaved={onSaved} />
@@ -1166,7 +1243,7 @@ function Involvement({
 
 /* ------------------------------------------------------------------ */
 
-function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
+function Organisations({ me, onChanged, onOpen }: { me: Me; onChanged: () => void; onOpen?: (orgId: string) => void }) {
   const { t, lang } = useLang();
   const [creating, setCreating] = useState(false);
   /* La fiche ouverte : celle d'une page qu'on tient, ou celle qu'on vient de créer. */
@@ -1221,54 +1298,22 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
                     .join(' · ')}
                 </span>
               </span>
-              <button className="btn sm" onClick={() => setTeam(link)}>
-                <Icon name="users" size={13} /> {t('org.team')}
-              </button>
-              {canEditOrg(link.affiliation.access) && (
-                <button
-                  className="btn sm"
-                  onClick={() => setEditing({ record: link.record, manage: canManageTeam(link.affiliation.access) })}
-                >
-                  <Icon name="edit" size={13} /> {t('my.edit')}
+              <span className="badge num">{profileDone(profileOf(link.record))} %</span>
+              {onOpen ? (
+                <button className="btn sm" onClick={() => onOpen(link.record.id)}>
+                  {lang === 'fr' ? 'Ouvrir' : 'Open'} <Icon name="chevronRight" size={13} />
                 </button>
+              ) : (
+                canEditOrg(link.affiliation.access) && (
+                  <button
+                    className="btn sm"
+                    onClick={() => setEditing({ record: link.record, manage: canManageTeam(link.affiliation.access) })}
+                  >
+                    <Icon name="edit" size={13} /> {t('my.edit')}
+                  </button>
+                )
               )}
               </div>
-              {/* Sous chaque page, où en est sa fiche — et la barre elle-même
-                  ouvre le formulaire, pour qu'il n'y ait pas à chercher où. */}
-              {canEditOrg(link.affiliation.access) && (
-                <ProfileBar
-                  profile={profileOf(link.record)}
-                  onFill={() => setEditing({ record: link.record, manage: canManageTeam(link.affiliation.access) })}
-                />
-              )}
-              {/* La fiche en blocs : chacun dit où il en est, ce qui lui manque, et s'ouvre seul. */}
-              <ProfileBlocks
-                record={link.record}
-                lang={lang}
-                onEdit={
-                  canEditOrg(link.affiliation.access)
-                    ? (sec) => setEditing({ record: link.record, manage: canManageTeam(link.affiliation.access), section: sec })
-                    : undefined
-                }
-              />
-              {/* Sa fiche telle qu'un jury la lit : seulement ce qui est rempli. */}
-              {profileStarted(profileOf(link.record)) && (
-                <details>
-                  <summary className="eyebrow" style={{ cursor: 'pointer' }}>
-                    {lang === 'fr' ? 'Voir la fiche telle que les autres la lisent' : 'See the sheet as others read it'}
-                  </summary>
-                  <div style={{ marginTop: 10 }}>
-                    <ProfileFacts profile={profileOf(link.record)} name={link.record.name} />
-                  </div>
-                </details>
-              )}
-              {/* Ses indicateurs, période par période — remplis par qui peut modifier la page. */}
-              <KpiPanel
-                key={`${link.record.id}:${editing ? 'editing' : 'shown'}`}
-                url={`/api/me/organisations/${link.record.id}/kpis`}
-                lang={lang}
-                editable={canEditOrg(link.affiliation.access)}
-              />
             </div>
           ))}
         </div>
@@ -1295,18 +1340,7 @@ function Organisations({ me, onChanged }: { me: Me; onChanged: () => void }) {
         <OrgSheet
           record={editing.record}
           startAt={editing.section}
-          routes={{
-            record: `/api/me/organisations/${editing.record.id}`,
-            revenue: (year) => `/api/me/organisations/${editing.record.id}/revenues/${year}`,
-            list: (list, itemId) => `/api/me/organisations/${editing.record.id}/${list}${itemId ? `/${itemId}` : ''}`,
-            team: `/api/me/organisations/${editing.record.id}/team`,
-            affiliation: (aid) => `/api/me/organisations/${editing.record.id}/team/${aid}`,
-            join: { kind: 'member', url: `/api/me/organisations/${editing.record.id}/team` },
-            manageTeam: editing.manage,
-            need: (need) => `/api/me/organisations/${editing.record.id}/needs/${need}`,
-            documents: (docId) => `/api/me/organisations/${editing.record.id}/documents${docId ? `/${docId}` : ''}`,
-            attributes: `/api/me/organisations/${editing.record.id}/attributes`,
-          }}
+          routes={memberSheetRoutes(editing.record.id, editing.manage)}
           onChanged={() => {}}
           onClose={() => {
             setEditing(null);
@@ -1460,6 +1494,189 @@ function PendingRequests() {
           </button>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Où écrit la fiche d'une organisation, depuis l'espace d'un de ses membres. */
+function memberSheetRoutes(id: string, manage: boolean): SheetRoutes {
+  return {
+    record: `/api/me/organisations/${id}`,
+    revenue: (year) => `/api/me/organisations/${id}/revenues/${year}`,
+    list: (list, itemId) => `/api/me/organisations/${id}/${list}${itemId ? `/${itemId}` : ''}`,
+    team: `/api/me/organisations/${id}/team`,
+    affiliation: (aid) => `/api/me/organisations/${id}/team/${aid}`,
+    join: { kind: 'member', url: `/api/me/organisations/${id}/team` },
+    manageTeam: manage,
+    need: (need) => `/api/me/organisations/${id}/needs/${need}`,
+    documents: (docId) => `/api/me/organisations/${id}/documents${docId ? `/${docId}` : ''}`,
+    attributes: `/api/me/organisations/${id}/attributes`,
+  };
+}
+
+/**
+ * Une organisation, telle que son membre la voit : sa vitrine.
+ *
+ * Its hero with the programmes it took part in, how complete it is and what
+ * is left, what it does in words and how to reach it, its blocks — each
+ * opening on its own — and its indicators. Several organisations: tabs above
+ * to go from one to the other.
+ */
+function OrgShowcase({
+  me,
+  orgId,
+  programs,
+  onPick,
+  onChanged,
+}: {
+  me: Me;
+  orgId: string;
+  programs: MyProgram[];
+  onPick: (orgId: string) => void;
+  onChanged: () => void;
+}) {
+  const { t, lang } = useLang();
+  const fr = lang === 'fr';
+  const [editing, setEditing] = useState<{ section?: ProfileSection } | null>(null);
+  const [team, setTeam] = useState<AffiliationView | null>(null);
+  const [asJury, setAsJury] = useState(false);
+  const link = me.organisations.find((l) => l.record.id === orgId) ?? me.organisations[0];
+  if (!link) return <div className="empty">{t('org.noneTitle')}</div>;
+  const record = link.record;
+  const profile = profileOf(record);
+  const done = profileDone(profile);
+  const missing = profileMissing(profile);
+  const canEdit = canEditOrg(link.affiliation.access);
+  const manage = canManageTeam(link.affiliation.access);
+
+  /* Ses programmes, en médailles : participante, alumni, candidate. */
+  const medals = programs.flatMap((p) =>
+    p.mine
+      .filter((c) => c.orgId === record.id || (!c.orgId && c.orgName === record.name))
+      .map((c) => ({
+        key: c.id,
+        colour: p.colour ?? 'var(--blue)',
+        initial: p.programName.slice(0, 1).toUpperCase(),
+        label:
+          c.status === 'Selected'
+            ? `${p.editionStatus === 'Completed' ? 'Alumni' : fr ? 'Participante' : 'Taking part'} · ${p.programName} ${p.editionName}`
+            : `${fr ? 'Candidate' : 'Applied'} · ${p.programName} ${p.editionName}`,
+      })),
+  );
+
+  return (
+    <div className="stack" style={{ gap: 14 }}>
+      {me.organisations.length > 1 && (
+        <div className="sc-orgtabs" role="tablist" aria-label={fr ? 'Mes organisations' : 'My organisations'}>
+          {me.organisations.map((l) => (
+            <button key={l.record.id} role="tab" aria-selected={l.record.id === record.id} className={l.record.id === record.id ? 'on' : ''} onClick={() => onPick(l.record.id)}>
+              <span className="sc-mini" style={{ background: colourOf(l.record.name) }}>
+                {l.record.logoUploadId ? <img src={`/api/uploads/${l.record.logoUploadId}`} alt="" /> : l.record.name.slice(0, 1).toUpperCase()}
+              </span>
+              {l.record.name}
+              <span className="badge num">{profileDone(profileOf(l.record))} %</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <Hero
+        name={record.name}
+        imageId={record.logoUploadId}
+        pitch={record.pitch || undefined}
+        chips={medals.map((m) => (
+          <span key={m.key} className="medal">
+            <i style={{ background: m.colour }}>{m.initial}</i>
+            {m.label}
+          </span>
+        ))}
+        side={
+          <>
+            <div className="seg" role="group">
+              <button className={!asJury ? 'on' : ''} onClick={() => setAsJury(false)}>{fr ? 'Ma fiche' : 'My sheet'}</button>
+              <button className={asJury ? 'on' : ''} onClick={() => setAsJury(true)}>{fr ? 'Vue jury' : 'As a jury reads it'}</button>
+            </div>
+            <div className="row" style={{ gap: 6 }}>
+              <button className="btn sm" onClick={() => setTeam(link)}>
+                <Icon name="users" size={13} /> {t('org.team')}
+              </button>
+              {canEdit && (
+                <button className="btn primary sm" onClick={() => setEditing({})}>
+                  <Icon name="edit" size={13} /> {t('my.edit')}
+                </button>
+              )}
+            </div>
+          </>
+        }
+      />
+
+      {asJury ? (
+        <section className="card card-pad">
+          <ProfileFacts profile={profile} name={record.name} />
+        </section>
+      ) : (
+        <>
+          {/* Où en est la fiche, et ce qui la complèterait. */}
+          {canEdit && done < 100 && (
+            <section className="card card-pad row" style={{ gap: 16, alignItems: 'center' }}>
+              <Ring value={done} label={fr ? 'complète' : 'complete'} tone="blue" />
+              <div className="stack" style={{ gap: 6, flex: 1, minWidth: 0 }}>
+                <strong style={{ fontFamily: 'var(--display)', fontSize: 15 }}>
+                  {fr ? `Encore ${missing.length} information${missing.length > 1 ? 's' : ''} pour une fiche complète` : `${missing.length} thing${missing.length > 1 ? 's' : ''} left for a complete sheet`}
+                </strong>
+                {missing.slice(0, 2).map((k) => (
+                  <div key={k} className="sc-nudge">
+                    {fr ? 'Ajoutez' : 'Add'} <span>{t(ASK_WORD[k])}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <div className="sc-two">
+            <OrgContent
+              profile={profile}
+              lang={lang}
+              empty={
+                canEdit ? (
+                  <button className="linkish" style={{ alignSelf: 'flex-start' }} onClick={() => setEditing({ section: 'activity' })}>
+                    {fr ? 'Décrivez votre activité, le problème que vous résolvez et votre solution' : 'Describe your activity, the problem you solve and your solution'}
+                  </button>
+                ) : undefined
+              }
+            />
+            <Coordinates
+              emails={record.emails}
+              phones={record.phones}
+              places={record.places}
+              website={record.website}
+              linkedin={record.linkedin}
+              socials={profile.socials}
+              lang={lang}
+            />
+          </div>
+
+          <ProfileBlocks record={record} lang={lang} onEdit={canEdit ? (sec) => setEditing({ section: sec }) : undefined} />
+
+          <section className="card card-pad">
+            <KpiPanel key={`${record.id}:${editing ? 'e' : 's'}`} url={`/api/me/organisations/${record.id}/kpis`} lang={lang} editable={canEdit} />
+          </section>
+        </>
+      )}
+
+      {editing && (
+        <OrgSheet
+          record={record}
+          startAt={editing.section}
+          routes={memberSheetRoutes(record.id, manage)}
+          onChanged={() => {}}
+          onClose={() => {
+            setEditing(null);
+            onChanged();
+          }}
+        />
+      )}
+      {team && <TeamModal link={team} onClose={() => setTeam(null)} />}
     </div>
   );
 }
