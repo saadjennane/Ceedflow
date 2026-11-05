@@ -35,7 +35,7 @@ import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { changeItem, changeTask, getTask, listTasks } from '../services/tasks.js';
 import { addOrgDocument, changeOrgDocument, saveNeed } from '../services/orgSheet.js';
-import { getMeeting, meetingFor, meetingsFor, prepFor, savePrep, saveReport } from '../services/oneToOne.js';
+import { getMeeting, invitationFor, meetingFor, meetingsFor, prepFor, savePrep, saveReport } from '../services/oneToOne.js';
 import { agendaFor } from '../services/agenda.js';
 import { memberActions } from '../services/memberActions.js';
 import { deliverablesFor } from '../services/deliverables.js';
@@ -597,6 +597,13 @@ export async function authRoutes(app: FastifyInstance) {
        navigateur est resté connecté sous un autre compte. Le dire. */
     const meeting = await getMeeting(id);
     if (!meeting) return notFound(reply, 'Meeting not found.');
+    /* CEED voit la page telle que la startup la verra — pour vérifier le lien
+       avant de l'envoyer —, en lecture seule : rien ne s'écrit à sa place. */
+    if (account.staffRole) {
+      const seen = (await invitationFor(meeting.token))?.page;
+      if (!seen) return notFound(reply, 'The startup would read “not found” here: the edition is not live, or the meeting is gone.');
+      return { ...seen, asStaff: true };
+    }
     throw new HttpError(
       403,
       `You are signed in as ${account.email}, who is not part of ${meeting.orgName}. Sign in with ${meeting.orgName}’s account to prepare this session.`,
@@ -922,7 +929,8 @@ export async function authRoutes(app: FastifyInstance) {
       if (!candidate) return notFound(reply, 'Candidacy not found.');
       orgId = candidate.orgId;
     }
-    if (!orgId || !(await dir.orgIdsOf(account.recordId)).has(orgId)) return {};
+    /* CEED, qui regarde une page comme la startup la verra, lit aussi ce que la fiche y met. */
+    if (!orgId || (!account.staffRole && !(await dir.orgIdsOf(account.recordId)).has(orgId))) return {};
     return prefillFromSheet(orgId, input.fields, input.lang);
   });
 

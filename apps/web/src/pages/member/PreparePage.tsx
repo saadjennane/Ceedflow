@@ -30,6 +30,8 @@ interface Prepare {
   meetingLink: string;
   token?: string;
   status: 'planned' | 'held' | 'cancelled' | 'no_show';
+  /** Ouverte par CEED : la page telle que la startup la verra, sans rien écrire. */
+  asStaff?: boolean;
   prep: {
     pages: { page: FormPage; fields: FormField[] }[];
     answers: Record<string, unknown>;
@@ -111,6 +113,15 @@ export function PreparePage() {
       </div>
 
       <div className="member-body stack" style={{ gap: 16 }}>
+        {data.asStaff && (
+          <div className="callout">
+            <Icon name="eye" size={15} />
+            <div>
+              You are seeing what <strong>{data.orgName}</strong> will see on this link. Read-only — nothing you do here
+              is saved or sent.
+            </div>
+          </div>
+        )}
         {!prep ? (
           <div className="empty">
             {data.status === 'cancelled' ? 'This meeting was cancelled.' : 'Nothing to prepare for this meeting.'}
@@ -137,7 +148,7 @@ export function PreparePage() {
               key={`${prep.submittedAt}-${prep.locked}-${Object.keys(sheet.data ?? {}).length}`}
               pages={prep.pages}
               answers={{ ...(sheet.data ?? {}), ...prep.answers }}
-              readOnly={prep.locked}
+              readOnly={prep.locked || !!data.asStaff}
               saveLabel="Save draft"
               sendLabel={prep.submittedAt ? 'Update' : 'Send to my interlocutor'}
               savedSay="Saved."

@@ -16,6 +16,7 @@ import {
   createDay,
   deleteDay,
   informAll,
+  meetingLetterPreview,
   updateDay,
   historyOf,
   invitationFor,
@@ -76,6 +77,20 @@ export async function oneToOneRoutes(app: FastifyInstance) {
     if (!(await getMeeting(id))) return notFound(reply, 'Meeting not found.');
     const who = parse(z.object({ startup: z.boolean().default(false), person: z.boolean().default(false) }), req.body);
     return tellMeeting(id, who);
+  });
+
+  /** La lettre à la startup telle qu'elle partirait, ses liens vérifiés — et en test, à soi. */
+  app.get('/api/meetings/:id/letter-preview', async (req) => {
+    const { id } = req.params as { id: string };
+    return meetingLetterPreview(id);
+  });
+  app.post('/api/meetings/:id/letter-test', async (req) => {
+    const { id } = req.params as { id: string };
+    const letter = await meetingLetterPreview(id);
+    const to = req.staff?.email ?? '';
+    if (!to) throw new HttpError(422, 'No address to send the test to.');
+    await post({ kind: 'one_to_one_test', to, toName: '', subject: `[Test] ${letter.subject}`, body: letter.body });
+    return { to };
   });
 
   /* Les journées de la brique : comme les séances d'un comité. */

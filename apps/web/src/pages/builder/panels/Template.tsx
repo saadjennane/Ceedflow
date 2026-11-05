@@ -48,6 +48,7 @@ export function Template({
      corps, deux cents mots plus bas. */
   const [where, setWhere] = useState<'body' | 'subject'>('body');
   const [show, setShow] = useState(false);
+  const caret = useRef<Partial<Record<'body' | 'subject', { from: number; to: number }>>>({});
 
   /* Dropped at the cursor, because the alternative — appended at the end, or
      typed from memory — is how {{startup}} ends up spelled {{Startup}} and
@@ -59,13 +60,26 @@ export function Template({
     const text = onSubjectLine ? (subject ?? '') : value;
     const write = onSubjectLine ? onSubject! : onChange;
     if (!el) return write(text + token);
-    const from = el.selectionStart ?? text.length;
-    const to = el.selectionEnd ?? from;
+    /* Le curseur gardé à la sortie du champ, et la position de défilement :
+       réécrire le texte remet sinon la boîte sur sa dernière ligne, et le
+       message « sautait » jusqu'à la fin. */
+    const kept = caret.current[onSubjectLine ? 'subject' : 'body'];
+    const from = Math.min(kept?.from ?? el.selectionStart ?? text.length, text.length);
+    const to = Math.min(kept?.to ?? el.selectionEnd ?? from, text.length);
+    const scroll = el.scrollTop;
+    const pageY = window.scrollY;
     write(text.slice(0, from) + token + text.slice(to));
+    caret.current[onSubjectLine ? 'subject' : 'body'] = { from: from + token.length, to: from + token.length };
     requestAnimationFrame(() => {
-      el.focus();
+      el.focus({ preventScroll: true });
       el.setSelectionRange(from + token.length, from + token.length);
+      el.scrollTop = scroll;
+      window.scrollTo({ top: pageY });
     });
+  };
+  const keep = (field: 'body' | 'subject') => (e: { currentTarget: HTMLTextAreaElement | HTMLInputElement }) => {
+    const el = e.currentTarget;
+    caret.current[field] = { from: el.selectionStart ?? el.value.length, to: el.selectionEnd ?? el.value.length };
   };
 
   const known = new Set(variables.map((v) => v.name));
@@ -105,6 +119,7 @@ export function Template({
           aria-label={`${label} — subject`}
           style={{ marginTop: 3 }}
           onFocus={() => setWhere('subject')}
+          onSelect={keep('subject')}
           onChange={(e) => onSubject(e.target.value)}
         />
       )}
@@ -115,6 +130,7 @@ export function Template({
         value={value}
         style={{ marginTop: 6 }}
         onFocus={() => setWhere('body')}
+        onSelect={keep('body')}
         onChange={(e) => onChange(e.target.value)}
       />
       {/* Le nom sur le bouton, parce que c'est le nom qu'on lit dans le texte.

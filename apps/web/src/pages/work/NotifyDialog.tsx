@@ -195,10 +195,12 @@ export function NotifyDialog({
     if (!el) return setBody(body + token);
     const from = el.selectionStart ?? body.length;
     const to = el.selectionEnd ?? from;
+    const scroll = el.scrollTop;
     setBody(body.slice(0, from) + token + body.slice(to));
     requestAnimationFrame(() => {
-      el.focus();
+      el.focus({ preventScroll: true });
       el.setSelectionRange(from + token.length, from + token.length);
+      el.scrollTop = scroll;
     });
   };
 

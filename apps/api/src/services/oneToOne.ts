@@ -49,6 +49,7 @@ import { accessFor } from './invitations.js';
 import { isTestRecord } from './testIdentity.js';
 import { post } from './mail.js';
 import { publicOrigin } from './platform.js';
+import { findAccount } from './auth.js';
 import { all, one } from '../db/client.js';
 import * as dir from '../db/directory.js';
 import { peopleByIds } from '../db/directory.js';
@@ -886,6 +887,111 @@ function startupLetter(
   };
 }
 
+/** Un lien d'une lettre, vérifié : où il mène, et s'il y mène vraiment pour elle. */
+export interface LinkCheck {
+  url: string;
+  what: string;
+  ok: boolean;
+  note: string;
+}
+
+const PLACEHOLDER = '(son lien personnel)';
+
+/**
+ * Chaque lien d'une lettre, suivi comme la startup le suivra : la page de
+ * réservation répond-elle pour elle, la préparation s'ouvre-t-elle dans son
+ * espace — et peut-elle seulement s'y connecter ? Dit avant l'envoi plutôt
+ * que découvert par un « Meeting not found » dans sa boîte.
+ */
+export async function checkLinks(body: string, candidate: Candidate, origin: string): Promise<LinkCheck[]> {
+  const out: LinkCheck[] = [];
+  if (!origin) {
+    out.push({ url: '', what: 'App address', ok: false, note: 'The app’s public address is not set — the letter goes out without its links.' });
+  }
+  if (body.includes(PLACEHOLDER)) {
+    out.push({ url: '', what: 'Booking page', ok: true, note: 'Their own link — created when you invite, then shown here.' });
+  }
+  const urls = [...new Set([...body.matchAll(/https?:\/\/[^\s<>"')\]]+/g)].map((m) => m[0].replace(/[.,;:!?]+$/, '')))];
+  for (const url of urls) {
+    const path = origin && url.startsWith(origin) ? url.slice(origin.length) : null;
+    const meet = path?.match(/^\/meet\/([^/?#]+)/);
+    const prep = path?.match(/^\/prepare\/([^/?#]+)/);
+    if (meet) {
+      const found = await invitationFor(meet[1]!);
+      const ok = !!found && found.meeting.candidateId === candidate.id && found.meeting.status !== 'cancelled';
+      out.push({
+        url, what: 'Booking page', ok,
+        note: ok
+          ? 'Opens without signing in — their own page to book or answer.'
+          : !found
+            ? 'Leads nowhere: no such meeting, or the edition is not live yet.'
+            : found.meeting.candidateId !== candidate.id
+              ? 'This is another startup’s page.'
+              : 'This meeting is cancelled.',
+      });
+    } else if (prep) {
+      const meeting = await getMeeting(prep[1]!);
+      let ok = !!meeting && meeting.candidateId === candidate.id && meeting.status !== 'cancelled';
+      let note = !meeting ? 'Leads nowhere: no such meeting.' : meeting.candidateId !== candidate.id ? 'This is another startup’s meeting.' : meeting.status === 'cancelled' ? 'This meeting is cancelled.' : '';
+      if (ok) {
+        /* Elle se prépare connectée : sans compte, le lien s'arrête à la page de connexion. */
+        const email = candidate.email?.trim() ?? '';
+        const account = email ? await findAccount(email) : null;
+        const theirs = account && (account.recordId === candidate.personId || (await dir.orgIdsOf(account.recordId)).has(candidate.orgId));
+        if (!account) {
+          ok = false;
+          note = `${email || 'Their contact'} has no account yet — they cannot sign in to prepare. Give them access first.`;
+        } else if (account.disabledAt) {
+          ok = false;
+          note = `${email}’s account is disabled — they cannot sign in to prepare.`;
+        } else if (!theirs) {
+          ok = false;
+          note = `${email}’s account is not part of ${candidate.orgName} — they would read “not part of this startup”.`;
+        } else note = `Opens in their member space, signed in as ${email}.`;
+      }
+      out.push({ url, what: 'Preparation', ok, note });
+    } else if (path !== null) {
+      out.push({ url, what: 'Page of the app', ok: true, note: 'A page of CeedFlow.' });
+    } else {
+      let fine = true;
+      try {
+        new URL(url);
+      } catch {
+        fine = false;
+      }
+      out.push({ url, what: 'Outside link', ok: fine, note: fine ? 'Goes out as typed — open it to be sure it is the right one.' : 'Not a valid address.' });
+    }
+  }
+  return out;
+}
+
+/** La phrase du quand et celle du lieu, comme les lettres les écrivent. */
+function sentencesOf(m: OneToOneMeeting, extra = ''): { quand: string; lieu: string } {
+  const quand = [
+    m.heldOn ? `Le ${longDate(m.heldOn)}${m.startTime ? ` à ${m.startTime}` : ''}, pour ${m.durationMinutes} minutes.` : '',
+    extra,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return { quand, lieu: m.location ? `Lieu : ${m.location}.` : '' };
+}
+
+/** La lettre d'un rendez-vous à la startup, telle qu'elle partirait maintenant, et ses liens vérifiés. */
+export async function meetingLetterPreview(id: string): Promise<{ to: string; subject: string; body: string; checks: LinkCheck[] }> {
+  const m = await getMeeting(id);
+  if (!m) throw new HttpError(404, 'Meeting not found.');
+  const ctx = await repo.blockContext(m.blockId);
+  const detail = ctx ? await repo.getEditionDetail(ctx.editionId) : null;
+  const config = ctx?.block.config as OneToOneConfig | undefined;
+  const candidate = await repo.getCandidate(m.candidateId);
+  if (!ctx || !detail || !config || !candidate) throw new HttpError(404, 'Meeting not found.');
+  const origin = await publicOrigin();
+  const { quand, lieu } = sentencesOf(m);
+  const written = startupLetter(m, candidate, config, `${detail.program.name} — ${detail.name}`, origin, quand, lieu, 'announce');
+  if (!written) throw new HttpError(422, `${candidate.orgName} has no address to write to.`);
+  return { ...written, checks: await checkLinks(written.body, candidate, origin) };
+}
+
 /** Le rendez-vous « à réserver » d'une startup, s'il existe déjà : on le réinvite plutôt que d'en créer un second. */
 async function waitingToBook(blockId: string, candidateId: string): Promise<OneToOneMeeting | null> {
   return (await listMeetings(blockId)).find(
@@ -898,7 +1004,7 @@ async function waitingToBook(blockId: string, candidateId: string): Promise<OneT
  * l'aperçu, ou pour l'envoyer en test à soi-même. Son lien personnel n'existe
  * qu'une fois invitée : avant, il est dit, pas inventé.
  */
-export async function invitationPreview(blockId: string, candidateId: string): Promise<{ to: string; subject: string; body: string }> {
+export async function invitationPreview(blockId: string, candidateId: string): Promise<{ to: string; subject: string; body: string; checks: LinkCheck[] }> {
   const ctx = await repo.blockContext(blockId);
   const detail = ctx ? await repo.getEditionDetail(ctx.editionId) : null;
   const config = ctx?.block.config as OneToOneConfig | undefined;
@@ -912,7 +1018,7 @@ export async function invitationPreview(blockId: string, candidateId: string): P
   };
   const written = startupLetter(shape, candidate, config, `${detail.program.name} — ${detail.name}`, origin, '', '', 'announce');
   if (!written) throw new HttpError(422, `${candidate.orgName} has no address to write to.`);
-  return written;
+  return { ...written, checks: await checkLinks(written.body, candidate, origin) };
 }
 
 /**
@@ -953,13 +1059,7 @@ export async function tellMeeting(
   if (!ctx || !detail || !config) throw new HttpError(404, 'Meeting not found.');
   const origin = await publicOrigin();
   const programme = `${detail.program.name} — ${detail.name}`;
-  const quand = [
-    m.heldOn ? `Le ${longDate(m.heldOn)}${m.startTime ? ` à ${m.startTime}` : ''}, pour ${m.durationMinutes} minutes.` : '',
-    extra,
-  ]
-    .filter(Boolean)
-    .join(' ');
-  const lieu = m.location ? `Lieu : ${m.location}.` : '';
+  const { quand, lieu } = sentencesOf(m, extra);
   const out = { startup: false, person: false };
 
   if (who.startup) {

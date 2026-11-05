@@ -739,6 +739,55 @@ function DayLink({ day, onSaved }: { day: OneToOneDay; onSaved: () => Promise<vo
 }
 
 
+/** Une lettre telle qu'elle partira, et ses liens vérifiés un par un. */
+interface Letter {
+  to: string;
+  subject: string;
+  body: string;
+  checks: { url: string; what: string; ok: boolean; note: string }[];
+}
+
+/**
+ * La lettre, puis ses liens : chacun suivi comme la startup le suivra, dit bon
+ * ou non avec la raison, et ouvrable d'un clic — la préparation s'ouvre pour
+ * CEED telle que la startup la verra, en lecture seule.
+ */
+function LetterPreview({ letter }: { letter: Letter }) {
+  const bad = letter.checks.filter((c) => !c.ok).length;
+  return (
+    <div className="stack" style={{ gap: 10 }}>
+      <div className="card card-pad stack" style={{ gap: 6 }}>
+        <span className="faint" style={{ fontSize: 12 }}>To {letter.to}</span>
+        <strong>{letter.subject}</strong>
+        <div style={{ whiteSpace: 'pre-wrap', fontSize: 13.5 }}>{letter.body}</div>
+      </div>
+      <div className="stack" style={{ gap: 6 }}>
+        <div className="row" style={{ gap: 6 }}>
+          <span className="eyebrow" style={{ flex: 1 }}>Links</span>
+          {letter.checks.length > 0 && (
+            <span className={bad ? 'badge warn' : 'badge ok'}>{bad ? `${bad} to fix` : 'All good'}</span>
+          )}
+        </div>
+        {!letter.checks.length && <span className="faint" style={{ fontSize: 12.5 }}>No link in this letter.</span>}
+        {letter.checks.map((c, i) => (
+          <div key={i} className="row" style={{ gap: 8, alignItems: 'flex-start', fontSize: 12.5 }}>
+            <Icon name={c.ok ? 'check' : 'alert'} size={14} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <strong>{c.what}</strong> <span className={c.ok ? 'faint' : 'warnline'}>— {c.note}</span>
+              {c.url && <div className="faint" style={{ fontFamily: 'var(--mono)', fontSize: 11, overflowWrap: 'anywhere' }}>{c.url}</div>}
+            </div>
+            {c.url && (
+              <a className="btn ghost sm" href={c.url} target="_blank" rel="noreferrer">
+                Open <Icon name="arrowRight" size={11} />
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Inviter des startups à réserver — ou réinviter celles qui l'ont déjà été.
  *
@@ -768,7 +817,7 @@ function InviteModal({ data, onClose, onDone }: { data: View; onClose: () => voi
   const preview = useAsync(
     () =>
       step === 'preview' && shownId
-        ? api.post<{ to: string; subject: string; body: string }>(`/api/blocks/${data.block.id}/one-to-one/invite-preview`, { candidateId: shownId })
+        ? api.post<Letter>(`/api/blocks/${data.block.id}/one-to-one/invite-preview`, { candidateId: shownId })
         : Promise.resolve(null),
     `invite-preview:${step}:${shownId}`,
   );
@@ -922,13 +971,7 @@ function InviteModal({ data, onClose, onDone }: { data: View; onClose: () => voi
             </select>
           </div>
           {preview.error && <div className="callout warn"><Icon name="alert" size={15} /> {preview.error}</div>}
-          {preview.data && (
-            <div className="card card-pad stack" style={{ gap: 6 }}>
-              <span className="faint" style={{ fontSize: 12 }}>To {preview.data.to}</span>
-              <strong>{preview.data.subject}</strong>
-              <div style={{ whiteSpace: 'pre-wrap', fontSize: 13.5 }}>{preview.data.body}</div>
-            </div>
-          )}
+          {preview.data && <LetterPreview letter={preview.data} />}
           {!tell && (
             <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
               “Write to them now” is off: they are invited without a letter — send their link yourself.
@@ -1193,6 +1236,7 @@ function MeetingDrawer({
   const moved =
     heldOn !== (meeting.heldOn ?? '') || startTime !== (meeting.startTime ?? '') || personId !== (meeting.personId ?? '');
 
+  const [writing, setWriting] = useState(false);
   const tell = async (who: { startup?: boolean; person?: boolean }) => {
     setBusy(true);
     try {
@@ -1409,6 +1453,17 @@ function MeetingDrawer({
           )}
         </div>
 
+        {writing && (
+          <WriteModal
+            meetingId={meeting.id}
+            orgName={meeting.orgName}
+            onClose={() => setWriting(false)}
+            onSend={async () => {
+              await tell({ startup: true });
+              setWriting(false);
+            }}
+          />
+        )}
         {/* Qui a été prévenu, et quand : une lettre partie avant un changement
             d'heure dit l'ancienne heure. */}
         <div className="row wrap" style={{ gap: 6 }}>
@@ -1416,7 +1471,7 @@ function MeetingDrawer({
             Startup {meeting.toldStartupAt ? `told ${formatDate(meeting.toldStartupAt)}` : 'not told'} · Interlocutor{' '}
             {meeting.toldPersonAt ? `told ${formatDate(meeting.toldPersonAt)}` : 'not told'}
           </span>
-          <button className="btn ghost sm" disabled={busy} onClick={() => tell({ startup: true })}>
+          <button className="btn ghost sm" disabled={busy} onClick={() => setWriting(true)}>
             <Icon name="send" size={12} /> Write to the startup
           </button>
           {meeting.personId && (
@@ -1740,5 +1795,56 @@ function ByStartup({
         );
       })}
     </div>
+  );
+}
+
+/** Écrire à la startup d'un rendez-vous : la lettre lue, ses liens vérifiés, un test à soi, puis l'envoi. */
+function WriteModal({ meetingId, orgName, onClose, onSend }: { meetingId: string; orgName: string; onClose: () => void; onSend: () => Promise<void> }) {
+  const letter = useAsync(() => api.get<Letter>(`/api/meetings/${meetingId}/letter-preview`), `letter:${meetingId}`);
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+  const test = async () => {
+    setBusy(true);
+    try {
+      const { to } = await api.post<{ to: string }>(`/api/meetings/${meetingId}/letter-test`);
+      toast(`Test sent to ${to}.`);
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      title={`Write to ${orgName}`}
+      subtitle="The letter as it leaves now, every link checked."
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn ghost" disabled={busy} onClick={onClose}>Cancel</button>
+          <div className="spacer" />
+          <button className="btn" disabled={busy || !letter.data} onClick={test}>
+            <Icon name="send" size={13} /> Send me a test
+          </button>
+          <button
+            className="btn primary"
+            disabled={busy || !letter.data}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onSend();
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Send
+          </button>
+        </>
+      }
+    >
+      {letter.error && <div className="callout warn"><Icon name="alert" size={15} /> {letter.error}</div>}
+      {letter.data ? <LetterPreview letter={letter.data} /> : !letter.error && <div className="faint">Writing…</div>}
+    </Modal>
   );
 }
