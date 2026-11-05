@@ -38,6 +38,7 @@ import {
   CONTACT_FIELD_TYPES,
   mentorsOf,
   pairingOf,
+  linkForSlot,
   prepLocked,
   prepForm,
   reportForm,
@@ -268,7 +269,7 @@ export async function planMeetings(
   }
   const duration = input.durationMinutes ?? theDay?.minutesPerMeeting ?? ctx.config.durationMinutes;
   const location = input.location ?? (theDay?.location || ctx.config.location);
-  const meetingLink = input.meetingLink ?? theDay?.meetingLink ?? '';
+  const meetingLink = input.meetingLink ?? (theDay ? linkForSlot(theDay, input.startTime) : '');
   let seriesId: string | null = null;
   if (!books && input.repeat) {
     seriesId = newId('ser');
@@ -425,6 +426,14 @@ export async function changeMeeting(
   if (patch.durationMinutes !== undefined) put('duration_minutes', patch.durationMinutes);
   if (patch.location !== undefined) put('location', patch.location);
   if (patch.meetingLink !== undefined) put('meeting_link', patch.meetingLink);
+  else if (patch.dayId !== undefined || patch.startTime !== undefined) {
+    /* Déplacé dans un créneau : il prend le lien de ce créneau, sauf s'il avait reçu le sien. */
+    const fromDay = current.dayId ? await getDay(current.dayId) : null;
+    const toDayId = patch.dayId !== undefined ? patch.dayId : current.dayId;
+    const toDay = toDayId ? (toDayId === fromDay?.id ? fromDay : await getDay(toDayId)) : null;
+    const inherited = !current.meetingLink || (fromDay && current.meetingLink === linkForSlot(fromDay, current.startTime));
+    if (toDay && inherited) put('meeting_link', linkForSlot(toDay, startTime));
+  }
   if (patch.status !== undefined) put('status', patch.status);
   /* Une heure proposée qui change est une nouvelle proposition : la réponse
      donnée à l'ancienne ne vaut pas pour celle-ci. */
@@ -1012,14 +1021,14 @@ export async function sendOneToOneReminders(now = new Date()): Promise<{ eve: nu
 /* ------------------------------------------------------------------ */
 
 const DAY_COLS = `id, block_id as "blockId", name, held_on::text as "heldOn", windows,
-  minutes_per_meeting as "minutesPerMeeting", location, meeting_link as "meetingLink", interlocutors, position`;
+  minutes_per_meeting as "minutesPerMeeting", location, meeting_link as "meetingLink", slot_links as "slotLinks", interlocutors, position`;
 
 export const listDays = (blockId: string) =>
   all<OneToOneDay>(`select ${DAY_COLS} from one_to_one_days where block_id = $1 order by held_on nulls last, position`, [blockId]);
 
 export const getDay = (id: string) => one<OneToOneDay>(`select ${DAY_COLS} from one_to_one_days where id = $1`, [id]);
 
-type DayFields = { name: string; heldOn: string | null; windows: { startsAt: string; endsAt: string }[]; minutesPerMeeting: number; location: string; meetingLink?: string; interlocutors: string[] };
+type DayFields = { name: string; heldOn: string | null; windows: { startsAt: string; endsAt: string }[]; minutesPerMeeting: number; location: string; meetingLink?: string; slotLinks?: Record<string, string>; interlocutors: string[] };
 
 /** Les interlocuteurs d'une journée sont ceux de la brique : un inconnu n'y reçoit pas. */
 async function checkInterlocutors(blockId: string, ids: string[]) {
@@ -1034,9 +1043,9 @@ export async function createDay(blockId: string, input: DayFields): Promise<OneT
   const id = newId('day');
   const last = await one<{ n: number }>('select coalesce(max(position), -1)::int as n from one_to_one_days where block_id = $1', [blockId]);
   await all(
-    `insert into one_to_one_days (id, block_id, name, held_on, windows, minutes_per_meeting, location, interlocutors, position, meeting_link)
-     values ($1,$2,$3,$4::date,$5::jsonb,$6,$7,$8::jsonb,$9,$10)`,
-    [id, blockId, input.name, input.heldOn, input.windows, input.minutesPerMeeting, input.location, input.interlocutors, (last?.n ?? -1) + 1, input.meetingLink ?? ''],
+    `insert into one_to_one_days (id, block_id, name, held_on, windows, minutes_per_meeting, location, interlocutors, position, meeting_link, slot_links)
+     values ($1,$2,$3,$4::date,$5::jsonb,$6,$7,$8::jsonb,$9,$10,$11::text::jsonb)`,
+    [id, blockId, input.name, input.heldOn, input.windows, input.minutesPerMeeting, input.location, input.interlocutors, (last?.n ?? -1) + 1, input.meetingLink ?? '', JSON.stringify(input.slotLinks ?? {})],
   );
   return (await getDay(id))!;
 }
@@ -1061,20 +1070,32 @@ export async function updateDay(id: string, input: Partial<DayFields>): Promise<
   if (input.minutesPerMeeting !== undefined) put('minutes_per_meeting', input.minutesPerMeeting);
   if (input.location !== undefined) put('location', input.location);
   if (input.meetingLink !== undefined) put('meeting_link', input.meetingLink);
+  if (input.slotLinks !== undefined) {
+    const clean = Object.fromEntries(Object.entries(input.slotLinks).filter(([, v]) => v.trim()));
+    put('slot_links', JSON.stringify(clean), '::text::jsonb');
+  }
   if (input.interlocutors !== undefined) put('interlocutors', input.interlocutors, '::jsonb');
   if (sets.length) await all(`update one_to_one_days set ${sets.join(', ')} where id = $1`, params);
   if (input.heldOn !== undefined && input.heldOn !== current.heldOn) {
     await all(`update one_to_one_meetings set held_on = $2::date where day_id = $1`, [id, input.heldOn]);
   }
-  /* Le lien de la journée suit ses rendez-vous — sauf ceux qui ont reçu le leur. */
-  if (input.meetingLink !== undefined && input.meetingLink !== (current.meetingLink ?? '')) {
-    await all(
-      `update one_to_one_meetings set meeting_link = $3
-        where day_id = $1 and (meeting_link = $2 or meeting_link = '')`,
-      [id, current.meetingLink ?? '', input.meetingLink],
+  /* Le lien suit les rendez-vous de la journée, créneau par créneau — sauf
+     ceux qui ont reçu le leur dans leur tiroir. */
+  const next = await getDay(id);
+  if (next && (input.meetingLink !== undefined || input.slotLinks !== undefined)) {
+    const meetings = await all<{ id: string; startTime: string | null; link: string }>(
+      `select id, start_time as "startTime", meeting_link as link from one_to_one_meetings where day_id = $1`,
+      [id],
     );
+    for (const m of meetings) {
+      const was = linkForSlot(current, m.startTime);
+      const now = linkForSlot(next, m.startTime);
+      if (now !== was && (m.link === was || m.link === '')) {
+        await all('update one_to_one_meetings set meeting_link = $2 where id = $1', [m.id, now]);
+      }
+    }
   }
-  return getDay(id);
+  return next;
 }
 
 /** Supprimer une journée : ses rendez-vous restent, avec leur date et leur heure, hors journée. */
@@ -1153,7 +1174,7 @@ export async function bookSlot(token: string, cell: { dayId: string; startTime: 
             rsvp_state = 'confirmed', rsvp_note = '', responded_at = now()
       where id = $1`,
     [found.meeting.id, pick.onDate, pick.startTime, pick.personId, pick.dayId, theDay?.minutesPerMeeting ?? found.meeting.durationMinutes,
-      theDay?.location ?? '', together && theDay ? theDay.interlocutors : [], theDay?.meetingLink ?? ''],
+      theDay?.location ?? '', together && theDay ? theDay.interlocutors : [], theDay ? linkForSlot(theDay, pick.startTime) : ''],
   );
   return (await invitationFor(token))!.page;
 }

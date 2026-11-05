@@ -244,7 +244,14 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
         {side === 'planning' && (
           <div className="work-pick">
             {days.map((d) => (
-              <button key={d.id} className={d.id === current?.id ? 'track on' : 'track'} onClick={() => setDayId(d.id)}>
+              <button
+                key={d.id}
+                className={d.id === current?.id ? 'track on' : 'track'}
+                onClick={() => setDayId(d.id)}
+                /* Une journée passée ne propose plus de créneau : elle se lit comme telle. */
+                style={d.heldOn && d.heldOn < todayIso() ? { opacity: 0.55 } : undefined}
+                title={d.heldOn && d.heldOn < todayIso() ? 'This day has passed — it offers no slot any more' : undefined}
+              >
                 {d.name || 'Day'}
                 <span className="faint" style={{ fontWeight: 400 }}>
                   {' '}
@@ -615,68 +622,105 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
  * encore une réponse. Pas de grille : il n'y a pas de journée, il y a un rythme.
  */
 /**
- * Le lien vidéo de la journée — Google Meet, Teams ou autre. Il va à chacun de
- * ses rendez-vous, sauf à celui qui a reçu le sien, et dans les lettres.
+ * Le lien vidéo de la journée — Google Meet, Teams ou autre. Un seul pour
+ * toute la journée, ou un par créneau quand chaque séance a le sien. Il va aux
+ * rendez-vous de la journée, sauf à celui qui a reçu le sien dans son tiroir,
+ * et dans les lettres.
  */
 function DayLink({ day, onSaved }: { day: OneToOneDay; onSaved: () => Promise<void> }) {
-  const [value, setValue] = useState(day.meetingLink ?? '');
-  const [editing, setEditing] = useState(false);
+  const slots = daySlots(day);
+  const hasSlotLinks = Object.keys(day.slotLinks ?? {}).length > 0;
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<'day' | 'slot'>(hasSlotLinks ? 'slot' : 'day');
+  const [dayLink, setDayLink] = useState(day.meetingLink ?? '');
+  const [slotLinks, setSlotLinks] = useState<Record<string, string>>(day.slotLinks ?? {});
   const [saving, setSaving] = useState(false);
   const toast = useToast();
+
   const save = async () => {
     setSaving(true);
     try {
-      await api.patch(`/api/one-to-one-days/${day.id}`, { meetingLink: value.trim() });
+      await api.patch(`/api/one-to-one-days/${day.id}`, {
+        meetingLink: mode === 'day' ? dayLink.trim() : '',
+        slotLinks: mode === 'slot' ? slotLinks : {},
+      });
       await onSaved();
-      setEditing(false);
-      toast(value.trim() ? 'Video link saved — given to the meetings of the day.' : 'Video link removed.');
+      setOpen(false);
+      toast('Video links saved — given to the meetings of the day.');
     } catch (err) {
       toast((err as Error).message, true);
     } finally {
       setSaving(false);
     }
   };
-  if (!editing) {
+
+  if (!open) {
+    const perSlot = slots.filter((s) => day.slotLinks?.[s.startsAt]).length;
     return (
       <div className="row wrap" style={{ gap: 6, fontSize: 12.5 }}>
         <Icon name="link" size={13} />
-        {day.meetingLink ? (
+        {hasSlotLinks ? (
+          <span>
+            A link per slot <span className="faint">· {perSlot} of {slots.length} set</span>
+          </span>
+        ) : day.meetingLink ? (
           <a href={day.meetingLink} target="_blank" rel="noreferrer" style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
             {day.meetingLink}
           </a>
         ) : (
           <span className="faint">No video link for this day</span>
         )}
-        <button className="linkish" onClick={() => setEditing(true)}>
-          {day.meetingLink ? 'Change' : 'Add a video link'}
+        <button className="linkish" onClick={() => setOpen(true)}>
+          {hasSlotLinks || day.meetingLink ? 'Change' : 'Add a video link'}
         </button>
       </div>
     );
   }
   return (
-    <div className="row wrap" style={{ gap: 6 }}>
-      <input
-        className="input"
-        style={{ flex: 1, minWidth: 220 }}
-        autoFocus
-        value={value}
-        placeholder="https://meet.google.com/… or a Teams link"
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && void save()}
-      />
-      <button className="btn primary sm" disabled={saving} onClick={save}>
-        {saving ? 'Saving…' : 'Save'}
-      </button>
-      <button
-        className="btn ghost sm"
-        disabled={saving}
-        onClick={() => {
-          setValue(day.meetingLink ?? '');
-          setEditing(false);
-        }}
-      >
-        Cancel
-      </button>
+    <div className="card card-pad stack" style={{ gap: 10 }}>
+      <div className="seg" role="group" aria-label="Video link">
+        <button className={mode === 'day' ? 'on' : ''} onClick={() => setMode('day')}>One link for the day</button>
+        <button className={mode === 'slot' ? 'on' : ''} onClick={() => setMode('slot')}>A link per slot</button>
+      </div>
+      {mode === 'day' ? (
+        <input
+          className="input"
+          autoFocus
+          value={dayLink}
+          placeholder="https://meet.google.com/… or a Teams link"
+          onChange={(e) => setDayLink(e.target.value)}
+        />
+      ) : (
+        <div className="stack" style={{ gap: 6 }}>
+          {slots.map((s) => (
+            <label key={s.startsAt} className="row" style={{ gap: 8 }}>
+              <span className="num" style={{ width: 92, fontSize: 12.5 }}>{s.startsAt}–{s.endsAt}</span>
+              <input
+                className="input"
+                style={{ flex: 1, minWidth: 0 }}
+                value={slotLinks[s.startsAt] ?? ''}
+                placeholder="https://meet.google.com/…"
+                onChange={(e) => setSlotLinks((l) => ({ ...l, [s.startsAt]: e.target.value }))}
+              />
+            </label>
+          ))}
+          <span className="faint" style={{ fontSize: 12 }}>A slot left empty has no link.</span>
+        </div>
+      )}
+      <div className="row" style={{ gap: 6 }}>
+        <button className="btn primary sm" disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save'}</button>
+        <button
+          className="btn ghost sm"
+          disabled={saving}
+          onClick={() => {
+            setDayLink(day.meetingLink ?? '');
+            setSlotLinks(day.slotLinks ?? {});
+            setOpen(false);
+          }}
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }

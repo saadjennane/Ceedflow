@@ -193,6 +193,12 @@ describe('a One to One', { skip: skipWithoutServer }, () => {
     const after = (await oneToOneView(block.id))!.meetings;
     assert.equal(after.find((x) => x.id === other!.id)!.meetingLink, 'https://teams.example/new', 'the day’s link follows its meetings');
     assert.equal(after.find((x) => x.id === m!.id)!.meetingLink, 'https://zoom.example/xyz', 'not one with its own');
+
+    // Un lien par créneau : celui du créneau passe avant celui de la journée.
+    await updateDay(day.id, { meetingLink: '', slotLinks: { '09:30': 'https://meet.example/slot-930' } });
+    const slotted = (await oneToOneView(block.id))!.meetings.find((x) => x.id === other!.id)!;
+    assert.equal(slotted.meetingLink, 'https://meet.example/slot-930', 'the slot’s own link');
+    assert.equal((await oneToOneView(block.id))!.meetings.find((x) => x.id === m!.id)!.meetingLink, 'https://zoom.example/xyz', 'still its own');
   });
 
   it('confirms a proposed series in one answer', async () => {

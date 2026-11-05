@@ -81,7 +81,12 @@ export function meetingState(m: Pick<OneToOneMeeting, 'status' | 'heldOn' | 'inv
 /* Inputs                                                              */
 /* ------------------------------------------------------------------ */
 
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'A date, day by day.');
+const day = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'A date, day by day.')
+  /* Une année tapée de travers (1016 pour 2026) donne une journée passée
+     depuis mille ans, que plus rien ne propose : refusée à la saisie. */
+  .refine((d) => Number(d.slice(0, 4)) >= 2000 && Number(d.slice(0, 4)) <= 2100, 'Check the year.');
 const clock = z.string().regex(/^\d{2}:\d{2}$/, 'A time, HH:MM.');
 
 /* ------------------------------------------------------------------ */
@@ -103,9 +108,15 @@ export interface OneToOneDay {
   location: string;
   /** The video link its meetings take, unless one says otherwise. */
   meetingLink: string;
+  /** A link of its own for a slot, by its start time — over the day's. */
+  slotLinks: Record<string, string>;
   interlocutors: string[];
   position: number;
 }
+
+/** Le lien d'un créneau : le sien s'il en a un, sinon celui de la journée. */
+export const linkForSlot = (d: Pick<OneToOneDay, 'meetingLink' | 'slotLinks'>, startTime: string | null) =>
+  (startTime && d.slotLinks?.[startTime]) || d.meetingLink || '';
 
 export const dayInput = z.object({
   name: z.string().default(''),
@@ -114,6 +125,7 @@ export const dayInput = z.object({
   minutesPerMeeting: z.number().int().min(5).max(480).default(45),
   location: z.string().default(''),
   meetingLink: z.string().trim().default(''),
+  slotLinks: z.record(z.string(), z.string().trim()).default({}),
   interlocutors: z.array(z.string()).default([]),
 });
 
