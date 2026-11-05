@@ -39,6 +39,8 @@ export interface RecordRow extends DirectoryRecord {
   panels: number;
   /** Le dernier changement sur la fiche d'une organisation. */
   lastActivity: string | null;
+  /** Un compte vraiment ouvert — le sien, ou pour une organisation celui d'une personne qui la tient. */
+  registered: boolean;
 }
 
 /** Ce qu'une tuile du résumé garde de la liste. */
@@ -123,7 +125,17 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
   const [preset, setPreset] = useState('all');
   const loaded = records.data ?? [];
   const testCount = loaded.filter((r) => r.testOwner).length;
-  const all = withTest ? loaded : loaded.filter((r) => !r.testOwner);
+  const everyone = withTest ? loaded : loaded.filter((r) => !r.testOwner);
+  /* L'onglet des inscrits : ceux qui sont vraiment entrés sur la plateforme. Dans l'adresse, pour s'y partager. */
+  const tab = params.get('tab') === 'registered' ? 'registered' : 'all';
+  const setTab = (t: 'all' | 'registered') =>
+    setParams((p) => {
+      const next = new URLSearchParams(p);
+      if (t === 'all') next.delete('tab');
+      else next.set('tab', t);
+      return next;
+    });
+  const all = tab === 'registered' ? everyone.filter((r) => r.registered) : everyone;
   const isOrg = kind === 'org';
 
   /* Exactement ce que la pastille comptait : la même liste, pas une requête
@@ -210,6 +222,20 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
           <Icon name="plus" size={14} /> Add {isOrg ? 'an organisation' : 'a person'}
         </button>
       </header>
+
+      <nav className="tabbar" role="tablist" aria-label={isOrg ? 'Organisations' : 'Individuals'}>
+        <button role="tab" className={tab === 'all' ? 'tab on' : 'tab'} onClick={() => setTab('all')}>
+          All <span className="num faint">{everyone.length}</span>
+        </button>
+        <button
+          role="tab"
+          className={tab === 'registered' ? 'tab on' : 'tab'}
+          onClick={() => setTab('registered')}
+          title={isOrg ? 'Somebody holding its page has signed in with their own password' : 'Signed in with their own password'}
+        >
+          Registered <span className="num faint">{everyone.filter((r) => r.registered).length}</span>
+        </button>
+      </nav>
 
       <div className="page stack" style={{ gap: 14 }}>
         {from && (

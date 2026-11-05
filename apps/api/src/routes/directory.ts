@@ -230,6 +230,12 @@ export async function directoryRoutes(app: FastifyInstance) {
         ...r,
         contacts: counts.get(r.id) ?? 0,
         account: (holder ? accounts.get(holder) : null) ?? null,
+        /* Inscrite : quelqu'un est vraiment entré — son mot de passe choisi.
+           Pour une organisation, n'importe laquelle des personnes qui la tiennent. */
+        registered:
+          kind === 'org'
+            ? (orgs.get(r.id)?.contacts ?? []).some((c: { id: string }) => accounts.get(c.id)?.state === 'claimed')
+            : accounts.get(r.id)?.state === 'claimed',
         orgs: people.get(r.id)?.orgs ?? [],
         holders: orgs.get(r.id)?.contacts ?? [],
         alumni: side?.alumni ?? 0,

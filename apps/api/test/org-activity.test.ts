@@ -54,6 +54,15 @@ describe('an organisation’s activity, and the team’s notes', { skip: skipWit
     return { status: res.statusCode, body: res.body ? (res.json() as any) : null };
   };
 
+  it('marks as registered an organisation somebody holding it has signed in for, and that person', async () => {
+    const lone = await dir.createRecord({ kind: 'org', name: `Badr ${mark}`, origin: 'manual' });
+    const orgsList = (await call(samia, 'GET', '/api/records?kind=org')).body as { id: string; registered: boolean }[];
+    assert.equal(orgsList.find((r) => r.id === orgId)!.registered, true, 'Karim chose their own password');
+    assert.equal(orgsList.find((r) => r.id === lone.id)!.registered, false, 'nobody holds it');
+    const people = (await call(samia, 'GET', '/api/records?kind=person')).body as { email: string; registered: boolean }[];
+    assert.equal(people.find((r) => r.email === `karim.${mark}@example.test`)?.registered, true);
+  });
+
   it('keeps the team’s notes for the team, changed only by who wrote them, in one thread with the rest', async () => {
     const note = await call(samia, 'POST', `/api/records/${orgId}/notes`, { body: 'Appel du 3/11 : cherche un CFO.' });
     assert.equal(note.status, 201);
