@@ -118,11 +118,13 @@ export function OrgActivity({ recordId, limit }: { recordId: string; limit?: num
               <Icon name={icon(i.kind)} size={12} />
             </span>
             <span style={{ flex: 1, minWidth: 0 }}>
-              {editing?.id === i.noteId ? (
+              {/* Seulement la note qu'on corrige : sans ce garde, toute ligne sans note
+                  (undefined) « égalait » l'absence de correction (undefined). */}
+              {editing && i.noteId && editing.id === i.noteId ? (
                 <span className="stack" style={{ gap: 6 }}>
-                  <textarea className="textarea" rows={2} value={editing!.body} onChange={(e) => setEditing({ id: editing!.id, body: e.target.value })} />
+                  <textarea className="textarea" rows={2} value={editing.body} onChange={(e) => setEditing({ id: editing.id, body: e.target.value })} />
                   <span className="row" style={{ gap: 6 }}>
-                    <button className="btn primary sm" onClick={() => change(editing!.id, editing!.body)}>Save</button>
+                    <button className="btn primary sm" onClick={() => change(editing.id, editing.body)}>Save</button>
                     <button className="btn ghost sm" onClick={() => setEditing(null)}>Cancel</button>
                   </span>
                 </span>
