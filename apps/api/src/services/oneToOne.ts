@@ -845,6 +845,99 @@ export async function answerInvitation(token: string, accept: boolean, note = ''
  * confirm, or nothing — with its own link; the interlocutor where to open the
  * meeting and write the report, and how to get in when they never have.
  */
+/** La lettre à la startup d'un rendez-vous — envoyée, montrée en aperçu, ou envoyée en test. */
+function startupLetter(
+  m: Pick<OneToOneMeeting, 'id' | 'invite' | 'heldOn' | 'token' | 'orgName' | 'withNames' | 'personName' | 'meetingLink'>,
+  candidate: Candidate,
+  config: OneToOneConfig,
+  programme: string,
+  origin: string | null,
+  quand: string,
+  lieu: string,
+  letter: 'announce' | 'eve' | 'late',
+): { to: string; subject: string; body: string } | null {
+  const to = candidate.email?.trim();
+  if (!to) return null;
+  /* Un aperçu avant l'invitation n'a pas encore de lien : on dit ce qui sera là. */
+  const link = m.id === 'preview' ? '(son lien personnel)' : origin ? `${origin}/meet/${m.token}` : '';
+  const action =
+    m.invite === 'slots'
+      ? `Choisissez votre créneau ici : ${link}`
+      : m.invite === 'confirm'
+        ? `Confirmez, ou dites-nous si l’heure ne convient pas : ${link}`
+        : '';
+  const values = {
+    prenom: firstNameOf(candidate.contactName, candidate.contactFirstName),
+    startup: m.orgName,
+    interlocuteur: (m.withNames || m.personName) || 'un interlocuteur du programme',
+    programme,
+    quand: m.invite === 'slots' && !m.heldOn ? '' : quand,
+    lieu,
+    visio: m.meetingLink ? `Lien de la réunion : ${m.meetingLink}` : '',
+    action,
+    /* La préparation se remplit dans son espace, pas par le lien de réservation. */
+    preparation: prepForm(config) && m.heldOn && origin ? `Préparez la séance dans votre espace : ${origin}/prepare/${m.id}` : '',
+    lien: link,
+  };
+  return {
+    to,
+    subject: fillTemplate(letter === 'eve' ? config.reminders.subjects.eveStartup : config.messages.subjects.startup, values),
+    body: fillTemplate(letter === 'eve' ? config.reminders.eveStartup : config.messages.startup, values),
+  };
+}
+
+/** Le rendez-vous « à réserver » d'une startup, s'il existe déjà : on le réinvite plutôt que d'en créer un second. */
+async function waitingToBook(blockId: string, candidateId: string): Promise<OneToOneMeeting | null> {
+  return (await listMeetings(blockId)).find(
+    (m) => m.candidateId === candidateId && m.status === 'planned' && m.invite === 'slots' && !m.heldOn,
+  ) ?? null;
+}
+
+/**
+ * La lettre d'invitation à réserver, telle qu'une startup la recevra — pour
+ * l'aperçu, ou pour l'envoyer en test à soi-même. Son lien personnel n'existe
+ * qu'une fois invitée : avant, il est dit, pas inventé.
+ */
+export async function invitationPreview(blockId: string, candidateId: string): Promise<{ to: string; subject: string; body: string }> {
+  const ctx = await repo.blockContext(blockId);
+  const detail = ctx ? await repo.getEditionDetail(ctx.editionId) : null;
+  const config = ctx?.block.config as OneToOneConfig | undefined;
+  const candidate = await repo.getCandidate(candidateId);
+  if (!ctx || !detail || !config || !candidate) throw new HttpError(404, 'Not found.');
+  const existing = await waitingToBook(blockId, candidateId);
+  const origin = await publicOrigin();
+  const shape = existing ?? {
+    id: 'preview', invite: 'slots' as const, heldOn: null, token: '', orgName: candidate.orgName,
+    withNames: '', personName: '', meetingLink: '',
+  };
+  const written = startupLetter(shape, candidate, config, `${detail.program.name} — ${detail.name}`, origin, '', '', 'announce');
+  if (!written) throw new HttpError(422, `${candidate.orgName} has no address to write to.`);
+  return written;
+}
+
+/**
+ * Inviter à réserver : un rendez-vous « à réserver » pour qui n'en a pas, et la
+ * lettre renvoyée à qui en a déjà un — sans doublon.
+ */
+export async function inviteToBook(
+  blockId: string,
+  candidateIds: string[],
+  personId: string | null,
+  tell: boolean,
+): Promise<{ invited: number; resent: number }> {
+  let invited = 0;
+  let resent = 0;
+  const fresh: string[] = [];
+  for (const id of candidateIds) {
+    const existing = await waitingToBook(blockId, id);
+    if (existing) {
+      if (tell && (await tellMeeting(existing.id, { startup: true })).startup) resent += 1;
+    } else fresh.push(id);
+  }
+  if (fresh.length) invited = (await planMeetings(blockId, { candidateIds: fresh, personId, invite: 'slots', heldOn: null, startTime: null, tell })).length;
+  return { invited, resent };
+}
+
 export async function tellMeeting(
   id: string,
   who: { startup?: boolean; person?: boolean },
@@ -871,38 +964,17 @@ export async function tellMeeting(
 
   if (who.startup) {
     const candidate = await repo.getCandidate(m.candidateId);
-    const to = candidate?.email?.trim();
-    if (candidate && to) {
-      const link = origin ? `${origin}/meet/${m.token}` : '';
-      const action =
-        m.invite === 'slots'
-          ? `Choisissez votre créneau ici : ${link}`
-          : m.invite === 'confirm'
-            ? `Confirmez, ou dites-nous si l’heure ne convient pas : ${link}`
-            : '';
-      const values = {
-        prenom: firstNameOf(candidate.contactName, candidate.contactFirstName),
-        startup: m.orgName,
-        interlocuteur: (m.withNames || m.personName) || 'un interlocuteur du programme',
-        programme,
-        quand: m.invite === 'slots' && !m.heldOn ? '' : quand,
-        lieu,
-        visio: m.meetingLink ? `Lien de la réunion : ${m.meetingLink}` : '',
-        action,
-        /* La préparation, quand la brique en demande une et que la séance a une heure. */
-        /* La préparation se remplit dans son espace, pas par le lien de réservation. */
-        preparation: prepForm(config) && m.heldOn && origin ? `Préparez la séance dans votre espace : ${origin}/prepare/${m.id}` : '',
-        lien: link,
-      };
+    const written = candidate ? startupLetter(m, candidate, config, programme, origin, quand, lieu, letter) : null;
+    if (candidate && written) {
       const posted = await post({
         kind: letter === 'eve' ? 'one_to_one_eve' : 'one_to_one_startup',
-        to,
+        to: written.to,
         toName: candidate.contactName,
         recordId: candidate.personId,
         blockId: m.blockId,
         candidateId: m.candidateId,
-        subject: fillTemplate(letter === 'eve' ? config.reminders.subjects.eveStartup : config.messages.subjects.startup, values),
-        body: fillTemplate(letter === 'eve' ? config.reminders.eveStartup : config.messages.startup, values),
+        subject: written.subject,
+        body: written.body,
       });
       if (posted) {
         // Un rappel n'est pas une annonce : il ne dit pas « prévenue ».
@@ -1184,12 +1256,22 @@ export async function bookSlot(token: string, cell: { dayId: string; startTime: 
  * l'ont pas encore été : la startup, et l'interlocuteur. Comme « Inform » au
  * comité : une lettre par personne qui n'en a pas reçu.
  */
-export async function informAll(blockId: string, dayId: string | null): Promise<{ startups: number; people: number }> {
+export async function informAll(
+  blockId: string,
+  dayId: string | null,
+): Promise<{ startups: number; people: number; meetings: number; noAddress: number }> {
   const meetings = (await listMeetings(blockId)).filter(
     (m) => m.status === 'planned' && (!dayId || m.dayId === dayId) && (m.heldOn || m.invite === 'slots'),
   );
   let startups = 0;
   let people = 0;
+  /* Qui n'a pas d'adresse ne peut pas être prévenu : le dire plutôt que de laisser croire que c'est fait. */
+  let noAddress = 0;
+  for (const m of meetings) {
+    if (m.toldStartupAt) continue;
+    const c = await repo.getCandidate(m.candidateId);
+    if (!c?.email?.trim()) noAddress += 1;
+  }
   /* Une série s'annonce une fois, par sa première séance : cinquante-deux
      lettres pour un suivi hebdomadaire, personne ne les lit. Les autres
      séances sont alors tenues pour dites. */
@@ -1219,7 +1301,7 @@ export async function informAll(blockId: string, dayId: string | null): Promise<
       );
     }
   }
-  return { startups, people };
+  return { startups, people, meetings: meetings.length, noAddress };
 }
 
 /* ------------------------------------------------------------------ */

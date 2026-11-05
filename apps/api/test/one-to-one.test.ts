@@ -16,7 +16,7 @@ import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
 import {
-  answerInvitation, bookSlot, prepsDueFor, savePrep, sendOneToOneReminders, cancelFollowing, changeMeeting, createDay, historyOf, informAll, invitationFor, meetingFor,
+  answerInvitation, bookSlot, prepsDueFor, savePrep, sendOneToOneReminders, cancelFollowing, changeMeeting, createDay, historyOf, informAll, invitationFor, invitationPreview, inviteToBook, meetingFor,
   meetingsFor, oneToOneView, planMeetings, prepFor, publicInvitation, saveReport, tellMeeting, updateDay,
 } from '../src/services/oneToOne.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
@@ -436,6 +436,41 @@ describe('a One to One', { skip: skipWithoutServer }, () => {
     await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, dayId: day.id, invite: 'none', heldOn: '2030-06-01', startTime: '09:00' });
     assert.equal((await informAll(block.id, day.id)).people, 1);
     assert.equal((await informAll(block.id, day.id)).people, 0, 'told once');
+  });
+
+  it('says why nobody was told: no meeting on the day, or nobody to write to', async () => {
+    const { block, mentor, a } = await setUp();
+    const day = await createDay(block.id, { name: '', heldOn: '2030-06-02', windows: [{ startsAt: '09:00', endsAt: '10:00' }], minutesPerMeeting: 30, location: '', interlocutors: [mentor.id] });
+    assert.deepEqual(await informAll(block.id, day.id), { startups: 0, people: 0, meetings: 0, noAddress: 0 }, 'no meeting yet');
+    await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, dayId: day.id, invite: 'none', heldOn: '2030-06-02', startTime: '09:00' });
+    const r = await informAll(block.id, day.id);
+    assert.equal(r.meetings, 1);
+    assert.ok(r.noAddress >= 1, 'nobody has an address');
+  });
+
+  it('invites a startup again without a second meeting, and shows the letter before it leaves', async () => {
+    const was = process.env.APP_URL;
+    process.env.APP_URL = 'https://app.example.test';
+    after(() => {
+      if (was === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = was;
+    });
+    const { block, mentor, a } = await setUp();
+    const founder = `f.${uniq()}@example.test`;
+    const contact = await dir.createRecord({ kind: 'person', name: `Salma ${uniq()}`, emails: [founder], origin: 'manual' });
+    await all(`update candidates set person_id = $2 where id = $1`, [a.id, contact.id]);
+    await createDay(block.id, { name: '', heldOn: '2030-06-03', windows: [{ startsAt: '09:00', endsAt: '10:00' }], minutesPerMeeting: 30, location: '', interlocutors: [mentor.id] });
+    const before = await invitationPreview(block.id, a.id);
+    assert.equal(before.to, founder);
+    assert.ok(before.body.includes('(son lien personnel)'), 'no link yet: a placeholder');
+    assert.deepEqual(await inviteToBook(block.id, [a.id], null, true), { invited: 1, resent: 0 });
+    const m = (await oneToOneView(block.id))!.meetings.filter((x) => x.candidateId === a.id && x.status !== 'cancelled');
+    assert.equal(m.length, 1);
+    assert.ok((await invitationPreview(block.id, a.id)).body.includes(`/meet/${m[0]!.token}`), 'its own link once invited');
+    assert.deepEqual(await inviteToBook(block.id, [a.id], null, true), { invited: 0, resent: 1 });
+    const again = (await oneToOneView(block.id))!.meetings.filter((x) => x.candidateId === a.id && x.status !== 'cancelled');
+    assert.equal(again.length, 1, 'no second meeting');
+    assert.equal((await letters({ email: founder })).length, 2, 'the letter, twice');
   });
 
   it('writes to the startup with its own link, and to the interlocutor with the meeting', async () => {

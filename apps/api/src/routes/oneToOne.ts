@@ -28,8 +28,11 @@ import {
   saveReport,
   savePrep,
   publicInvitation,
+  invitationPreview,
+  inviteToBook,
 } from '../services/oneToOne.js';
 import { workspaceGuard } from './guard.js';
+import { post } from '../services/mail.js';
 import { HttpError, notFound, parse } from './util.js';
 
 /** Le collègue qui écrit, tel qu'on l'inscrit sur le compte rendu. */
@@ -92,6 +95,31 @@ export async function oneToOneRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     if (!(await deleteDay(id))) return notFound(reply, 'Day not found.');
     reply.code(204);
+  });
+
+  /** La lettre d'invitation à réserver, en aperçu — et en test, à soi-même. */
+  app.post('/api/blocks/:id/one-to-one/invite-preview', async (req) => {
+    const { id } = req.params as { id: string };
+    const { candidateId } = parse(z.object({ candidateId: z.string() }), req.body);
+    return invitationPreview(id, candidateId);
+  });
+  app.post('/api/blocks/:id/one-to-one/invite-test', async (req) => {
+    const { id } = req.params as { id: string };
+    const { candidateId } = parse(z.object({ candidateId: z.string() }), req.body);
+    const letter = await invitationPreview(id, candidateId);
+    const to = req.staff?.email ?? '';
+    if (!to) throw new HttpError(422, 'No address to send the test to.');
+    await post({ kind: 'one_to_one_test', to, toName: '', blockId: id, subject: `[Test] ${letter.subject}`, body: letter.body });
+    return { to };
+  });
+  /** Inviter à réserver — ou réinviter celles qui l'ont déjà été. */
+  app.post('/api/blocks/:id/one-to-one/invite', async (req) => {
+    const { id } = req.params as { id: string };
+    const input = parse(
+      z.object({ candidateIds: z.array(z.string()).min(1, 'Pick at least one startup.'), personId: z.string().nullable().default(null), tell: z.boolean().default(true) }),
+      req.body,
+    );
+    return inviteToBook(id, input.candidateIds, input.personId, input.tell);
   });
 
   /** Prévenir tous ceux d'une journée (ou de la brique) qui ne l'ont pas été. */

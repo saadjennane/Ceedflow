@@ -184,13 +184,21 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
   const inform = async () => {
     setBusy(true);
     try {
-      const sent = await api.post<{ startups: number; people: number }>(`/api/blocks/${block.id}/one-to-one/inform`, {
-        dayId: current?.id ?? null,
-      });
+      const sent = await api.post<{ startups: number; people: number; meetings: number; noAddress: number }>(
+        `/api/blocks/${block.id}/one-to-one/inform`,
+        { dayId: current?.id ?? null },
+      );
+      /* La vraie raison quand rien ne part : pas de rendez-vous, pas d'adresse, ou tout le monde déjà prévenu. */
+      const missing = sent.noAddress ? ` ${sent.noAddress} startup${sent.noAddress === 1 ? ' has' : 's have'} no address to write to.` : '';
       toast(
         sent.startups || sent.people
-          ? `Written to ${sent.startups} startup${sent.startups === 1 ? '' : 's'} and ${sent.people} interlocutor${sent.people === 1 ? '' : 's'}.`
-          : 'Everybody on this day has already been told.',
+          ? `Written to ${sent.startups} startup${sent.startups === 1 ? '' : 's'} and ${sent.people} interlocutor${sent.people === 1 ? '' : 's'}.${missing}`
+          : !sent.meetings
+            ? 'No meeting on this day yet — place startups on its slots, or invite them to book. Nothing to announce.'
+            : sent.noAddress
+              ? `Nobody new to tell.${missing}`
+              : 'Everybody with a meeting on this day has already been told.',
+        !sent.startups && !sent.people && !sent.meetings,
       );
       await refresh();
     } catch (err) {
@@ -267,17 +275,22 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
           <>
             {/* Inviter : les startups choisissent leur créneau elles-mêmes. */}
             {config.invite === 'slots' && (
-              <button className="btn primary sm" disabled={busy || !unplaced.length} onClick={() => setInviting(true)}>
-                <Icon name="send" size={13} /> Invite
+              <button
+                className="btn primary sm"
+                disabled={busy || !pool.length}
+                onClick={() => setInviting(true)}
+                title="Send startups their link to pick a slot — or send it again"
+              >
+                <Icon name="send" size={13} /> Invite to book
               </button>
             )}
             <button
               className="btn sm"
               disabled={busy || !current}
               onClick={inform}
-              title="Write to everyone on this day not told yet"
+              title="Announce their meeting to the startups and interlocutors already placed on this day, who have not been told yet"
             >
-              <Icon name="send" size={13} /> Inform
+              <Icon name="send" size={13} /> Announce this day
             </button>
             <button className="btn ghost sm" onClick={() => setPlanning(true)} title="A meeting outside the days">
               <Icon name="plus" size={13} /> Meeting
@@ -727,52 +740,66 @@ function DayLink({ day, onSaved }: { day: OneToOneDay; onSaved: () => Promise<vo
 
 
 /**
- * Inviter des startups à réserver.
+ * Inviter des startups à réserver — ou réinviter celles qui l'ont déjà été.
  *
- * Chacune reçoit son lien : les créneaux libres des journées, chez son mentor
- * quand elle en a un parmi les interlocuteurs, chez qui elle veut sinon — ou
- * chez la personne qu'on choisit ici.
+ * On choisit, puis on lit la lettre telle qu'elle partira, on peut se
+ * l'envoyer en test, et on invite. Une startup déjà invitée n'a pas de second
+ * rendez-vous : sa lettre lui est simplement renvoyée.
  */
 function InviteModal({ data, onClose, onDone }: { data: View; onClose: () => void; onDone: () => void }) {
   const live = data.meetings.filter((m) => m.status !== 'cancelled');
-  const unplaced = data.pool.filter((p) => stillToMeet(data.config, live, p.candidate).length > 0);
-  const [picked, setPicked] = useState<string[]>(unplaced.map((p) => p.candidate.id));
   const together = pairingOf(data.config) === 'together';
+  const stateOf = (c: Candidate): 'todo' | 'invited' | 'booked' => {
+    const mine = live.filter((m) => m.candidateId === c.id);
+    if (mine.some((m) => m.invite === 'slots' && !m.heldOn)) return 'invited';
+    return stillToMeet(data.config, live, c).length > 0 ? 'todo' : 'booked';
+  };
+  const [picked, setPicked] = useState<string[]>(data.pool.filter((p) => stateOf(p.candidate) === 'todo').map((p) => p.candidate.id));
   const [who, setWho] = useState<string>(together ? 'anyone' : 'mentors');
   const [tell, setTell] = useState(true);
+  const [step, setStep] = useState<'pick' | 'preview'>('pick');
+  const [previewOf, setPreviewOf] = useState<string>('');
   const [busy, setBusy] = useState(false);
   const toast = useToast();
   const cells = data.days
     .filter((d) => (d.heldOn ?? '') >= todayIso())
     .reduce((n, d) => n + daySlots(d).length * (together ? Math.min(1, d.interlocutors.length) : d.interlocutors.length), 0);
+  const shownId = previewOf || picked[0] || '';
+  const preview = useAsync(
+    () =>
+      step === 'preview' && shownId
+        ? api.post<{ to: string; subject: string; body: string }>(`/api/blocks/${data.block.id}/one-to-one/invite-preview`, { candidateId: shownId })
+        : Promise.resolve(null),
+    `invite-preview:${step}:${shownId}`,
+  );
 
-  /**
-   * Chez qui chacune réserve : un rendez-vous avec chacun de ses mentors — ou,
-   * sans mentor, chez qui elle veut —, chez n'importe qui, ou chez une
-   * personne choisie.
-   */
-  const peopleFor = (c: Candidate): (string | null)[] => {
-    if (who === 'anyone') return [null];
-    if (who === 'mentors') return stillToMeet(data.config, live, c);
-    return [who];
+  /** Chez qui : la personne choisie, sinon ses mentors quand elle en a, sinon n'importe qui. */
+  const personFor = (c: Candidate): string | null => {
+    if (who === 'anyone') return null;
+    if (who === 'mentors') return stillToMeet(data.config, live, c)[0] ?? null;
+    return who;
   };
 
   const send = async () => {
     setBusy(true);
     try {
-      /* Regroupées par interlocuteur : une demande par groupe, chacune prévenue. */
+      /* Regroupées par interlocuteur : une demande par groupe. */
       const groups = new Map<string | null, string[]>();
-      for (const { candidate } of unplaced.filter((p) => picked.includes(p.candidate.id))) {
-        for (const key of peopleFor(candidate)) groups.set(key, [...(groups.get(key) ?? []), candidate.id]);
+      for (const { candidate } of data.pool.filter((p) => picked.includes(p.candidate.id))) {
+        const key = personFor(candidate);
+        groups.set(key, [...(groups.get(key) ?? []), candidate.id]);
       }
-      let count = 0;
+      let invited = 0;
+      let resent = 0;
       for (const [personId, candidateIds] of groups) {
-        const made = await api.post<unknown[]>(`/api/blocks/${data.block.id}/meetings`, {
-          candidateIds, personId, invite: 'slots', heldOn: null, startTime: null, tell,
-        });
-        count += made.length;
+        const r = await api.post<{ invited: number; resent: number }>(`/api/blocks/${data.block.id}/one-to-one/invite`, { candidateIds, personId, tell });
+        invited += r.invited;
+        resent += r.resent;
       }
-      toast(`${count} invited to book${tell ? ' — and written to' : ''}.`);
+      toast(
+        [invited ? `${invited} invited to book` : '', resent ? `${resent} sent their link again` : ''].filter(Boolean).join(' · ') ||
+          'Nothing sent.',
+      );
       onDone();
     } catch (err) {
       toast((err as Error).message, true);
@@ -781,78 +808,134 @@ function InviteModal({ data, onClose, onDone }: { data: View; onClose: () => voi
     }
   };
 
+  const test = async () => {
+    setBusy(true);
+    try {
+      const { to } = await api.post<{ to: string }>(`/api/blocks/${data.block.id}/one-to-one/invite-test`, { candidateId: shownId });
+      toast(`Test sent to ${to}.`);
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const STATE_WORD = { todo: 'No meeting yet', invited: 'Invited — not booked yet', booked: 'Has a meeting' } as const;
+
   return (
     <Modal
       title="Invite to book"
       subtitle="Each startup gets its own link to the free slots of the days."
       onClose={onClose}
       footer={
-        <>
-          <button className="btn ghost" onClick={onClose}>Cancel</button>
-          <button className="btn primary" disabled={busy || !picked.length} onClick={send}>
-            {busy ? 'Inviting…' : `Invite ${picked.length}`}
-          </button>
-        </>
+        step === 'pick' ? (
+          <>
+            <button className="btn ghost" onClick={onClose}>Cancel</button>
+            <button className="btn primary" disabled={!picked.length} onClick={() => setStep('preview')}>
+              Preview the letter <Icon name="chevronRight" size={13} />
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="btn ghost" disabled={busy} onClick={() => setStep('pick')}>
+              <Icon name="chevronLeft" size={13} /> Back
+            </button>
+            <div className="spacer" />
+            <button className="btn" disabled={busy || !shownId} onClick={test}>
+              <Icon name="send" size={13} /> Send me a test
+            </button>
+            <button className="btn primary" disabled={busy || !picked.length} onClick={send}>
+              {busy ? 'Inviting…' : `Invite ${picked.length}`}
+            </button>
+          </>
+        )
       }
     >
-      {!cells && (
-        <div className="callout warn">
-          <Icon name="alert" size={15} /> No day coming up — add one in the setup, or they will find nothing to book.
-        </div>
-      )}
-      {together ? (
-        <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
-          They book a time when all the interlocutors are free, and meet them together.
-        </p>
+      {step === 'pick' ? (
+        <>
+          {!cells && (
+            <div className="callout warn">
+              <Icon name="alert" size={15} /> No day coming up — add one in the setup, or they will find nothing to book.
+            </div>
+          )}
+          {together ? (
+            <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+              They book a time when all the interlocutors are free, and meet them together.
+            </p>
+          ) : (
+            <div className="field">
+              <label>Who they book with</label>
+              <select className="input" value={who} onChange={(e) => setWho(e.target.value)}>
+                <option value="mentors">Their mentor — anyone when they have none</option>
+                <option value="anyone">Anyone receiving on the days</option>
+                {data.interlocutors.map((p) => (
+                  <option key={p.id} value={p.id}>Only {p.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="field">
+            <div className="row">
+              <label style={{ flex: 1 }}>Startups</label>
+              <button className="linkish" onClick={() => setPicked(picked.length ? [] : data.pool.map((p) => p.candidate.id))}>
+                {picked.length ? 'None' : 'All'}
+              </button>
+            </div>
+            <div className="rows oto-pick">
+              {data.pool.map(({ candidate }) => {
+                const state = stateOf(candidate);
+                return (
+                  <label className="check rowcard" style={{ padding: '7px 10px' }} key={candidate.id}>
+                    <input
+                      type="checkbox"
+                      checked={picked.includes(candidate.id)}
+                      onChange={() =>
+                        setPicked((p) => (p.includes(candidate.id) ? p.filter((x) => x !== candidate.id) : [...p, candidate.id]))
+                      }
+                    />
+                    <span style={{ flex: 1, fontSize: 13 }}>{candidate.orgName}</span>
+                    <span className={state === 'invited' ? 'badge warn' : state === 'booked' ? 'badge ok' : 'badge'}>{STATE_WORD[state]}</span>
+                  </label>
+                );
+              })}
+            </div>
+            <span className="faint" style={{ fontSize: 12 }}>
+              A startup already invited is sent its link again — it gets no second meeting.
+            </span>
+          </div>
+          <label className="check">
+            <input type="checkbox" checked={tell} onChange={(e) => setTell(e.target.checked)} />
+            <span>Write to them now, with their link — the letter is in the setup’s Messages tab</span>
+          </label>
+          <p className="faint" style={{ margin: 0, fontSize: 12 }}>{cells} slots free across the days coming up.</p>
+        </>
       ) : (
-      <div className="field">
-        <label>Who they book with</label>
-        <select className="input" value={who} onChange={(e) => setWho(e.target.value)}>
-          <option value="mentors">A meeting with each of their mentors — anyone when they have none</option>
-          <option value="anyone">Anyone receiving on the days</option>
-          {data.interlocutors.map((p) => (
-            <option key={p.id} value={p.id}>Only {p.name}</option>
-          ))}
-        </select>
-      </div>
+        <div className="stack" style={{ gap: 10 }}>
+          <div className="row wrap" style={{ gap: 8 }}>
+            <label className="faint" style={{ fontSize: 12.5 }}>As it reaches</label>
+            <select className="input" style={{ width: 'auto' }} value={shownId} onChange={(e) => setPreviewOf(e.target.value)}>
+              {data.pool
+                .filter((p) => picked.includes(p.candidate.id))
+                .map(({ candidate }) => (
+                  <option key={candidate.id} value={candidate.id}>{candidate.orgName}</option>
+                ))}
+            </select>
+          </div>
+          {preview.error && <div className="callout warn"><Icon name="alert" size={15} /> {preview.error}</div>}
+          {preview.data && (
+            <div className="card card-pad stack" style={{ gap: 6 }}>
+              <span className="faint" style={{ fontSize: 12 }}>To {preview.data.to}</span>
+              <strong>{preview.data.subject}</strong>
+              <div style={{ whiteSpace: 'pre-wrap', fontSize: 13.5 }}>{preview.data.body}</div>
+            </div>
+          )}
+          {!tell && (
+            <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
+              “Write to them now” is off: they are invited without a letter — send their link yourself.
+            </p>
+          )}
+        </div>
       )}
-      <div className="field">
-        <div className="row">
-          <label style={{ flex: 1 }}>Startups</label>
-          <button
-            className="linkish"
-            onClick={() => setPicked(picked.length === unplaced.length ? [] : unplaced.map((p) => p.candidate.id))}
-          >
-            {picked.length === unplaced.length ? 'None' : 'All'}
-          </button>
-        </div>
-        <div className="rows oto-pick">
-          {unplaced.map(({ candidate }) => (
-            <label className="check rowcard" style={{ padding: '7px 10px' }} key={candidate.id}>
-              <input
-                type="checkbox"
-                checked={picked.includes(candidate.id)}
-                onChange={() =>
-                  setPicked((p) => (p.includes(candidate.id) ? p.filter((x) => x !== candidate.id) : [...p, candidate.id]))
-                }
-              />
-              <span style={{ flex: 1, fontSize: 13 }}>{candidate.orgName}</span>
-              {who === 'mentors' && (
-                <span className="faint" style={{ fontSize: 12 }}>
-                  {mentorsOf(data.config, candidate)
-                    .map((id) => data.interlocutors.find((p) => p.id === id)?.name ?? '')
-                    .join(', ') || 'anyone'}
-                </span>
-              )}
-            </label>
-          ))}
-        </div>
-      </div>
-      <label className="check">
-        <input type="checkbox" checked={tell} onChange={(e) => setTell(e.target.checked)} />
-        <span>Write to them now, with their link — the letter is in the setup’s Messages tab</span>
-      </label>
-      <p className="faint" style={{ margin: 0, fontSize: 12 }}>{cells} slots free across the days coming up.</p>
     </Modal>
   );
 }
