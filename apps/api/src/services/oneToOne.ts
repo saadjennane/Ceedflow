@@ -690,6 +690,8 @@ export async function meetingFor(recordId: string, id: string): Promise<MyMeetin
 
 export interface MeetingInvitation {
   id: string;
+  /** Pas encore d'heure : les durées des créneaux offerts, de la plus courte à la plus longue. */
+  durations: number[];
   /** Member space only: the candidacy, to read its sheet. */
   candidateId?: string;
   blockName: string;
@@ -738,6 +740,15 @@ export async function invitationFor(token: string): Promise<{ meeting: OneToOneM
   return pageOf(meeting);
 }
 
+/** Les durées des créneaux offerts — sinon celles des journées à venir. */
+async function lengthsOf(blockId: string, slots: { dayId: string }[]): Promise<number[]> {
+  const today = new Date().toISOString().slice(0, 10);
+  const days = await listDays(blockId);
+  const offered = new Set(slots.map((c) => c.dayId));
+  const shown = slots.length ? days.filter((d) => offered.has(d.id)) : days.filter((d) => (d.heldOn ?? '') >= today);
+  return [...new Set(shown.map((d) => d.minutesPerMeeting).filter((n) => n > 0))].sort((a, b) => a - b);
+}
+
 /** La page d'un rendez-vous — réel, ou celui qu'une startup recevra une fois invitée. */
 async function pageOf(meeting: OneToOneMeeting): Promise<{ meeting: OneToOneMeeting; page: MeetingInvitation } | null> {
   const ctx = await repo.blockContext(meeting.blockId);
@@ -753,6 +764,10 @@ async function pageOf(meeting: OneToOneMeeting): Promise<{ meeting: OneToOneMeet
     meeting.status === 'planned' &&
     !late &&
     (meeting.invite === 'confirm' ? Boolean(meeting.heldOn) : meeting.invite === 'slots');
+  const slots = open && meeting.invite === 'slots' ? await slotsFor(meeting) : [];
+  /* Pas encore d'heure : la durée est celle des créneaux des journées, pas le
+     défaut de la brique — qui disait 45 minutes pour des créneaux de 120. */
+  const durations = meeting.invite === 'slots' && !meeting.heldOn ? await lengthsOf(meeting.blockId, slots) : [];
   return {
     meeting,
     page: {
@@ -766,7 +781,7 @@ async function pageOf(meeting: OneToOneMeeting): Promise<{ meeting: OneToOneMeet
       personName: meetingWith(meeting),
       heldOn: meeting.heldOn,
       startTime: meeting.startTime,
-      durationMinutes: meeting.durationMinutes,
+      durationMinutes: durations[0] ?? meeting.durationMinutes,
       location: meeting.location,
       meetingLink: meeting.meetingLink ?? '',
       answerBy,
@@ -789,7 +804,8 @@ async function pageOf(meeting: OneToOneMeeting): Promise<{ meeting: OneToOneMeet
         };
       })(),
       prepare: null,
-      slots: open && meeting.invite === 'slots' ? await slotsFor(meeting) : [],
+      slots,
+      durations,
     },
   };
 }

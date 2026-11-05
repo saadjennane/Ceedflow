@@ -16,6 +16,8 @@ import '../ui/builder.css';
 interface Invitation {
   /** Ouverte par CEED : la page de la startup, sans y répondre. */
   asStaff?: boolean;
+  /** Pas encore d'heure : les durées des créneaux offerts. */
+  durations?: number[];
   id: string;
   blockName: string;
   programName: string;
@@ -164,7 +166,15 @@ export function MeetPage() {
             )}
             <dt>How long</dt>
             <dd>
-              <span className="num">{data.durationMinutes}</span> minutes
+              {data.durations && data.durations.length > 1 ? (
+                <>
+                  <span className="num">{data.durations.join(' or ')}</span> minutes, depending on the day
+                </>
+              ) : (
+                <>
+                  <span className="num">{data.durationMinutes}</span> minutes
+                </>
+              )}
             </dd>
             {data.meetingLink && (
               <>

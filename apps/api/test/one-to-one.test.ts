@@ -16,7 +16,7 @@ import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
 import {
-  answerInvitation, bookSlot, prepsDueFor, savePrep, sendOneToOneReminders, cancelFollowing, changeMeeting, createDay, historyOf, informAll, invitationFor, invitationPreview, inviteToBook, meetingFor,
+  answerInvitation, bookSlot, prepsDueFor, savePrep, sendOneToOneReminders, cancelFollowing, changeMeeting, createDay, historyOf, informAll, invitationFor, invitationPreview, inviteToBook, previewPage, meetingFor,
   meetingsFor, oneToOneView, planMeetings, prepFor, publicInvitation, saveReport, tellMeeting, updateDay,
 } from '../src/services/oneToOne.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
@@ -417,6 +417,16 @@ describe('a One to One', { skip: skipWithoutServer }, () => {
       candidateIds: [b.id], personId: mentor.id, withIds: [mentor.id], invite: 'none', heldOn: '2030-04-09', startTime: '11:00',
     });
     assert.deepEqual(mb!.withIds, [mentor.id]);
+  });
+
+  it('tells the length of the days’ slots before a time is picked — not the brick’s default', async () => {
+    const { block, mentor, a } = await setUp();
+    await createDay(block.id, { name: '', heldOn: '2030-07-01', windows: [{ startsAt: '09:00', endsAt: '13:00' }], minutesPerMeeting: 120, location: '', interlocutors: [mentor.id] });
+    const [m] = await planMeetings(block.id, { candidateIds: [a.id], personId: null, invite: 'slots', heldOn: null, startTime: null });
+    const page = (await invitationFor(m!.token))!.page;
+    assert.equal(page.durationMinutes, 120);
+    assert.deepEqual(page.durations, [120]);
+    assert.equal((await previewPage(block.id, a.id))!.durationMinutes, 120, 'the preview too');
   });
 
   it('refuses a day with a stranger, and an interlocutor placed on a day they do not receive', async () => {
