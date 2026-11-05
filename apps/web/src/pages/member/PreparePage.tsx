@@ -42,8 +42,16 @@ interface Prepare {
 }
 
 export function PreparePage() {
-  const { meetingId = '' } = useParams();
-  const page = useAsync(() => api.get<Prepare>(`/api/me/prepare/${meetingId}`), meetingId);
+  const { meetingId = '', blockId = '', candidateId = '' } = useParams();
+  /* L'aperçu pour CEED d'une startup pas encore invitée : le formulaire qu'elle aura. */
+  const preview = Boolean(blockId && candidateId);
+  const page = useAsync(
+    () =>
+      preview
+        ? api.get<Prepare>(`/api/blocks/${blockId}/one-to-one/preview-page/${candidateId}`)
+        : api.get<Prepare>(`/api/me/prepare/${meetingId}`),
+    `${meetingId}:${blockId}:${candidateId}`,
+  );
   const navigate = useNavigate();
   /* Les questions reliées à la fiche : ce qu'elle en dit déjà, tant que rien n'est écrit. */
   const linked = (page.data?.prep?.pages ?? []).flatMap((p) => p.fields).filter((f) => f.fromProfile);
@@ -56,10 +64,10 @@ export function PreparePage() {
   );
 
   useEffect(() => {
-    const next = encodeURIComponent(`/prepare/${meetingId}`);
+    const next = encodeURIComponent(preview ? `/preview/prepare/${blockId}/${candidateId}` : `/prepare/${meetingId}`);
     if (page.error?.includes('Sign in')) navigate(`/login?next=${next}`);
     else if (page.error?.includes('Choose your own password')) navigate(`/me?next=${next}`);
-  }, [page.error, navigate, meetingId]);
+  }, [page.error, navigate, meetingId, preview, blockId, candidateId]);
 
   if (page.loading) return <div className="member-shell" />;
   if (page.error || !page.data) {

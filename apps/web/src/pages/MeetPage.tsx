@@ -14,6 +14,8 @@ import { Icon } from '../ui/Icon';
 import '../ui/builder.css';
 
 interface Invitation {
+  /** Ouverte par CEED : la page de la startup, sans y répondre. */
+  asStaff?: boolean;
   id: string;
   blockName: string;
   programName: string;
@@ -40,8 +42,16 @@ interface Invitation {
 }
 
 export function MeetPage() {
-  const { token = '' } = useParams();
-  const page = useAsync(() => api.get<Invitation>(`/api/public/meet/${token}`), token);
+  const { token = '', blockId = '', candidateId = '' } = useParams();
+  /* L'aperçu pour CEED d'une startup pas encore invitée : sa page à venir, sans lien à elle. */
+  const preview = Boolean(blockId && candidateId);
+  const page = useAsync(
+    () =>
+      preview
+        ? api.get<Invitation>(`/api/blocks/${blockId}/one-to-one/preview-page/${candidateId}`)
+        : api.get<Invitation>(`/api/public/meet/${token}`),
+    `${token}:${blockId}:${candidateId}`,
+  );
   const [answered, setAnswered] = useState<Invitation | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +91,10 @@ export function MeetPage() {
   const days = [...new Set(data.slots.map((x) => x.onDate))];
 
   const post = async (body: object) => {
+    if (data.asStaff) {
+      setError('You are seeing what the startup will see — nothing is booked or answered from here.');
+      return;
+    }
     setSending(true);
     setError(null);
     try {
@@ -106,6 +120,12 @@ export function MeetPage() {
       <div className="public-card">
         <div className="public-top" style={{ background: `linear-gradient(90deg, ${data.colour}, ${data.colour}55)` }} />
         <div className="public-body">
+          {data.asStaff && (
+            <p className="public-intro" style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 8, padding: '8px 10px' }}>
+              You are seeing what <strong>{data.orgName}</strong> will see on this link. Nothing you click here is booked or
+              answered.
+            </p>
+          )}
           <div className="eyebrow">{data.editionName}</div>
           <h1>{data.blockName || 'One to One'}</h1>
           <p className="public-intro">

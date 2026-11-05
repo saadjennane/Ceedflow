@@ -31,7 +31,12 @@ import {
   publicInvitation,
   invitationPreview,
   inviteToBook,
+  previewLinks,
+  previewPage,
+  withPreviewLinks,
 } from '../services/oneToOne.js';
+import { SESSION_COOKIE, accountForToken } from '../services/auth.js';
+import { publicOrigin } from '../services/platform.js';
 import { workspaceGuard } from './guard.js';
 import { post } from '../services/mail.js';
 import { HttpError, notFound, parse } from './util.js';
@@ -124,8 +129,17 @@ export async function oneToOneRoutes(app: FastifyInstance) {
     const letter = await invitationPreview(id, candidateId);
     const to = req.staff?.email ?? '';
     if (!to) throw new HttpError(422, 'No address to send the test to.');
-    await post({ kind: 'one_to_one_test', to, toName: '', blockId: id, subject: `[Test] ${letter.subject}`, body: letter.body });
+    /* Ses liens pas encore nés : leurs pages d'aperçu, qu'on ouvre depuis sa boîte. */
+    const body = withPreviewLinks(letter.body, await publicOrigin(), id, candidateId);
+    await post({ kind: 'one_to_one_test', to, toName: '', blockId: id, subject: `[Test] ${letter.subject}`, body });
     return { to };
+  });
+  /** Ce que la startup verra sur ses liens — avant même d'être invitée. Lecture seule. */
+  app.get('/api/blocks/:id/one-to-one/preview-page/:candidateId', async (req, reply) => {
+    const { id, candidateId } = req.params as { id: string; candidateId: string };
+    const page = await previewPage(id, candidateId);
+    if (!page) return notFound(reply, 'The startup would read “not found” here: the edition is not live, or the startup is gone.');
+    return { ...page, asStaff: true, links: previewLinks('', id, candidateId) };
   });
   /** Inviter à réserver — ou réinviter celles qui l'ont déjà été. */
   app.post('/api/blocks/:id/one-to-one/invite', async (req) => {
@@ -186,7 +200,9 @@ export async function oneToOnePublicRoutes(app: FastifyInstance) {
   app.get('/api/public/meet/:token', async (req, reply) => {
     const { token } = req.params as { token: string };
     const found = await invitationFor(token);
-    return found ? publicInvitation(found.page) : notFound(reply, 'This invitation does not exist.');
+    if (!found) return notFound(reply, 'This invitation does not exist.');
+    /* CEED qui ouvre le lien d'une startup voit sa page — sans pouvoir y répondre à sa place. */
+    return { ...publicInvitation(found.page), asStaff: await isStaff(req) };
   });
 
   app.post('/api/public/meet/:token', async (req) => {
@@ -202,6 +218,9 @@ export async function oneToOnePublicRoutes(app: FastifyInstance) {
       }),
       req.body,
     );
+    if (await isStaff(req)) {
+      throw new HttpError(403, 'You are signed in as CEED: this page books and answers for the startup. Do it from the workspace instead.');
+    }
     /* Une case choisie, ou un oui ou non à l'heure proposée. */
     if (body.dayId && body.startTime && body.personId) {
       return publicInvitation(await bookSlot(token, { dayId: body.dayId, startTime: body.startTime, personId: body.personId }));
@@ -209,4 +228,10 @@ export async function oneToOnePublicRoutes(app: FastifyInstance) {
     if (body.accept === undefined) throw new HttpError(422, 'Pick a time, or answer.');
     return publicInvitation(await answerInvitation(token, body.accept, body.note ?? ''));
   });
+}
+
+/** Une session CEED sur une page publique : elle regarde, elle ne répond pas pour la startup. */
+async function isStaff(req: FastifyRequest): Promise<boolean> {
+  const account = await accountForToken(req.cookies?.[SESSION_COOKIE]);
+  return Boolean(account?.staffRole);
 }

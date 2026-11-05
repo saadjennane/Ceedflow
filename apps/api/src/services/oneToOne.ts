@@ -566,9 +566,10 @@ export const prefillFromPrep = (prep: Record<string, unknown>, fields: readonly 
 /** The preparations a startup still owes: scheduled, not locked, not sent. */
 export async function prepsDueFor(candidateId: string): Promise<{ meeting: OneToOneMeeting; started: boolean }[]> {
   const meetings = await all<OneToOneMeeting>(
-    /* Toute séance datée et non verrouillée : une préparation qui ne se
-       verrouille jamais d'elle-même reste à faire après la date, en retard. */
-    `select ${COLS} where m.candidate_id = $1 and m.status = 'planned' and m.held_on is not null and m.rsvp_state <> 'declined'
+    /* Toute séance datée et non verrouillée — et celle encore à réserver : la
+       préparation tient au rendez-vous, pas au créneau. Une préparation qui ne
+       se verrouille jamais d'elle-même reste à faire après la date, en retard. */
+    `select ${COLS} where m.candidate_id = $1 and m.status = 'planned' and (m.held_on is not null or m.invite = 'slots') and m.rsvp_state <> 'declined'
        and m.prep_submitted_at is null ${ORDER}`,
     [candidateId],
   );
@@ -734,6 +735,11 @@ export interface MeetingInvitation {
 export async function invitationFor(token: string): Promise<{ meeting: OneToOneMeeting; page: MeetingInvitation } | null> {
   const meeting = await one<OneToOneMeeting>(`select ${COLS} where m.token = $1`, [token]);
   if (!meeting) return null;
+  return pageOf(meeting);
+}
+
+/** La page d'un rendez-vous — réel, ou celui qu'une startup recevra une fois invitée. */
+async function pageOf(meeting: OneToOneMeeting): Promise<{ meeting: OneToOneMeeting; page: MeetingInvitation } | null> {
   const ctx = await repo.blockContext(meeting.blockId);
   const detail = ctx ? await repo.getEditionDetail(ctx.editionId) : null;
   if (!detail || !editionIsVisible(detail.status)) return null;
@@ -786,6 +792,37 @@ export async function invitationFor(token: string): Promise<{ meeting: OneToOneM
       slots: open && meeting.invite === 'slots' ? await slotsFor(meeting) : [],
     },
   };
+}
+
+/**
+ * Ce qu'une startup verra sur ses liens, pour CEED — avant même qu'elle soit
+ * invitée : son rendez-vous « à réserver » s'il existe, sinon celui qu'elle
+ * recevra, avec les vrais créneaux libres. Rien ne s'enregistre.
+ */
+export async function previewPage(blockId: string, candidateId: string): Promise<MeetingInvitation | null> {
+  const candidate = await repo.getCandidate(candidateId);
+  if (!candidate) return null;
+  const existing = await waitingToBook(blockId, candidateId);
+  const meeting: OneToOneMeeting = existing ?? {
+    id: 'preview', blockId, candidateId, orgName: candidate.orgName, personId: null, personName: '', withIds: [], withNames: '',
+    seriesId: null, dayId: null, heldOn: null, startTime: null, durationMinutes: 0, location: '', meetingLink: '',
+    invite: 'slots', token: '', rsvpState: 'pending', respondedAt: null, rsvpNote: '', status: 'planned',
+    prep: {}, prepSubmittedAt: null, prepEditedAt: null, prepEditedByName: '', report: {}, reportSubmittedAt: null, reportByName: '',
+    createdAt: new Date().toISOString(), toldStartupAt: null, toldPersonAt: null,
+  } as OneToOneMeeting;
+  return (await pageOf(meeting))?.page ?? null;
+}
+
+/** Les adresses des pages d'aperçu, que CEED ouvre à la place des liens qu'une startup pas encore invitée n'a pas. */
+export const previewLinks = (origin: string, blockId: string, candidateId: string) => ({
+  meet: `${origin}/preview/meet/${blockId}/${candidateId}`,
+  prepare: `${origin}/preview/prepare/${blockId}/${candidateId}`,
+});
+
+/** La lettre d'essai : les liens à venir remplacés par leurs pages d'aperçu, qu'on peut ouvrir depuis sa boîte. */
+export function withPreviewLinks(body: string, origin: string, blockId: string, candidateId: string): string {
+  const links = previewLinks(origin, blockId, candidateId);
+  return body.replaceAll(PLACEHOLDER, links.meet).replaceAll(PREP_PLACEHOLDER, links.prepare);
 }
 
 /**
@@ -846,6 +883,10 @@ export async function answerInvitation(token: string, accept: boolean, note = ''
  * confirm, or nothing — with its own link; the interlocutor where to open the
  * meeting and write the report, and how to get in when they never have.
  */
+/** Ce que l'aperçu écrit à la place des liens d'une startup pas encore invitée. */
+const PLACEHOLDER = '(son lien personnel)';
+const PREP_PLACEHOLDER = '(son lien de préparation)';
+
 /** La lettre à la startup d'un rendez-vous — envoyée, montrée en aperçu, ou envoyée en test. */
 function startupLetter(
   m: Pick<OneToOneMeeting, 'id' | 'invite' | 'heldOn' | 'token' | 'orgName' | 'withNames' | 'personName' | 'meetingLink'>,
@@ -860,7 +901,7 @@ function startupLetter(
   const to = candidate.email?.trim();
   if (!to) return null;
   /* Un aperçu avant l'invitation n'a pas encore de lien : on dit ce qui sera là. */
-  const link = m.id === 'preview' ? '(son lien personnel)' : origin ? `${origin}/meet/${m.token}` : '';
+  const link = m.id === 'preview' ? PLACEHOLDER : origin ? `${origin}/meet/${m.token}` : '';
   const action =
     m.invite === 'slots'
       ? `Choisissez votre créneau ici : ${link}`
@@ -877,8 +918,17 @@ function startupLetter(
     visio: m.meetingLink ? `Lien de la réunion : ${m.meetingLink}` : '',
     action,
     /* La préparation se remplit dans son espace, pas par le lien de réservation. */
-    preparation: prepForm(config) && m.heldOn && origin ? `Préparez la séance dans votre espace : ${origin}/prepare/${m.id}` : '',
+    /* Avant même l'heure choisie : la préparation tient au rendez-vous, pas au créneau. */
+    preparation: !prepForm(config)
+      ? ''
+      : m.id === 'preview'
+        ? `Préparez la séance dans votre espace : ${PREP_PLACEHOLDER}`
+        : origin
+          ? `Préparez la séance dans votre espace : ${origin}/prepare/${m.id}`
+          : '',
     lien: link,
+    /* Le lien seul, pour une phrase écrite à sa façon. */
+    lien_preparation: !prepForm(config) ? '' : m.id === 'preview' ? PREP_PLACEHOLDER : origin ? `${origin}/prepare/${m.id}` : '',
   };
   return {
     to,
@@ -895,7 +945,18 @@ export interface LinkCheck {
   note: string;
 }
 
-const PLACEHOLDER = '(son lien personnel)';
+
+/** Elle se prépare connectée : sans compte à elle, le lien s'arrête à la page de connexion. */
+async function prepCheck(url: string, candidate: Candidate, ahead: string): Promise<LinkCheck> {
+  const email = candidate.email?.trim() ?? '';
+  const account = email ? await findAccount(email) : null;
+  const theirs = account && (account.recordId === candidate.personId || (await dir.orgIdsOf(account.recordId)).has(candidate.orgId));
+  const fail = (note: string): LinkCheck => ({ url, what: 'Preparation', ok: false, note });
+  if (!account) return fail(`${email || 'Their contact'} has no account yet — they cannot sign in to prepare. Give them access first.`);
+  if (account.disabledAt) return fail(`${email}’s account is disabled — they cannot sign in to prepare.`);
+  if (!theirs) return fail(`${email}’s account is not part of ${candidate.orgName} — they would read “not part of this startup”.`);
+  return { url, what: 'Preparation', ok: true, note: [ahead, `Opens in their member space, signed in as ${email}.`].filter(Boolean).join(' ') };
+}
 
 /**
  * Chaque lien d'une lettre, suivi comme la startup le suivra : la page de
@@ -903,14 +964,17 @@ const PLACEHOLDER = '(son lien personnel)';
  * espace — et peut-elle seulement s'y connecter ? Dit avant l'envoi plutôt
  * que découvert par un « Meeting not found » dans sa boîte.
  */
-export async function checkLinks(body: string, candidate: Candidate, origin: string): Promise<LinkCheck[]> {
+export async function checkLinks(body: string, candidate: Candidate, origin: string, blockId = ''): Promise<LinkCheck[]> {
   const out: LinkCheck[] = [];
   if (!origin) {
     out.push({ url: '', what: 'App address', ok: false, note: 'The app’s public address is not set — the letter goes out without its links.' });
   }
+  /* Pas encore invitée : ses liens n'existent pas — leurs pages d'aperçu montrent ce qu'ils ouvriront. */
+  const ahead = origin && blockId ? previewLinks(origin, blockId, candidate.id) : null;
   if (body.includes(PLACEHOLDER)) {
-    out.push({ url: '', what: 'Booking page', ok: true, note: 'Their own link — created when you invite, then shown here.' });
+    out.push({ url: ahead?.meet ?? '', what: 'Booking page', ok: true, note: 'Created when you invite. Open it to see the page they will get, with the free slots — nothing is booked.' });
   }
+  if (body.includes(PREP_PLACEHOLDER)) out.push(await prepCheck(ahead?.prepare ?? '', candidate, 'Created when you invite. Open it to see the form they will fill — read-only.'));
   const urls = [...new Set([...body.matchAll(/https?:\/\/[^\s<>"')\]]+/g)].map((m) => m[0].replace(/[.,;:!?]+$/, '')))];
   for (const url of urls) {
     const path = origin && url.startsWith(origin) ? url.slice(origin.length) : null;
@@ -931,25 +995,8 @@ export async function checkLinks(body: string, candidate: Candidate, origin: str
       });
     } else if (prep) {
       const meeting = await getMeeting(prep[1]!);
-      let ok = !!meeting && meeting.candidateId === candidate.id && meeting.status !== 'cancelled';
-      let note = !meeting ? 'Leads nowhere: no such meeting.' : meeting.candidateId !== candidate.id ? 'This is another startup’s meeting.' : meeting.status === 'cancelled' ? 'This meeting is cancelled.' : '';
-      if (ok) {
-        /* Elle se prépare connectée : sans compte, le lien s'arrête à la page de connexion. */
-        const email = candidate.email?.trim() ?? '';
-        const account = email ? await findAccount(email) : null;
-        const theirs = account && (account.recordId === candidate.personId || (await dir.orgIdsOf(account.recordId)).has(candidate.orgId));
-        if (!account) {
-          ok = false;
-          note = `${email || 'Their contact'} has no account yet — they cannot sign in to prepare. Give them access first.`;
-        } else if (account.disabledAt) {
-          ok = false;
-          note = `${email}’s account is disabled — they cannot sign in to prepare.`;
-        } else if (!theirs) {
-          ok = false;
-          note = `${email}’s account is not part of ${candidate.orgName} — they would read “not part of this startup”.`;
-        } else note = `Opens in their member space, signed in as ${email}.`;
-      }
-      out.push({ url, what: 'Preparation', ok, note });
+      const wrong = !meeting ? 'Leads nowhere: no such meeting.' : meeting.candidateId !== candidate.id ? 'This is another startup’s meeting.' : meeting.status === 'cancelled' ? 'This meeting is cancelled.' : '';
+      out.push(wrong ? { url, what: 'Preparation', ok: false, note: wrong } : await prepCheck(url, candidate, ''));
     } else if (path !== null) {
       out.push({ url, what: 'Page of the app', ok: true, note: 'A page of CeedFlow.' });
     } else {
@@ -1018,7 +1065,7 @@ export async function invitationPreview(blockId: string, candidateId: string): P
   };
   const written = startupLetter(shape, candidate, config, `${detail.program.name} — ${detail.name}`, origin, '', '', 'announce');
   if (!written) throw new HttpError(422, `${candidate.orgName} has no address to write to.`);
-  return { ...written, checks: await checkLinks(written.body, candidate, origin) };
+  return { ...written, checks: await checkLinks(written.body, candidate, origin, blockId) };
 }
 
 /**

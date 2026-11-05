@@ -26,6 +26,9 @@ const router = createBrowserRouter([
   { path: '/apply/:token', element: <ApplyPage /> },
   { path: '/book/:token', element: <BookingPage /> },
   { path: '/meet/:token', element: <MeetPage /> },
+  /* Ce qu'une startup verra sur ses liens, pour CEED — avant même qu'elle soit invitée. */
+  { path: '/preview/meet/:blockId/:candidateId', element: <MeetPage /> },
+  { path: '/preview/prepare/:blockId/:candidateId', element: <PreparePage /> },
   { path: '/login', element: <AuthPage mode="login" /> },
   { path: '/signup', element: <AuthPage mode="signup" /> },
   { path: '/join', element: <Navigate to="/signup" replace /> },
