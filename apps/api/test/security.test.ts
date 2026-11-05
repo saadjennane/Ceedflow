@@ -76,7 +76,7 @@ describe('the ways in', { skip: skipWithoutServer }, () => {
     return { record, email, session, cookies: { [SESSION_COOKIE]: session } };
   };
 
-  const upload = (cookies: Record<string, string>, filename: string, mime: string, content: string) => {
+  const upload = (cookies: Record<string, string>, filename: string, mime: string, content: string, url = '/api/public/uploads') => {
     const boundary = `----ceed${uniq()}`;
     const body =
       `--${boundary}\r\nContent-Disposition: form-data; name="fieldId"\r\n\r\nf\r\n` +
@@ -84,12 +84,32 @@ describe('the ways in', { skip: skipWithoutServer }, () => {
       `--${boundary}--\r\n`;
     return app.inject({
       method: 'POST',
-      url: '/api/public/uploads',
+      url,
       cookies,
       headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
       payload: body,
     });
   };
+
+  /* ---- A template to download ---- */
+
+  it('takes a template from CEED only, hands it to anybody, and never hands out a startup’s file by that way', async () => {
+    const founder = await member('Founder');
+    const staff = await member('Samia', 'editor');
+    assert.equal((await upload(founder.cookies, 'bp.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'x', '/api/templates')).statusCode, 401);
+    const made = await upload(staff.cookies, 'Business plan.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'modele', '/api/templates');
+    assert.equal(made.statusCode, 201);
+    const { uploadId, filename } = made.json() as { uploadId: string; filename: string };
+    assert.equal(filename, 'Business plan.xlsx');
+    const got = await app.inject({ method: 'GET', url: `/api/public/templates/${uploadId}` });
+    assert.equal(got.statusCode, 200, 'no sign-in needed: the public application form shows it');
+    assert.equal(got.body, 'modele');
+    assert.match(String(got.headers['content-disposition']), /attachment/);
+    const theirs = await upload(founder.cookies, 'mine.pdf', 'application/pdf', '%PDF-1.4 mine');
+    assert.equal(theirs.statusCode, 201);
+    const leak = await app.inject({ method: 'GET', url: `/api/public/templates/${(theirs.json() as { id: string }).id}` });
+    assert.equal(leak.statusCode, 404, 'a startup’s file is not a template');
+  });
 
   /* ---- Signing up ---- */
 
@@ -319,5 +339,16 @@ describe('the ways in', { skip: skipWithoutServer }, () => {
     assert.notEqual(res.statusCode, 200);
     const check = await app.inject({ method: 'GET', url: '/api/public/join/check?name=Rafid' });
     assert.notEqual(check.statusCode, 200);
+  });
+});
+
+describe('a template’s format', () => {
+  it('accepts its family of extensions when asked, and anything otherwise', async () => {
+    const { acceptedExtensions } = await import('@ceed/shared');
+    const template = { uploadId: 'tpl', filename: 'Modèle BP.XLSX' };
+    assert.deepEqual(acceptedExtensions({ template, templateFormatOnly: true })?.includes('xls'), true);
+    assert.equal(acceptedExtensions({ template, templateFormatOnly: true })?.includes('pdf'), false);
+    assert.equal(acceptedExtensions({ template }), null, 'not asked: anything goes');
+    assert.equal(acceptedExtensions({ templateFormatOnly: true }), null, 'no template, nothing to match');
   });
 });

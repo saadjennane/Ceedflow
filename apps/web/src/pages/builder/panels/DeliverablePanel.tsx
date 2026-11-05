@@ -19,6 +19,7 @@ import { Modal } from '../../../ui/Overlays';
 import { DropRow, Grip, moved, nudged, useDragging, type Dragging } from '../../../ui/Reorderable';
 import { AccessTemplate, Template } from './Template';
 import { OwedList } from '../../member/OwedItems';
+import { TemplateSetting } from '../../../ui/TemplateSetting';
 
 /* Three sides to set up, so three tabs: when the list is open, what is on it,
    and what the startups are told. A dozen documents under the dates made the
@@ -245,6 +246,7 @@ function FieldRow({
           placeholder="Oui, Non, En cours"
         />
       )}
+      {field.type === 'file' && <TemplateSetting field={field} onChange={onChange} />}
     </div>
   );
 }

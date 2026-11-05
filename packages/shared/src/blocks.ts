@@ -174,7 +174,32 @@ export const formFieldSchema = z.object({
   fromProfile: z.string().optional(),
   /** Pour un KPI : la période demandée (« 2025 »). Vide : la période en cours à l'envoi. */
   fromPeriod: z.string().optional(),
+  /**
+   * Pour une question « fichier » : le modèle que CEED dépose, que la personne
+   * télécharge, remplit et renvoie. Un seul par question.
+   */
+  template: z.object({ uploadId: z.string(), filename: z.string() }).optional(),
+  /** N'accepter en retour qu'un fichier du format du modèle (un Excel pour un Excel). */
+  templateFormatOnly: z.boolean().optional(),
 });
+
+/** L'extension d'un nom de fichier, en minuscules, sans le point — « xlsx ». */
+export const extensionOf = (filename: string): string => {
+  const dot = filename.lastIndexOf('.');
+  return dot > 0 ? filename.slice(dot + 1).toLowerCase() : '';
+};
+
+/**
+ * Ce qu'un fichier renvoyé doit être quand la question exige le format de son
+ * modèle — les extensions sœurs comprises (un .xls pour un .xlsx).
+ */
+export function acceptedExtensions(field: Pick<FormField, 'template' | 'templateFormatOnly'>): string[] | null {
+  if (!field.template || !field.templateFormatOnly) return null;
+  const ext = extensionOf(field.template.filename);
+  if (!ext) return null;
+  const FAMILIES = [['xlsx', 'xls', 'xlsm', 'ods', 'csv'], ['docx', 'doc', 'odt', 'rtf'], ['pptx', 'ppt', 'odp'], ['pdf']];
+  return FAMILIES.find((f) => f.includes(ext)) ?? [ext];
+}
 
 export type FormField = z.infer<typeof formFieldSchema>;
 

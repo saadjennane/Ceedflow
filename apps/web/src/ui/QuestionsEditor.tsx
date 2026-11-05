@@ -19,6 +19,7 @@ import { useState, type ReactNode } from 'react';
 import { SelectField, TagField, TextField } from './Field';
 import { Icon } from './Icon';
 import { ConfirmDialog, useToast } from './Overlays';
+import { TemplateSetting } from './TemplateSetting';
 import { SheetLinkNote, SheetSourceMenu, fieldFromSource, useSheetSources, type SheetSource } from './SheetLink';
 
 export interface Questions {
@@ -348,6 +349,7 @@ export function QuestionsEditor({
                           placeholder="Add an option"
                         />
                       )}
+                      {field.type === 'file' && <TemplateSetting field={field} onChange={(partial) => setField(field.id, partial)} />}
                       {/* Reliée à la fiche : reprise à l'ouverture, recopiée à l'envoi. */}
                       {field.fromProfile && (
                         <SheetLinkNote field={field} sources={sources} onChange={(partial) => setField(field.id, partial)} periodSaid={kpiPeriodSaid} />

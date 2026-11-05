@@ -10,6 +10,7 @@ const PATHS: Record<string, string> = {
   file: 'M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7z M14 3v4h4',
   calendar: 'M4 6h16v15H4z M4 10h16 M8 3v4 M16 3v4',
   send: 'M21 3 10.5 13.5 M21 3l-6.5 18-4-8-8-4z',
+  download: 'M12 4v11 M7 10l5 5 5-5 M5 20h14',
   users: 'M8 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z M2 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5 M17 11a3 3 0 1 0 0-6 M18 14.5c2.4.5 4 2.5 4 5',
   square: 'M4 4h16v16H4z',
   search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z M16.2 16.2 21 21',

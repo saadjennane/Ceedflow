@@ -560,6 +560,27 @@ export async function funnelRoutes(app: FastifyInstance) {
     });
   });
 
+  /** CEED dépose le modèle d'une question « fichier ». */
+  app.post('/api/templates', async (req, reply) => {
+    const file = await req.file();
+    if (!file) throw new HttpError(422, 'No file received.');
+    const mime = uploadType(file.filename, file.mimetype);
+    if (!mime) throw new HttpError(422, 'This kind of file is not accepted. Send a PDF, an image or an office document.');
+    const bytes = await file.toBuffer();
+    if (!bytes.length) throw new HttpError(422, 'That file is empty.');
+    reply.code(201);
+    return repo.saveTemplate({ filename: file.filename, mime, bytes, uploadedBy: req.staff?.recordId ?? '' });
+  });
+
+  /** Le modèle, pour quiconque voit le formulaire — le public de la candidature compris. */
+  app.get('/api/public/templates/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const template = await repo.getTemplate(id);
+    if (!template) return notFound(reply, 'Template not found.');
+    reply.headers({ ...servingHeaders(template.mime, template.filename), 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(template.filename)}` });
+    return reply.send(template.bytes);
+  });
+
   /**
    * Outside the workspace guard because a juror reads these and is not staff.
    * An attachment is somebody's business plan, so it opens for three people and

@@ -1,4 +1,4 @@
-import { MAX_UPLOAD_BYTES, contactProblem, type FormField } from '@ceed/shared';
+import { MAX_UPLOAD_BYTES, acceptedExtensions, contactProblem, extensionOf, type FormField } from '@ceed/shared';
 import { useState } from 'react';
 import { useLang } from '../lib/lang';
 import { Icon } from './Icon';
@@ -169,8 +169,14 @@ function FileField({
   const { t } = useLang();
   const current = value as { uploadId: string; filename: string; size?: number } | undefined;
 
+  /* Le format du modèle exigé : un Excel pour un Excel. */
+  const accepted = acceptedExtensions(field);
   const upload = async (file: File) => {
     setProblem('');
+    if (accepted && !accepted.includes(extensionOf(file.name))) {
+      setProblem(`${t('file.onlyFormat')} (${accepted.map((e) => `.${e}`).join(', ')}).`);
+      return;
+    }
     if (file.size > MAX_UPLOAD_BYTES) {
       setProblem(`That file is ${(file.size / 1024 / 1024).toFixed(1)} MB — the limit is 10 MB.`);
       return;
@@ -227,8 +233,26 @@ function FileField({
 
   return (
     <>
+      {/* Le modèle d'abord : on le prend, on le remplit, on le renvoie juste en dessous. */}
+      {field.template && (
+        <div className="rowcard link-row">
+          <Icon name="file" size={15} />
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <strong style={{ fontSize: 13, overflowWrap: 'anywhere' }}>{field.template.filename}</strong>
+            <span className="faint" style={{ display: 'block', fontSize: 12 }}>{t('file.templateHow')}</span>
+          </span>
+          <a className="btn sm" href={`/api/public/templates/${field.template.uploadId}`}>
+            <Icon name="download" size={12} /> {t('file.template')}
+          </a>
+        </div>
+      )}
       <label className="dropzone">
-        <input type="file" disabled={busy} onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
+        <input
+          type="file"
+          disabled={busy}
+          accept={accepted ? accepted.map((e) => `.${e}`).join(',') : undefined}
+          onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
+        />
         <Icon name="file" size={16} />
         <span>{busy ? t('file.sending') : t('file.choose')}</span>
       </label>

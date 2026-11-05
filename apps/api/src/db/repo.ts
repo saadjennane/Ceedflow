@@ -1772,6 +1772,24 @@ export async function claimUploads(
   );
 }
 
+/** Un modèle à télécharger, déposé par CEED sur une question « fichier ». */
+export async function saveTemplate(input: { filename: string; mime: string; bytes: Buffer; uploadedBy: string }) {
+  const id = newId('tpl', 20);
+  await (await db()).query(
+    `insert into uploads (id, field_id, filename, mime, size, bytes, uploaded_by, is_template) values ($1,'',$2,$3,$4,$5,$6,true)`,
+    [id, input.filename, input.mime, input.bytes.length, input.bytes, input.uploadedBy],
+  );
+  return { uploadId: id, filename: input.filename };
+}
+
+/** Le modèle seulement : un fichier rendu par une startup ne s'ouvre jamais par ce chemin. */
+export async function getTemplate(id: string) {
+  return one<{ filename: string; mime: string; bytes: Buffer }>(
+    'select filename, mime, bytes from uploads where id = $1 and is_template',
+    [id],
+  );
+}
+
 export async function getUpload(id: string) {
   /* The candidacy travels with the file: an attachment is somebody's business
      plan, and who may open it follows from whose application it belongs to.
