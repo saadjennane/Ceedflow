@@ -44,6 +44,9 @@ import {
   reportForm,
   sharedReport,
   type FormPage,
+  missingRequired,
+  shownAnswers,
+  shownFieldIds,
 } from '@ceed/shared';
 import { accessFor } from './invitations.js';
 import { isTestRecord } from './testIdentity.js';
@@ -488,9 +491,9 @@ export async function saveReport(
   const fields = (config ? reportForm(config).fields : []) as FormField[];
   /* Seules les questions du compte rendu s'enregistrent : une clé inventée
      par un client ne se glisse pas dans le rapport. */
-  const kept = Object.fromEntries(Object.entries(answers).filter(([k]) => fields.some((f) => f.id === k)));
+  const kept = shownAnswers(fields, Object.fromEntries(Object.entries(answers).filter(([k]) => fields.some((f) => f.id === k))));
   if (submit) {
-    const missing = fields.filter((f) => f.required && blank(kept[f.id]));
+    const missing = missingRequired(fields, kept);
     if (missing.length) {
       throw new HttpError(
         422,
@@ -540,9 +543,9 @@ export async function savePrep(
     throw new HttpError(403, 'The preparation is locked — it can be read, no longer changed.');
   }
   const fields = form.fields as FormField[];
-  const kept = Object.fromEntries(Object.entries(answers).filter(([k]) => fields.some((f) => f.id === k)));
+  const kept = shownAnswers(fields, Object.fromEntries(Object.entries(answers).filter(([k]) => fields.some((f) => f.id === k))));
   if (who.side === 'startup' && who.submit) {
-    const missing = fields.filter((f) => f.required && blank(kept[f.id]));
+    const missing = missingRequired(fields, kept);
     if (missing.length) {
       throw new HttpError(422, 'Some answers are missing.', Object.fromEntries(missing.map((f) => [`answers.${f.id}`, 'This answer is required.'])));
     }
@@ -678,6 +681,7 @@ export async function meetingFor(recordId: string, id: string): Promise<MyMeetin
     profile: profile && profileStarted(profile) ? profile : null,
     answers: candidate
       ? questions
+          .filter((q, _i, all) => shownFieldIds(all, candidate.answers).has(q.id))
           .filter((q) => !blank(candidate.answers[q.id]) && !CONTACT_FIELD_TYPES.includes(q.type))
           .map((q) => ({ label: q.label, value: candidate.answers[q.id], type: q.type }))
       : [],

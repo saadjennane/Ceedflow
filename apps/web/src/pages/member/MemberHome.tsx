@@ -18,6 +18,7 @@ import {
   type MemberActivity,
   type Task,
   type TaskItem,
+  requiredShown,
 } from '@ceed/shared';
 import { useState } from 'react';
 import { useLang } from '../../lib/lang';
@@ -43,8 +44,8 @@ export function owedLine(owed: Owed[]): { left: number; of: number; closesAt: st
 
   for (const ask of owed) {
     if (!ask.open) continue;
-    const need = ask.config.items.filter((i: DeliverableItem) => i.required);
     const mine = (id: string) => ask.returns.find((r) => r.itemId === id);
+    const need = requiredShown(ask.config.items as DeliverableItem[], (id) => mine(id)?.value);
     const sent = need.filter((i) => itemComplete(i, mine(i.id)?.value)).length;
     of += need.length;
     left += need.length - sent;

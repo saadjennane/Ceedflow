@@ -20,6 +20,7 @@ import { SelectField, TagField, TextField } from './Field';
 import { Icon } from './Icon';
 import { ConfirmDialog, useToast } from './Overlays';
 import { TemplateSetting } from './TemplateSetting';
+import { ShowIfBadge, ShowIfSetting } from './ShowIfSetting';
 import { SheetLinkNote, SheetSourceMenu, fieldFromSource, useSheetSources, type SheetSource } from './SheetLink';
 
 export interface Questions {
@@ -283,6 +284,7 @@ export function QuestionsEditor({
                     </button>
                     <span className="mini">{FIELD_TYPE_LABEL[field.type]}</span>
                     {field.required && <span className="badge stop">Required</span>}
+                    <ShowIfBadge field={field} all={value.fields} />
                     {columnToggle && field.showInTable && (
                       <span className="badge info" title="Shown as a column in the candidates table">
                         Column
@@ -349,6 +351,7 @@ export function QuestionsEditor({
                           placeholder="Add an option"
                         />
                       )}
+                      <ShowIfSetting field={field} all={value.fields} onChange={(partial) => setField(field.id, partial)} />
                       {field.type === 'file' && <TemplateSetting field={field} onChange={(partial) => setField(field.id, partial)} />}
                       {/* Reliée à la fiche : reprise à l'ouverture, recopiée à l'envoi. */}
                       {field.fromProfile && (

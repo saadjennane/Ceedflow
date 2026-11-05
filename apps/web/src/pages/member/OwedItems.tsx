@@ -6,6 +6,8 @@ import {
   longDate,
   type DeliverableConfig,
   type DeliverableItem,
+  itemsShown,
+  requiredShown,
 } from '@ceed/shared';
 import { useEffect, useRef, useState } from 'react';
 import { useLang } from '../../lib/lang';
@@ -245,7 +247,7 @@ export function OwedList({
       leave();
     };
   }, []);
-  const need = ask.config.items.filter((i) => i.required);
+  const need = requiredShown(ask.config.items, (id) => ask.returns.find((r) => r.itemId === id)?.value);
   /* Rien d'obligatoire : la liste reste à remplir tant que ses pièces
      facultatives manquent, sans décompte — elles ne bloquent rien. */
   const optional = need.length ? 0 : optionalLeft(ask.config.items, (id) => ask.returns.find((r) => r.itemId === id)?.value);
@@ -416,7 +418,9 @@ export function OwedList({
       )}
 
       <div className="stack" style={{ gap: 14 }}>
-        {ask.config.items.map((item) => {
+        {/* Seulement ce qui lui est demandé : un élément que sa règle cache
+            apparaît dès que la réponse dont il dépend le demande. */}
+        {itemsShown(ask.config.items, (id) => (id in typed ? typed[id] : mineOf(id)?.value)).map((item) => {
           const mine = mineOf(item.id);
           /* Ce que la fiche dit déjà, proposé — pas posé : une pièce n'est
              envoyée que quand on la donne, et un champ prérempli se lirait

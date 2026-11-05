@@ -155,6 +155,19 @@ export const FIELD_TYPE_LABEL: Record<FieldType, string> = {
 /** Anything bigger is refused rather than silently truncated. */
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
+/**
+ * « Affichée seulement si » : une seule règle, sur une question placée avant.
+ * Pas de ET/OU : une règle se lit d'un coup d'œil, et couvre presque tout.
+ */
+export const SHOW_IF_OPS = ['is', 'is_not', 'includes', 'answered', 'empty'] as const;
+export type ShowIfOp = (typeof SHOW_IF_OPS)[number];
+export const showIfSchema = z.object({
+  fieldId: z.string().min(1),
+  op: z.enum(SHOW_IF_OPS),
+  value: z.string().default(''),
+});
+export type ShowIf = z.infer<typeof showIfSchema>;
+
 export const formFieldSchema = z.object({
   id: z.string(),
   type: z.enum(FIELD_TYPES),
@@ -181,7 +194,93 @@ export const formFieldSchema = z.object({
   template: z.object({ uploadId: z.string(), filename: z.string() }).optional(),
   /** N'accepter en retour qu'un fichier du format du modèle (un Excel pour un Excel). */
   templateFormatOnly: z.boolean().optional(),
+  /** Affichée seulement si une question d'avant a telle réponse. Sans règle : toujours. */
+  showIf: showIfSchema.optional(),
 });
+
+const blankAnswer = (value: unknown): boolean =>
+  value === null || value === undefined || (typeof value === 'string' && !value.trim()) || (Array.isArray(value) && !value.length);
+
+/** Une règle tenue par une réponse donnée. */
+export function conditionMet(rule: ShowIf, value: unknown): boolean {
+  const text = (v: unknown) => (typeof v === 'string' ? v : v === null || v === undefined ? '' : String(v));
+  switch (rule.op) {
+    case 'answered':
+      return !blankAnswer(value);
+    case 'empty':
+      return blankAnswer(value);
+    case 'includes':
+      return Array.isArray(value) ? value.map(text).includes(rule.value) : text(value) === rule.value;
+    case 'is':
+      return Array.isArray(value) ? value.length === 1 && text(value[0]) === rule.value : text(value) === rule.value;
+    case 'is_not':
+      return Array.isArray(value) ? !value.map(text).includes(rule.value) : text(value) !== rule.value;
+  }
+}
+
+/**
+ * La règle d'une question telle qu'elle vaut encore : rien quand la question
+ * dont elle dépend n'existe plus, n'est plus avant elle, ou n'a plus l'option
+ * attendue — la question redevient toujours visible plutôt que de disparaître
+ * pour une raison que personne ne voit.
+ */
+export function liveRule(field: Pick<FormField, 'id' | 'showIf'>, fields: readonly Pick<FormField, 'id' | 'type' | 'options'>[]): ShowIf | null {
+  const rule = field.showIf;
+  if (!rule) return null;
+  const at = fields.findIndex((f) => f.id === field.id);
+  const parentAt = fields.findIndex((f) => f.id === rule.fieldId);
+  if (parentAt < 0 || (at >= 0 && parentAt >= at)) return null;
+  const parent = fields[parentAt]!;
+  if ((rule.op === 'is' || rule.op === 'is_not' || rule.op === 'includes') && (parent.type === 'select' || parent.type === 'multiselect')) {
+    if (!parent.options.includes(rule.value)) return null;
+  }
+  return rule;
+}
+
+/**
+ * Les questions qu'on voit avec ces réponses, dans l'ordre du formulaire. En
+ * chaîne : une question qui dépend d'une question cachée l'est aussi.
+ * `fields` est le formulaire entier — toutes pages confondues.
+ */
+export function shownFieldIds(fields: readonly FormField[], answers: Record<string, unknown>): Set<string> {
+  const shown = new Set<string>();
+  for (const field of fields) {
+    const rule = liveRule(field, fields);
+    if (!rule || (shown.has(rule.fieldId) && conditionMet(rule, answers[rule.fieldId]))) shown.add(field.id);
+  }
+  return shown;
+}
+
+/** Les réponses sans celles des questions cachées : une réponse donnée puis cachée ne part pas. */
+export function shownAnswers(fields: readonly FormField[], answers: Record<string, unknown>): Record<string, unknown> {
+  const shown = shownFieldIds(fields, answers);
+  const known = new Set(fields.map((f) => f.id));
+  return Object.fromEntries(Object.entries(answers).filter(([id]) => !known.has(id) || shown.has(id)));
+}
+
+/** Les questions obligatoires restées vides, parmi celles qu'on voit. */
+export function missingRequired(fields: readonly FormField[], answers: Record<string, unknown>): FormField[] {
+  const shown = shownFieldIds(fields, answers);
+  return fields.filter((f) => f.required && shown.has(f.id) && blankAnswer(answers[f.id]));
+}
+
+/** La règle en quelques mots, pour le badge d'une question fermée : « If Secteur = Agritech ». */
+export function ruleSaid(rule: ShowIf, fields: readonly Pick<FormField, 'id' | 'label'>[]): string {
+  const parent = fields.find((f) => f.id === rule.fieldId)?.label ?? 'a question';
+  const short = parent.length > 28 ? `${parent.slice(0, 27)}…` : parent;
+  switch (rule.op) {
+    case 'is':
+      return `If ${short} = ${rule.value}`;
+    case 'is_not':
+      return `If ${short} ≠ ${rule.value}`;
+    case 'includes':
+      return `If ${short} includes ${rule.value}`;
+    case 'answered':
+      return `If ${short} is answered`;
+    case 'empty':
+      return `If ${short} is empty`;
+  }
+}
 
 /** L'extension d'un nom de fichier, en minuscules, sans le point — « xlsx ». */
 export const extensionOf = (filename: string): string => {
@@ -1343,7 +1442,21 @@ export function itemGiven(item: DeliverableItem, value: unknown): boolean {
  * bloquent rien.
  */
 export const optionalLeft = (items: DeliverableItem[], valueOf: (id: string) => unknown): number =>
-  items.filter((i) => !i.required && !itemComplete(i, valueOf(i.id))).length;
+  itemsShown(items, valueOf).filter((i) => !i.required && !itemComplete(i, valueOf(i.id))).length;
+
+/**
+ * Les éléments demandés à cette startup : sans ceux que leur règle cache —
+ * « Statuts » seulement si la forme juridique dit SARL. Un élément caché n'est
+ * pas demandé, ne compte nulle part et ne bloque rien.
+ */
+export function itemsShown(items: DeliverableItem[], valueOf: (id: string) => unknown): DeliverableItem[] {
+  const shown = shownFieldIds(items, Object.fromEntries(items.map((i) => [i.id, valueOf(i.id)])));
+  return items.filter((i) => shown.has(i.id));
+}
+
+/** Les éléments obligatoires demandés à cette startup — ceux qu'on voit. */
+export const requiredShown = (items: DeliverableItem[], valueOf: (id: string) => unknown): DeliverableItem[] =>
+  itemsShown(items, valueOf).filter((i) => i.required);
 
 export function itemComplete(item: DeliverableItem, value: unknown): boolean {
   const entries = itemEntries(item, value);

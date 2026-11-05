@@ -22,6 +22,7 @@ import {
   type MemberAction,
   type MemberActivity,
   meetingWith,
+  requiredShown,
 } from '@ceed/shared';
 import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
@@ -192,8 +193,8 @@ export async function candidacyActions(
 
   for (const owed of await deliverablesFor(candidate.editionId, candidate)) {
     if (!owed.open) continue;
-    const required = owed.config.items.filter((i) => i.required);
     const valueOf = (id: string) => owed.returns.find((r) => r.itemId === id)?.value;
+    const required = requiredShown(owed.config.items, valueOf);
     const sent = required.filter((i) => itemComplete(i, valueOf(i.id))).length;
     const back = owed.returns.some((r) => r.state === 'rejected');
     /* Le décompte ne tient qu'aux pièces obligatoires. Une liste qui n'en a

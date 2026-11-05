@@ -11,6 +11,7 @@ import {
   type EditionDetail,
   type FormField,
   type TrackWithPhases,
+  shownFieldIds,
 } from '@ceed/shared';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -749,7 +750,7 @@ function CandidateDrawer({
 
         {editing ? (
           <>
-            {fields.map((field) => (
+            {fields.filter((field) => shownFieldIds(fields, edits).has(field.id)).map((field) => (
               <FormFieldInput
                 key={field.id}
                 field={{ ...field, required: false }}
@@ -961,7 +962,7 @@ function AddCandidateModal({
           <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
             The same questions the form asks. Leave blank what you do not have.
           </p>
-          {fields.map((field) => (
+          {fields.filter((field) => shownFieldIds(fields, answers).has(field.id)).map((field) => (
             <FormFieldInput
               key={field.id}
               field={{ ...field, required: false }}

@@ -1515,6 +1515,7 @@ function MeetingDrawer({
             key={page.page.id || 'single'}
             heading={pages.length > 1}
             page={{ ...page.page, fields: page.fields }}
+            all={pages.flatMap((p) => p.fields)}
             values={answers}
             errors={errors}
             onAnswer={(id, v) => setAnswers((a) => ({ ...a, [id]: v }))}

@@ -11,7 +11,7 @@
  * arrivé, et le bouton d'envoi appartiennent à l'acte de candidater, pas aux
  * questions.
  */
-import { type FormField } from '@ceed/shared';
+import { shownFieldIds, type FormField } from '@ceed/shared';
 import { FormFieldInput } from './FormField';
 
 export interface FormPageView {
@@ -44,6 +44,7 @@ export function FormPageBody({
   /** Le nom de la page au-dessus, quand les pages sont nommées. */
   heading,
   notes,
+  all,
 }: {
   page: FormPageView;
   values: Record<string, unknown>;
@@ -52,7 +53,11 @@ export function FormPageBody({
   heading?: boolean;
   /** Une ligne sous une question — « repris de votre fiche ». */
   notes?: Record<string, string>;
+  /** Le formulaire entier, toutes pages : une question peut dépendre d'une réponse d'une page d'avant. */
+  all?: FormField[];
 }) {
+  /* Une question que sa règle cache n'est pas là — elle apparaît dès que la réponse dont elle dépend la demande. */
+  const shown = shownFieldIds(all ?? page.fields, values);
   return (
     <>
       {heading && page.name && <h3 className="section-title">{page.name}</h3>}
@@ -61,7 +66,7 @@ export function FormPageBody({
           {page.intro}
         </p>
       )}
-      {page.fields.map((field) => (
+      {page.fields.filter((field) => shown.has(field.id)).map((field) => (
         <div key={field.id}>
           <FormFieldInput
             field={field}

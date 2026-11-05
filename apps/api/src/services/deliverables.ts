@@ -18,6 +18,8 @@ import {
   type Candidate,
   type DeliverableConfig,
   type DeliverableItem,
+  itemsShown,
+  requiredShown,
 } from '@ceed/shared';
 import * as repo from '../db/repo.js';
 import { post, suppressedAmong } from './mail.js';
@@ -126,7 +128,6 @@ export async function deliverableView(blockId: string): Promise<DeliverableView 
     byCandidate.set(row.candidateId, list);
   }
 
-  const required = config.items.filter((i) => i.required);
 
   /* What has already been said, and who cannot hear it. Both live here rather
      than in the resolver that reads them, so the table's badge and the count in
@@ -181,6 +182,8 @@ export async function deliverableView(blockId: string): Promise<DeliverableView 
         const row = mine.find((r) => r.itemId === item.id);
         return row && itemGiven(item, row.value) ? row : undefined;
       };
+      /* Ce qui lui est demandé à elle : un élément que sa règle cache ne compte pas. */
+      const required = requiredShown(config.items, (id) => mine.find((r) => r.itemId === id)?.value);
       const done = required.filter((item) => itemComplete(item, sent(item)?.value)).length;
       const accepted = required.filter((item) => sent(item) && sent(item)!.state === 'accepted').length;
       return {
@@ -426,7 +429,7 @@ function owedLines(view: DeliverableView, candidateId: string): string {
   const row = view.rows.find((r) => r.candidate.id === candidateId);
   if (!row) return '';
   const lines: string[] = [];
-  for (const item of view.items) {
+  for (const item of itemsShown(view.items, (id) => row.returns.find((r) => r.itemId === id)?.value)) {
     const mine = row.returns.find((r) => r.itemId === item.id);
     if (mine?.state === 'rejected') lines.push(`  · ${item.label} — à renvoyer : ${mine.reason}`);
     else if (item.required && !itemComplete(item, mine?.value)) lines.push(`  · ${item.label}`);

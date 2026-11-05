@@ -181,14 +181,14 @@ export function ApplyCard({
             step === 0 ? (
               start
             ) : (
-              <FormPageBody heading page={currentPage!} values={values} errors={errors} onAnswer={onAnswer} notes={notes} />
+              <FormPageBody heading page={currentPage!} values={values} errors={errors} onAnswer={onAnswer} notes={notes} all={data.pages.flatMap((p) => p.fields)} />
             )
           ) : (
             <>
               {start}
               {data.pages.map((page) => (
                 <div key={page.id}>
-                  <FormPageBody page={page} values={values} errors={errors} onAnswer={onAnswer} notes={notes} />
+                  <FormPageBody page={page} values={values} errors={errors} onAnswer={onAnswer} notes={notes} all={data.pages.flatMap((p) => p.fields)} />
                 </div>
               ))}
             </>

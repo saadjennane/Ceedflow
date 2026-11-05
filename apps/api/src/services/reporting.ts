@@ -22,6 +22,8 @@ import {
   type KpiMoment,
   type ProgramReporting,
   type ReportingView,
+  missingRequired,
+  shownAnswers,
 } from '@ceed/shared';
 import { all, one } from '../db/client.js';
 import * as dir from '../db/directory.js';
@@ -267,8 +269,6 @@ export async function measureFor(recordId: string, momentId: string, candidateId
   };
 }
 
-const blank = (v: unknown) => v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length);
-
 /**
  * Garde les réponses — brouillon, ou envoi. Envoyées, elles sont figées pour
  * ce moment et les reliées vont à la fiche. Une mesure envoyée se corrige
@@ -285,9 +285,9 @@ export async function saveMeasure(
   if (!found) throw new HttpError(404, 'Nothing is being asked of you there.');
   const { candidate, detail, moment } = found;
   const fields = await fieldsAt(candidate.editionId, detail.program.id, moment);
-  const kept = Object.fromEntries(Object.entries(answers).filter(([k]) => fields.some((f) => f.id === k)));
+  const kept = shownAnswers(fields, Object.fromEntries(Object.entries(answers).filter(([k]) => fields.some((f) => f.id === k))));
   if (submit) {
-    const missing = fields.filter((f) => f.required && blank(kept[f.id]));
+    const missing = missingRequired(fields, kept);
     if (missing.length) {
       throw new HttpError(422, 'Some answers are missing.', Object.fromEntries(missing.map((f) => [`answers.${f.id}`, 'This answer is required.'])));
     }

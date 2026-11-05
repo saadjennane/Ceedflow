@@ -6,7 +6,7 @@
  * report is written below, saved as it is typed so a closed laptop loses
  * nothing, and sent once, whole. It stays between the interlocutor and CEED.
  */
-import { meetingState, type FormField, type FormPage, type OneToOneMeeting, type OrgProfile } from '@ceed/shared';
+import { meetingState, shownFieldIds, type FormField, type FormPage, type OneToOneMeeting, type OrgProfile } from '@ceed/shared';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
@@ -234,7 +234,7 @@ function Report({ meeting, onSent }: { meeting: Detail; onSent: () => void }) {
       {closed ? (
         /* Fermé : on relit ce qu'on a écrit, sans le réécrire. */
         <div className="stack" style={{ gap: 10 }}>
-          {fields.map((f) => (
+          {fields.filter((f) => shownFieldIds(fields, answers).has(f.id)).map((f) => (
             <FormFieldInput key={f.id} field={f} value={answers[f.id]} readOnly onChange={() => {}} />
           ))}
           <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
@@ -248,6 +248,7 @@ function Report({ meeting, onSent }: { meeting: Detail; onSent: () => void }) {
               key={page.id || 'single'}
               heading={meeting.questions.pages.length > 1}
               page={{ ...page, fields: pageFields }}
+              all={meeting.questions.pages.flatMap((p) => p.fields)}
               values={answers}
               errors={errors}
               onAnswer={answer}

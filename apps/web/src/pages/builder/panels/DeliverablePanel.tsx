@@ -20,6 +20,7 @@ import { DropRow, Grip, moved, nudged, useDragging, type Dragging } from '../../
 import { AccessTemplate, Template } from './Template';
 import { OwedList } from '../../member/OwedItems';
 import { TemplateSetting } from '../../../ui/TemplateSetting';
+import { ShowIfBadge, ShowIfSetting } from '../../../ui/ShowIfSetting';
 
 /* Three sides to set up, so three tabs: when the list is open, what is on it,
    and what the startups are told. A dozen documents under the dates made the
@@ -139,6 +140,7 @@ export function DeliverableSetup({
               <ItemEditor
                 key={item.id}
                 item={item}
+                items={config.items}
                 open={openId === item.id}
                 /* One open at a time: that is what keeps the list short by
                    construction, which is what keeps a drag short. */
@@ -277,6 +279,7 @@ function summaryOf(item: DeliverableItem): string {
  */
 function ItemEditor({
   item,
+  items,
   open,
   onOpen,
   onChange,
@@ -287,6 +290,8 @@ function ItemEditor({
   onDown,
 }: {
   item: DeliverableItem;
+  /** La liste entière : une règle vise un élément placé avant. */
+  items: DeliverableItem[];
   open: boolean;
   onOpen: () => void;
   onChange: (partial: Partial<DeliverableItem>) => void;
@@ -303,6 +308,8 @@ function ItemEditor({
   const inner = useDragging((fromId, toId) => onChange({ fields: moved(item.fields, fromId, toId) }));
   const setField = (id: string, partial: Partial<FormField>) =>
     onChange({ fields: item.fields.map((f) => (f.id === id ? { ...f, ...partial } : f)) });
+  /* Un groupe se lit comme une réponse donnée ou non — ses choix sont ceux de ses champs. */
+  const parents = items.map((i) => (i.kind === 'group' ? { ...i, type: 'short_text' as const, options: [] } : i));
 
   return (
     <DropRow
@@ -317,6 +324,7 @@ function ItemEditor({
         </button>
         <span className="mini">{summaryOf(item)}</span>
         {item.required && <span className="badge stop">Required</span>}
+        <ShowIfBadge field={item} all={parents} />
         <button className="btn ghost icon sm" onClick={onOpen} aria-label={open ? 'Close' : 'Edit'}>
           <Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} />
         </button>
@@ -369,6 +377,8 @@ function ItemEditor({
               Repeatable
             </label>
           </div>
+
+          <ShowIfSetting field={item} all={parents} onChange={onChange} />
 
           {item.repeatable && (
             <TextField

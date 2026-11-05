@@ -20,6 +20,8 @@ import {
   type EvaluationConfig,
   type SourcingChannel,
   type TrackWithPhases,
+  missingRequired,
+  shownAnswers,
 } from '@ceed/shared';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -452,13 +454,11 @@ export async function funnelRoutes(app: FastifyInstance) {
       if (unticked.length) throw new HttpError(422, 'Every eligibility criterion has to be confirmed.');
     }
 
+    /* Une question cachée par sa règle n'est jamais obligatoire, et sa réponse
+       — donnée avant d'être cachée — ne part pas. */
+    input.answers = shownAnswers(config.fields, input.answers);
     const missing: Record<string, string> = {};
-    for (const field of config.fields) {
-      if (!field.required) continue;
-      const value = input.answers[field.id];
-      const empty = value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length);
-      if (empty) missing[`answers.${field.id}`] = 'This answer is required.';
-    }
+    for (const field of missingRequired(config.fields, input.answers)) missing[`answers.${field.id}`] = 'This answer is required.';
     /* Et ce qui est là mais ne peut servir à rien : une adresse fautive sur une
        candidature, c'est l'accusé de réception qui ne part pas, et personne ne
        s'en aperçoit avant le jour où elle comptait. */

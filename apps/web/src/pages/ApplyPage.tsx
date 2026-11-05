@@ -1,4 +1,5 @@
 
+import { missingRequired } from '@ceed/shared';
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ApiError, api } from '../lib/api';
@@ -13,9 +14,6 @@ import '../ui/directory.css';
 
 /** « Une autre organisation » : celle qu'on nomme dans le formulaire. */
 const NEW = '__new';
-
-const isEmpty = (value: unknown) =>
-  value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length);
 
 export function ApplyPage() {
   const { token = '' } = useParams();
@@ -228,8 +226,10 @@ export function ApplyPage() {
     /* « Qui postule » est en tête du formulaire : c'est là qu'on le vérifie. */
     if (naming && (!paged || step === 0) && !newOrg.name.trim()) found.orgName = 'Tell us which organisation is applying.';
     const fields = paged ? (currentPage?.fields ?? []) : data.pages.flatMap((p) => p.fields);
-    for (const field of fields) {
-      if (field.required && isEmpty(answers[field.id])) found[`answers.${field.id}`] = 'This answer is required.';
+    /* Une question que sa règle cache n'est jamais obligatoire. */
+    const here = new Set(fields.map((f) => f.id));
+    for (const field of missingRequired(data.pages.flatMap((p) => p.fields), answers)) {
+      if (here.has(field.id)) found[`answers.${field.id}`] = 'This answer is required.';
     }
     return found;
   };

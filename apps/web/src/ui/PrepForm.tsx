@@ -5,7 +5,7 @@
  * before the session, the interlocutor and CEED correct or complete it. Read
  * only once it is locked for whoever may no longer change it.
  */
-import type { FormField, FormPage } from '@ceed/shared';
+import { shownFieldIds, type FormField, type FormPage } from '@ceed/shared';
 import { useState } from 'react';
 import { ApiError } from '../lib/api';
 import { FormFieldInput } from './FormField';
@@ -41,7 +41,7 @@ export function PrepForm({
   if (readOnly) {
     return (
       <div className="stack" style={{ gap: 10 }}>
-        {pages.flatMap((p) => p.fields).map((f) => (
+        {pages.flatMap((p) => p.fields).filter((f, _i, all) => shownFieldIds(all, answers).has(f.id)).map((f) => (
           <FormFieldInput key={f.id} field={f} value={answers[f.id]} readOnly onChange={() => {}} />
         ))}
       </div>
@@ -70,6 +70,7 @@ export function PrepForm({
           key={page.id || 'single'}
           heading={pages.length > 1}
           page={{ ...page, fields }}
+          all={pages.flatMap((p) => p.fields)}
           values={answers}
           errors={errors}
           onAnswer={(id, value) => {
