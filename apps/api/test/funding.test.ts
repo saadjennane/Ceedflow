@@ -67,13 +67,15 @@ const acapsLike = (mark: string) => ({
     status: { value: null, page: null, excerpt: '' },
   },
   summary: 'Une étude de faisabilité.',
+  insight: { headline: 'La BAD/ADFI est le bailleur stratégique à suivre.', priorities: ['Qualifier la consultation', 'Suivre le déploiement'] },
   organizations: [
-    { name: 'Banque africaine de développement', acronym: 'BAD', roles: ['funder', 'made_up_role'], kind: 'Banque multilatérale', description: '', themes: ['inclusion financière'], relations: 'Finance via ADFI', page: 2, excerpt: 'BAD' },
-    { name: 'Autorité de contrôle des assurances', acronym: `ACAPS${mark}`, roles: ['contracting_authority', 'funder'], kind: '', description: '', themes: [], relations: '', page: 1, excerpt: 'ACAPS' },
+    { name: 'Banque africaine de développement', acronym: 'BAD', roles: ['funder', 'made_up_role'], kind: 'Banque multilatérale', description: '', themes: ['inclusion financière'], relations: 'Finance via ADFI', parent: null, page: 2, excerpt: 'BAD' },
+    { name: 'Facilité pour l’inclusion financière numérique en Afrique', acronym: `ADFI${mark}`, roles: ['funding_facility'], kind: 'Facilité', description: '', themes: ['InsurTech'], relations: '', parent: 'Banque africaine de développement', page: 2, excerpt: 'ADFI' },
+    { name: 'Autorité de contrôle des assurances', acronym: `ACAPS${mark}`, roles: ['contracting_authority', 'funder'], kind: '', description: '', themes: [], relations: '', parent: null, page: 1, excerpt: 'ACAPS' },
   ],
   opportunities: [
-    { type: 'identified_tender', title: 'Étude de faisabilité Émergence', organization: `ACAPS${mark}`, summary: '', amount: null, deadline: null, period: null, eligibility: null, targetAudience: null, activities: [], interestForCeed: '', vigilance: ['Montant non communiqué'], nextAction: '', rationale: 'Page 1', verification: [{ claim: 'La consultation existe', status: 'document_confirmed' }, { claim: 'Encore ouverte', status: 'externally_verified' }], relevance: 'high', relevanceReason: '', eligibilityToVerify: true, sources: [{ page: 1, excerpt: 'consultation' }] },
-    { type: 'project_concept', title: 'Women Financial Resilience', organization: 'BAD', summary: '', amount: null, deadline: null, period: null, eligibility: null, targetAudience: 'Femmes entrepreneures', activities: [], interestForCeed: '', vigilance: [], nextAction: '', rationale: 'Priorités inclusion', verification: [], relevance: 'medium', relevanceReason: '', eligibilityToVerify: true, sources: [] },
+    { type: 'identified_tender', title: 'Étude de faisabilité Émergence', organization: `ACAPS${mark}`, nature: 'Prestation de conseil', fundingNote: 'Marché financé par l’ADFI, montant non communiqué.', summary: '', amount: null, deadline: null, period: null, eligibility: null, targetAudience: null, activities: [], interestForCeed: '', vigilance: ['Montant non communiqué'], nextAction: '', rationale: 'Page 1', verification: [{ claim: 'La consultation existe', status: 'document_confirmed' }, { claim: 'Encore ouverte', status: 'externally_verified' }], relevance: 'high', relevanceReason: '', eligibilityToVerify: true, sources: [{ page: 1, excerpt: 'consultation' }] },
+    { type: 'project_concept', title: 'Women Financial Resilience', organization: 'BAD', nature: 'Projet à proposer', fundingNote: 'Aucun appel spécifique confirmé.', summary: '', amount: null, deadline: null, period: null, eligibility: null, targetAudience: 'Femmes entrepreneures', activities: [], interestForCeed: '', vigilance: [], nextAction: '', rationale: 'Priorités inclusion', verification: [], relevance: 'medium', relevanceReason: '', eligibilityToVerify: true, sources: [] },
   ],
   warnings: ['Date limite non indiquée'],
   actions: [
@@ -180,7 +182,10 @@ describe('Funding Intelligence', { skip: skipWithoutServer }, () => {
     assert.ok(seen!.ceed.some((k) => k.title === `Activités CEED ${mark}`), 'published knowledge informs it');
     assert.ok(!seen!.ceed.some((k) => k.title === `Brouillon ${mark}`), 'a version under review never does');
     assert.equal(a.result.overview.budget.value, null);
-    const [bad, acapsOrg] = a.result.organizations;
+    const [bad, adfi, acapsOrg] = a.result.organizations;
+    assert.equal(adfi.parent, 'Banque africaine de développement', 'a facility belongs to its bank');
+    assert.equal(a.result.insight.headline, 'La BAD/ADFI est le bailleur stratégique à suivre.');
+    assert.equal(a.result.opportunities[0].nature, 'Prestation de conseil');
     assert.equal(acapsOrg.recordId, acaps.id, 'matched by its acronym');
     assert.equal(bad.recordId, null, 'not in the directory, and not added');
     assert.equal(a.actions.length, 2);
@@ -258,9 +263,9 @@ describe('Funding Intelligence', { skip: skipWithoutServer }, () => {
     const badRecord = await dir.getRecord(bad);
     assert.ok(badRecord!.roles.includes('Funder'), 'added as a funder, from its role in the call');
     /* L'ACAPS y est déjà : la suivre comme bailleur sans la recréer. */
-    const acaps = (await call('Saad', 'POST', `/api/funding/analyses/${a.id}/organizations/1/funder`)).body.recordId as string;
-    assert.equal(acaps, a.result.organizations[1].recordId);
-    assert.equal((await call('Lina', 'POST', `/api/funding/analyses/${a.id}/organizations/1/funder`)).status, 403);
+    const acaps = (await call('Saad', 'POST', `/api/funding/analyses/${a.id}/organizations/2/funder`)).body.recordId as string;
+    assert.equal(acaps, a.result.organizations[2].recordId);
+    assert.equal((await call('Lina', 'POST', `/api/funding/analyses/${a.id}/organizations/2/funder`)).status, 403);
 
     await call('Saad', 'POST', `/api/funding/analyses/${a.id}/opportunities`, { opportunities: [{ key: 'o1', title: `Étude suivie ${mark}`, summary: '' }] });
     const funders = (await call('Lina', 'GET', '/api/funding/funders')).body as { id: string; analyses: number; openOpportunities: number; themes: string[] }[];
@@ -285,6 +290,20 @@ describe('Funding Intelligence', { skip: skipWithoutServer }, () => {
     assert.equal(again.body.recordId, bad, 'tracked by name: found, never duplicated');
     await call('Saad', 'DELETE', `/api/funding/funders/${bad}`);
     assert.ok(!(await dir.getRecord(bad))!.roles.includes('Funder'), 'no longer tracked — still in the directory');
+  });
+
+  it('lists what was detected and not yet followed: funders to track, opportunities to save', async () => {
+    const a = await settle((await call('Saad', 'POST', '/api/funding/analyses', { text: doc })).body.id);
+    const funders = (await call('Lina', 'GET', '/api/funding/detected/funders')).body as { acronym: string; parent: string | null; analyses: { id: string }[] }[];
+    const adfi = funders.find((f) => f.acronym === `ADFI${mark}`)!;
+    assert.equal(adfi.parent, 'Banque africaine de développement');
+    assert.ok(adfi.analyses.some((x) => x.id === a.id));
+    assert.ok(!funders.some((f) => f.acronym === `ACAPS${mark}`), 'a contracting authority is not a funder to track');
+    const before = (await call('Lina', 'GET', '/api/funding/detected/opportunities')).body as { analysisId: string; opportunity: { key: string } }[];
+    assert.equal(before.filter((d) => d.analysisId === a.id).length, 2);
+    await call('Saad', 'POST', `/api/funding/analyses/${a.id}/opportunities`, { opportunities: [{ key: 'o1', title: 'x', summary: '' }] });
+    const after = (await call('Lina', 'GET', '/api/funding/detected/opportunities')).body as { analysisId: string; opportunity: { key: string } }[];
+    assert.deepEqual(after.filter((d) => d.analysisId === a.id).map((d) => d.opportunity.key), ['o2'], 'saved: out of the detected list');
   });
 
   it('takes a PDF, keeps it private to the team, and lets the analysis be deleted', async () => {

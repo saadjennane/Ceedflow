@@ -5,6 +5,7 @@
  */
 import {
   FUNDING_ORG_ROLE_LABEL,
+  OPPORTUNITY_STATUS_WORD,
   OPPORTUNITY_TYPES,
   OPPORTUNITY_TYPE_LABEL,
   OVERVIEW_FIELDS,
@@ -138,6 +139,36 @@ export function FundingAnalysisPage() {
 
         {r && (
           <>
+            {/* L'essentiel d'un coup d'œil : ce que CeedFlow enregistrerait, et le point à retenir. */}
+            <section className="fi-section">
+              <div className="fi-overview" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+                <div className="fi-fact"><span className="eyebrow">Funding entities</span><b style={{ fontSize: 24 }}>{r.organizations.filter((o) => o.roles.includes('funder') || o.roles.includes('funding_facility')).length}</b></div>
+                <div className="fi-fact"><span className="eyebrow">Contracting authority</span><b style={{ fontSize: 24 }}>{r.organizations.filter((o) => o.roles.includes('contracting_authority')).length}</b></div>
+                <div className="fi-fact"><span className="eyebrow">Opportunities</span><b style={{ fontSize: 24 }}>{r.opportunities.length}</b></div>
+                <div className="fi-fact" style={{ gridColumn: 'span 2' }}>
+                  <span className="eyebrow">Breakdown</span>
+                  {[
+                    ['identified_tender', 'tender identified'],
+                    ['future_opportunity', 'future phase'],
+                    ['strategic_prospecting', 'prospecting lead'],
+                    ['project_concept', 'project idea'],
+                  ].map(([t, word]) => {
+                    const n = r.opportunities.filter((o) => o.type === t).length;
+                    return n ? <span key={t} style={{ fontSize: 13 }}><b>{n}</b> · {word}{n > 1 ? 's' : ''}</span> : null;
+                  })}
+                </div>
+              </div>
+              {r.insight?.headline && (
+                <div className="fi-card" style={{ borderColor: 'var(--blue)', background: 'var(--blue-soft)' }}>
+                  <span className="eyebrow">The key point</span>
+                  <p style={{ fontSize: 14.5, color: 'var(--ink)' }}>{r.insight.headline}</p>
+                  {r.insight.priorities.length > 0 && (
+                    <ol style={{ margin: 0, paddingLeft: 20, fontSize: 13.5 }}>{r.insight.priorities.map((p, i) => <li key={i}>{p}</li>)}</ol>
+                  )}
+                </div>
+              )}
+            </section>
+
             {/* 1 — L'appel en cartes */}
             <section className="fi-section">
               <h3>Document Overview</h3>
@@ -178,6 +209,7 @@ export function FundingAnalysisPage() {
                   <div key={i} className="fi-card">
                     <div className="fi-tags">{o.roles.map((role) => <span key={role} className={role === 'funder' ? 'badge ok' : role === 'contracting_authority' ? 'badge info' : 'badge'}>{FUNDING_ORG_ROLE_LABEL[role]}</span>)}</div>
                     <h4>{o.name}{o.acronym && o.acronym !== o.name && <span className="faint" style={{ fontWeight: 500 }}> · {o.acronym}</span>}</h4>
+                    {o.parent && <span className="badge info" style={{ alignSelf: 'flex-start' }}>Part of {o.parent} — not an independent funder</span>}
                     {o.kind && <span className="faint" style={{ fontSize: 12.5 }}>{o.kind}</span>}
                     {o.description && <p>{o.description}</p>}
                     {o.relations && <p><strong>Relations — </strong>{o.relations}</p>}
@@ -408,6 +440,23 @@ function OpportunityCard({
     <div className={`fi-opp t-${o.type}`}>
       {canSelect && <input type="checkbox" checked={checked} onChange={onToggle} aria-label={`Select ${o.title}`} style={{ marginTop: 4 }} />}
       <div className="fi-opp-main">
+        <div className="row wrap" style={{ gap: 8, alignItems: 'baseline' }}>
+          {checked ? (
+            <input className="input" value={title} onChange={(e) => onEdit({ title: e.target.value, summary })} aria-label="Opportunity title" style={{ fontWeight: 600, flex: 1 }} />
+          ) : (
+            <h4 style={{ flex: 1 }}>{title}</h4>
+          )}
+          <span className={o.type === 'identified_tender' ? 'badge warn' : o.type === 'future_opportunity' ? 'badge info' : 'badge'}>{OPPORTUNITY_STATUS_WORD[o.type]}</span>
+        </div>
+        <span className="faint" style={{ fontSize: 13 }}>
+          {[o.organization, o.nature].filter(Boolean).join(' · ')}
+        </span>
+        {checked ? (
+          <textarea className="textarea" rows={2} value={summary} onChange={(e) => onEdit({ title, summary: e.target.value })} aria-label="Opportunity summary" />
+        ) : (
+          summary && <p style={{ margin: 0, fontSize: 13.5 }}>{summary}</p>
+        )}
+        {o.fundingNote && <p style={{ margin: 0, fontSize: 13 }}><strong>Financement — </strong>{o.fundingNote}</p>}
         <div className="fi-tags">
           <span className="badge">{OPPORTUNITY_TYPE_LABEL[o.type]}</span>
           <span className={o.relevance === 'high' ? 'badge ok' : o.relevance === 'low' ? 'badge' : 'badge info'}>{RELEVANCE_LABEL[o.relevance]}</span>
@@ -416,32 +465,21 @@ function OpportunityCard({
           {saved && <span className="badge ok"><Icon name="check" size={11} /> Saved</span>}
           {duplicate && !saved && <span className="badge warn">Already saved as “{duplicate.title}”</span>}
         </div>
-        {checked ? (
-          <input className="input" value={title} onChange={(e) => onEdit({ title: e.target.value, summary })} aria-label="Opportunity title" style={{ fontWeight: 600 }} />
-        ) : (
-          <h4>{title}</h4>
-        )}
-        <div className="fi-keyfacts">
-          {o.organization && <span>Organisation <b>{o.organization}</b></span>}
-          {o.amount && <span>Amount <b>{o.amount}</b></span>}
-          {o.deadline && <span>Deadline <b>{o.deadline}</b></span>}
-          {o.period && <span>Period <b>{o.period}</b></span>}
-          {o.targetAudience && <span>For <b>{o.targetAudience}</b></span>}
-        </div>
-        {checked ? (
-          <textarea className="textarea" rows={2} value={summary} onChange={(e) => onEdit({ title, summary: e.target.value })} aria-label="Opportunity summary" />
-        ) : (
-          summary && <p style={{ margin: 0, fontSize: 13 }}>{summary}</p>
-        )}
-        {o.interestForCeed && <p style={{ margin: 0, fontSize: 13 }}><strong>For CEED — </strong>{o.interestForCeed}</p>}
-        <div className="fi-verif">
-          {o.verification.map((v, i) => (
-            <div key={i}><span className={`v-pill v-${v.status}`}>{VERIFICATION_LABEL[v.status]}</span> {v.claim}</div>
-          ))}
-        </div>
-        <button className="linkish" style={{ alignSelf: 'flex-start', fontSize: 12.5 }} onClick={() => setOpen(!open)}>{open ? 'Less' : 'Why, and what next'}</button>
+        <button className="linkish" style={{ alignSelf: 'flex-start', fontSize: 12.5 }} onClick={() => setOpen(!open)}>{open ? 'Less' : 'Details — verification, why, what next'}</button>
         {open && (
           <div className="stack" style={{ gap: 6, fontSize: 13 }}>
+            <div className="fi-keyfacts">
+              {o.amount && <span>Amount <b>{o.amount}</b></span>}
+              {o.deadline && <span>Deadline <b>{o.deadline}</b></span>}
+              {o.period && <span>Period <b>{o.period}</b></span>}
+              {o.targetAudience && <span>For <b>{o.targetAudience}</b></span>}
+            </div>
+            <div className="fi-verif">
+              {o.verification.map((v, i) => (
+                <div key={i}><span className={`v-pill v-${v.status}`}>{VERIFICATION_LABEL[v.status]}</span> {v.claim}</div>
+              ))}
+            </div>
+            {o.interestForCeed && <div><strong>For CEED — </strong>{o.interestForCeed}</div>}
             {o.rationale && <div><strong>Why — </strong>{o.rationale}</div>}
             {o.relevanceReason && <div><strong>Relevance — </strong>{o.relevanceReason}</div>}
             {o.eligibility && <div><strong>Eligibility — </strong>{o.eligibility}</div>}

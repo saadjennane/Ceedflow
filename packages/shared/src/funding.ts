@@ -57,6 +57,8 @@ export interface FundingOrganization {
   description: string;
   themes: string[];
   relations: string;
+  /** L'organisme dont il fait partie : l'ADFI est une facilité de la BAD, pas un bailleur indépendant. */
+  parent: string | null;
   page: number | null;
   excerpt: string;
   /** La fiche de l'annuaire, quand une seule porte ce nom. Jamais créée sans un clic. */
@@ -92,6 +94,10 @@ export interface FundingOpportunity {
   title: string;
   /** L'organisme concerné, ou le bailleur potentiel. */
   organization: string;
+  /** La nature de l'intervention, en quelques mots : « Prestation de conseil », « Partenariat opérationnel », « Projet à proposer ». */
+  nature: string;
+  /** Le financement en une phrase : « Marché financé par l'ADFI, montant non communiqué. » */
+  fundingNote: string;
   summary: string;
   amount: string | null;
   deadline: string | null;
@@ -133,6 +139,8 @@ export interface FundingResult {
   opportunities: FundingOpportunity[];
   /** Les points de vigilance de l'appel lui-même. */
   warnings: string[];
+  /** Le point le plus intéressant du document, et les recommandations à faire remonter en priorité. */
+  insight: { headline: string; priorities: string[] };
   /** Les connaissances publiées de la Knowledge Base qui ont servi à situer CEED. */
   ceedContext: { entryId: string; title: string }[];
 }
@@ -245,6 +253,33 @@ export const fundingSaveInput = z.object({
 });
 
 /** Un bailleur suivi : une organisation de l'annuaire avec le rôle « Funder ». */
+/** Le statut court d'une opportunité, tel qu'il se lit d'un coup d'œil. */
+export const OPPORTUNITY_STATUS_WORD: Record<OpportunityType, string> = {
+  identified_tender: 'To verify',
+  future_opportunity: 'Future opportunity',
+  strategic_prospecting: 'Prospecting',
+  project_concept: 'Prospecting',
+};
+
+/** Un bailleur vu dans les analyses mais pas encore suivi. */
+export interface DetectedFunder {
+  name: string;
+  acronym: string;
+  recordId: string | null;
+  parent: string | null;
+  roles: string[];
+  themes: string[];
+  analyses: { id: string; title: string }[];
+}
+
+/** Une opportunité détectée dans une analyse, pas encore enregistrée. */
+export interface DetectedOpportunity {
+  analysisId: string;
+  analysisTitle: string;
+  analysedAt: string | null;
+  opportunity: FundingOpportunity;
+}
+
 export interface FunderRow {
   id: string;
   name: string;

@@ -101,8 +101,14 @@ const SCHEMA = {
   schema: {
     type: 'object',
     additionalProperties: false,
-    required: ['overview', 'summary', 'organizations', 'opportunities', 'warnings', 'actions'],
+    required: ['overview', 'summary', 'organizations', 'opportunities', 'warnings', 'insight', 'actions'],
     properties: {
+      insight: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['headline', 'priorities'],
+        properties: { headline: { type: 'string' }, priorities: strArr },
+      },
       overview: {
         type: 'object',
         additionalProperties: false,
@@ -115,7 +121,7 @@ const SCHEMA = {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['name', 'acronym', 'roles', 'kind', 'description', 'themes', 'relations', 'page', 'excerpt'],
+          required: ['name', 'acronym', 'roles', 'kind', 'description', 'themes', 'relations', 'parent', 'page', 'excerpt'],
           properties: {
             name: { type: 'string' },
             acronym: { type: 'string' },
@@ -124,6 +130,7 @@ const SCHEMA = {
             description: { type: 'string' },
             themes: strArr,
             relations: { type: 'string' },
+            parent: nstr,
             page: { type: ['integer', 'null'] },
             excerpt: { type: 'string' },
           },
@@ -134,11 +141,13 @@ const SCHEMA = {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['type', 'title', 'organization', 'summary', 'amount', 'deadline', 'period', 'eligibility', 'targetAudience', 'activities', 'interestForCeed', 'vigilance', 'nextAction', 'rationale', 'verification', 'relevance', 'relevanceReason', 'eligibilityToVerify', 'sources'],
+          required: ['type', 'title', 'organization', 'nature', 'fundingNote', 'summary', 'amount', 'deadline', 'period', 'eligibility', 'targetAudience', 'activities', 'interestForCeed', 'vigilance', 'nextAction', 'rationale', 'verification', 'relevance', 'relevanceReason', 'eligibilityToVerify', 'sources'],
           properties: {
             type: { type: 'string', enum: [...OPPORTUNITY_TYPES] },
             title: { type: 'string' },
             organization: { type: 'string' },
+            nature: { type: 'string' },
+            fundingNote: { type: 'string' },
             summary: { type: 'string' },
             amount: nstr,
             deadline: nstr,
@@ -193,6 +202,7 @@ Le texte est découpé en pages marquées « [Page n] » : cite la page de chaqu
 1. "overview" : les informations de l'appel. Pour chaque champ, "value" seulement si le document le dit, sinon null ; "page" et "excerpt" (citation exacte et courte). N'invente JAMAIS une valeur absente. Ne confonds jamais le budget d'un programme global avec le montant du marché. "status" : l'ouverture actuelle de l'appel n'est jamais vérifiée par le document — mets null sauf mention explicite.
 2. "summary" : 200 mots au plus, factuel et fidèle : contexte, objectifs, prestation, bénéficiaires, livrables, échéances, enjeux pour CEED. Aucune supposition.
 3. "organizations" : les organismes qui jouent un rôle dans le financement, la commande ou la mise en œuvre — pas les administrations citées pour une formalité (fiscalité, protection des données…), ni les services internes d'un organisme déjà listé. Pour chacun, son ou ses rôles — "funder" (finance), "funding_facility" (mécanisme ou facilité rattaché à un bailleur), "contracting_authority" (lance l'appel), "implementing_partner" (met en œuvre), "institutional_partner". Nom complet, sigle, nature en quelques mots, description, thématiques, relation avec les autres, page et extrait.
+   "parent" : le nom de l'organisme dont il fait partie quand ce n'est pas un acteur indépendant (une facilité de financement rattachée à une banque de développement, par exemple), sinon null. Le commanditaire qui reçoit un don et le cofinance reste surtout commanditaire et bénéficiaire.
 4. "opportunities" : les opportunités pour CEED, de quatre types qui n'ont pas la même certitude :
    - "identified_tender" : une consultation ou un marché explicitement mentionné. Ne le considère pas comme encore ouvert.
    - "future_opportunity" : une phase future ou un besoin ultérieur identifiable dans le document. Une phase future ne garantit pas qu'un marché sera ouvert.
@@ -203,9 +213,14 @@ Le texte est découpé en pages marquées « [Page n] » : cite la page de chaqu
    "verification" : élément par élément ("claim" + "status") — "document_confirmed" si le document l'établit, "inferred" si c'est ta déduction, "unverified" si rien ne l'établit. N'utilise jamais "externally_verified" (aucune recherche web n'a été faite ici). Pas de statut global trompeur : une phase future peut être confirmée par le document alors que le marché accessible à CEED est déduit.
    "relevance" ("high", "medium", "low") selon l'adéquation thématique et géographique, la cohérence avec les activités de CEED, l'éligibilité, les capacités nécessaires et le potentiel de partenariat ; "eligibilityToVerify" vrai si les capacités ou références de CEED requises ne sont pas connues.
    "rationale" : ce que tu as lu (avec la page) et ce que tu en déduis — rien de générique.
+   "organization" : le ou les organismes concernés, en sigles courts quand ils existent (« ACAPS », « BAD / ADFI »).
+   "nature" : la nature de l'intervention en deux à quatre mots (« Prestation de conseil », « Partenariat opérationnel », « Projet à proposer »).
+   "fundingNote" : le financement en une phrase, sans rien inventer (« Marché financé par l'ADFI, montant non communiqué. », « Aucun budget dédié confirmé. »).
+   "summary" : une phrase qui dit ce que CEED ferait.
    "sources" : les pages et extraits qui fondent l'opportunité (vide pour une pure idée, mais "rationale" dit alors sur quoi elle s'appuie).
-5. "warnings" : les points de vigilance de l'appel (montant non communiqué, date limite absente, consultation restreinte, confusions possibles…).
-6. "actions" : des actions concrètes pour CEED, avec priorité, justification, et le numéro (0, 1, 2…) de l'opportunité associée dans la liste, ou null.
+5. "insight" : "headline" — le point le plus intéressant du document pour CEED en une ou deux phrases (souvent : quel bailleur stratégique suivre au-delà de l'appel lui-même) ; "priorities" — les deux ou trois recommandations à faire remonter en priorité, en distinguant ce qui est à qualifier tout de suite de ce qui reste une idée de prospection.
+6. "warnings" : les points de vigilance de l'appel (montant non communiqué, date limite absente, consultation restreinte, confusions possibles…).
+7. "actions" : des actions concrètes pour CEED, avec priorité, justification, et le numéro (0, 1, 2…) de l'opportunité associée dans la liste, ou null.
 
 Les connaissances CEED fournies viennent de la Knowledge Base officielle : sers-t'en pour juger de la pertinence, sans les citer comme sources de l'appel.
 Réponds uniquement avec l'objet JSON demandé.`;
@@ -241,6 +256,7 @@ export function normaliseResult(raw: unknown, pages: number): { result: Omit<Fun
       description: s(o.description, 2000),
       themes: arr(o.themes, 12),
       relations: s(o.relations, 2000),
+      parent: ns(o.parent, 300),
       page: page(o.page),
       excerpt: s(o.excerpt, 1000),
       recordId: null,
@@ -263,6 +279,8 @@ export function normaliseResult(raw: unknown, pages: number): { result: Omit<Fun
         type,
         title: s(o.title, 300),
         organization: s(o.organization, 300),
+        nature: s(o.nature, 120),
+        fundingNote: s(o.fundingNote, 600),
         summary: s(o.summary, 3000),
         amount: ns(o.amount),
         deadline: ns(o.deadline),
@@ -300,7 +318,14 @@ export function normaliseResult(raw: unknown, pages: number): { result: Omit<Fun
     })
     .filter((a) => a.title)
     .slice(0, 30);
-  return { result: { overview, summary: s(r.summary, 3000), organizations, opportunities, warnings: arr(r.warnings, 20) }, actions };
+  const insight = (r.insight ?? {}) as Record<string, unknown>;
+  return {
+    result: {
+      overview, summary: s(r.summary, 3000), organizations, opportunities, warnings: arr(r.warnings, 20),
+      insight: { headline: s(insight.headline, 1000), priorities: arr(insight.priorities, 5) },
+    },
+    actions,
+  };
 }
 
 const fold = (x: string) =>
@@ -865,4 +890,41 @@ export async function startWebResearch(id: string, actor: FundingActor): Promise
   if (!a) throw new HttpError(404, 'Analysis not found.');
   if (a.status !== 'done') throw new HttpError(409, 'The document has to be analysed first.');
   await all(`update funding_analyses set web = jsonb_set(jsonb_set(web, '{status}', '"pending"'), '{error}', '""'), updated_at = now() where id = $1`, [id]);
+}
+
+/** Les bailleurs et facilités vus dans les analyses, pas encore suivis — à suivre d'un clic. */
+export async function detectedFunders(): Promise<import('@ceed/shared').DetectedFunder[]> {
+  const rows = await all<{ id: string; title: string; result: FundingResult }>(
+    `select id, title, result from funding_analyses where status = 'done' and result is not null order by created_at desc limit 300`,
+  );
+  const tracked = new Set(
+    (await all<{ id: string }>(`select id from records where kind = 'org' and deleted_at is null and roles @> '["Funder"]'::jsonb`)).map((r) => r.id),
+  );
+  const out = new Map<string, import('@ceed/shared').DetectedFunder>();
+  for (const a of rows) {
+    for (const o of a.result.organizations ?? []) {
+      if (!o.roles.includes('funder') && !o.roles.includes('funding_facility')) continue;
+      if (o.recordId && tracked.has(o.recordId)) continue;
+      const key = o.recordId ?? fold(o.acronym || o.name);
+      const seen = out.get(key) ?? { name: o.name, acronym: o.acronym, recordId: o.recordId, parent: o.parent ?? null, roles: [], themes: [], analyses: [] };
+      seen.roles = [...new Set([...seen.roles, ...o.roles])];
+      seen.themes = [...new Set([...seen.themes, ...o.themes])].slice(0, 6);
+      if (!seen.analyses.some((x) => x.id === a.id)) seen.analyses.push({ id: a.id, title: a.title });
+      out.set(key, seen);
+    }
+  }
+  return [...out.values()];
+}
+
+/** Les opportunités détectées dans les analyses, pas encore enregistrées. */
+export async function detectedOpportunities(): Promise<import('@ceed/shared').DetectedOpportunity[]> {
+  const rows = await all<{ id: string; title: string; analysedAt: string | null; result: FundingResult }>(
+    `select id, title, analysed_at::text as "analysedAt", result from funding_analyses where status = 'done' and result is not null order by created_at desc limit 300`,
+  );
+  const saved = new Set((await all<{ k: string }>(`select analysis_id || ':' || opportunity_key as k from funding_opportunities where analysis_id is not null`)).map((r) => r.k));
+  return rows.flatMap((a) =>
+    (a.result.opportunities ?? [])
+      .filter((o) => !saved.has(`${a.id}:${o.key}`))
+      .map((o) => ({ analysisId: a.id, analysisTitle: a.title, analysedAt: a.analysedAt, opportunity: o })),
+  );
 }

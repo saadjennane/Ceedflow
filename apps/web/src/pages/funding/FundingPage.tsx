@@ -6,6 +6,9 @@ import {
   OPPORTUNITY_STAGES,
   OPPORTUNITY_STAGE_LABEL,
   OPPORTUNITY_TYPE_LABEL,
+  OPPORTUNITY_STATUS_WORD,
+  type DetectedFunder,
+  type DetectedOpportunity,
   type FunderRow,
   type OpportunityStage,
   RELEVANCE_LABEL,
@@ -279,6 +282,8 @@ function Funders({ canWrite }: { canWrite: boolean }) {
         </div>
       )}
       {list.error && <div className="empty">{list.error}</div>}
+      <DetectedFunders canWrite={canWrite} onTracked={() => list.reload()} />
+      {list.data && list.data.length > 0 && <h3 className="section-title" style={{ margin: '4px 0 0' }}>Tracked funders</h3>}
       {!list.data ? (
         <div className="faint">Loading…</div>
       ) : !list.data.length ? (
@@ -304,16 +309,110 @@ function Funders({ canWrite }: { canWrite: boolean }) {
   );
 }
 
+function DetectedFunders({ canWrite, onTracked }: { canWrite: boolean; onTracked: () => void }) {
+  const list = useAsync(() => api.get<DetectedFunder[]>('/api/funding/detected/funders'), 'detected-funders');
+  const toast = useToast();
+  if (!list.data?.length) return null;
+  return (
+    <section className="stack" style={{ gap: 8 }}>
+      <h3 className="section-title" style={{ margin: 0 }}>Detected in analyses — not tracked yet</h3>
+      <div className="rows">
+        {list.data.map((f) => (
+          <div key={f.recordId ?? f.name} className="rowcard card-pad row wrap" style={{ gap: 10 }}>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <strong>{f.name}</strong>{f.acronym && f.acronym !== f.name && <span className="faint"> · {f.acronym}</span>}
+              <div className="faint" style={{ fontSize: 12 }}>
+                {f.parent ? `Part of ${f.parent} · ` : ''}{f.themes.join(', ')}
+              </div>
+              <div style={{ fontSize: 12 }}>
+                Seen in {f.analyses.map((a, i) => <span key={a.id}>{i > 0 && ', '}<Link to={`/funding/${a.id}`}>{a.title || 'an analysis'}</Link></span>)}
+              </div>
+            </div>
+            {canWrite && (
+              <button
+                className="btn sm"
+                onClick={async () => {
+                  try {
+                    await api.post('/api/funding/funders', f.recordId ? { recordId: f.recordId } : { name: f.name });
+                    toast(`${f.name} is now tracked.`);
+                    list.reload();
+                    onTracked();
+                  } catch (err) {
+                    toast((err as Error).message, true);
+                  }
+                }}
+              >
+                <Icon name="plus" size={12} /> Track
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DetectedOpportunities({ canWrite, onSaved }: { canWrite: boolean; onSaved: () => void }) {
+  const list = useAsync(() => api.get<DetectedOpportunity[]>('/api/funding/detected/opportunities'), 'detected-opps');
+  const toast = useToast();
+  if (!list.data?.length) return null;
+  return (
+    <section className="stack" style={{ gap: 8 }}>
+      <h3 className="section-title" style={{ margin: 0 }}>Detected — not saved yet</h3>
+      {list.data.map(({ analysisId, analysisTitle, opportunity: o }) => (
+        <div key={`${analysisId}:${o.key}`} className={`fi-opp t-${o.type}`}>
+          <div className="fi-opp-main">
+            <div className="row wrap" style={{ gap: 8, alignItems: 'baseline' }}>
+              <h4 style={{ flex: 1 }}>{o.title}</h4>
+              <span className={o.type === 'identified_tender' ? 'badge warn' : o.type === 'future_opportunity' ? 'badge info' : 'badge'}>{OPPORTUNITY_STATUS_WORD[o.type]}</span>
+            </div>
+            <span className="faint" style={{ fontSize: 13 }}>{[o.organization, o.nature].filter(Boolean).join(' · ')}</span>
+            {o.summary && <p style={{ margin: 0, fontSize: 13 }}>{o.summary}</p>}
+            {o.fundingNote && <p style={{ margin: 0, fontSize: 13 }}><strong>Financement — </strong>{o.fundingNote}</p>}
+            <div className="row wrap" style={{ gap: 8 }}>
+              <Link to={`/funding/${analysisId}`} style={{ fontSize: 12.5 }}>From: {analysisTitle || 'an analysis'}</Link>
+              <div className="spacer" />
+              {canWrite && (
+                <button
+                  className="btn sm"
+                  onClick={async () => {
+                    try {
+                      await api.post(`/api/funding/analyses/${analysisId}/opportunities`, { opportunities: [{ key: o.key, title: o.title, summary: o.summary }] });
+                      toast('Saved — it is now followed.');
+                      list.reload();
+                      onSaved();
+                    } catch (err) {
+                      toast((err as Error).message, true);
+                    }
+                  }}
+                >
+                  <Icon name="check" size={12} /> Save
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 function Opportunities() {
   const role = useAccount().me?.account.staffRole;
   const canWrite = role === 'admin' || role === 'editor';
   const list = useAsync(() => api.get<SavedOpportunity[]>('/api/funding/opportunities'), 'funding-opps');
-  if (list.error) return <div className="empty">{list.error}</div>;
-  if (!list.data) return <div className="faint">Loading…</div>;
-  if (!list.data.length) return <div className="empty">No opportunity saved yet — select some in an analysis and save them.</div>;
   return (
-    <div className="stack" style={{ gap: 10 }}>
-      {list.data.map((o) => <SavedOpportunityCard key={o.id} o={o} canWrite={canWrite} onChanged={() => list.reload()} />)}
+    <div className="stack" style={{ gap: 14 }}>
+      <DetectedOpportunities canWrite={canWrite} onSaved={() => list.reload()} />
+      <h3 className="section-title" style={{ margin: 0 }}>Followed</h3>
+      {list.error && <div className="empty">{list.error}</div>}
+      {!list.data ? (
+        <div className="faint">Loading…</div>
+      ) : !list.data.length ? (
+        <div className="empty">No opportunity followed yet — save some from the list above or from an analysis.</div>
+      ) : (
+        list.data.map((o) => <SavedOpportunityCard key={o.id} o={o} canWrite={canWrite} onChanged={() => list.reload()} />)
+      )}
     </div>
   );
 }

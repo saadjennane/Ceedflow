@@ -9,6 +9,8 @@ import {
   addOrganization,
   changeAction,
   changeOpportunity,
+  detectedFunders,
+  detectedOpportunities,
   funderView,
   listFunders,
   trackFromAnalysis,
@@ -55,6 +57,8 @@ export async function fundingRoutes(app: FastifyInstance) {
 
   /* Les bailleurs suivis : des organisations de l'annuaire, rôle « Funder ». */
   app.get('/api/funding/funders', async () => listFunders());
+  app.get('/api/funding/detected/funders', async () => detectedFunders());
+  app.get('/api/funding/detected/opportunities', async () => detectedOpportunities());
   app.get('/api/funding/funders/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     return (await funderView(id)) ?? notFound(reply, 'Funder not found.');
