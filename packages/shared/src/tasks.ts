@@ -35,6 +35,12 @@ export const BOARD_COLUMNS: { state: TaskState; label: string }[] = [
   { state: 'done', label: 'Done' },
 ];
 
+/** Trois niveaux, pour ranger : ce qui presse en haut. « Medium » par défaut. */
+export const TASK_PRIORITIES = ['high', 'medium', 'low'] as const;
+export type TaskPriority = (typeof TASK_PRIORITIES)[number];
+export const TASK_PRIORITY_LABEL: Record<TaskPriority, string> = { high: 'High', medium: 'Medium', low: 'Low' };
+const PRIORITY_RANK: Record<TaskPriority, number> = { high: 0, medium: 1, low: 2 };
+
 /** Ce à quoi une tâche se rapporte, quand elle se rapporte à quelque chose. */
 export interface TaskAbout {
   recordId: string | null;
@@ -66,6 +72,7 @@ export const taskSchema = z.object({
   detail: z.string().default(''),
   dueOn: z.string().nullable().default(null),
   state: z.enum(TASK_STATES).default('open'),
+  priority: z.enum(TASK_PRIORITIES).default('medium'),
   /** La fiche qui doit s'en occuper : une personne, ou une organisation. */
   ownerId: z.string(),
   ownerName: z.string().default(''),
@@ -98,6 +105,7 @@ export const createTaskInput = z.object({
   title: z.string().min(1, 'Say what has to be done.'),
   detail: z.string().default(''),
   dueOn: z.string().nullable().default(null),
+  priority: z.enum(TASK_PRIORITIES).default('medium'),
   /** Un destinataire par tâche. Plusieurs personnes, plusieurs tâches. */
   ownerIds: z.array(z.string()).min(1, 'Who is it for?'),
   recordId: z.string().nullable().default(null),
@@ -123,6 +131,7 @@ export const createTaskInput = z.object({
 
 export const taskPatch = z.object({
   state: z.enum(TASK_STATES).optional(),
+  priority: z.enum(TASK_PRIORITIES).optional(),
   title: z.string().min(1).optional(),
   detail: z.string().optional(),
   dueOn: z.string().nullable().optional(),
@@ -149,6 +158,10 @@ export const isLate = (task: Pick<Task, 'dueOn' | 'state'>, today = new Date().t
   isOpen(task) && Boolean(task.dueOn) && task.dueOn! < today;
 
 /** Ce qui vient : aujourd'hui et les jours suivants, le plus proche d'abord. */
+/** Le plus pressant d'abord : la priorité, puis l'échéance. */
+export const byUrgency = (a: Task, b: Task): number =>
+  PRIORITY_RANK[a.priority ?? 'medium'] - PRIORITY_RANK[b.priority ?? 'medium'] || byDue(a, b);
+
 export const byDue = (a: Task, b: Task): number => {
   if (a.dueOn === b.dueOn) return a.createdAt.localeCompare(b.createdAt);
   if (!a.dueOn) return 1;
@@ -168,11 +181,12 @@ export const byDue = (a: Task, b: Task): number => {
  * tâche n'est d'aucun programme : son courrier est celui de la maison, écrit
  * une fois pour tout l'espace, et ces deux clés sont tout ce qu'il contient.
  */
-export const HOUSE_LETTERS = ['task_given', 'task_late'] as const;
+export const HOUSE_LETTERS = ['task_given', 'tasks_given', 'task_late'] as const;
 export type HouseLetterKey = (typeof HOUSE_LETTERS)[number];
 
 export const TASK_GIVEN_SUBJECT = 'Une tâche pour vous — {{tache}}';
 export const TASK_LATE_SUBJECT = 'En retard — {{combien}}';
+export const TASKS_GIVEN_SUBJECT = '{{combien}} pour vous — {{reunion}}';
 
 /**
  * Chaque variable tient sa ligne entière, ponctuation comprise.
@@ -199,6 +213,17 @@ export const TASK_GIVEN_DEFAULT = `Bonjour {{prenom}},
 {{acces}}
 
 Vous la retrouvez ici : {{lien}}`;
+
+/** Plusieurs tâches d'un coup — celles d'une même réunion : une lettre par personne, pas une par tâche. */
+export const TASKS_GIVEN_DEFAULT = `Bonjour {{prenom}},
+
+Suite à la réunion « {{reunion}} », {{donnepar}} vous a confié :
+
+{{taches}}
+
+{{acces}}
+
+Vous les retrouvez ici : {{lien}}`;
 
 export const TASK_LATE_DEFAULT = `Bonjour {{prenom}},
 
@@ -229,6 +254,23 @@ export const TASK_GIVEN_VARIABLES = [
   { name: 'lien', label: 'Link to their tasks', what: 'Where they read it on this platform', example: 'https://www.ceedflow.com/me' },
 ] as const;
 
+/** Ce que la lettre qui annonce plusieurs tâches peut nommer. */
+export const TASKS_GIVEN_VARIABLES = [
+  { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Prénom' },
+  { name: 'nom', label: 'Their name', what: 'The person these tasks are for', example: 'Prénom Nom' },
+  {
+    name: 'taches',
+    label: 'The tasks',
+    what: 'Each of their tasks, one per line, with its priority and date',
+    example: '  · Préparer le budget prévisionnel — priorité haute — pour le 20 novembre 2026\n  · Contacter les mentors',
+  },
+  { name: 'combien', label: 'How many', what: 'Counted and named, for the subject line', example: '2 tâches' },
+  { name: 'reunion', label: 'The meeting', what: 'The title of the meeting they come from', example: 'Réunion de coordination The Builders' },
+  { name: 'donnepar', label: 'Who asked', what: 'The colleague who created them', example: 'Prénom Nom' },
+  { name: 'acces', label: 'First login (email + password)', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('prenom@startup-exemple.ma', '••••-••••-••••') },
+  { name: 'lien', label: 'Link to their tasks', what: 'Where they read them on this platform', example: 'https://www.ceedflow.com/tasks' },
+] as const;
+
 /** Et ce qu'un rappel de retard peut nommer. */
 export const TASK_LATE_VARIABLES = [
   { name: 'prenom', label: 'First name', what: 'The first name of whoever this letter is addressed to', example: 'Prénom' },
@@ -246,6 +288,7 @@ export const TASK_LATE_VARIABLES = [
 
 export const HOUSE_LETTER_DEFAULTS: Record<HouseLetterKey, { subject: string; body: string }> = {
   task_given: { subject: TASK_GIVEN_SUBJECT, body: TASK_GIVEN_DEFAULT },
+  tasks_given: { subject: TASKS_GIVEN_SUBJECT, body: TASKS_GIVEN_DEFAULT },
   task_late: { subject: TASK_LATE_SUBJECT, body: TASK_LATE_DEFAULT },
 };
 

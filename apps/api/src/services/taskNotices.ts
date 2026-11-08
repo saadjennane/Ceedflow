@@ -164,6 +164,70 @@ async function givenValues(task: Task, hearer: Hearer, template: string): Promis
   };
 }
 
+/**
+ * Annoncer plusieurs tâches d'un coup — celles d'une réunion : une lettre par
+ * personne, qui les liste toutes. Chaque tâche est réclamée avant l'envoi, comme
+ * pour une seule : deux appels qui se chevauchent n'en annoncent aucune deux fois.
+ */
+export async function tellOwnersAtOnce(
+  taskIds: string[],
+  context: { meeting: string; byName: string },
+): Promise<{ told: number; notTold: number }> {
+  const letter = await houseLetter('tasks_given');
+  if (!letter.enabled || !taskIds.length) return { told: 0, notTold: taskIds.length };
+  const tasks = (await Promise.all(taskIds.map((id) => getTask(id)))).filter((t): t is Task => Boolean(t) && !t!.toldAt);
+  const byOwner = new Map<string, Task[]>();
+  for (const t of tasks) byOwner.set(t.ownerId, [...(byOwner.get(t.ownerId) ?? []), t]);
+
+  let told = 0;
+  let notTold = taskIds.length - tasks.length;
+  for (const [ownerId, list] of byOwner) {
+    const hearer = await whoHears(ownerId);
+    if (hearer.blocked) {
+      notTold += list.length;
+      continue;
+    }
+    const claimed = await all<{ id: string }>(
+      'update tasks set told_at = now() where id = any($1::text[]) and told_at is null returning id',
+      [list.map((t) => t.id)],
+    );
+    const mine = list.filter((t) => claimed.some((c) => c.id === t.id));
+    if (!mine.length) continue;
+    const PRIORITY_SAID = { high: 'priorité haute', medium: '', low: 'priorité basse' } as const;
+    const lines = mine
+      .map((t) =>
+        [`  · ${t.title}`, PRIORITY_SAID[t.priority ?? 'medium'], t.dueOn ? `pour le ${longDate(t.dueOn)}` : '']
+          .filter(Boolean)
+          .join(' — '),
+      )
+      .join('\n');
+    const values = {
+      prenom: firstNameOf(hearer.toName),
+      nom: hearer.toName,
+      taches: lines,
+      combien: howMany(mine.length),
+      reunion: context.meeting,
+      donnepar: context.byName,
+      acces: await accessIfAsked(letter.body, hearer.accountFor),
+      lien: await linkFor(hearer.accountFor),
+    };
+    const id = await post({
+      kind: 'tasks_given',
+      to: hearer.email,
+      toName: hearer.toName,
+      subject: fillTemplate(letter.subject, values),
+      body: fillTemplate(letter.body, values),
+      recordId: ownerId,
+    });
+    if (id) told += mine.length;
+    else {
+      await all('update tasks set told_at = null where id = any($1::text[])', [mine.map((t) => t.id)]);
+      notTold += mine.length;
+    }
+  }
+  return { told, notTold };
+}
+
 /* ------------------------------------------------------------------ */
 /* Le récapitulatif des retards                                        */
 /* ------------------------------------------------------------------ */

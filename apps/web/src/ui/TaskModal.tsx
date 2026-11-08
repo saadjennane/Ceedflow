@@ -13,7 +13,7 @@
  * Plusieurs destinataires créent plusieurs tâches, et c'est dit sous le champ :
  * sinon « fait » serait un mot sans sujet.
  */
-import { type DirectoryRecord, type ProgramWithEditions } from '@ceed/shared';
+import { TASK_PRIORITIES, TASK_PRIORITY_LABEL, type DirectoryRecord, type ProgramWithEditions, type TaskPriority } from '@ceed/shared';
 import { useState } from 'react';
 import { ApiError, api } from '../lib/api';
 import { useAsync } from '../lib/useAsync';
@@ -84,7 +84,7 @@ export function TaskModal({
      faudrait la cocher dans l'équipe — et chaque startup recevrait alors une
      tâche pour chacune des autres. */
   const [toStartup, setToStartup] = useState(false);
-  const [draft, setDraft] = useState({ title: '', detail: '', dueOn: '' });
+  const [draft, setDraft] = useState<{ title: string; detail: string; dueOn: string; priority: TaskPriority }>({ title: '', detail: '', dueOn: '', priority: 'medium' });
   const [items, setItems] = useState<string[]>(names);
   const [line, setLine] = useState('');
   const [people, setPeople] = useState<string[]>(
@@ -483,6 +483,15 @@ export function TaskModal({
           onChange={(e) => set({ dueOn: e.target.value })}
         />
         <div className="hint">Leave it empty for something with no date. Late is counted from the day after.</div>
+      </div>
+
+      <div className="field">
+        <label htmlFor="task-priority">Priority</label>
+        <select id="task-priority" className="select" value={draft.priority} onChange={(e) => set({ priority: e.target.value as TaskPriority })}>
+          {TASK_PRIORITIES.map((p) => (
+            <option key={p} value={p}>{TASK_PRIORITY_LABEL[p]}</option>
+          ))}
+        </select>
       </div>
 
       <TellLine ownerIds={owners} tell={tell} onTell={setTell} />

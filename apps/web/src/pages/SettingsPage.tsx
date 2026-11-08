@@ -3,6 +3,7 @@ import {
   HOUSE_LETTERS,
   TASK_GIVEN_VARIABLES,
   TASK_LATE_VARIABLES,
+  TASKS_GIVEN_VARIABLES,
   type HouseLetter,
   type HouseLetterKey,
   type ProgramWithEditions,
@@ -627,6 +628,11 @@ const LETTER_SAYS: Record<HouseLetterKey, { title: string; what: string; help: s
     what: 'Goes out at the moment somebody is given a task — once, and only if the box was ticked.',
     help: 'What the person reads the day the task lands on them.',
   },
+  tasks_given: {
+    title: 'When several tasks are given at once',
+    what: 'One letter per person listing all their tasks from a meeting, when the Meeting Assistant creates them with “Email each person” ticked.',
+    help: 'What each person reads about everything a meeting gave them.',
+  },
   task_late: {
     title: 'When a task is late',
     what: 'One letter per person rather than one per task, the morning after the date passes, and again a week later if it is still open.',
@@ -634,8 +640,9 @@ const LETTER_SAYS: Record<HouseLetterKey, { title: string; what: string; help: s
   },
 };
 
-const VARIABLES: Record<HouseLetterKey, typeof TASK_GIVEN_VARIABLES | typeof TASK_LATE_VARIABLES> = {
+const VARIABLES: Record<HouseLetterKey, typeof TASK_GIVEN_VARIABLES | typeof TASK_LATE_VARIABLES | typeof TASKS_GIVEN_VARIABLES> = {
   task_given: TASK_GIVEN_VARIABLES,
+  tasks_given: TASKS_GIVEN_VARIABLES,
   task_late: TASK_LATE_VARIABLES,
 };
 

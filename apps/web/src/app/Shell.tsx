@@ -124,6 +124,10 @@ export function Shell() {
           <Icon name="book" />
           <span className="nav-label">Knowledge Base</span>
         </NavLink>
+        <NavLink to="/meetings" className={link} title="Meeting Assistant">
+          <Icon name="edit" />
+          <span className="nav-label">Meeting Assistant</span>
+        </NavLink>
         <NavLink to="/settings" className={link} title="Settings">
           <Icon name="settings" />
           <span className="nav-label">Settings</span>

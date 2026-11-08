@@ -8,7 +8,7 @@
  * Chaque champ s'enregistre en le quittant, sans bouton : c'est un panneau
  * qu'on ouvre pour changer une chose, pas un formulaire qu'on remplit.
  */
-import { BOARD_COLUMNS, isLate, progress, type Task, type TaskItem, type TaskState } from '@ceed/shared';
+import { BOARD_COLUMNS, TASK_PRIORITIES, TASK_PRIORITY_LABEL, isLate, progress, type Task, type TaskItem, type TaskPriority, type TaskState } from '@ceed/shared';
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -32,7 +32,7 @@ export function TaskDrawer({
   const [removing, setRemoving] = useState(false);
   const toast = useToast();
 
-  const save = async (patch: Partial<{ title: string; detail: string; dueOn: string | null; state: TaskState }>) => {
+  const save = async (patch: Partial<{ title: string; detail: string; dueOn: string | null; state: TaskState; priority: TaskPriority }>) => {
     try {
       const saved = await api.patch<Task>(`/api/tasks/${task.id}`, patch);
       setTask(saved);
@@ -142,6 +142,15 @@ export function TaskDrawer({
             }}
           />
           {isLate(task) && <div className="hint" style={{ color: 'var(--stop)' }}>Late.</div>}
+        </div>
+
+        <div className="field">
+          <label htmlFor="task-priority">Priority</label>
+          <select id="task-priority" className="select" value={task.priority ?? 'medium'} onChange={(e) => save({ priority: e.target.value as TaskPriority })}>
+            {TASK_PRIORITIES.map((p) => (
+              <option key={p} value={p}>{TASK_PRIORITY_LABEL[p]}</option>
+            ))}
+          </select>
         </div>
 
         {/* Ce qui ne se change pas ici, mais se lit : à qui, à propos de quoi,

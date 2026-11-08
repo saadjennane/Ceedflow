@@ -13,7 +13,7 @@
  * pour quand. La liste répond à « qu'est-ce qui presse », le tableau à
  * « qu'est-ce qui coince » — d'où la colonne Stuck.
  */
-import { BOARD_COLUMNS, byDue, isLate, isOpen, progress, type Task, type TaskState } from '@ceed/shared';
+import { BOARD_COLUMNS, byUrgency, isLate, isOpen, progress, type Task, type TaskState } from '@ceed/shared';
 import { useMemo, useState, type DragEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -45,7 +45,8 @@ export function TasksPage() {
   const [adding, setAdding] = useState(false);
   const [showDone, setShowDone] = useState(false);
   const [view, setView] = useState<View>(savedView);
-  const [openId, setOpenId] = useState<string | null>(null);
+  /* « View task » depuis l'assistant de réunion : la tâche s'ouvre directement. */
+  const [openId, setOpenId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('task'));
   const toast = useToast();
 
   const setViewMode = (next: View) => {
@@ -70,8 +71,9 @@ export function TasksPage() {
   }, [all, query, showDone, view]);
 
   const opened = all.find((t) => t.id === openId) ?? null;
-  const late = rows.filter((t) => isLate(t));
-  const rest = rows.filter((t) => !isLate(t));
+  /* En retard d'abord ; puis le plus prioritaire, puis le plus proche. */
+  const late = rows.filter((t) => isLate(t)).sort(byUrgency);
+  const rest = rows.filter((t) => !isLate(t)).sort((a, b) => Number(!isOpen(a)) - Number(!isOpen(b)) || byUrgency(a, b));
 
   const tick = async (task: Task) => {
     try {
@@ -223,6 +225,8 @@ export function Row({ task, onTick, onOpen }: { task: Task; onTick: () => void; 
           </span>
         )}
         <Progress task={task} />
+        {task.priority === 'high' && <span className="badge stop" style={{ marginLeft: 7 }}>High</span>}
+        {task.priority === 'low' && <span className="badge" style={{ marginLeft: 7 }}>Low</span>}
         {task.state === 'doing' && <span className="badge info" style={{ marginLeft: 7 }}>In progress</span>}
         {task.state === 'stuck' && <span className="badge stop" style={{ marginLeft: 7 }}>Stuck</span>}
         <span className="faint" style={{ display: 'block', fontSize: 12 }}>
@@ -308,7 +312,7 @@ function Board({
         cards.sort(
           col.state === 'done'
             ? (a, b) => (b.doneAt ?? '').localeCompare(a.doneAt ?? '')
-            : (a, b) => Number(isLate(b)) - Number(isLate(a)) || byDue(a, b),
+            : (a, b) => Number(isLate(b)) - Number(isLate(a)) || byUrgency(a, b),
         );
         return (
           <section
@@ -394,6 +398,8 @@ function Card({
         </span>
       )}
       <div className="row" style={{ gap: 4, marginTop: 2 }}>
+        {task.priority === 'high' && <span className="badge stop">High</span>}
+        {task.priority === 'low' && <span className="badge">Low</span>}
         <Progress task={task} bare />
         {task.dueOn && (
           <span className={isLate(task) ? 'badge warn' : 'badge'} style={{ whiteSpace: 'nowrap' }}>

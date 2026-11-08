@@ -7,6 +7,8 @@ import { BookingPage } from './pages/BookingPage';
 import { MeetPage } from './pages/MeetPage';
 import { KnowledgePage } from './pages/knowledge/KnowledgePage';
 import { KnowledgeEntryPage } from './pages/knowledge/KnowledgeEntryPage';
+import { MeetingAssistantPage } from './pages/meetings/MeetingAssistantPage';
+import { MeetingResultPage } from './pages/meetings/MeetingResultPage';
 import { EditionPage } from './pages/EditionPage';
 import { AuthPage } from './pages/member/AuthPage';
 import { AsStartupPage } from './pages/member/AsStartupPage';
@@ -55,6 +57,8 @@ const router = createBrowserRouter([
       { path: 'settings', element: <SettingsPage /> },
       { path: 'knowledge', element: <KnowledgePage /> },
       { path: 'knowledge/:entryId', element: <KnowledgeEntryPage /> },
+      { path: 'meetings', element: <MeetingAssistantPage /> },
+      { path: 'meetings/:meetingId', element: <MeetingResultPage /> },
     ],
   },
 ]);

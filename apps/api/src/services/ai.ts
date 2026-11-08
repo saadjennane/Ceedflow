@@ -34,7 +34,8 @@ export async function askJson(
   model: string,
   system: string,
   user: string,
-  opts: { maxTokens?: number; timeoutMs?: number } = {},
+  /** Un schéma JSON : OpenAI s'y tient strictement ; le résultat est revalidé de toute façon. */
+  opts: { maxTokens?: number; timeoutMs?: number; schema?: { name: string; schema: object } } = {},
 ): Promise<unknown> {
   /* Large : un modèle qui raisonne compte sa réflexion dans cette limite, et une
      limite trop courte le laisse sans place pour répondre. On ne paie que l'usage. */
@@ -65,7 +66,9 @@ export async function askJson(
     body: JSON.stringify({
       model,
       max_completion_tokens: maxTokens,
-      response_format: { type: 'json_object' },
+      response_format: opts.schema
+        ? { type: 'json_schema', json_schema: { name: opts.schema.name, strict: true, schema: opts.schema.schema } }
+        : { type: 'json_object' },
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user },

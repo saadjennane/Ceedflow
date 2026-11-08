@@ -9,7 +9,7 @@ import { idOf, OPEN_TASK_STATES, type Task, type TaskItem } from '@ceed/shared';
 import { all, one } from '../db/client.js';
 
 const COLS = `
-  select t.id, t.title, t.detail, t.due_on::text as "dueOn", t.state,
+  select t.id, t.title, t.detail, t.due_on::text as "dueOn", t.state, t.priority,
          t.owner_id as "ownerId", o.name as "ownerName", o.kind as "ownerKind",
          t.record_id as "recordId", t.edition_id as "editionId",
          t.block_id as "blockId", t.candidate_id as "candidateId",
@@ -74,7 +74,7 @@ export async function listTasks(filter: TaskFilter = {}): Promise<Task[]> {
     where.push(`t.state = any($${params.length}::text[])`);
   }
   const sql = `${COLS} ${where.length ? `where ${where.join(' and ')}` : ''}
-    order by t.state = 'done', t.due_on nulls last, t.created_at`;
+    order by t.state = 'done', case t.priority when 'high' then 0 when 'low' then 2 else 1 end, t.due_on nulls last, t.created_at`;
   return all<Task>(sql, params);
 }
 
@@ -82,7 +82,7 @@ export const getTask = (id: string) => one<Task>(`${COLS} where t.id = $1`, [id]
 
 export async function createTasks(
   input: {
-    title: string; detail: string; dueOn: string | null; ownerIds: string[];
+    title: string; detail: string; dueOn: string | null; ownerIds: string[]; priority?: string;
     recordId: string | null; editionId: string | null; blockId: string | null; candidateId: string | null;
     items?: string[];
   },
@@ -94,12 +94,12 @@ export async function createTasks(
     const id = idOf.task();
     await all(
       `insert into tasks (id, title, detail, due_on, owner_id, record_id, edition_id, block_id, candidate_id,
-                          created_by, created_by_name)
-       values ($1,$2,$3,nullif($4,'')::date,$5,$6,$7,$8,$9,$10,$11)`,
+                          created_by, created_by_name, priority)
+       values ($1,$2,$3,nullif($4,'')::date,$5,$6,$7,$8,$9,$10,$11,$12)`,
       [
         id, input.title.trim(), input.detail.trim(), input.dueOn ?? '', ownerId,
         input.recordId, input.editionId, input.blockId, input.candidateId,
-        by?.id ?? null, by?.name ?? '',
+        by?.id ?? null, by?.name ?? '', input.priority ?? 'medium',
       ],
     );
     await addItems(id, input.items ?? []);
@@ -111,7 +111,7 @@ export async function createTasks(
 
 export async function changeTask(
   id: string,
-  patch: { state?: string; title?: string; detail?: string; dueOn?: string | null },
+  patch: { state?: string; title?: string; detail?: string; dueOn?: string | null; priority?: string },
   by: { id: string; name: string } | null,
 ): Promise<Task | null> {
   const sets: string[] = [];
@@ -123,6 +123,7 @@ export async function changeTask(
   if (patch.title !== undefined) put('title = $n', patch.title.trim());
   if (patch.detail !== undefined) put('detail = $n', patch.detail.trim());
   if (patch.dueOn !== undefined) put("due_on = nullif($n, '')::date", patch.dueOn ?? '');
+  if (patch.priority !== undefined) put('priority = $n', patch.priority);
   if (patch.state !== undefined) {
     put('state = $n', patch.state);
     /* Qui l'a close et quand, posés avec l'état plutôt que déduits : une tâche
