@@ -83,6 +83,8 @@ export const taskSchema = z.object({
   candidateId: z.string().nullable().default(null),
   /** De quoi l'écrire en une ligne sans aller chercher ailleurs. */
   aboutName: z.string().default(''),
+  /** Le genre de la fiche liée, quand c'est une fiche : une personne ou une organisation. */
+  recordKind: z.enum(['person', 'org']).nullable().default(null),
   createdByName: z.string().default(''),
   createdAt: z.string(),
   doneAt: z.string().nullable().default(null),
@@ -131,6 +133,8 @@ export const createTaskInput = z.object({
 
 export const taskPatch = z.object({
   state: z.enum(TASK_STATES).optional(),
+  /** Changer ce à quoi la tâche se rapporte — une attache à la fois, ou aucune. */
+  link: z.object({ kind: z.enum(['person', 'org', 'edition', 'candidate']), id: z.string().min(1) }).nullable().optional(),
   priority: z.enum(TASK_PRIORITIES).optional(),
   title: z.string().min(1).optional(),
   detail: z.string().optional(),

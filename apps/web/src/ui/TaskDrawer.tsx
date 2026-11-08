@@ -16,6 +16,7 @@ import { formatDate } from '../lib/format';
 import { Icon } from './Icon';
 import { ConfirmDialog, Drawer, useToast } from './Overlays';
 import { DropRow, Grip, moved, nudged, useDragging } from './Reorderable';
+import { LinkPicker } from './LinkPicker';
 
 export function TaskDrawer({
   task: initial,
@@ -32,7 +33,7 @@ export function TaskDrawer({
   const [removing, setRemoving] = useState(false);
   const toast = useToast();
 
-  const save = async (patch: Partial<{ title: string; detail: string; dueOn: string | null; state: TaskState; priority: TaskPriority }>) => {
+  const save = async (patch: Partial<{ title: string; detail: string; dueOn: string | null; state: TaskState; priority: TaskPriority; link: { kind: string; id: string } | null }>) => {
     try {
       const saved = await api.patch<Task>(`/api/tasks/${task.id}`, patch);
       setTask(saved);
@@ -151,6 +152,25 @@ export function TaskDrawer({
               <option key={p} value={p}>{TASK_PRIORITY_LABEL[p]}</option>
             ))}
           </select>
+        </div>
+
+        <div className="field">
+          <label>Link</label>
+          <div>
+            <LinkPicker
+              value={
+                task.candidateId
+                  ? { kind: 'candidate', id: task.candidateId, name: task.aboutName }
+                  : task.recordId
+                    ? { kind: task.recordKind ?? 'person', id: task.recordId, name: task.aboutName }
+                    : task.editionId || task.blockId
+                      ? { kind: 'edition', id: task.editionId ?? '', name: task.aboutName }
+                      : null
+              }
+              editable
+              onLink={(link) => save({ link })}
+            />
+          </div>
         </div>
 
         {/* Ce qui ne se change pas ici, mais se lit : à qui, à propos de quoi,

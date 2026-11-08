@@ -7,6 +7,7 @@
  */
 import { idOf, OPEN_TASK_STATES, type Task, type TaskItem } from '@ceed/shared';
 import { all, one } from '../db/client.js';
+import { HttpError } from '../routes/util.js';
 
 const COLS = `
   select t.id, t.title, t.detail, t.due_on::text as "dueOn", t.state, t.priority,
@@ -16,6 +17,7 @@ const COLS = `
          /* Ce à quoi elle est attachée, en un mot : la fiche, le programme,
             l'étape ou la startup — ce qui se lit sur une ligne de liste. */
          coalesce(r.name, co.name, b.name, p.name || ' · ' || e.name, '') as "aboutName",
+         r.kind as "recordKind",
          t.created_by_name as "createdByName", t.created_at::text as "createdAt",
          t.done_at::text as "doneAt", t.done_by_name as "doneByName",
          t.told_at::text as "toldAt",
@@ -111,7 +113,10 @@ export async function createTasks(
 
 export async function changeTask(
   id: string,
-  patch: { state?: string; title?: string; detail?: string; dueOn?: string | null; priority?: string },
+  patch: {
+    state?: string; title?: string; detail?: string; dueOn?: string | null; priority?: string;
+    link?: { kind: 'person' | 'org' | 'edition' | 'candidate'; id: string } | null;
+  },
   by: { id: string; name: string } | null,
 ): Promise<Task | null> {
   const sets: string[] = [];
@@ -124,6 +129,23 @@ export async function changeTask(
   if (patch.detail !== undefined) put('detail = $n', patch.detail.trim());
   if (patch.dueOn !== undefined) put("due_on = nullif($n, '')::date", patch.dueOn ?? '');
   if (patch.priority !== undefined) put('priority = $n', patch.priority);
+  if (patch.link !== undefined) {
+    /* Une attache au plus : poser l'une efface les autres, l'étape comprise. */
+    const l = patch.link;
+    if (l) {
+      const exists =
+        l.kind === 'edition'
+          ? await one('select id from editions where id = $1', [l.id])
+          : l.kind === 'candidate'
+            ? await one('select id from candidates where id = $1 and deleted_at is null', [l.id])
+            : await one('select id from records where id = $1 and kind = $2 and deleted_at is null', [l.id, l.kind]);
+      if (!exists) throw new HttpError(422, 'That link was not found.');
+    }
+    put('record_id = $n', l && (l.kind === 'person' || l.kind === 'org') ? l.id : null);
+    put('edition_id = $n', l?.kind === 'edition' ? l.id : null);
+    put('candidate_id = $n', l?.kind === 'candidate' ? l.id : null);
+    sets.push('block_id = null');
+  }
   if (patch.state !== undefined) {
     put('state = $n', patch.state);
     /* Qui l'a close et quand, posés avec l'état plutôt que déduits : une tâche

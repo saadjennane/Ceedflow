@@ -113,6 +113,38 @@ export function matchMember(
   return { id: null, note: 'Responsible not found — Please select a member.' };
 }
 
+/**
+ * Le sujet d'une tâche, cherché dans l'annuaire par son nom — rattaché
+ * seulement s'il n'y a qu'une fiche de ce nom. Une startup se cherche dans le
+ * programme nommé, sinon dans sa seule candidature en cours.
+ */
+export async function resolveAbout(
+  kind: string,
+  said: string | null,
+  editionId: string | null,
+): Promise<{ recordId: string | null; candidateId: string | null; editionId: string | null; said: string }> {
+  const none = { recordId: null, candidateId: null, editionId, said: '' };
+  const name = fold(said ?? '');
+  if (kind === 'programme' || kind === 'none' || !name) return kind === 'programme' || !name ? none : { ...none, said: said ?? '' };
+  const recordKind = kind === 'person' ? 'person' : 'org';
+  const found = (await all<{ id: string; name: string }>(
+    `select id, name from records where kind = $1 and deleted_at is null`,
+    [recordKind],
+  )).filter((r) => fold(r.name) === name);
+  if (found.length !== 1) return { ...none, said: said ?? '' };
+  const recordId = found[0]!.id;
+  if (kind !== 'startup') return { recordId, candidateId: null, editionId: null, said: '' };
+  const candidacies = await all<{ id: string; editionId: string }>(
+    `select c.id, c.edition_id as "editionId" from candidates c join editions e on e.id = c.edition_id
+      where c.org_id = $1 and c.deleted_at is null and ($2::text is null or c.edition_id = $2)
+      order by e.created_at desc`,
+    [recordId, editionId],
+  );
+  if (candidacies.length === 1) return { recordId: null, candidateId: candidacies[0]!.id, editionId: null, said: '' };
+  /* Plusieurs programmes, ou aucun : la startup elle-même, sans deviner lequel. */
+  return { recordId, candidateId: null, editionId: null, said: '' };
+}
+
 /** Une date que le modèle propose, gardée seulement si c'en est une, et plausible. */
 export function checkDue(raw: unknown, meetingOn: string): { dueOn: string | null; note: string } {
   if (raw === null || raw === undefined || raw === '') return { dueOn: null, note: '' };
@@ -164,6 +196,8 @@ export interface RawTask {
   due_date: string | null;
   due_note: string | null;
   edition_id: string | null;
+  about_kind: string;
+  about_name: string | null;
   priority: string;
   source_excerpt: string;
   needs_review: boolean;
@@ -199,7 +233,7 @@ const SCHEMA = {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['title', 'description', 'assignee_id', 'assignee_name', 'due_date', 'due_note', 'edition_id', 'priority', 'source_excerpt', 'needs_review', 'review_reason', 'confidence'],
+          required: ['title', 'description', 'assignee_id', 'assignee_name', 'due_date', 'due_note', 'edition_id', 'about_kind', 'about_name', 'priority', 'source_excerpt', 'needs_review', 'review_reason', 'confidence'],
           properties: {
             title: { type: 'string' },
             description: { type: 'string' },
@@ -208,6 +242,8 @@ const SCHEMA = {
             due_date: { type: ['string', 'null'] },
             due_note: { type: ['string', 'null'] },
             edition_id: { type: ['string', 'null'] },
+            about_kind: { type: 'string', enum: ['none', 'person', 'organisation', 'programme', 'startup'] },
+            about_name: { type: ['string', 'null'] },
             priority: { type: 'string', enum: ['high', 'medium', 'low'] },
             source_excerpt: { type: 'string' },
             needs_review: { type: 'boolean' },
@@ -233,7 +269,8 @@ Pour chaque tâche :
 - "description" : l'action attendue, reformulée clairement.
 - "assignee_name" : le nom tel qu'écrit dans le compte rendu, ou null si personne n'est nommé.
 - "assignee_id" : l'identifiant d'un membre de la liste fournie seulement si la correspondance est sûre et unique ; sinon null. N'invente jamais d'identifiant.
-- "edition_id" : l'identifiant d'un programme de la liste fournie seulement si le compte rendu rattache clairement cette tâche à ce programme ; sinon null.
+- "about_kind" et "about_name" : ce dont la tâche parle, s'il y a un sujet clair — "person" (une personne extérieure à l'équipe : un mentor, un juré, un partenaire), "organisation" (une société, un partenaire, un financeur), "startup" (une startup accompagnée dans un programme), "programme" (un programme entier) ; "about_name" est le nom tel qu'écrit. Sinon "none" et null. Le responsable de la tâche n'est pas son sujet.
+- "edition_id" : l'identifiant d'un programme de la liste fournie seulement si le compte rendu rattache clairement cette tâche (ou sa startup) à ce programme ; sinon null.
 - "due_date" : AAAA-MM-JJ, calculée à partir de la date de la réunion pour « demain », « vendredi », « dans deux semaines », « avant la fin du mois »… ; null si rien n'est dit ou si c'est ambigu (dis alors pourquoi dans "due_note"). N'invente jamais de date.
 - "priority" : "high" si c'est dit urgent ou prioritaire, "low" si c'est dit secondaire, sinon "medium".
 - "source_excerpt" : la phrase exacte du compte rendu qui fonde la tâche.
@@ -287,6 +324,8 @@ export async function analyzeMeetingNotes(
       due_date: opt(t.due_date),
       due_note: opt(t.due_note),
       edition_id: opt(t.edition_id),
+      about_kind: str(t.about_kind) || 'none',
+      about_name: opt(t.about_name),
       priority: str(t.priority),
       source_excerpt: str(t.source_excerpt),
       needs_review: t.needs_review === true,
@@ -330,13 +369,15 @@ export async function runMeetingAnalysis(meetingId: string): Promise<void> {
     );
     const rows: {
       title: string; description: string; assigneeId: string | null; assigneeSaid: string; assigneeNote: string;
-      dueOn: string | null; dueNote: string; editionId: string | null; priority: string; sourceExcerpt: string; confidence: string;
+      dueOn: string | null; dueNote: string; editionId: string | null; recordId: string | null; candidateId: string | null; aboutSaid: string; priority: string; sourceExcerpt: string; confidence: string;
       needsReview: boolean; reviewReason: string; duplicateTaskId: string | null;
     }[] = [];
     for (const t of result.tasks.filter((x) => x.title.trim())) {
       const who = matchMember(t.assignee_name ?? '', t.assignee_id, members);
       const due = checkDue(t.due_date, meetingOn);
-      const editionId = t.edition_id && knownEditions.has(t.edition_id) ? t.edition_id : m.editionId;
+      const named = t.edition_id && knownEditions.has(t.edition_id) ? t.edition_id : m.editionId;
+      /* Une attache et une seule, comme une tâche donnée à la main. */
+      const about = await resolveAbout(t.about_kind, t.about_name, named);
       /* Déjà créée par une analyse précédente : signalée comme doublon de sa tâche, jamais refaite. */
       const again = created.find((c) => similar(c.title, t.title) && (!who.id || c.assigneeId === who.id));
       rows.push({
@@ -347,13 +388,16 @@ export async function runMeetingAnalysis(meetingId: string): Promise<void> {
         assigneeNote: who.note,
         dueOn: due.dueOn,
         dueNote: (due.note || t.due_note || '').slice(0, 500),
-        editionId,
+        editionId: about.editionId,
+        recordId: about.recordId,
+        candidateId: about.candidateId,
+        aboutSaid: about.said.slice(0, 200),
         priority: (TASK_PRIORITIES as readonly string[]).includes(t.priority) ? t.priority : 'medium',
         sourceExcerpt: t.source_excerpt.slice(0, 2000),
         confidence: ['high', 'medium', 'low'].includes(t.confidence) ? t.confidence : 'medium',
         needsReview: t.needs_review || t.confidence === 'low',
         reviewReason: (t.review_reason ?? '').slice(0, 1000),
-        duplicateTaskId: again?.taskId ?? (await duplicateOf(t.title, who.id, editionId)),
+        duplicateTaskId: again?.taskId ?? (await duplicateOf(t.title, who.id, about.editionId)),
       });
     }
     await (await db()).tx(async () => {
@@ -362,10 +406,12 @@ export async function runMeetingAnalysis(meetingId: string): Promise<void> {
       for (const [i, r] of rows.entries()) {
         await all(
           `insert into meeting_task_suggestions (id, meeting_id, position, source, title, description, assignee_id, assignee_said, assignee_note,
-             due_on, due_note, priority, source_excerpt, confidence, needs_review, review_reason, duplicate_task_id, edition_id)
-           values ($1, $2, $3, 'ai', $4, $5, $6, $7, $8, $9::date, $10, $11, $12, $13, $14, $15, $16, $17)`,
+             due_on, due_note, priority, source_excerpt, confidence, needs_review, review_reason, duplicate_task_id, edition_id,
+             record_id, candidate_id, about_said)
+           values ($1, $2, $3, 'ai', $4, $5, $6, $7, $8, $9::date, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
           [newId('mts', 10), meetingId, start + i + 1, r.title, r.description, r.assigneeId, r.assigneeSaid, r.assigneeNote,
-            r.dueOn, r.dueNote, r.priority, r.sourceExcerpt, r.confidence, r.needsReview, r.reviewReason, r.duplicateTaskId, r.editionId],
+            r.dueOn, r.dueNote, r.priority, r.sourceExcerpt, r.confidence, r.needsReview, r.reviewReason, r.duplicateTaskId, r.editionId,
+            r.recordId, r.candidateId, r.aboutSaid],
         );
       }
       await all(
@@ -437,6 +483,8 @@ async function suggestionsWhere(where: string, params: unknown[]): Promise<Meeti
     assigneeName: string | null; assigneeSaid: string; assigneeNote: string; dueOn: string | null; dueNote: string;
     priority: TaskPriority; sourceExcerpt: string; confidence: 'high' | 'medium' | 'low'; needsReview: boolean; reviewReason: string;
     status: MeetingSuggestion['status']; error: string; editionId: string | null; editionName: string | null;
+    recordId: string | null; recordName: string | null; recordKind: 'person' | 'org' | null;
+    candidateId: string | null; candidateName: string | null; aboutSaid: string;
     dupId: string | null; dupTitle: string | null; dupOwner: string | null; dupState: string | null; dupDue: string | null;
     taskId: string | null; taskTitle: string | null; taskState: string | null;
   }>(
@@ -444,11 +492,18 @@ async function suggestionsWhere(where: string, params: unknown[]): Promise<Meeti
             s.assignee_said as "assigneeSaid", s.assignee_note as "assigneeNote", s.due_on::text as "dueOn", s.due_note as "dueNote",
             s.priority, s.source_excerpt as "sourceExcerpt", s.confidence, s.needs_review as "needsReview", s.review_reason as "reviewReason",
             s.status, s.error, s.edition_id as "editionId", sp.name || ' — ' || se.name as "editionName",
+            s.record_id as "recordId", ar.name as "recordName", ar.kind as "recordKind",
+            s.candidate_id as "candidateId", co.name || ' · ' || cp.name || ' — ' || ce.name as "candidateName", s.about_said as "aboutSaid",
             d.id as "dupId", d.title as "dupTitle", dr.name as "dupOwner", d.state as "dupState", d.due_on::text as "dupDue",
             t.id as "taskId", t.title as "taskTitle", t.state as "taskState"
        from meeting_task_suggestions s
        join meeting_analyses ma on ma.id = s.meeting_id
        left join records r on r.id = s.assignee_id
+       left join records ar on ar.id = s.record_id
+       left join candidates ac on ac.id = s.candidate_id
+       left join records co on co.id = ac.org_id
+       left join editions ce on ce.id = ac.edition_id
+       left join programs cp on cp.id = ce.program_id
        left join editions se on se.id = s.edition_id
        left join programs sp on sp.id = se.program_id
        left join tasks d on d.id = s.duplicate_task_id
@@ -462,7 +517,15 @@ async function suggestionsWhere(where: string, params: unknown[]): Promise<Meeti
       meetingId: r.meetingId, meetingTitle: r.meetingTitle, meetingOn: r.meetingOn,
       id: r.id, position: r.position, source: r.source, title: r.title, description: r.description,
       assigneeId: r.assigneeId, assigneeName: r.assigneeName ?? '', assigneeSaid: r.assigneeSaid, assigneeNote: r.assigneeNote,
-      dueOn: r.dueOn, dueNote: r.dueNote, editionId: r.editionId, editionName: r.editionName ?? '', priority: r.priority, sourceExcerpt: r.sourceExcerpt, confidence: r.confidence,
+      dueOn: r.dueOn, dueNote: r.dueNote, editionId: r.editionId, editionName: r.editionName ?? '', priority: r.priority,
+      link: r.candidateId
+        ? { kind: 'candidate' as const, id: r.candidateId, name: r.candidateName ?? '' }
+        : r.recordId
+          ? { kind: (r.recordKind === 'org' ? 'org' : 'person') as 'org' | 'person', id: r.recordId, name: r.recordName ?? '' }
+          : r.editionId
+            ? { kind: 'edition' as const, id: r.editionId, name: r.editionName ?? '' }
+            : null,
+      aboutSaid: r.aboutSaid, sourceExcerpt: r.sourceExcerpt, confidence: r.confidence,
       needsReview: r.needsReview, reviewReason: r.reviewReason, status: r.status, error: r.error,
       duplicate: r.dupId ? { id: r.dupId, title: r.dupTitle ?? '', ownerName: r.dupOwner ?? '', state: r.dupState as never, dueOn: r.dupDue } : null,
       task: r.taskId ? { id: r.taskId, title: r.taskTitle ?? '', state: r.taskState as never } : null,
@@ -492,7 +555,11 @@ const EDITABLE = ['proposed', 'dismissed', 'failed'];
 
 export async function changeSuggestion(
   id: string,
-  patch: { title?: string; description?: string; assigneeId?: string | null; dueOn?: string | null; priority?: TaskPriority; editionId?: string | null; status?: 'proposed' | 'dismissed' },
+  patch: {
+    title?: string; description?: string; assigneeId?: string | null; dueOn?: string | null; priority?: TaskPriority;
+    editionId?: string | null; status?: 'proposed' | 'dismissed';
+    link?: { kind: 'person' | 'org' | 'edition' | 'candidate'; id: string } | null;
+  },
   actor: MeetingActor,
 ): Promise<void> {
   mustWrite(actor);
@@ -524,6 +591,22 @@ export async function changeSuggestion(
       throw new HttpError(422, 'That programme edition was not found.', { editionId: 'Not found.' });
     }
     put('edition_id = $n', patch.editionId);
+  }
+  if (patch.link !== undefined) {
+    /* Une attache à la fois : poser l'une efface les autres. */
+    const l = patch.link;
+    const exists = !l
+      ? true
+      : l.kind === 'edition'
+        ? await one('select id from editions where id = $1', [l.id])
+        : l.kind === 'candidate'
+          ? await one('select id from candidates where id = $1 and deleted_at is null', [l.id])
+          : await one('select id from records where id = $1 and kind = $2 and deleted_at is null', [l.id, l.kind]);
+    if (!exists) throw new HttpError(422, 'That link was not found.');
+    put('record_id = $n', l && (l.kind === 'person' || l.kind === 'org') ? l.id : null);
+    put('edition_id = $n', l?.kind === 'edition' ? l.id : null);
+    put('candidate_id = $n', l?.kind === 'candidate' ? l.id : null);
+    sets.push("about_said = ''");
   }
   if (patch.status !== undefined) put('status = $n', patch.status);
   if (sets.length) await all(`update meeting_task_suggestions set ${sets.join(', ')}, updated_at = now() where id = $1`, params);
@@ -575,12 +658,12 @@ export async function createFromSuggestions(
   for (const id of [...new Set(input.ids)]) {
     /* La réservation : une seule requête la gagne. Une création restée en plan
        plus de cinq minutes (un redémarrage) peut être reprise. */
-    const [s] = await all<{ title: string; description: string; assigneeId: string | null; dueOn: string | null; priority: TaskPriority; sourceExcerpt: string; editionId: string | null }>(
+    const [s] = await all<{ title: string; description: string; assigneeId: string | null; dueOn: string | null; priority: TaskPriority; sourceExcerpt: string; editionId: string | null; recordId: string | null; candidateId: string | null }>(
       `update meeting_task_suggestions set status = 'creating', error = '', updated_at = now()
         where id = $1 and meeting_id = $2
           and (status in ('proposed', 'failed') or (status = 'creating' and updated_at < now() - interval '5 minutes'))
         returning title, description, assignee_id as "assigneeId", due_on::text as "dueOn", priority, source_excerpt as "sourceExcerpt",
-                  edition_id as "editionId"`,
+                  edition_id as "editionId", record_id as "recordId", candidate_id as "candidateId"`,
       [id, meetingId],
     );
     if (!s) {
@@ -609,10 +692,11 @@ export async function createFromSuggestions(
           dueOn: s.dueOn,
           priority: s.priority,
           ownerIds: [s.assigneeId],
-          recordId: null,
-          editionId: s.editionId ?? meeting.editionId,
+          /* Une attache au plus, comme à la main : la startup, sinon la fiche, sinon le programme. */
+          recordId: s.candidateId ? null : s.recordId,
+          editionId: s.candidateId || s.recordId ? null : (s.editionId ?? meeting.editionId),
           blockId: null,
-          candidateId: null,
+          candidateId: s.candidateId,
         },
         { id: actor.recordId, name: actor.name },
       );

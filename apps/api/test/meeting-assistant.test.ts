@@ -13,7 +13,7 @@ import { meetingAssistantRoutes } from '../src/routes/meetingAssistant.js';
 import { SESSION_COOKIE, createAccount, createSession, setStaffRole } from '../src/services/auth.js';
 import { letters } from '../src/services/mail.js';
 import { checkDue, matchMember, similar, useMeetingAnalyzerForTests, type MeetingAnalyzer, type RawTask } from '../src/services/meetingAssistant.js';
-import { createTasks, getTask, listTasks } from '../src/services/tasks.js';
+import { changeTask, createTasks, getTask, listTasks } from '../src/services/tasks.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
 const raw = (t: Partial<RawTask>): RawTask => ({
@@ -208,6 +208,42 @@ describe('the Meeting Assistant', { skip: skipWithoutServer }, () => {
     assert.equal((await call('Saad', 'GET', `/api/meeting-assistant/meetings/${a.id}`)).status, 404);
     const kept = await listTasks({ ownerIds: [sarah.recordId] });
     assert.ok(kept.some((t) => t.title === `Relancer le partenaire ${mark}`), 'its task stays in Tasks');
+  });
+
+  it('links each task to what it is about — a startup in its programme, an organisation — found by name, never guessed', async () => {
+    const sarah = people[`Sarah${mark}`]!;
+    const startup = await dir.createRecord({ kind: 'org', name: `Rafid ${mark}`, origin: 'manual' });
+    const track = (await repo.getEditionDetail(editionId))!.tracks[0]!;
+    const cand = await repo.createCandidate({ editionId, trackId: track.id, orgId: startup.id, personId: null, originBlockId: null });
+    const funder = await dir.createRecord({ kind: 'org', name: `Fonds Atlas ${mark}`, origin: 'manual' });
+    ai = async () => ({
+      summary: '', meetingTitle: `Liens ${mark}`, meetingDate: null,
+      tasks: [
+        raw({ title: 'Relancer Rafid', assignee_name: `Sarah${mark}`, about_kind: 'startup', about_name: `Rafid ${mark}`, edition_id: editionId }),
+        raw({ title: 'Écrire au fonds', assignee_name: `Sarah${mark}`, about_kind: 'organisation', about_name: `fonds atlas ${mark}` }),
+        raw({ title: 'Appeler Inconnu', assignee_name: `Sarah${mark}`, about_kind: 'organisation', about_name: 'Société Fantôme' }),
+      ],
+    });
+    const m = await settle((await call('Saad', 'POST', '/api/meeting-assistant/meetings', { content: notes })).body.id);
+    const [rafid, fund, ghost] = m.suggestions;
+    assert.deepEqual(rafid.link && { kind: rafid.link.kind, id: rafid.link.id }, { kind: 'candidate', id: cand.id }, 'the startup, in its programme');
+    assert.deepEqual(fund.link && { kind: fund.link.kind, id: fund.link.id }, { kind: 'org', id: funder.id });
+    assert.equal(ghost.link, null);
+    assert.equal(ghost.aboutSaid, 'Société Fantôme', 'not found: said, not invented');
+
+    assert.equal((await call('Saad', 'PATCH', `/api/meeting-assistant/suggestions/${ghost.id}`, { link: { kind: 'org', id: 'nope' } })).status, 422);
+    await call('Saad', 'PATCH', `/api/meeting-assistant/suggestions/${ghost.id}`, { link: { kind: 'person', id: sarah.recordId } });
+    const out = await call('Saad', 'POST', `/api/meeting-assistant/meetings/${m.id}/create`, { ids: [rafid.id, ghost.id] });
+    const [t1, t2] = await Promise.all(out.body.created.map((c: { taskId: string }) => getTask(c.taskId)));
+    assert.equal(t1!.candidateId, cand.id);
+    assert.equal(t1!.editionId, null, 'one link at a time');
+    assert.equal(t2!.recordId, sarah.recordId);
+
+    const moved = (await changeTask(t2!.id, { link: { kind: 'edition', id: editionId } }, null))!;
+    assert.equal(moved.editionId, editionId);
+    assert.equal(moved.recordId, null, 'the old link goes');
+    assert.equal((await changeTask(t2!.id, { link: null }, null))!.editionId, null);
+    await assert.rejects(changeTask(t2!.id, { link: { kind: 'candidate', id: 'nope' } }, null));
   });
 
   it('keeps the notes when the analysis fails, and lets it run again', async () => {

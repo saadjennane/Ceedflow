@@ -7,6 +7,7 @@ import { TASK_PRIORITIES, TASK_PRIORITY_LABEL, type MeetingSuggestion, type Task
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Icon } from '../../ui/Icon';
+import { LinkPicker } from '../../ui/LinkPicker';
 import './meetings.css';
 
 export function ProposalCard({
@@ -68,13 +69,7 @@ export function ProposalCard({
             <Icon name="calendar" size={12} />
             <input type="date" disabled={!editable} value={s.dueOn ?? ''} onChange={(e) => onPatch({ dueOn: e.target.value || null })} aria-label="Due date" />
           </span>
-          <span className="chip" title="Related program">
-            <Icon name="layers" size={12} />
-            <select disabled={!editable} value={s.editionId ?? ''} onChange={(e) => onPatch({ editionId: e.target.value || null })} aria-label="Related program">
-              <option value="">No program</option>
-              {editions.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-            </select>
-          </span>
+<LinkPicker value={s.link} unresolved={s.aboutSaid} editions={editions} editable={editable} onLink={(link) => onPatch({ link })} />
           <span className={s.priority === 'high' ? 'chip stop' : 'chip'} title="Priority">
             <select disabled={!editable} value={s.priority} onChange={(e) => onPatch({ priority: e.target.value as TaskPriority })} aria-label="Priority">
               {TASK_PRIORITIES.map((p) => <option key={p} value={p}>{TASK_PRIORITY_LABEL[p]}</option>)}

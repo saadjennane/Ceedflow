@@ -34,6 +34,10 @@ export interface MeetingSuggestion {
   /** Le programme de la tâche, quand le compte rendu le dit clairement. */
   editionId: string | null;
   editionName: string;
+  /** Ce à quoi la tâche se rapporte — une seule attache, comme une tâche donnée à la main. */
+  link: { kind: 'person' | 'org' | 'edition' | 'candidate'; id: string; name: string } | null;
+  /** Le sujet tel que le compte rendu l'écrit, quand il n'a pas été trouvé dans l'annuaire. */
+  aboutSaid: string;
   priority: TaskPriority;
   sourceExcerpt: string;
   confidence: 'high' | 'medium' | 'low';
@@ -95,6 +99,7 @@ export const suggestionPatch = z.object({
   dueOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   priority: z.enum(TASK_PRIORITIES).optional(),
   editionId: z.string().nullable().optional(),
+  link: z.object({ kind: z.enum(['person', 'org', 'edition', 'candidate']), id: z.string().min(1) }).nullable().optional(),
   status: z.enum(['proposed', 'dismissed']).optional(),
 });
 
