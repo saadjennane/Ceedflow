@@ -17,7 +17,7 @@ import { createTasks, getTask, listTasks } from '../src/services/tasks.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
 const raw = (t: Partial<RawTask>): RawTask => ({
-  title: '', description: '', assignee_id: null, assignee_name: null, due_date: null, due_note: null, priority: 'medium',
+  title: '', description: '', assignee_id: null, assignee_name: null, due_date: null, due_note: null, edition_id: null, priority: 'medium',
   source_excerpt: '', needs_review: false, review_reason: null, confidence: 'high', ...t,
 });
 
@@ -51,7 +51,7 @@ describe('the Meeting Assistant', { skip: skipWithoutServer }, () => {
   const app = Fastify();
   const mark = `${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
   const people: Record<string, { token: string; email: string; recordId: string }> = {};
-  let ai: MeetingAnalyzer = async () => ({ summary: '', tasks: [] });
+  let ai: MeetingAnalyzer = async () => ({ summary: '', meetingTitle: '', meetingDate: null, tasks: [] });
   let editionId = '';
 
   const member = async (first: string, last: string, role: 'admin' | 'editor' | 'observer' | null) => {
@@ -104,30 +104,36 @@ describe('the Meeting Assistant', { skip: skipWithoutServer }, () => {
 
   it('proposes, lets the team check, creates real tasks once — and never twice', async () => {
     const sarah = people[`Sarah${mark}`]!;
-    ai = async ({ members, meetingOn, weekday }) => {
-      assert.equal(meetingOn, '2026-11-08');
-      assert.equal(weekday, 'dimanche');
+    ai = async ({ members, editions }) => {
       assert.ok(members.some((m) => m.id === sarah.recordId), 'the team is given to the model');
+      assert.ok(editions.some((e) => e.id === editionId), 'and the programmes, to recognise one');
       assert.ok(!members.some((m) => m.id === people.Founder!.recordId), 'nobody outside the team');
       return {
         summary: 'Coordination.',
+        meetingTitle: `Coordination ${mark}`,
+        meetingDate: '2026-11-05',
         tasks: [
-          raw({ title: 'Contacter les mentors', assignee_name: `Sarah${mark}`, priority: 'high', source_excerpt: 'Sarah prendra contact avec les mentors.' }),
+          raw({ title: 'Contacter les mentors', assignee_name: `Sarah${mark}`, priority: 'high', edition_id: editionId, source_excerpt: 'Sarah prendra contact avec les mentors.' }),
           raw({ title: 'Préparer le budget prévisionnel', assignee_name: 'Youssef', due_date: '2026-11-20', source_excerpt: 'Youssef préparera le budget avant le 20 novembre.' }),
-          raw({ title: 'Inviter un nouveau juré', assignee_id: 'invented-id', assignee_name: 'Inès', needs_review: true, review_reason: 'Simple suggestion ?' }),
+          raw({ title: 'Inviter un nouveau juré', assignee_id: 'invented-id', assignee_name: 'Inès', edition_id: 'invented-edition', needs_review: true, review_reason: 'Simple suggestion ?' }),
         ],
       };
     };
-    const made = await call('Saad', 'POST', '/api/meeting-assistant/meetings', { title: `Coordination ${mark}`, meetingOn: '2026-11-08', editionId, content: notes });
-    assert.equal(made.status, 201);
+    const made = await call('Saad', 'POST', '/api/meeting-assistant/meetings', { content: notes });
+    assert.equal(made.status, 201, 'the notes are enough');
     const m = await settle(made.body.id);
     assert.equal(m.status, 'done');
+    assert.equal(m.title, `Coordination ${mark}`, 'titled from the notes');
+    assert.equal(m.meetingOn, '2026-11-05', 'dated from the notes');
     const [mentors, budget, juror] = m.suggestions;
     assert.equal(mentors.assigneeId, sarah.recordId);
     assert.equal(budget.assigneeId, null);
     assert.equal(budget.assigneeNote, 'Responsible not found — Please select a member.');
     assert.equal(budget.dueOn, '2026-11-20');
     assert.equal(juror.assigneeId, null, 'an invented id is dropped');
+    assert.equal(mentors.editionId, editionId, 'its programme, read in the notes');
+    assert.equal(juror.editionId, null, 'an invented programme is dropped');
+    assert.equal(budget.editionId, null, 'no programme said, none linked');
     assert.equal(juror.needsReview, true);
 
     const blocked = await call('Saad', 'POST', `/api/meeting-assistant/meetings/${m.id}/create`, { ids: [mentors.id, budget.id], tell: true });
@@ -158,8 +164,8 @@ describe('the Meeting Assistant', { skip: skipWithoutServer }, () => {
   it('flags a task that already exists, and a new analysis keeps what was created', async () => {
     const sarah = people[`Sarah${mark}`]!;
     await createTasks({ title: 'Réserver la salle des ateliers', detail: '', dueOn: null, ownerIds: [sarah.recordId], recordId: null, editionId: null, blockId: null, candidateId: null }, null);
-    ai = async () => ({ summary: '', tasks: [raw({ title: 'Réserver la salle pour les ateliers', assignee_name: `Sarah${mark}` }), raw({ title: 'Écrire aux startups' })] });
-    const made = await call('Saad', 'POST', '/api/meeting-assistant/meetings', { title: `Ateliers ${mark}`, meetingOn: '2026-11-08', content: notes });
+    ai = async () => ({ summary: '', meetingTitle: `Ateliers ${mark}`, meetingDate: null, tasks: [raw({ title: 'Réserver la salle pour les ateliers', assignee_name: `Sarah${mark}` }), raw({ title: 'Écrire aux startups' })] });
+    const made = await call('Saad', 'POST', '/api/meeting-assistant/meetings', { content: notes });
     const m = await settle(made.body.id);
     assert.ok(m.suggestions[0].duplicate, 'Potential duplicate task');
     await call('Saad', 'PATCH', `/api/meeting-assistant/suggestions/${m.suggestions[1].id}`, { assigneeId: people.Saad!.recordId });
@@ -180,12 +186,12 @@ describe('the Meeting Assistant', { skip: skipWithoutServer }, () => {
     ai = async () => {
       throw new Error('OpenAI answered 503: overloaded');
     };
-    const made = await call('Saad', 'POST', '/api/meeting-assistant/meetings', { title: `Panne ${mark}`, meetingOn: '2026-11-08', content: notes });
+    const made = await call('Saad', 'POST', '/api/meeting-assistant/meetings', { content: notes });
     const m = await settle(made.body.id);
     assert.equal(m.status, 'failed');
     assert.match(m.error, /503/);
     assert.equal(m.content, notes);
-    ai = async () => ({ summary: 'ok', tasks: [] });
+    ai = async () => ({ summary: 'ok', meetingTitle: 'Panne', meetingDate: null, tasks: [] });
     await call('Saad', 'POST', `/api/meeting-assistant/meetings/${m.id}/analyse`);
     assert.equal((await settle(m.id)).status, 'done');
     const history = (await call('Lina', 'GET', '/api/meeting-assistant/meetings')).body as { id: string }[];

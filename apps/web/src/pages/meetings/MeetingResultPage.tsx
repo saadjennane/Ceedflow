@@ -85,8 +85,8 @@ export function MeetingResultPage() {
   return (
     <>
       <header className="topbar">
-        <Link className="btn ghost sm" to="/meetings">
-          <Icon name="chevronLeft" size={13} /> Meeting Assistant
+        <Link className="btn ghost sm" to="/tasks?tab=meetings">
+          <Icon name="chevronLeft" size={13} /> Meeting History
         </Link>
         <div className="spacer" />
         {canWrite && m.status !== 'pending' && (
@@ -102,9 +102,9 @@ export function MeetingResultPage() {
 
       <div className="page stack" style={{ gap: 14, maxWidth: 960 }}>
         <section className="stack" style={{ gap: 4 }}>
-          <h2 style={{ margin: 0, fontSize: 21 }}>{m.title}</h2>
+          <h2 style={{ margin: 0, fontSize: 21 }}>{m.title || 'Meeting notes'}</h2>
           <span className="faint" style={{ fontSize: 12.5 }}>
-            {formatDate(m.meetingOn)}{m.editionName && ` · ${m.editionName}`} · imported by {m.createdByName || '—'}
+            {formatDate(m.meetingOn)} · imported by {m.createdByName || '—'}
             {m.analysedAt && ` · analysed ${formatDate(m.analysedAt)}`}
           </span>
           <button className="linkish" style={{ alignSelf: 'flex-start', fontSize: 12.5 }} onClick={() => setShowNotes(!showNotes)}>
@@ -130,7 +130,7 @@ export function MeetingResultPage() {
               {outcome.failed.length > 0 && ` ${outcome.failed.length} could not be — see below, fix and create again.`}
             </div>
             <Link className="btn sm" to="/tasks">View Tasks</Link>
-            <Link className="btn ghost sm" to="/meetings">Back to Meeting Assistant</Link>
+            <Link className="btn ghost sm" to="/tasks?tab=meetings">Back to Meeting History</Link>
           </div>
         )}
 
@@ -157,6 +157,7 @@ export function MeetingResultPage() {
                   key={s.id}
                   s={s}
                   members={members}
+                  editions={options.data?.editions ?? []}
                   me={me}
                   canWrite={canWrite}
                   checked={selected.has(s.id)}
@@ -207,6 +208,7 @@ export function MeetingResultPage() {
 function SuggestionCard({
   s,
   members,
+  editions,
   me,
   canWrite,
   checked,
@@ -216,6 +218,7 @@ function SuggestionCard({
 }: {
   s: MeetingSuggestion;
   members: { id: string; name: string }[];
+  editions: { id: string; name: string }[];
   me: string;
   canWrite: boolean;
   checked: boolean;
@@ -281,6 +284,13 @@ function SuggestionCard({
           <label>Due Date</label>
           <input className="input" type="date" disabled={!editable} value={s.dueOn ?? ''} onChange={(e) => onPatch({ dueOn: e.target.value || null })} />
           {s.dueNote && <div className="faint" style={{ fontSize: 12 }}>{s.dueNote}</div>}
+        </div>
+        <div className="field" style={{ flex: '2 1 200px', margin: 0 }}>
+          <label>Related Program</label>
+          <select className="select" disabled={!editable} value={s.editionId ?? ''} onChange={(e) => onPatch({ editionId: e.target.value || null })}>
+            <option value="">None</option>
+            {editions.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>
         </div>
         <div className="field" style={{ flex: '1 1 120px', margin: 0 }}>
           <label>Priority</label>

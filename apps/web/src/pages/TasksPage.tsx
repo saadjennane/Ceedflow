@@ -15,7 +15,7 @@
  */
 import { BOARD_COLUMNS, byUrgency, isLate, isOpen, progress, type Task, type TaskState } from '@ceed/shared';
 import { useMemo, useState, type DragEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { formatDate } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
@@ -24,6 +24,7 @@ import { SearchBox } from '../ui/SearchBox';
 import { useToast } from '../ui/Overlays';
 import { TaskDrawer } from '../ui/TaskDrawer';
 import { TaskModal } from '../ui/TaskModal';
+import { ExtractTasksModal, MeetingHistory } from './meetings/MeetingExtract';
 import '../ui/builder.css';
 import '../ui/directory.css';
 
@@ -47,6 +48,10 @@ export function TasksPage() {
   const [view, setView] = useState<View>(savedView);
   /* « View task » depuis l'assistant de réunion : la tâche s'ouvre directement. */
   const [openId, setOpenId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('task'));
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('tab') === 'meetings' ? 'meetings' : 'tasks';
+  const setTab = (t: 'tasks' | 'meetings') => setParams(t === 'meetings' ? { tab: 'meetings' } : {});
+  const [extracting, setExtracting] = useState(false);
   const toast = useToast();
 
   const setViewMode = (next: View) => {
@@ -112,11 +117,30 @@ export function TasksPage() {
             <Icon name="board" size={13} /> Board
           </button>
         </div>
+        <button className="btn" onClick={() => setExtracting(true)} title="Paste meeting notes: the AI proposes the tasks, you confirm">
+          <Icon name="send" size={13} /> AI Extract Tasks
+        </button>
         <button className="btn primary" onClick={() => setAdding(true)}>
           <Icon name="plus" size={14} /> Task
         </button>
       </header>
 
+      <nav className="tabbar" role="tablist" aria-label="Tasks">
+        <button role="tab" aria-selected={tab === 'tasks'} className={tab === 'tasks' ? 'tab on' : 'tab'} onClick={() => setTab('tasks')}>
+          Tasks
+        </button>
+        <button role="tab" aria-selected={tab === 'meetings'} className={tab === 'meetings' ? 'tab on' : 'tab'} onClick={() => setTab('meetings')}>
+          Meeting History
+        </button>
+      </nav>
+
+      {extracting && <ExtractTasksModal onClose={() => setExtracting(false)} />}
+
+      {tab === 'meetings' ? (
+        <div className="page stack" style={{ gap: 14, maxWidth: 900 }}>
+          <MeetingHistory />
+        </div>
+      ) : (
       <div className="page stack" style={{ gap: 14 }}>
         <div className="row wrap">
           <SearchBox value={query} onChange={setQuery} placeholder="Search a task, a name" />
@@ -173,6 +197,7 @@ export function TasksPage() {
           </section>
         )}
       </div>
+      )}
 
       {opened && (
         <TaskDrawer

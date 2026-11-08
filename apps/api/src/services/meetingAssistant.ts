@@ -52,11 +52,21 @@ export async function teamMembers(): Promise<(MeetingMember & { firstName: strin
   );
 }
 
+/** Les éditions de programme, nommées comme on les lit : « The Builders — Cohorte 1 ». */
+async function editionList(): Promise<{ id: string; name: string }[]> {
+  return (await repo.listPrograms()).flatMap((p) => p.editions.map((e) => ({ id: e.id, name: `${p.name} — ${e.name}` })));
+}
+
+/** Le jour à Casablanca, décalé de quelques jours si besoin. */
+export function casablancaToday(plusDays = 0): string {
+  const d = new Date(Date.now() + plusDays * 86_400_000);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+}
+
 export async function meetingOptions(actor: MeetingActor): Promise<MeetingOptions> {
-  const programs = await repo.listPrograms();
   return {
     members: (await teamMembers()).map(({ id, name }) => ({ id, name })),
-    editions: programs.flatMap((p) => p.editions.map((e) => ({ id: e.id, name: `${p.name} — ${e.name}` }))),
+    editions: await editionList(),
     canWrite: canWrite(actor.role),
     me: actor.recordId,
   };
@@ -153,6 +163,7 @@ export interface RawTask {
   assignee_name: string | null;
   due_date: string | null;
   due_note: string | null;
+  edition_id: string | null;
   priority: string;
   source_excerpt: string;
   needs_review: boolean;
@@ -165,8 +176,8 @@ export type MeetingAnalyzer = (input: {
   meetingOn: string;
   weekday: string;
   members: MeetingMember[];
-  edition: string;
-}) => Promise<{ summary: string; tasks: RawTask[] }>;
+  editions: { id: string; name: string }[];
+}) => Promise<{ summary: string; meetingTitle: string; meetingDate: string | null; tasks: RawTask[] }>;
 
 let analyzerForTests: MeetingAnalyzer | null = null;
 export function useMeetingAnalyzerForTests(analyzer: MeetingAnalyzer | null) {
@@ -178,15 +189,17 @@ const SCHEMA = {
   schema: {
     type: 'object',
     additionalProperties: false,
-    required: ['summary', 'tasks'],
+    required: ['summary', 'meeting_title', 'meeting_date', 'tasks'],
     properties: {
       summary: { type: 'string' },
+      meeting_title: { type: 'string' },
+      meeting_date: { type: ['string', 'null'] },
       tasks: {
         type: 'array',
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['title', 'description', 'assignee_id', 'assignee_name', 'due_date', 'due_note', 'priority', 'source_excerpt', 'needs_review', 'review_reason', 'confidence'],
+          required: ['title', 'description', 'assignee_id', 'assignee_name', 'due_date', 'due_note', 'edition_id', 'priority', 'source_excerpt', 'needs_review', 'review_reason', 'confidence'],
           properties: {
             title: { type: 'string' },
             description: { type: 'string' },
@@ -194,6 +207,7 @@ const SCHEMA = {
             assignee_name: { type: ['string', 'null'] },
             due_date: { type: ['string', 'null'] },
             due_note: { type: ['string', 'null'] },
+            edition_id: { type: ['string', 'null'] },
             priority: { type: 'string', enum: ['high', 'medium', 'low'] },
             source_excerpt: { type: 'string' },
             needs_review: { type: 'boolean' },
@@ -219,22 +233,28 @@ Pour chaque tâche :
 - "description" : l'action attendue, reformulée clairement.
 - "assignee_name" : le nom tel qu'écrit dans le compte rendu, ou null si personne n'est nommé.
 - "assignee_id" : l'identifiant d'un membre de la liste fournie seulement si la correspondance est sûre et unique ; sinon null. N'invente jamais d'identifiant.
+- "edition_id" : l'identifiant d'un programme de la liste fournie seulement si le compte rendu rattache clairement cette tâche à ce programme ; sinon null.
 - "due_date" : AAAA-MM-JJ, calculée à partir de la date de la réunion pour « demain », « vendredi », « dans deux semaines », « avant la fin du mois »… ; null si rien n'est dit ou si c'est ambigu (dis alors pourquoi dans "due_note"). N'invente jamais de date.
 - "priority" : "high" si c'est dit urgent ou prioritaire, "low" si c'est dit secondaire, sinon "medium".
 - "source_excerpt" : la phrase exacte du compte rendu qui fonde la tâche.
 - "confidence" : "high", "medium" ou "low".
 
 "summary" : une ou deux phrases sur la réunion.
+"meeting_title" : un titre court pour la réunion, tiré du compte rendu (« Réunion de coordination The Builders »).
+"meeting_date" : la date de la réunion en AAAA-MM-JJ si le compte rendu la donne, sinon null. Les échéances relatives se calculent à partir de cette date si elle est donnée, sinon à partir de la date du jour fournie.
 Réponds uniquement avec l'objet JSON demandé.`;
 
 /** Le service d'analyse : le compte rendu, la date, l'équipe — et une liste de tâches proposées. */
-export async function analyzeMeetingNotes(input: Parameters<MeetingAnalyzer>[0]): Promise<{ summary: string; tasks: RawTask[]; provider: string; model: string }> {
+export async function analyzeMeetingNotes(
+  input: Parameters<MeetingAnalyzer>[0],
+): Promise<{ summary: string; meetingTitle: string; meetingDate: string | null; tasks: RawTask[]; provider: string; model: string }> {
   if (analyzerForTests) return { ...(await analyzerForTests(input)), provider: 'test', model: 'test' };
   const { provider, model } = await kbSettings();
   if (!provider) throw new HttpError(422, 'No AI provider is set up — an administrator chooses one in Settings → Knowledge Base.');
   const user = [
-    `Date de la réunion : ${input.meetingOn} (${input.weekday}). Fuseau : Africa/Casablanca.`,
-    input.edition ? `Programme concerné : ${input.edition}.` : '',
+    `Date du jour (à défaut de date dans le compte rendu) : ${input.meetingOn} (${input.weekday}). Fuseau : Africa/Casablanca.`,
+    `Programmes (identifiant — nom) :`,
+    ...input.editions.map((e) => `${e.id} — ${e.name}`),
     `Membres de l'équipe (identifiant — nom) :`,
     ...input.members.map((m) => `${m.id} — ${m.name}`),
     '',
@@ -246,6 +266,8 @@ export async function analyzeMeetingNotes(input: Parameters<MeetingAnalyzer>[0])
     .join('\n');
   const raw = (await askJson(provider, model, SYSTEM, user, { schema: SCHEMA, maxTokens: 16_000, timeoutMs: 180_000 })) as {
     summary?: unknown;
+    meeting_title?: unknown;
+    meeting_date?: unknown;
     tasks?: unknown;
   };
   const tasks = Array.isArray(raw.tasks) ? (raw.tasks as Record<string, unknown>[]) : [];
@@ -253,6 +275,8 @@ export async function analyzeMeetingNotes(input: Parameters<MeetingAnalyzer>[0])
   const opt = (v: unknown) => (typeof v === 'string' && v.trim() ? v : null);
   return {
     summary: str(raw.summary),
+    meetingTitle: str(raw.meeting_title),
+    meetingDate: opt(raw.meeting_date),
     provider,
     model,
     tasks: tasks.map((t) => ({
@@ -262,6 +286,7 @@ export async function analyzeMeetingNotes(input: Parameters<MeetingAnalyzer>[0])
       assignee_name: opt(t.assignee_name),
       due_date: opt(t.due_date),
       due_note: opt(t.due_note),
+      edition_id: opt(t.edition_id),
       priority: str(t.priority),
       source_excerpt: str(t.source_excerpt),
       needs_review: t.needs_review === true,
@@ -278,35 +303,40 @@ const WEEKDAYS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi',
  * tâches restent, et ne sont jamais refaites ; les autres sont remplacées.
  */
 export async function runMeetingAnalysis(meetingId: string): Promise<void> {
-  const m = await one<{ id: string; content: string; meetingOn: string; editionId: string | null }>(
-    `select id, content, meeting_on::text as "meetingOn", edition_id as "editionId" from meeting_analyses where id = $1`,
+  const m = await one<{ id: string; title: string; content: string; meetingOn: string; editionId: string | null }>(
+    `select id, title, content, meeting_on::text as "meetingOn", edition_id as "editionId" from meeting_analyses where id = $1`,
     [meetingId],
   );
   if (!m) return;
   const members = await teamMembers();
-  const edition = m.editionId
-    ? (await one<{ name: string }>(`select p.name || ' — ' || e.name as name from editions e join programs p on p.id = e.program_id where e.id = $1`, [m.editionId]))?.name ?? ''
-    : '';
+  const editions = await editionList();
   try {
     const result = await analyzeMeetingNotes({
       content: m.content,
       meetingOn: m.meetingOn,
       weekday: WEEKDAYS[new Date(`${m.meetingOn}T12:00:00Z`).getUTCDay()]!,
       members: members.map(({ id, name }) => ({ id, name })),
-      edition,
+      editions,
     });
+    /* La date que le compte rendu donne, s'il en donne une plausible : c'est d'elle que partent les échéances. */
+    const said = result.meetingDate && /^\d{4}-\d{2}-\d{2}$/.test(result.meetingDate) && Number(result.meetingDate.slice(0, 4)) >= 2000 && result.meetingDate <= casablancaToday(1)
+      ? result.meetingDate
+      : null;
+    const meetingOn = said ?? m.meetingOn;
+    const knownEditions = new Set(editions.map((e) => e.id));
     const created = await all<{ title: string; assigneeId: string | null; taskId: string | null }>(
       `select title, assignee_id as "assigneeId", task_id as "taskId" from meeting_task_suggestions where meeting_id = $1 and status = 'created'`,
       [meetingId],
     );
     const rows: {
       title: string; description: string; assigneeId: string | null; assigneeSaid: string; assigneeNote: string;
-      dueOn: string | null; dueNote: string; priority: string; sourceExcerpt: string; confidence: string;
+      dueOn: string | null; dueNote: string; editionId: string | null; priority: string; sourceExcerpt: string; confidence: string;
       needsReview: boolean; reviewReason: string; duplicateTaskId: string | null;
     }[] = [];
     for (const t of result.tasks.filter((x) => x.title.trim())) {
       const who = matchMember(t.assignee_name ?? '', t.assignee_id, members);
-      const due = checkDue(t.due_date, m.meetingOn);
+      const due = checkDue(t.due_date, meetingOn);
+      const editionId = t.edition_id && knownEditions.has(t.edition_id) ? t.edition_id : m.editionId;
       /* Déjà créée par une analyse précédente : signalée comme doublon de sa tâche, jamais refaite. */
       const again = created.find((c) => similar(c.title, t.title) && (!who.id || c.assigneeId === who.id));
       rows.push({
@@ -317,12 +347,13 @@ export async function runMeetingAnalysis(meetingId: string): Promise<void> {
         assigneeNote: who.note,
         dueOn: due.dueOn,
         dueNote: (due.note || t.due_note || '').slice(0, 500),
+        editionId,
         priority: (TASK_PRIORITIES as readonly string[]).includes(t.priority) ? t.priority : 'medium',
         sourceExcerpt: t.source_excerpt.slice(0, 2000),
         confidence: ['high', 'medium', 'low'].includes(t.confidence) ? t.confidence : 'medium',
         needsReview: t.needs_review || t.confidence === 'low',
         reviewReason: (t.review_reason ?? '').slice(0, 1000),
-        duplicateTaskId: again?.taskId ?? (await duplicateOf(t.title, who.id, m.editionId)),
+        duplicateTaskId: again?.taskId ?? (await duplicateOf(t.title, who.id, editionId)),
       });
     }
     await (await db()).tx(async () => {
@@ -331,15 +362,17 @@ export async function runMeetingAnalysis(meetingId: string): Promise<void> {
       for (const [i, r] of rows.entries()) {
         await all(
           `insert into meeting_task_suggestions (id, meeting_id, position, source, title, description, assignee_id, assignee_said, assignee_note,
-             due_on, due_note, priority, source_excerpt, confidence, needs_review, review_reason, duplicate_task_id)
-           values ($1, $2, $3, 'ai', $4, $5, $6, $7, $8, $9::date, $10, $11, $12, $13, $14, $15, $16)`,
+             due_on, due_note, priority, source_excerpt, confidence, needs_review, review_reason, duplicate_task_id, edition_id)
+           values ($1, $2, $3, 'ai', $4, $5, $6, $7, $8, $9::date, $10, $11, $12, $13, $14, $15, $16, $17)`,
           [newId('mts', 10), meetingId, start + i + 1, r.title, r.description, r.assigneeId, r.assigneeSaid, r.assigneeNote,
-            r.dueOn, r.dueNote, r.priority, r.sourceExcerpt, r.confidence, r.needsReview, r.reviewReason, r.duplicateTaskId],
+            r.dueOn, r.dueNote, r.priority, r.sourceExcerpt, r.confidence, r.needsReview, r.reviewReason, r.duplicateTaskId, r.editionId],
         );
       }
       await all(
-        `update meeting_analyses set status = 'done', summary = $2, error = '', provider = $3, model = $4, analysed_at = now(), updated_at = now() where id = $1`,
-        [meetingId, result.summary.slice(0, 2000), result.provider, result.model],
+        `update meeting_analyses set status = 'done', summary = $2, error = '', provider = $3, model = $4, analysed_at = now(), updated_at = now(),
+                title = case when title = '' then $5 else title end, meeting_on = $6::date
+          where id = $1`,
+        [meetingId, result.summary.slice(0, 2000), result.provider, result.model, result.meetingTitle.trim().slice(0, 200), meetingOn],
       );
     });
   } catch (err) {
@@ -357,10 +390,12 @@ export async function runMeetingAnalysis(meetingId: string): Promise<void> {
 /* ---------------------------------------------------------------- */
 
 export async function createMeeting(
-  input: { title: string; meetingOn: string; editionId: string | null; content: string },
+  input: { title: string; meetingOn?: string; editionId: string | null; content: string },
   actor: MeetingActor,
 ): Promise<{ id: string }> {
   mustWrite(actor);
+  /* Le titre et la date viennent du compte rendu une fois lu ; d'ici là, aujourd'hui. */
+  const meetingOn = input.meetingOn ?? casablancaToday();
   if (input.editionId && !(await one('select id from editions where id = $1', [input.editionId]))) {
     throw new HttpError(422, 'That programme edition was not found.', { editionId: 'Not found.' });
   }
@@ -368,7 +403,7 @@ export async function createMeeting(
   await all(
     `insert into meeting_analyses (id, title, meeting_on, edition_id, content, created_by, created_by_name)
      values ($1, $2, $3::date, $4, $5, $6, $7)`,
-    [id, input.title, input.meetingOn, input.editionId, input.content, actor.recordId, actor.name],
+    [id, input.title, meetingOn, input.editionId, input.content, actor.recordId, actor.name],
   );
   return { id };
 }
@@ -410,18 +445,20 @@ export async function meetingView(id: string): Promise<MeetingView | null> {
     id: string; position: number; source: 'ai' | 'manual'; title: string; description: string; assigneeId: string | null;
     assigneeName: string | null; assigneeSaid: string; assigneeNote: string; dueOn: string | null; dueNote: string;
     priority: TaskPriority; sourceExcerpt: string; confidence: 'high' | 'medium' | 'low'; needsReview: boolean; reviewReason: string;
-    status: MeetingSuggestion['status']; error: string;
+    status: MeetingSuggestion['status']; error: string; editionId: string | null; editionName: string | null;
     dupId: string | null; dupTitle: string | null; dupOwner: string | null; dupState: string | null; dupDue: string | null;
     taskId: string | null; taskTitle: string | null; taskState: string | null;
   }>(
     `select s.id, s.position, s.source, s.title, s.description, s.assignee_id as "assigneeId", r.name as "assigneeName",
             s.assignee_said as "assigneeSaid", s.assignee_note as "assigneeNote", s.due_on::text as "dueOn", s.due_note as "dueNote",
             s.priority, s.source_excerpt as "sourceExcerpt", s.confidence, s.needs_review as "needsReview", s.review_reason as "reviewReason",
-            s.status, s.error,
+            s.status, s.error, s.edition_id as "editionId", sp.name || ' — ' || se.name as "editionName",
             d.id as "dupId", d.title as "dupTitle", dr.name as "dupOwner", d.state as "dupState", d.due_on::text as "dupDue",
             t.id as "taskId", t.title as "taskTitle", t.state as "taskState"
        from meeting_task_suggestions s
        left join records r on r.id = s.assignee_id
+       left join editions se on se.id = s.edition_id
+       left join programs sp on sp.id = se.program_id
        left join tasks d on d.id = s.duplicate_task_id
        left join records dr on dr.id = d.owner_id
        left join tasks t on t.id = s.task_id
@@ -434,7 +471,7 @@ export async function meetingView(id: string): Promise<MeetingView | null> {
     suggestions: rows.map((r) => ({
       id: r.id, position: r.position, source: r.source, title: r.title, description: r.description,
       assigneeId: r.assigneeId, assigneeName: r.assigneeName ?? '', assigneeSaid: r.assigneeSaid, assigneeNote: r.assigneeNote,
-      dueOn: r.dueOn, dueNote: r.dueNote, priority: r.priority, sourceExcerpt: r.sourceExcerpt, confidence: r.confidence,
+      dueOn: r.dueOn, dueNote: r.dueNote, editionId: r.editionId, editionName: r.editionName ?? '', priority: r.priority, sourceExcerpt: r.sourceExcerpt, confidence: r.confidence,
       needsReview: r.needsReview, reviewReason: r.reviewReason, status: r.status, error: r.error,
       duplicate: r.dupId ? { id: r.dupId, title: r.dupTitle ?? '', ownerName: r.dupOwner ?? '', state: r.dupState as never, dueOn: r.dupDue } : null,
       task: r.taskId ? { id: r.taskId, title: r.taskTitle ?? '', state: r.taskState as never } : null,
@@ -446,7 +483,7 @@ const EDITABLE = ['proposed', 'dismissed', 'failed'];
 
 export async function changeSuggestion(
   id: string,
-  patch: { title?: string; description?: string; assigneeId?: string | null; dueOn?: string | null; priority?: TaskPriority; status?: 'proposed' | 'dismissed' },
+  patch: { title?: string; description?: string; assigneeId?: string | null; dueOn?: string | null; priority?: TaskPriority; editionId?: string | null; status?: 'proposed' | 'dismissed' },
   actor: MeetingActor,
 ): Promise<void> {
   mustWrite(actor);
@@ -473,6 +510,12 @@ export async function changeSuggestion(
     sets.push("due_note = ''");
   }
   if (patch.priority !== undefined) put('priority = $n', patch.priority);
+  if (patch.editionId !== undefined) {
+    if (patch.editionId && !(await one('select id from editions where id = $1', [patch.editionId]))) {
+      throw new HttpError(422, 'That programme edition was not found.', { editionId: 'Not found.' });
+    }
+    put('edition_id = $n', patch.editionId);
+  }
   if (patch.status !== undefined) put('status = $n', patch.status);
   if (sets.length) await all(`update meeting_task_suggestions set ${sets.join(', ')}, updated_at = now() where id = $1`, params);
 }
@@ -516,7 +559,6 @@ export async function createFromSuggestions(
   );
   if (!meeting) throw new HttpError(404, 'Meeting not found.');
   const team = new Set((await teamMembers()).map((m) => m.id));
-  const edition = meeting.editionId && (await one('select id from editions where id = $1', [meeting.editionId])) ? meeting.editionId : null;
   const created: { id: string; taskId: string }[] = [];
   const failed: { id: string; error: string }[] = [];
   const skipped: string[] = [];
@@ -524,11 +566,12 @@ export async function createFromSuggestions(
   for (const id of [...new Set(input.ids)]) {
     /* La réservation : une seule requête la gagne. Une création restée en plan
        plus de cinq minutes (un redémarrage) peut être reprise. */
-    const [s] = await all<{ title: string; description: string; assigneeId: string | null; dueOn: string | null; priority: TaskPriority; sourceExcerpt: string }>(
+    const [s] = await all<{ title: string; description: string; assigneeId: string | null; dueOn: string | null; priority: TaskPriority; sourceExcerpt: string; editionId: string | null }>(
       `update meeting_task_suggestions set status = 'creating', error = '', updated_at = now()
         where id = $1 and meeting_id = $2
           and (status in ('proposed', 'failed') or (status = 'creating' and updated_at < now() - interval '5 minutes'))
-        returning title, description, assignee_id as "assigneeId", due_on::text as "dueOn", priority, source_excerpt as "sourceExcerpt"`,
+        returning title, description, assignee_id as "assigneeId", due_on::text as "dueOn", priority, source_excerpt as "sourceExcerpt",
+                  edition_id as "editionId"`,
       [id, meetingId],
     );
     if (!s) {
@@ -558,7 +601,7 @@ export async function createFromSuggestions(
           priority: s.priority,
           ownerIds: [s.assigneeId],
           recordId: null,
-          editionId: edition,
+          editionId: s.editionId ?? meeting.editionId,
           blockId: null,
           candidateId: null,
         },

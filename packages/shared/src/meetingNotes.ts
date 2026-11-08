@@ -28,6 +28,9 @@ export interface MeetingSuggestion {
   assigneeNote: string;
   dueOn: string | null;
   dueNote: string;
+  /** Le programme de la tâche, quand le compte rendu le dit clairement. */
+  editionId: string | null;
+  editionName: string;
   priority: TaskPriority;
   sourceExcerpt: string;
   confidence: 'high' | 'medium' | 'low';
@@ -74,9 +77,10 @@ export interface MeetingOptions {
   me: string;
 }
 
+/** Le compte rendu suffit : le titre, la date et les programmes, l'IA les lit dedans. */
 export const meetingInput = z.object({
-  title: z.string().trim().min(1, 'Give the meeting a title.').max(200),
-  meetingOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Pick the date of the meeting.'),
+  title: z.string().trim().max(200).default(''),
+  meetingOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   editionId: z.string().nullable().default(null),
   content: z.string().trim().min(20, 'Paste the meeting notes.').max(60_000, 'Sixty thousand characters at most.'),
 });
@@ -87,6 +91,7 @@ export const suggestionPatch = z.object({
   assigneeId: z.string().nullable().optional(),
   dueOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   priority: z.enum(TASK_PRIORITIES).optional(),
+  editionId: z.string().nullable().optional(),
   status: z.enum(['proposed', 'dismissed']).optional(),
 });
 
