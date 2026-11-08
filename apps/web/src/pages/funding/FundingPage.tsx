@@ -3,7 +3,11 @@
  * opportunités qu'on a choisi de garder.
  */
 import {
+  OPPORTUNITY_STAGES,
+  OPPORTUNITY_STAGE_LABEL,
   OPPORTUNITY_TYPE_LABEL,
+  type FunderRow,
+  type OpportunityStage,
   RELEVANCE_LABEL,
   VERIFICATION_LABEL,
   type FundingAnalysisRow,
@@ -19,11 +23,11 @@ import { Icon } from '../../ui/Icon';
 import { ConfirmDialog, useToast } from '../../ui/Overlays';
 import './funding.css';
 
-type Tab = 'analyze' | 'analyses' | 'opportunities';
+type Tab = 'funders' | 'analyze' | 'analyses' | 'opportunities';
 
 export function FundingPage() {
   const [params, setParams] = useSearchParams();
-  const tab = (['analyze', 'analyses', 'opportunities'].includes(params.get('tab') ?? '') ? params.get('tab') : 'analyze') as Tab;
+  const tab = (['funders', 'analyze', 'analyses', 'opportunities'].includes(params.get('tab') ?? '') ? params.get('tab') : 'funders') as Tab;
   const role = useAccount().me?.account.staffRole;
   const canWrite = role === 'admin' || role === 'editor';
 
@@ -38,17 +42,19 @@ export function FundingPage() {
       <nav className="tabbar" role="tablist" aria-label="Funding">
         {(
           [
+            ['funders', 'Funders'],
             ['analyze', 'Analyze Document'],
             ['analyses', 'Analyses'],
             ['opportunities', 'Opportunities'],
           ] as const
         ).map(([key, label]) => (
-          <button key={key} role="tab" aria-selected={tab === key} className={tab === key ? 'tab on' : 'tab'} onClick={() => setParams(key === 'analyze' ? {} : { tab: key })}>
+          <button key={key} role="tab" aria-selected={tab === key} className={tab === key ? 'tab on' : 'tab'} onClick={() => setParams(key === 'funders' ? {} : { tab: key })}>
             {label}
           </button>
         ))}
       </nav>
       <div className="page stack" style={{ gap: 14, maxWidth: 1000 }}>
+        {tab === 'funders' && <Funders canWrite={canWrite} />}
         {tab === 'analyze' && (canWrite ? <Analyze /> : <div className="empty">Your access is read-only — open the Analyses tab.</div>)}
         {tab === 'analyses' && <Analyses canWrite={canWrite} />}
         {tab === 'opportunities' && <Opportunities />}
@@ -183,41 +189,131 @@ function Analyses({ canWrite }: { canWrite: boolean }) {
   );
 }
 
+/** L'étape d'une opportunité, changée en un clic. */
+export function StageSelect({ id, stage, canWrite, onChanged }: { id: string; stage: OpportunityStage; canWrite: boolean; onChanged: () => void }) {
+  const toast = useToast();
+  return (
+    <select
+      className="select"
+      style={{ width: 'auto', height: 30, fontSize: 12.5 }}
+      disabled={!canWrite}
+      value={stage}
+      aria-label="Stage"
+      onChange={async (e) => {
+        try {
+          await api.patch(`/api/funding/opportunities/${id}`, { stage: e.target.value });
+          onChanged();
+        } catch (err) {
+          toast((err as Error).message, true);
+        }
+      }}
+    >
+      {OPPORTUNITY_STAGES.map((st) => <option key={st} value={st}>{OPPORTUNITY_STAGE_LABEL[st]}</option>)}
+    </select>
+  );
+}
+
+/** Une opportunité suivie : son étape, son bailleur, ce qui la fonde. */
+export function SavedOpportunityCard({ o, canWrite, onChanged }: { o: SavedOpportunity; canWrite: boolean; onChanged: () => void }) {
+  return (
+    <div className={`fi-opp t-${o.type}`}>
+      <div className="fi-opp-main">
+        <div className="fi-tags">
+          <span className="badge">{OPPORTUNITY_TYPE_LABEL[o.type]}</span>
+          <span className={o.relevance === 'high' ? 'badge ok' : o.relevance === 'low' ? 'badge' : 'badge info'}>{RELEVANCE_LABEL[o.relevance]}</span>
+          <div className="spacer" />
+          <StageSelect id={o.id} stage={o.stage} canWrite={canWrite} onChanged={onChanged} />
+        </div>
+        <h4>{o.title}</h4>
+        <div className="fi-keyfacts">
+          {o.recordId ? (
+            <Link to={`/funding/funders/${o.recordId}`}><b>{o.recordName || o.organization}</b></Link>
+          ) : (
+            o.organization && <span><b>{o.organization}</b> <span className="faint">(not tracked)</span></span>
+          )}
+          <span>{OPPORTUNITY_STAGE_LABEL[o.stage]} since {formatDate(o.stageChangedAt)}</span>
+          {o.analysisId && <Link to={`/funding/${o.analysisId}`}>From: {o.analysisTitle || 'an analysis'}</Link>}
+        </div>
+        {o.summary && <p style={{ margin: 0, fontSize: 13 }}>{o.summary}</p>}
+        {o.verification.length > 0 && (
+          <div className="fi-verif">
+            {o.verification.map((v, i) => (
+              <div key={i}><span className={`v-pill v-${v.status}`}>{VERIFICATION_LABEL[v.status]}</span> {v.claim}</div>
+            ))}
+          </div>
+        )}
+        {o.history.length > 1 && (
+          <span className="faint" style={{ fontSize: 12 }}>
+            {o.history.map((h) => `${OPPORTUNITY_STAGE_LABEL[h.stage]} ${formatDate(h.at)}${h.byName ? ` (${h.byName})` : ''}`).join(' → ')}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Funders({ canWrite }: { canWrite: boolean }) {
+  const list = useAsync(() => api.get<FunderRow[]>('/api/funding/funders'), 'funders');
+  const [name, setName] = useState('');
+  const navigate = useNavigate();
+  const toast = useToast();
+  return (
+    <>
+      {canWrite && (
+        <div className="row wrap" style={{ gap: 8 }}>
+          <input className="input" style={{ flex: '1 1 260px' }} value={name} placeholder="Track a funder — its name (found in Organisations, or added)" onChange={(e) => setName(e.target.value)} />
+          <button
+            className="btn"
+            disabled={!name.trim()}
+            onClick={async () => {
+              try {
+                const { recordId } = await api.post<{ recordId: string }>('/api/funding/funders', { name: name.trim() });
+                navigate(`/funding/funders/${recordId}`);
+              } catch (err) {
+                toast((err as Error).message, true);
+              }
+            }}
+          >
+            <Icon name="plus" size={13} /> Track
+          </button>
+        </div>
+      )}
+      {list.error && <div className="empty">{list.error}</div>}
+      {!list.data ? (
+        <div className="faint">Loading…</div>
+      ) : !list.data.length ? (
+        <div className="empty">No funder tracked yet. Analyse a call for tenders and add its funders, or track one by its name.</div>
+      ) : (
+        <div className="fi-cards">
+          {list.data.map((f) => (
+            <Link key={f.id} to={`/funding/funders/${f.id}`} className="fi-card" style={{ textDecoration: 'none', color: 'inherit' }}>
+              <h4>{f.name}</h4>
+              {f.kind && <span className="faint" style={{ fontSize: 12.5 }}>{f.kind}</span>}
+              {f.themes.length > 0 && <div className="fi-tags">{f.themes.map((t) => <span key={t} className="fi-tag">{t}</span>)}</div>}
+              <div className="fi-keyfacts" style={{ marginTop: 'auto' }}>
+                <span><b>{f.openOpportunities}</b> open / {f.opportunities} opportunities</span>
+                <span><b>{f.analyses}</b> analyses</span>
+                <span><b>{f.openTasks}</b> open tasks</span>
+              </div>
+              {f.lastActivity && <span className="faint" style={{ fontSize: 12 }}>Last activity {formatDate(f.lastActivity)}</span>}
+            </Link>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 function Opportunities() {
+  const role = useAccount().me?.account.staffRole;
+  const canWrite = role === 'admin' || role === 'editor';
   const list = useAsync(() => api.get<SavedOpportunity[]>('/api/funding/opportunities'), 'funding-opps');
   if (list.error) return <div className="empty">{list.error}</div>;
   if (!list.data) return <div className="faint">Loading…</div>;
   if (!list.data.length) return <div className="empty">No opportunity saved yet — select some in an analysis and save them.</div>;
   return (
     <div className="stack" style={{ gap: 10 }}>
-      {list.data.map((o) => (
-        <div key={o.id} className={`fi-opp t-${o.type}`}>
-          <div className="fi-opp-main">
-            <div className="fi-tags">
-              <span className="badge">{OPPORTUNITY_TYPE_LABEL[o.type]}</span>
-              <span className={o.relevance === 'high' ? 'badge ok' : o.relevance === 'low' ? 'badge' : 'badge info'}>{RELEVANCE_LABEL[o.relevance]}</span>
-            </div>
-            <h4>{o.title}</h4>
-            <div className="fi-keyfacts">
-              {o.organization && (
-                <span>
-                  {o.recordId ? <Link to={`/directory/${o.recordId}`}><b>{o.organization}</b></Link> : <b>{o.organization}</b>}
-                </span>
-              )}
-              <span>Saved {formatDate(o.createdAt)} by {o.createdByName || '—'}</span>
-              {o.analysisId && <Link to={`/funding/${o.analysisId}`}>From: {o.analysisTitle || 'an analysis'}</Link>}
-            </div>
-            {o.summary && <p style={{ margin: 0, fontSize: 13 }}>{o.summary}</p>}
-            {o.verification.length > 0 && (
-              <div className="fi-verif">
-                {o.verification.map((v, i) => (
-                  <div key={i}><span className={`v-pill v-${v.status}`}>{VERIFICATION_LABEL[v.status]}</span> {v.claim}</div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      ))}
+      {list.data.map((o) => <SavedOpportunityCard key={o.id} o={o} canWrite={canWrite} onChanged={() => list.reload()} />)}
     </div>
   );
 }

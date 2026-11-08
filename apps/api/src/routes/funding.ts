@@ -2,12 +2,18 @@
  * Funding Intelligence, réservé à l'équipe CEED : un appel d'offres et son
  * analyse ne sont jamais montrés à un compte externe.
  */
-import { fundingActionPatch, fundingCreateTasksInput, fundingSaveInput, fundingTextInput } from '@ceed/shared';
+import { fundingActionPatch, fundingCreateTasksInput, fundingSaveInput, fundingTextInput, opportunityPatch, trackFunderInput } from '@ceed/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { one } from '../db/client.js';
 import {
   addOrganization,
   changeAction,
+  changeOpportunity,
+  funderView,
+  listFunders,
+  trackFromAnalysis,
+  trackFunder,
+  untrackFunder,
   createFromPdf,
   createFromText,
   createTasksFromActions,
@@ -41,6 +47,31 @@ export async function fundingRoutes(app: FastifyInstance) {
 
   app.get('/api/funding/analyses', async () => listFunding());
   app.get('/api/funding/opportunities', async () => savedOpportunities());
+  app.patch('/api/funding/opportunities/:id', async (req) => {
+    const { id } = req.params as { id: string };
+    await changeOpportunity(id, parse(opportunityPatch, req.body), await actorOf(req));
+    return { ok: true };
+  });
+
+  /* Les bailleurs suivis : des organisations de l'annuaire, rôle « Funder ». */
+  app.get('/api/funding/funders', async () => listFunders());
+  app.get('/api/funding/funders/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    return (await funderView(id)) ?? notFound(reply, 'Funder not found.');
+  });
+  app.post('/api/funding/funders', async (req, reply) => {
+    reply.code(201);
+    return trackFunder(parse(trackFunderInput, req.body), await actorOf(req));
+  });
+  app.delete('/api/funding/funders/:id', async (req) => {
+    const { id } = req.params as { id: string };
+    await untrackFunder(id, await actorOf(req));
+    return { ok: true };
+  });
+  app.post('/api/funding/analyses/:id/organizations/:index/funder', async (req) => {
+    const { id, index } = req.params as { id: string; index: string };
+    return trackFromAnalysis(id, Number(index), await actorOf(req));
+  });
 
   app.post('/api/funding/analyses', async (req, reply) => {
     const made = await createFromText(parse(fundingTextInput, req.body), await actorOf(req));

@@ -47,7 +47,8 @@ export type RecordKind = (typeof RECORD_KINDS)[number];
  * Roles are statuses for now: labels a record carries, nothing more. Field sets
  * per role come later — the model leaves room, the screens do not ask for it.
  */
-export const ORG_ROLES = ['Startup', 'Corporate', 'Investor', 'Institution', 'Partner'] as const;
+/** « Funder » : un bailleur qui finance des programmes (BAD, AFD, UE…) — suivi dans Funding. « Investor » finance des startups. */
+export const ORG_ROLES = ['Startup', 'Corporate', 'Investor', 'Funder', 'Institution', 'Partner'] as const;
 export const PERSON_ROLES = ['Mentor', 'Investor', 'Jury', 'CEED team'] as const;
 
 export const rolesFor = (kind: RecordKind): readonly string[] => (kind === 'org' ? ORG_ROLES : PERSON_ROLES);

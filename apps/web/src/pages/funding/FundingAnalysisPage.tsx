@@ -185,9 +185,23 @@ export function FundingAnalysisPage() {
                     <div className="row wrap" style={{ gap: 6, marginTop: 'auto' }}>
                       <Page page={o.page} excerpt={o.excerpt} />
                       <div className="spacer" />
-                      {o.recordId ? (
-                        <Link className="btn ghost sm" to={`/directory/${o.recordId}`}><Icon name="check" size={12} /> In Organisations</Link>
-                      ) : canWrite ? (
+                      {o.recordId && <Link className="btn ghost sm" to={`/directory/${o.recordId}`}><Icon name="check" size={12} /> In Organisations</Link>}
+                      {canWrite && (o.roles.includes('funder') || o.roles.includes('funding_facility')) && (
+                        <button
+                          className="btn sm"
+                          disabled={busy}
+                          title="Follow it in Funding → Funders"
+                          onClick={() =>
+                            run(async () => {
+                              const { recordId } = await api.post<{ recordId: string }>(`/api/funding/analyses/${a.id}/organizations/${i}/funder`);
+                              navigate(`/funding/funders/${recordId}`);
+                            })
+                          }
+                        >
+                          <Icon name="money" size={12} /> Track as funder
+                        </button>
+                      )}
+                      {o.recordId ? null : canWrite ? (
                         <button className="btn sm" disabled={busy} onClick={() => run(() => api.post(`/api/funding/analyses/${a.id}/organizations/${i}`), `${o.name} added to Organisations.`)}>
                           <Icon name="plus" size={12} /> Add to Organisations
                         </button>

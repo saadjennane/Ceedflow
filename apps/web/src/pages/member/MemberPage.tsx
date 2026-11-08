@@ -1417,7 +1417,8 @@ function OrgModal({
       <div className="field">
         <label>{t('org.what')}</label>
         <div className="work-pick">
-          {ORG_ROLES.map((r) => (
+          {/* « Funder » est une qualification de CEED, pas ce qu'une startup dit d'elle-même. */}
+          {ORG_ROLES.filter((r) => r !== 'Funder').map((r) => (
             <button
               key={r}
               type="button"

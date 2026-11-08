@@ -251,6 +251,42 @@ describe('Funding Intelligence', { skip: skipWithoutServer }, () => {
     assert.match(failed.web.error, /no source/);
   });
 
+  it('tracks funders from the directory: added from an analysis, followed opportunity by opportunity, stage by stage', async () => {
+    const a = await settle((await call('Saad', 'POST', '/api/funding/analyses', { text: doc })).body.id);
+    /* La BAD n'est pas dans l'annuaire : l'ajouter en fait un bailleur suivi. */
+    const bad = (await call('Saad', 'POST', `/api/funding/analyses/${a.id}/organizations/0`)).body.recordId as string;
+    const badRecord = await dir.getRecord(bad);
+    assert.ok(badRecord!.roles.includes('Funder'), 'added as a funder, from its role in the call');
+    /* L'ACAPS y est déjà : la suivre comme bailleur sans la recréer. */
+    const acaps = (await call('Saad', 'POST', `/api/funding/analyses/${a.id}/organizations/1/funder`)).body.recordId as string;
+    assert.equal(acaps, a.result.organizations[1].recordId);
+    assert.equal((await call('Lina', 'POST', `/api/funding/analyses/${a.id}/organizations/1/funder`)).status, 403);
+
+    await call('Saad', 'POST', `/api/funding/analyses/${a.id}/opportunities`, { opportunities: [{ key: 'o1', title: `Étude suivie ${mark}`, summary: '' }] });
+    const funders = (await call('Lina', 'GET', '/api/funding/funders')).body as { id: string; analyses: number; openOpportunities: number; themes: string[] }[];
+    const row = funders.find((f) => f.id === acaps)!;
+    assert.ok(row.analyses >= 1, 'the analyses it appears in');
+    assert.ok(row.openOpportunities >= 1, 'its opportunities being followed');
+    assert.ok(funders.some((f) => f.id === bad && f.themes.includes('inclusion financière')), 'its themes, read from the analyses');
+
+    const page = (await call('Lina', 'GET', `/api/funding/funders/${acaps}`)).body;
+    const opp = page.opportunities.find((o: { title: string }) => o.title === `Étude suivie ${mark}`);
+    assert.equal(opp.stage, 'identified');
+    assert.equal((await call('Lina', 'PATCH', `/api/funding/opportunities/${opp.id}`, { stage: 'exploring' })).status, 403);
+    await call('Ghita', 'PATCH', `/api/funding/opportunities/${opp.id}`, { stage: 'preparing' });
+    const after = (await call('Lina', 'GET', `/api/funding/funders/${acaps}`)).body.opportunities.find((o: { id: string }) => o.id === opp.id);
+    assert.equal(after.stage, 'preparing');
+    assert.deepEqual(after.history.map((h: { stage: string }) => h.stage), ['identified', 'preparing'], 'each stage dated and signed');
+
+    await call('Saad', 'PATCH', `/api/funding/opportunities/${opp.id}`, { recordId: bad });
+    assert.ok((await call('Lina', 'GET', `/api/funding/funders/${bad}`)).body.opportunities.some((o: { id: string }) => o.id === opp.id), 'moved to another funder');
+
+    const again = await call('Saad', 'POST', '/api/funding/funders', { name: 'Banque africaine de développement' });
+    assert.equal(again.body.recordId, bad, 'tracked by name: found, never duplicated');
+    await call('Saad', 'DELETE', `/api/funding/funders/${bad}`);
+    assert.ok(!(await dir.getRecord(bad))!.roles.includes('Funder'), 'no longer tracked — still in the directory');
+  });
+
   it('takes a PDF, keeps it private to the team, and lets the analysis be deleted', async () => {
     const pdf = makePdf([long(`Appel ${mark} page un`), long('Bailleur page deux')]);
     const boundary = `----ceed${mark}`;

@@ -10,6 +10,7 @@ import { KnowledgeEntryPage } from './pages/knowledge/KnowledgeEntryPage';
 import { MeetingResultPage } from './pages/meetings/MeetingResultPage';
 import { FundingPage } from './pages/funding/FundingPage';
 import { FundingAnalysisPage } from './pages/funding/FundingAnalysisPage';
+import { FunderPage } from './pages/funding/FunderPage';
 import { EditionPage } from './pages/EditionPage';
 import { AuthPage } from './pages/member/AuthPage';
 import { AsStartupPage } from './pages/member/AsStartupPage';
@@ -60,6 +61,7 @@ const router = createBrowserRouter([
       { path: 'knowledge/:entryId', element: <KnowledgeEntryPage /> },
       { path: 'tasks/meetings/:meetingId', element: <MeetingResultPage /> },
       { path: 'funding', element: <FundingPage /> },
+      { path: 'funding/funders/:recordId', element: <FunderPage /> },
       { path: 'funding/:analysisId', element: <FundingAnalysisPage /> },
     ],
   },

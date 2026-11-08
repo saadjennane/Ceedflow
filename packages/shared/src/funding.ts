@@ -186,8 +186,27 @@ export interface FundingAnalysisRow {
   organizations: number;
 }
 
+/** Le suivi d'une opportunité, en étapes simples — pas un CRM. */
+export const OPPORTUNITY_STAGES = ['identified', 'exploring', 'preparing', 'submitted', 'won', 'lost', 'dropped'] as const;
+export type OpportunityStage = (typeof OPPORTUNITY_STAGES)[number];
+export const OPPORTUNITY_STAGE_LABEL: Record<OpportunityStage, string> = {
+  identified: 'Identified',
+  exploring: 'Exploring',
+  preparing: 'Preparing',
+  submitted: 'Submitted',
+  won: 'Won',
+  lost: 'Lost',
+  dropped: 'Dropped',
+};
+export const OPEN_STAGES: readonly OpportunityStage[] = ['identified', 'exploring', 'preparing', 'submitted'];
+
 export interface SavedOpportunity {
   id: string;
+  stage: OpportunityStage;
+  stageChangedAt: string;
+  recordName: string;
+  /** Les étapes par lesquelles elle est passée, datées. */
+  history: { stage: OpportunityStage; byName: string; at: string }[];
   analysisId: string | null;
   analysisTitle: string;
   type: OpportunityType;
@@ -224,3 +243,39 @@ export const fundingSaveInput = z.object({
     .array(z.object({ key: z.string(), title: z.string().trim().min(1).max(300), summary: z.string().max(5000) }))
     .min(1, 'Select at least one opportunity.'),
 });
+
+/** Un bailleur suivi : une organisation de l'annuaire avec le rôle « Funder ». */
+export interface FunderRow {
+  id: string;
+  name: string;
+  themes: string[];
+  kind: string;
+  opportunities: number;
+  openOpportunities: number;
+  analyses: number;
+  openTasks: number;
+  lastActivity: string | null;
+}
+
+export interface FunderView {
+  id: string;
+  name: string;
+  website: string;
+  kind: string;
+  description: string;
+  themes: string[];
+  opportunities: SavedOpportunity[];
+  analyses: { id: string; title: string; createdAt: string; roles: string[] }[];
+  /** Ce que les recherches web ont trouvé sur lui, avec leurs pages. */
+  web: { analysisId: string; topic: string; text: string; urls: string[]; ranAt: string | null }[];
+}
+
+export const opportunityPatch = z.object({
+  stage: z.enum(OPPORTUNITY_STAGES).optional(),
+  recordId: z.string().nullable().optional(),
+});
+
+export const trackFunderInput = z.union([
+  z.object({ recordId: z.string().min(1) }),
+  z.object({ name: z.string().trim().min(1, 'Give its name.').max(300) }),
+]);
