@@ -36,6 +36,7 @@ import { HttpError } from '../routes/util.js';
 import { askJson, searchWeb, type WebCitation } from './ai.js';
 import { kbSettings, publishedContext } from './knowledge.js';
 import { similar, teamMembers } from './meetingAssistant.js';
+import { foundResults, profileOf } from './funderSearch.js';
 import { tellOwnersAtOnce } from './taskNotices.js';
 import { createTasks } from './tasks.js';
 
@@ -503,7 +504,7 @@ export async function fundingView(id: string): Promise<FundingAnalysis | null> {
 }
 
 export async function savedOpportunities(recordId?: string): Promise<SavedOpportunity[]> {
-  const rows = await all<Omit<SavedOpportunity, 'history' | 'verification'> & { details: { verification?: SavedOpportunity['verification'] } }>(
+  const rows = await all<Omit<SavedOpportunity, 'history' | 'verification' | 'links'> & { details: { verification?: SavedOpportunity['verification']; urls?: string[] } }>(
     `select o.id, o.analysis_id as "analysisId", coalesce(a.title, '') as "analysisTitle", o.type, o.title, o.organization,
             o.record_id as "recordId", coalesce(r.name, '') as "recordName", o.relevance, o.summary, o.details, o.stage,
             o.stage_changed_at::text as "stageChangedAt", o.created_by_name as "createdByName", o.created_at::text as "createdAt"
@@ -524,6 +525,7 @@ export async function savedOpportunities(recordId?: string): Promise<SavedOpport
   return rows.map(({ details, ...r }) => ({
     ...r,
     verification: details?.verification ?? [],
+    links: details?.urls ?? [],
     history: events.filter((e) => e.opportunityId === r.id).map(({ stage, byName, at }) => ({ stage, byName, at })),
   }));
 }
@@ -584,7 +586,7 @@ export async function untrackFunder(recordId: string, actor: FundingActor): Prom
 }
 
 /** Ce que les analyses disent d'un organisme : ses thématiques, sa nature, et où il apparaît. */
-async function mentionsOf(recordId: string) {
+export async function mentionsOf(recordId: string) {
   const rows = await all<{ id: string; title: string; createdAt: string; result: FundingResult | null; web: FundingWeb }>(
     `select id, title, created_at::text as "createdAt", result, web from funding_analyses
       where status = 'done' and result -> 'organizations' @> $1::text::jsonb
@@ -647,6 +649,8 @@ export async function funderView(recordId: string): Promise<import('@ceed/shared
         .filter((f) => names.has(fold(f.organization)))
         .map((f) => ({ analysisId: m.id, topic: f.topic, text: f.text, urls: f.urls, ranAt: m.web.ranAt })),
     ),
+    profile: await profileOf(recordId),
+    found: await foundResults(recordId),
   };
 }
 

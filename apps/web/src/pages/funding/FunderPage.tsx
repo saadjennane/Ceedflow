@@ -4,7 +4,7 @@
  * l'annuaire — la même fiche, vue depuis Funding.
  */
 import { FUNDING_ORG_ROLE_LABEL, OPEN_STAGES, type FunderView, type FundingOrgRole, type Task } from '@ceed/shared';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { useAccount } from '../../lib/account';
@@ -13,6 +13,7 @@ import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
 import { ConfirmDialog, useToast } from '../../ui/Overlays';
 import { SavedOpportunityCard } from './FundingPage';
+import { FoundList, SearchPanel } from './FunderSearch';
 import './funding.css';
 
 export function FunderPage() {
@@ -24,6 +25,12 @@ export function FunderPage() {
   const [untracking, setUntracking] = useState(false);
   const navigate = useNavigate();
   const toast = useToast();
+
+  useEffect(() => {
+    if (view.data?.profile.searchStatus !== 'pending') return;
+    const t = setInterval(() => view.reload(), 4000);
+    return () => clearInterval(t);
+  }, [view.data?.profile.searchStatus, view]);
 
   if (view.error) return <div className="page"><div className="callout warn">{view.error}</div></div>;
   const f = view.data;
@@ -48,6 +55,15 @@ export function FunderPage() {
           {f.description && <p style={{ margin: 0, fontSize: 14 }}>{f.description}</p>}
           {f.themes.length > 0 && <div className="fi-tags">{f.themes.map((t) => <span key={t} className="fi-tag">{t}</span>)}</div>}
         </section>
+
+        <SearchPanel recordId={f.id} profile={f.profile} canWrite={canWrite} onChanged={() => view.reload()} />
+
+        {f.found.length > 0 && (
+          <section className="fi-section">
+            <h3>Found — waiting for a decision <span className="n">{f.found.length}</span></h3>
+            <FoundList results={f.found} canWrite={canWrite} onChanged={() => view.reload()} />
+          </section>
+        )}
 
         <section className="fi-section">
           <h3>Opportunities <span className="n">{open.length} open</span></h3>

@@ -2,7 +2,8 @@
  * Funding Intelligence, réservé à l'équipe CEED : un appel d'offres et son
  * analyse ne sont jamais montrés à un compte externe.
  */
-import { fundingActionPatch, fundingCreateTasksInput, fundingSaveInput, fundingTextInput, opportunityPatch, trackFunderInput } from '@ceed/shared';
+import { dismissResultInput, funderProfilePatch, fundingActionPatch, fundingCreateTasksInput, fundingSaveInput, fundingTextInput, opportunityPatch, trackFunderInput } from '@ceed/shared';
+import { dismissResult, foundResults, runFunderSearch, saveProfile, saveResult, startAllSearches, startFunderSearch } from '../services/funderSearch.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { one } from '../db/client.js';
 import {
@@ -72,6 +73,36 @@ export async function fundingRoutes(app: FastifyInstance) {
     await untrackFunder(id, await actorOf(req));
     return { ok: true };
   });
+  /* La recherche d'opportunités, bailleur par bailleur. */
+  app.patch('/api/funding/funders/:id/profile', async (req) => {
+    const { id } = req.params as { id: string };
+    return saveProfile(id, parse(funderProfilePatch, req.body), await actorOf(req));
+  });
+  app.post('/api/funding/funders/:id/search', async (req) => {
+    const { id } = req.params as { id: string };
+    await startFunderSearch(id, await actorOf(req));
+    later('funder search', async () => void (await runFunderSearch(id)));
+    return { ok: true };
+  });
+  app.post('/api/funding/funders/search', async (req) => {
+    const ids = await startAllSearches(await actorOf(req));
+    /* Un bailleur après l'autre : la recherche web est longue, et rien ne presse. */
+    later('funder searches', async () => {
+      for (const id of ids) await runFunderSearch(id);
+    });
+    return { started: ids.length };
+  });
+  app.get('/api/funding/found', async () => foundResults());
+  app.post('/api/funding/found/:id/save', async (req) => {
+    const { id } = req.params as { id: string };
+    return saveResult(id, await actorOf(req));
+  });
+  app.post('/api/funding/found/:id/dismiss', async (req) => {
+    const { id } = req.params as { id: string };
+    await dismissResult(id, parse(dismissResultInput, req.body).reason, await actorOf(req));
+    return { ok: true };
+  });
+
   app.post('/api/funding/analyses/:id/organizations/:index/funder', async (req) => {
     const { id, index } = req.params as { id: string; index: string };
     return trackFromAnalysis(id, Number(index), await actorOf(req));

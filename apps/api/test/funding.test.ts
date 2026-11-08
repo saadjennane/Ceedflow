@@ -15,6 +15,7 @@ import { SESSION_COOKIE, createAccount, createSession, setStaffRole } from '../s
 import { extractFundingDocument, normaliseResult, useFundingAnalyzerForTests, useFundingSearcherForTests } from '../src/services/funding.js';
 import { getTask } from '../src/services/tasks.js';
 import { listCategories } from '../src/services/knowledge.js';
+import { runFunderSearch, useFunderSearcherForTests } from '../src/services/funderSearch.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
 /** Un PDF minimal, une ligne de texte par page. */
@@ -136,6 +137,7 @@ describe('Funding Intelligence', { skip: skipWithoutServer }, () => {
   after(async () => {
     useFundingAnalyzerForTests(null);
     useFundingSearcherForTests(null);
+    useFunderSearcherForTests(null);
     await app.close();
     await closeDb();
   });
@@ -304,6 +306,72 @@ describe('Funding Intelligence', { skip: skipWithoutServer }, () => {
     await call('Saad', 'POST', `/api/funding/analyses/${a.id}/opportunities`, { opportunities: [{ key: 'o1', title: 'x', summary: '' }] });
     const after = (await call('Lina', 'GET', '/api/funding/detected/opportunities')).body as { analysisId: string; opportunity: { key: string } }[];
     assert.deepEqual(after.filter((d) => d.analysisId === a.id).map((d) => d.opportunity.key), ['o2'], 'saved: out of the detected list');
+  });
+
+  it('searches a funder’s opportunities from a profile it prefills, keeps only what real pages back, and learns from what is dismissed', async () => {
+    const a = await settle((await call('Saad', 'POST', '/api/funding/analyses', { text: doc })).body.id);
+    const bad = (await call('Saad', 'POST', `/api/funding/analyses/${a.id}/organizations/0`)).body.recordId as string;
+    await call('Saad', 'POST', `/api/funding/analyses/${a.id}/opportunities`, { opportunities: [{ key: 'o2', title: 'Women Financial Resilience', summary: '' }] });
+    await call('Saad', 'PATCH', `/api/funding/opportunities/${(await call('Saad', 'GET', `/api/funding/funders/${bad}`)).body.opportunities[0]?.id ?? 'none'}`, { recordId: bad });
+
+    const page = (await call('Lina', 'GET', `/api/funding/funders/${bad}`)).body;
+    assert.ok(page.profile.aliases.includes('BAD'), 'its acronym, from the analyses');
+    assert.ok(page.profile.facilities.some((f: string) => f.includes(`ADFI${mark}`)), 'its facility, from the analyses');
+    assert.deepEqual(page.profile.countries, ['Maroc']);
+    assert.equal((await call('Lina', 'PATCH', `/api/funding/funders/${bad}/profile`, { countries: ['Maroc', 'Tunisie'] })).status, 403);
+    await call('Saad', 'PATCH', `/api/funding/funders/${bad}/profile`, { countries: ['Maroc', 'Tunisie'], sources: ['https://www.afdb.org/fr/projects-and-operations/procurement'] });
+
+    let sent = '';
+    useFunderSearcherForTests(async (_i, query) => {
+      sent = query;
+      return {
+        text: JSON.stringify({
+          opportunities: [
+            { type: 'identified_tender', title: `Appel à propositions InsurTech ${mark}`, organization: 'ADFI', nature: 'Appel à propositions', fundingNote: 'Dons ADFI.', summary: 'Proposer un accélérateur.', deadline: '2027-01-31', amount: null, publishedAt: null, urls: ['https://www.afdb.org/fr/adfi/call-insurtech'], relevance: 'high', relevanceReason: 'InsurTech', eligibilityToVerify: true },
+            { type: 'identified_tender', title: 'Un appel inventé', organization: 'BAD', urls: ['https://invented.example/x'], relevance: 'high' },
+            { type: 'project_concept', title: 'Women Financial Resilience', organization: 'BAD', urls: ['https://www.afdb.org/fr/adfi/call-insurtech'], relevance: 'medium' },
+          ],
+        }),
+        citations: [{ url: 'https://www.afdb.org/fr/adfi/call-insurtech', title: 'ADFI — Call', publishedAt: null }],
+      };
+    });
+    assert.equal((await call('Saad', 'POST', `/api/funding/funders/${bad}/search`)).status, 200);
+    let after = page;
+    for (let i = 0; i < 100; i++) {
+      after = (await call('Saad', 'GET', `/api/funding/funders/${bad}`)).body;
+      if (after.profile.searchStatus !== 'pending') break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    assert.equal(after.profile.searchStatus, 'done');
+    assert.match(sent, /Tunisie/);
+    assert.match(sent, /ADFI/, 'its facilities are searched too');
+    assert.deepEqual(after.found.map((f: { title: string }) => f.title), [`Appel à propositions InsurTech ${mark}`], 'no page, no lead; already followed, not proposed again');
+
+    const kept = after.found[0];
+    await call('Saad', 'POST', `/api/funding/found/${kept.id}/save`);
+    const followed = (await call('Lina', 'GET', `/api/funding/funders/${bad}`)).body.opportunities.find((o: { title: string }) => o.title === kept.title);
+    assert.equal(followed.verification[0].status, 'externally_verified');
+    assert.deepEqual(followed.links, ['https://www.afdb.org/fr/adfi/call-insurtech']);
+
+    useFunderSearcherForTests(async (_i, query) => {
+      sent = query;
+      return {
+        text: JSON.stringify({ opportunities: [{ type: 'strategic_prospecting', title: `Projet agricole ${mark}`, organization: 'BAD', urls: ['https://www.afdb.org/fr/agri'], relevance: 'low' }] }),
+        citations: [{ url: 'https://www.afdb.org/fr/agri', title: 'Agri', publishedAt: null }],
+      };
+    });
+    await runFunderSearch(bad);
+    const agri = (await call('Saad', 'GET', '/api/funding/found')).body.find((f: { title: string }) => f.title === `Projet agricole ${mark}`);
+    await call('Saad', 'POST', `/api/funding/found/${agri.id}/dismiss`, { reason: 'hors périmètre : agriculture' });
+    await runFunderSearch(bad);
+    assert.match(sent, /écarté : hors périmètre : agriculture/, 'what was dismissed, and why, steers the next search');
+    assert.ok(!(await call('Saad', 'GET', '/api/funding/found')).body.some((f: { title: string }) => f.title === `Projet agricole ${mark}`), 'never proposed again');
+
+    useFunderSearcherForTests(async () => ({ text: '{"opportunities": []}', citations: [] }));
+    await runFunderSearch(bad);
+    const failed = (await call('Saad', 'GET', `/api/funding/funders/${bad}`)).body.profile;
+    assert.equal(failed.searchStatus, 'failed');
+    assert.match(failed.searchError, /no source/);
   });
 
   it('takes a PDF, keeps it private to the team, and lets the analysis be deleted', async () => {

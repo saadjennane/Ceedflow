@@ -10,6 +10,7 @@ import {
   type DetectedFunder,
   type DetectedOpportunity,
   type FunderRow,
+  type FunderSearchResult,
   type OpportunityStage,
   RELEVANCE_LABEL,
   VERIFICATION_LABEL,
@@ -24,6 +25,7 @@ import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
 import { ConfirmDialog, useToast } from '../../ui/Overlays';
+import { FoundList } from './FunderSearch';
 import './funding.css';
 
 type Tab = 'funders' | 'analyze' | 'analyses' | 'opportunities';
@@ -245,6 +247,7 @@ export function SavedOpportunityCard({ o, canWrite, onChanged }: { o: SavedOppor
             ))}
           </div>
         )}
+        {o.links.length > 0 && <div>{o.links.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer" style={{ display: 'block', fontSize: 12, overflowWrap: 'anywhere' }}>{u}</a>)}</div>}
         {o.history.length > 1 && (
           <span className="faint" style={{ fontSize: 12 }}>
             {o.history.map((h) => `${OPPORTUNITY_STAGE_LABEL[h.stage]} ${formatDate(h.at)}${h.byName ? ` (${h.byName})` : ''}`).join(' → ')}
@@ -278,6 +281,21 @@ function Funders({ canWrite }: { canWrite: boolean }) {
             }}
           >
             <Icon name="plus" size={13} /> Track
+          </button>
+          <button
+            className="btn primary"
+            disabled={!list.data?.length}
+            title="Look for new opportunities of every tracked funder"
+            onClick={async () => {
+              try {
+                const { started } = await api.post<{ started: number }>('/api/funding/funders/search');
+                toast(`Searching ${started} funder${started === 1 ? '' : 's'}, one after the other — the leads appear in Opportunities.`);
+              } catch (err) {
+                toast((err as Error).message, true);
+              }
+            }}
+          >
+            <Icon name="search" size={13} /> Search all funders
           </button>
         </div>
       )}
@@ -397,12 +415,24 @@ function DetectedOpportunities({ canWrite, onSaved }: { canWrite: boolean; onSav
   );
 }
 
+function FoundBySearch({ canWrite, onSaved }: { canWrite: boolean; onSaved: () => void }) {
+  const found = useAsync(() => api.get<FunderSearchResult[]>('/api/funding/found'), 'funding-found');
+  if (!found.data?.length) return null;
+  return (
+    <section className="stack" style={{ gap: 8 }}>
+      <h3 className="section-title" style={{ margin: 0 }}>Found by search — waiting for a decision</h3>
+      <FoundList results={found.data} canWrite={canWrite} showFunder onChanged={() => { found.reload(); onSaved(); }} />
+    </section>
+  );
+}
+
 function Opportunities() {
   const role = useAccount().me?.account.staffRole;
   const canWrite = role === 'admin' || role === 'editor';
   const list = useAsync(() => api.get<SavedOpportunity[]>('/api/funding/opportunities'), 'funding-opps');
   return (
     <div className="stack" style={{ gap: 14 }}>
+      <FoundBySearch canWrite={canWrite} onSaved={() => list.reload()} />
       <DetectedOpportunities canWrite={canWrite} onSaved={() => list.reload()} />
       <h3 className="section-title" style={{ margin: 0 }}>Followed</h3>
       {list.error && <div className="empty">{list.error}</div>}

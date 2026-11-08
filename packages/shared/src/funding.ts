@@ -215,6 +215,8 @@ export interface SavedOpportunity {
   recordName: string;
   /** Les étapes par lesquelles elle est passée, datées. */
   history: { stage: OpportunityStage; byName: string; at: string }[];
+  /** Les pages qui la fondent, quand elle vient d'une recherche web. */
+  links: string[];
   analysisId: string | null;
   analysisTitle: string;
   type: OpportunityType;
@@ -303,7 +305,59 @@ export interface FunderView {
   analyses: { id: string; title: string; createdAt: string; roles: string[] }[];
   /** Ce que les recherches web ont trouvé sur lui, avec leurs pages. */
   web: { analysisId: string; topic: string; text: string; urls: string[]; ranAt: string | null }[];
+  profile: FunderProfile;
+  /** Les pistes trouvées par la recherche, en attente d'une décision. */
+  found: FunderSearchResult[];
 }
+
+/** Ce qui oriente la recherche d'opportunités d'un bailleur. Prérempli, puis corrigé à la main. */
+export interface FunderProfile {
+  aliases: string[];
+  facilities: string[];
+  countries: string[];
+  themes: string[];
+  instruments: string[];
+  sources: string[];
+  exclusions: string[];
+  searchStatus: 'none' | 'pending' | 'done' | 'failed';
+  searchError: string;
+  lastSearchAt: string | null;
+}
+
+/** Une piste trouvée sur le web pour un bailleur, qualifiée, avec ses pages. */
+export interface FunderSearchResult {
+  id: string;
+  recordId: string;
+  funderName: string;
+  type: OpportunityType;
+  title: string;
+  organization: string;
+  nature: string;
+  fundingNote: string;
+  summary: string;
+  deadline: string | null;
+  amount: string | null;
+  publishedAt: string | null;
+  urls: string[];
+  relevance: Relevance;
+  relevanceReason: string;
+  eligibilityToVerify: boolean;
+  status: 'new' | 'saved' | 'dismissed';
+  foundAt: string;
+}
+
+const list = z.array(z.string().trim().min(1).max(300)).max(40);
+export const funderProfilePatch = z.object({
+  aliases: list.optional(),
+  facilities: list.optional(),
+  countries: list.optional(),
+  themes: list.optional(),
+  instruments: list.optional(),
+  sources: list.optional(),
+  exclusions: list.optional(),
+});
+
+export const dismissResultInput = z.object({ reason: z.string().trim().max(500).default('') });
 
 export const opportunityPatch = z.object({
   stage: z.enum(OPPORTUNITY_STAGES).optional(),
