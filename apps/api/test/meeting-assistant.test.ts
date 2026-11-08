@@ -239,6 +239,8 @@ describe('the Meeting Assistant', { skip: skipWithoutServer }, () => {
     assert.equal(t1!.editionId, null, 'one link at a time');
     assert.equal(t2!.recordId, sarah.recordId);
 
+    const onItsPage = await listTasks({ recordId: startup.id });
+    assert.ok(onItsPage.some((t) => t.id === t1!.id), 'a task on its candidacy shows on the startup’s own page');
     const moved = (await changeTask(t2!.id, { link: { kind: 'edition', id: editionId } }, null))!;
     assert.equal(moved.editionId, editionId);
     assert.equal(moved.recordId, null, 'the old link goes');

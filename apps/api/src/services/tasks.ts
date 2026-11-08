@@ -67,9 +67,10 @@ export async function listTasks(filter: TaskFilter = {}): Promise<Task[]> {
   }
   if (filter.recordId) {
     params.push(filter.recordId);
-    /* Attachée à cette fiche, ou confiée à elle : sur la page de quelqu'un,
-       les deux sont « ce qui la concerne ». */
-    where.push(`(t.record_id = $${params.length} or t.owner_id = $${params.length})`);
+    /* Attachée à cette fiche, confiée à elle, ou attachée à l'une de ses
+       candidatures : sur la page d'une startup, « relancer Rafid Tech » dans
+       The Builders la concerne autant qu'une tâche posée sur sa fiche. */
+    where.push(`(t.record_id = $${params.length} or t.owner_id = $${params.length} or c.org_id = $${params.length})`);
   }
   if (filter.open) {
     params.push(OPEN_TASK_STATES);
