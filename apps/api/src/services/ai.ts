@@ -90,3 +90,82 @@ export async function askJson(
   }
   return jsonIn(choice.message.content);
 }
+
+/** Une page réellement consultée par la recherche web du fournisseur. */
+export interface WebCitation {
+  url: string;
+  title: string;
+  publishedAt: string | null;
+}
+
+/**
+ * Une recherche web menée par le modèle, côté serveur. Rend son texte et les
+ * pages qu'il a vraiment consultées — celles que le fournisseur cite, pas
+ * celles qu'il pourrait écrire de mémoire : une source qui n'est pas dans
+ * cette liste n'est pas une source.
+ */
+export async function searchWeb(
+  provider: AiProvider,
+  model: string,
+  instructions: string,
+  query: string,
+  opts: { timeoutMs?: number; maxSearches?: number } = {},
+): Promise<{ text: string; citations: WebCitation[] }> {
+  const signal = AbortSignal.timeout(opts.timeoutMs ?? 240_000);
+  if (!model.trim()) throw new HttpError(422, 'No model is set — choose one in Settings → Knowledge Base.');
+
+  if (provider === 'anthropic') {
+    const key = process.env.ANTHROPIC_API_KEY?.trim();
+    if (!key) throw new HttpError(422, 'ANTHROPIC_API_KEY is not set on the server.');
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      signal,
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model,
+        max_tokens: 16_000,
+        system: instructions,
+        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: opts.maxSearches ?? 8 }],
+        messages: [{ role: 'user', content: query }],
+      }),
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      content?: { type: string; text?: string; content?: { type: string; url?: string; title?: string; page_age?: string | null }[] }[];
+      error?: { message?: string };
+    };
+    if (!res.ok) throw new Error(`Anthropic answered ${res.status}: ${data.error?.message ?? 'no detail'}`);
+    const citations: WebCitation[] = [];
+    for (const block of data.content ?? []) {
+      if (block.type === 'web_search_tool_result' && Array.isArray(block.content)) {
+        for (const r of block.content) if (r.url) citations.push({ url: r.url, title: r.title ?? r.url, publishedAt: r.page_age ?? null });
+      }
+    }
+    const text = (data.content ?? []).filter((b) => b.type === 'text').map((b) => b.text ?? '').join('');
+    return { text, citations };
+  }
+
+  const key = process.env.OPENAI_API_KEY?.trim();
+  if (!key) throw new HttpError(422, 'OPENAI_API_KEY is not set on the server.');
+  const res = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    signal,
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+    body: JSON.stringify({ model, instructions, input: query, tools: [{ type: 'web_search' }], max_output_tokens: 16_000 }),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    output?: { type: string; content?: { type: string; text?: string; annotations?: { type: string; url?: string; title?: string }[] }[] }[];
+    error?: { message?: string };
+  };
+  if (!res.ok) throw new Error(`OpenAI answered ${res.status}: ${data.error?.message ?? 'no detail'}`);
+  const citations: WebCitation[] = [];
+  let text = '';
+  for (const item of data.output ?? []) {
+    if (item.type !== 'message') continue;
+    for (const c of item.content ?? []) {
+      if (c.type !== 'output_text') continue;
+      text += c.text ?? '';
+      for (const a of c.annotations ?? []) if (a.type === 'url_citation' && a.url) citations.push({ url: a.url, title: a.title ?? a.url, publishedAt: null });
+    }
+  }
+  return { text, citations };
+}

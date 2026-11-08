@@ -843,3 +843,21 @@ export async function retryAnalysis(id: string, actor: KbActor): Promise<void> {
   if (v.status !== 'analysis_failed' && v.status !== 'analysis_pending') throw new HttpError(409, 'This version is not waiting for an analysis.');
   await all(`update kb_versions set status = 'analysis_pending' where id = $1`, [id]);
 }
+
+/**
+ * Ce que la Knowledge Base dit de CEED à propos d'un texte : les connaissances
+ * publiées les plus proches — jamais une version en chemin, qui n'est pas une
+ * référence officielle.
+ */
+export async function publishedContext(text: string, limit = 6): Promise<{ entryId: string; title: string; body: string }[]> {
+  const words = [...new Set(text.toLowerCase().normalize('NFC').match(/[\p{L}\p{N}]{5,}/gu) ?? [])].slice(0, 80);
+  const query = words.map((w) => w.replace(/'/g, '')).join(' | ');
+  const rows = await all<{ entryId: string; title: string; body: string }>(
+    `select e.id as "entryId", v.title, v.body
+       from kb_entries e join kb_versions v on v.id = e.official_version_id
+      ${query ? `order by ts_rank(to_tsvector('french', v.title || ' ' || v.body), to_tsquery('french', $1)) desc` : 'order by v.published_at desc'}
+      limit ${Math.max(1, Math.min(limit, 20))}`,
+    query ? [query] : [],
+  );
+  return rows;
+}

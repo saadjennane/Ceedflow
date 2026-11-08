@@ -1,0 +1,98 @@
+/* Funding Intelligence : un tableau de bord qui se lit d'abord en diagonale, puis se creuse. */
+.fi-section { display: flex; flex-direction: column; gap: 10px; }
+.fi-section > h3 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.fi-section > h3 .n { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-weight: 500; }
+
+.fi-overview { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.fi-fact {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.fi-fact .eyebrow { font-size: 10.5px; }
+.fi-fact b { font-size: 13.5px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.fi-fact .missing { font-size: 13px; color: var(--ink-3); font-style: italic; }
+.fi-page {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--wash);
+  color: var(--ink-2);
+  cursor: help;
+  white-space: nowrap;
+}
+
+.fi-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.fi-card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.fi-card h4 { margin: 0; font-size: 14.5px; overflow-wrap: anywhere; }
+.fi-card p { margin: 0; font-size: 13px; color: var(--ink-2); }
+.fi-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.fi-tag { font-size: 11.5px; padding: 2px 8px; border-radius: 999px; background: var(--wash); color: var(--ink-2); }
+
+.fi-opp {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  padding: 14px 16px;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+.fi-opp.t-identified_tender { border-left-color: var(--ok); }
+.fi-opp.t-future_opportunity { border-left-color: var(--blue); }
+.fi-opp.t-strategic_prospecting { border-left-color: var(--warn); }
+.fi-opp.t-project_concept { border-left-color: var(--cyan); }
+.fi-opp-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.fi-opp h4 { margin: 0; font-size: 15px; overflow-wrap: anywhere; }
+.fi-keyfacts { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12.5px; color: var(--ink-2); }
+.fi-keyfacts span b { color: var(--ink); font-weight: 600; }
+.fi-verif { display: flex; flex-direction: column; gap: 4px; }
+.fi-verif div { display: flex; gap: 8px; align-items: baseline; font-size: 12.5px; }
+.v-pill { font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
+.v-document_confirmed { background: var(--ok-wash); color: var(--ok); }
+.v-externally_verified { background: var(--blue-soft); color: var(--blue); }
+.v-inferred { background: var(--warn-wash); color: var(--warn); }
+.v-unverified { background: var(--wash); color: var(--ink-3); }
+
+.fi-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--ink-3); }
+.fi-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+
+.fi-action { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.fi-action .main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+
+.fi-sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.fi-src { border: 1px solid var(--line); border-radius: var(--r-lg); padding: 12px 14px; background: var(--surface); display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.fi-src h4 { margin: 0; font-size: 13.5px; display: flex; align-items: center; gap: 6px; }
+.fi-src ul { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: var(--ink-2); }
+.fi-src li { overflow-wrap: anywhere; }
+.fi-src a { overflow-wrap: anywhere; }
+
+.fi-drop {
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--r-lg);
+  padding: 26px;
+  text-align: center;
+  color: var(--ink-2);
+  cursor: pointer;
+  display: block;
+}
+.fi-drop input { display: none; }
+.fi-drop.on { border-color: var(--blue); background: var(--blue-soft); }

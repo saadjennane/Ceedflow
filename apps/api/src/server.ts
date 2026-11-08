@@ -13,6 +13,7 @@ import { mailRoutes } from './routes/mail.js';
 import { sandboxRoutes } from './routes/sandbox.js';
 import { knowledgeRoutes } from './routes/knowledge.js';
 import { meetingAssistantRoutes } from './routes/meetingAssistant.js';
+import { fundingRoutes } from './routes/funding.js';
 import { builderRoutes } from './routes/builder.js';
 import { directoryRoutes } from './routes/directory.js';
 import { funnelRoutes } from './routes/funnel.js';
@@ -99,6 +100,7 @@ await app.register(mailRoutes);
 await app.register(sandboxRoutes);
 await app.register(knowledgeRoutes);
 await app.register(meetingAssistantRoutes);
+await app.register(fundingRoutes);
 
 /* A deployment that owns the schema step sets SKIP_MIGRATE and runs
    `npm run migrate` before starting anything, so the schema settles once while
