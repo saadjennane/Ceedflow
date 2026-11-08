@@ -14,3 +14,4 @@ export * from './member.js';
 export * from './attributes.js';
 export * from './kpi.js';
 export * from './reporting.js';
+export * from './knowledge.js';

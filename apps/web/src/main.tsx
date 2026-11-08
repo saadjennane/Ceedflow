@@ -5,6 +5,8 @@ import { Shell } from './app/Shell';
 import { ApplyPage } from './pages/ApplyPage';
 import { BookingPage } from './pages/BookingPage';
 import { MeetPage } from './pages/MeetPage';
+import { KnowledgePage } from './pages/knowledge/KnowledgePage';
+import { KnowledgeEntryPage } from './pages/knowledge/KnowledgeEntryPage';
 import { EditionPage } from './pages/EditionPage';
 import { AuthPage } from './pages/member/AuthPage';
 import { AsStartupPage } from './pages/member/AsStartupPage';
@@ -51,6 +53,8 @@ const router = createBrowserRouter([
       { path: 'directory/:recordId', element: <RecordPage /> },
       { path: 'tasks', element: <TasksPage /> },
       { path: 'settings', element: <SettingsPage /> },
+      { path: 'knowledge', element: <KnowledgePage /> },
+      { path: 'knowledge/:entryId', element: <KnowledgeEntryPage /> },
     ],
   },
 ]);

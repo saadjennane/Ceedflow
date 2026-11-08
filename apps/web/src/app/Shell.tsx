@@ -119,6 +119,11 @@ export function Shell() {
         {PROGRAMS_LATER.map((item) => (
           <Soon key={item.label} {...item} />
         ))}
+        <div className="eyebrow nav-group">Team</div>
+        <NavLink to="/knowledge" className={link} title="Knowledge Base">
+          <Icon name="book" />
+          <span className="nav-label">Knowledge Base</span>
+        </NavLink>
         <NavLink to="/settings" className={link} title="Settings">
           <Icon name="settings" />
           <span className="nav-label">Settings</span>
