@@ -8,7 +8,10 @@ import { one } from '../db/client.js';
 import {
   addSuggestion,
   changeSuggestion,
+  createFromBacklog,
   createFromSuggestions,
+  deleteMeeting,
+  meetingBacklog,
   createMeeting,
   listMeetings,
   meetingOptions,
@@ -37,6 +40,15 @@ export async function meetingAssistantRoutes(app: FastifyInstance) {
 
   app.get('/api/meeting-assistant/options', async (req) => meetingOptions(await actorOf(req)));
   app.get('/api/meeting-assistant/meetings', async () => listMeetings());
+  app.get('/api/meeting-assistant/backlog', async () => meetingBacklog());
+  app.post('/api/meeting-assistant/backlog/create', async (req) =>
+    createFromBacklog(parse(createSuggestionsInput, req.body), await actorOf(req)),
+  );
+  app.delete('/api/meeting-assistant/meetings/:id', async (req) => {
+    const { id } = req.params as { id: string };
+    await deleteMeeting(id, await actorOf(req));
+    return { ok: true };
+  });
 
   app.post('/api/meeting-assistant/meetings', async (req, reply) => {
     const made = await createMeeting(parse(meetingInput, req.body), await actorOf(req));

@@ -1,0 +1,81 @@
+/* Une proposition de tâche : une ligne qui se lit d'un coup d'œil, le détail au besoin. */
+.prop {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+.prop.p-high { border-left-color: var(--stop); }
+.prop.p-low { border-left-color: var(--ink-3); }
+.prop.done { opacity: 0.6; }
+.prop-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.prop-title {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ink);
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border-radius: var(--r-sm);
+  width: 100%;
+}
+.prop-title:hover:not(:disabled), .prop-title:focus { background: var(--wash); outline: none; }
+.prop-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  background: var(--canvas);
+  max-width: 100%;
+}
+.chip select, .chip input {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: var(--ink);
+  min-width: 0;
+  max-width: 220px;
+  padding: 0;
+  outline: none;
+}
+.chip.warn { border-color: var(--warn); background: var(--warn-wash); }
+.chip.stop { border-color: var(--stop); background: var(--stop-wash); }
+.prop-note { font-size: 12px; color: var(--ink-3); }
+.prop-note.warn { color: var(--warn); }
+.prop-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.prop-act {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--ink-2);
+}
+.prop-act.ok { border-color: var(--ok); color: var(--ok); }
+.prop-act.ok:hover:not(:disabled) { background: var(--ok); color: #fff; }
+.prop-act.no:hover:not(:disabled) { background: var(--stop-wash); color: var(--stop); border-color: var(--stop); }
+.prop-act:disabled { opacity: 0.35; cursor: not-allowed; }
+.prop-more { font-size: 12px; }
+.prop-group { display: flex; flex-direction: column; gap: 8px; }
+.prop-group-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+
+@media (max-width: 640px) {
+  .prop { flex-wrap: wrap; }
+  .prop-actions { width: 100%; justify-content: flex-end; }
+}

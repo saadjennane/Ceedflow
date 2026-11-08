@@ -429,6 +429,46 @@ export async function listMeetings(): Promise<MeetingRow[]> {
   );
 }
 
+/** Les propositions, avec la réunion d'où elles viennent. */
+async function suggestionsWhere(where: string, params: unknown[]): Promise<MeetingSuggestion[]> {
+  const rows = await all<{
+    meetingId: string; meetingTitle: string; meetingOn: string;
+    id: string; position: number; source: 'ai' | 'manual'; title: string; description: string; assigneeId: string | null;
+    assigneeName: string | null; assigneeSaid: string; assigneeNote: string; dueOn: string | null; dueNote: string;
+    priority: TaskPriority; sourceExcerpt: string; confidence: 'high' | 'medium' | 'low'; needsReview: boolean; reviewReason: string;
+    status: MeetingSuggestion['status']; error: string; editionId: string | null; editionName: string | null;
+    dupId: string | null; dupTitle: string | null; dupOwner: string | null; dupState: string | null; dupDue: string | null;
+    taskId: string | null; taskTitle: string | null; taskState: string | null;
+  }>(
+    `select s.meeting_id as "meetingId", ma.title as "meetingTitle", ma.meeting_on::text as "meetingOn", s.id, s.position, s.source, s.title, s.description, s.assignee_id as "assigneeId", r.name as "assigneeName",
+            s.assignee_said as "assigneeSaid", s.assignee_note as "assigneeNote", s.due_on::text as "dueOn", s.due_note as "dueNote",
+            s.priority, s.source_excerpt as "sourceExcerpt", s.confidence, s.needs_review as "needsReview", s.review_reason as "reviewReason",
+            s.status, s.error, s.edition_id as "editionId", sp.name || ' — ' || se.name as "editionName",
+            d.id as "dupId", d.title as "dupTitle", dr.name as "dupOwner", d.state as "dupState", d.due_on::text as "dupDue",
+            t.id as "taskId", t.title as "taskTitle", t.state as "taskState"
+       from meeting_task_suggestions s
+       join meeting_analyses ma on ma.id = s.meeting_id
+       left join records r on r.id = s.assignee_id
+       left join editions se on se.id = s.edition_id
+       left join programs sp on sp.id = se.program_id
+       left join tasks d on d.id = s.duplicate_task_id
+       left join records dr on dr.id = d.owner_id
+       left join tasks t on t.id = s.task_id
+      ${where}
+      order by ma.created_at desc, s.position, s.created_at`,
+    params,
+  );
+  return rows.map((r) => ({
+      meetingId: r.meetingId, meetingTitle: r.meetingTitle, meetingOn: r.meetingOn,
+      id: r.id, position: r.position, source: r.source, title: r.title, description: r.description,
+      assigneeId: r.assigneeId, assigneeName: r.assigneeName ?? '', assigneeSaid: r.assigneeSaid, assigneeNote: r.assigneeNote,
+      dueOn: r.dueOn, dueNote: r.dueNote, editionId: r.editionId, editionName: r.editionName ?? '', priority: r.priority, sourceExcerpt: r.sourceExcerpt, confidence: r.confidence,
+      needsReview: r.needsReview, reviewReason: r.reviewReason, status: r.status, error: r.error,
+      duplicate: r.dupId ? { id: r.dupId, title: r.dupTitle ?? '', ownerName: r.dupOwner ?? '', state: r.dupState as never, dueOn: r.dupDue } : null,
+      task: r.taskId ? { id: r.taskId, title: r.taskTitle ?? '', state: r.taskState as never } : null,
+    }));
+}
+
 export async function meetingView(id: string): Promise<MeetingView | null> {
   const m = await one<Omit<MeetingView, 'suggestions'>>(
     `select m.id, m.title, m.meeting_on::text as "meetingOn", m.edition_id as "editionId",
@@ -441,41 +481,10 @@ export async function meetingView(id: string): Promise<MeetingView | null> {
     [id],
   );
   if (!m) return null;
-  const rows = await all<{
-    id: string; position: number; source: 'ai' | 'manual'; title: string; description: string; assigneeId: string | null;
-    assigneeName: string | null; assigneeSaid: string; assigneeNote: string; dueOn: string | null; dueNote: string;
-    priority: TaskPriority; sourceExcerpt: string; confidence: 'high' | 'medium' | 'low'; needsReview: boolean; reviewReason: string;
-    status: MeetingSuggestion['status']; error: string; editionId: string | null; editionName: string | null;
-    dupId: string | null; dupTitle: string | null; dupOwner: string | null; dupState: string | null; dupDue: string | null;
-    taskId: string | null; taskTitle: string | null; taskState: string | null;
-  }>(
-    `select s.id, s.position, s.source, s.title, s.description, s.assignee_id as "assigneeId", r.name as "assigneeName",
-            s.assignee_said as "assigneeSaid", s.assignee_note as "assigneeNote", s.due_on::text as "dueOn", s.due_note as "dueNote",
-            s.priority, s.source_excerpt as "sourceExcerpt", s.confidence, s.needs_review as "needsReview", s.review_reason as "reviewReason",
-            s.status, s.error, s.edition_id as "editionId", sp.name || ' — ' || se.name as "editionName",
-            d.id as "dupId", d.title as "dupTitle", dr.name as "dupOwner", d.state as "dupState", d.due_on::text as "dupDue",
-            t.id as "taskId", t.title as "taskTitle", t.state as "taskState"
-       from meeting_task_suggestions s
-       left join records r on r.id = s.assignee_id
-       left join editions se on se.id = s.edition_id
-       left join programs sp on sp.id = se.program_id
-       left join tasks d on d.id = s.duplicate_task_id
-       left join records dr on dr.id = d.owner_id
-       left join tasks t on t.id = s.task_id
-      where s.meeting_id = $1
-      order by s.position, s.created_at`,
-    [id],
-  );
+  const suggestions = await suggestionsWhere('where s.meeting_id = $1', [id]);
   return {
     ...m,
-    suggestions: rows.map((r) => ({
-      id: r.id, position: r.position, source: r.source, title: r.title, description: r.description,
-      assigneeId: r.assigneeId, assigneeName: r.assigneeName ?? '', assigneeSaid: r.assigneeSaid, assigneeNote: r.assigneeNote,
-      dueOn: r.dueOn, dueNote: r.dueNote, editionId: r.editionId, editionName: r.editionName ?? '', priority: r.priority, sourceExcerpt: r.sourceExcerpt, confidence: r.confidence,
-      needsReview: r.needsReview, reviewReason: r.reviewReason, status: r.status, error: r.error,
-      duplicate: r.dupId ? { id: r.dupId, title: r.dupTitle ?? '', ownerName: r.dupOwner ?? '', state: r.dupState as never, dueOn: r.dupDue } : null,
-      task: r.taskId ? { id: r.taskId, title: r.taskTitle ?? '', state: r.taskState as never } : null,
-    })),
+    suggestions,
   };
 }
 
@@ -618,4 +627,49 @@ export async function createFromSuggestions(
     ? (await tellOwnersAtOnce(created.map((c) => c.taskId), { meeting: meeting.title, byName: actor.name })).told
     : 0;
   return { created, failed, skipped, told };
+}
+
+/**
+ * Le backlog : tout ce qui attend une décision, toutes réunions confondues —
+ * et les réunions encore en cours d'analyse, ou dont l'analyse a échoué.
+ */
+export async function meetingBacklog(): Promise<{ analysing: { id: string; title: string; status: 'pending' | 'failed'; error: string; createdAt: string }[]; items: MeetingSuggestion[] }> {
+  return {
+    analysing: await all(
+      `select id, title, status, error, created_at::text as "createdAt" from meeting_analyses
+        where status = 'pending' or (status = 'failed' and created_at > now() - interval '7 days')
+        order by created_at desc`,
+    ),
+    items: await suggestionsWhere(`where s.status in ('proposed', 'failed')`, []),
+  };
+}
+
+/** Supprimer une réunion de l'historique : son compte rendu et ses propositions. Les tâches créées restent dans Tasks. */
+export async function deleteMeeting(id: string, actor: MeetingActor): Promise<void> {
+  mustWrite(actor);
+  const gone = await all<{ id: string }>('delete from meeting_analyses where id = $1 returning id', [id]);
+  if (!gone.length) throw new HttpError(404, 'Meeting not found.');
+}
+
+/** Créer des propositions de plusieurs réunions d'un coup : chacune passe par la création de sa réunion. */
+export async function createFromBacklog(
+  input: { ids: string[]; tell: boolean },
+  actor: MeetingActor,
+): Promise<{ created: { id: string; taskId: string }[]; failed: { id: string; error: string }[]; skipped: string[]; told: number }> {
+  mustWrite(actor);
+  const rows = await all<{ id: string; meetingId: string }>(
+    'select id, meeting_id as "meetingId" from meeting_task_suggestions where id = any($1::text[])',
+    [input.ids],
+  );
+  const byMeeting = new Map<string, string[]>();
+  for (const r of rows) byMeeting.set(r.meetingId, [...(byMeeting.get(r.meetingId) ?? []), r.id]);
+  const out = { created: [] as { id: string; taskId: string }[], failed: [] as { id: string; error: string }[], skipped: input.ids.filter((id) => !rows.some((r) => r.id === id)), told: 0 };
+  for (const [meetingId, ids] of byMeeting) {
+    const r = await createFromSuggestions(meetingId, { ids, tell: input.tell }, actor);
+    out.created.push(...r.created);
+    out.failed.push(...r.failed);
+    out.skipped.push(...r.skipped);
+    out.told += r.told;
+  }
+  return out;
 }

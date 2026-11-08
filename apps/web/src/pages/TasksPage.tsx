@@ -13,7 +13,7 @@
  * pour quand. La liste répond à « qu'est-ce qui presse », le tableau à
  * « qu'est-ce qui coince » — d'où la colonne Stuck.
  */
-import { BOARD_COLUMNS, byUrgency, isLate, isOpen, progress, type Task, type TaskState } from '@ceed/shared';
+import { BOARD_COLUMNS, byUrgency, isLate, isOpen, progress, type MeetingBacklog, type Task, type TaskState } from '@ceed/shared';
 import { useMemo, useState, type DragEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -24,7 +24,8 @@ import { SearchBox } from '../ui/SearchBox';
 import { useToast } from '../ui/Overlays';
 import { TaskDrawer } from '../ui/TaskDrawer';
 import { TaskModal } from '../ui/TaskModal';
-import { ExtractTasksModal, MeetingHistory } from './meetings/MeetingExtract';
+import { ExtractTasksModal, MeetingBacklogView, MeetingHistory } from './meetings/MeetingExtract';
+import { useAccount } from '../lib/account';
 import '../ui/builder.css';
 import '../ui/directory.css';
 
@@ -49,8 +50,11 @@ export function TasksPage() {
   /* « View task » depuis l'assistant de réunion : la tâche s'ouvre directement. */
   const [openId, setOpenId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('task'));
   const [params, setParams] = useSearchParams();
-  const tab = params.get('tab') === 'meetings' ? 'meetings' : 'tasks';
-  const setTab = (t: 'tasks' | 'meetings') => setParams(t === 'meetings' ? { tab: 'meetings' } : {});
+  const tab = params.get('tab') === 'meetings' ? 'meetings' : params.get('tab') === 'backlog' ? 'backlog' : 'tasks';
+  const setTab = (t: 'tasks' | 'backlog' | 'meetings') => setParams(t === 'tasks' ? {} : { tab: t });
+  /* Le nombre de propositions en attente, sur l'onglet : ce qui attend une décision se voit. */
+  const waiting = useAsync(() => api.get<MeetingBacklog>('/api/meeting-assistant/backlog'), `backlog-count:${tab}`);
+  const me = useAccount().me;
   const [extracting, setExtracting] = useState(false);
   const toast = useToast();
 
@@ -129,6 +133,9 @@ export function TasksPage() {
         <button role="tab" aria-selected={tab === 'tasks'} className={tab === 'tasks' ? 'tab on' : 'tab'} onClick={() => setTab('tasks')}>
           Tasks
         </button>
+        <button role="tab" aria-selected={tab === 'backlog'} className={tab === 'backlog' ? 'tab on' : 'tab'} onClick={() => setTab('backlog')}>
+          Backlog {waiting.data && waiting.data.items.length > 0 && <span className="nav-count">{waiting.data.items.length}</span>}
+        </button>
         <button role="tab" aria-selected={tab === 'meetings'} className={tab === 'meetings' ? 'tab on' : 'tab'} onClick={() => setTab('meetings')}>
           Meeting History
         </button>
@@ -138,7 +145,17 @@ export function TasksPage() {
 
       {tab === 'meetings' ? (
         <div className="page stack" style={{ gap: 14, maxWidth: 900 }}>
-          <MeetingHistory />
+          <MeetingHistory canWrite={me?.account.staffRole === 'admin' || me?.account.staffRole === 'editor'} />
+        </div>
+      ) : tab === 'backlog' ? (
+        <div className="page stack" style={{ gap: 14, maxWidth: 1000 }}>
+          <MeetingBacklogView
+            from={params.get('from') ?? ''}
+            onCreated={() => {
+              tasks.reload();
+              waiting.reload();
+            }}
+          />
         </div>
       ) : (
       <div className="page stack" style={{ gap: 14 }}>

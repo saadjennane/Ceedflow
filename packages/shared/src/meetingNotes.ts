@@ -16,6 +16,9 @@ export interface MeetingMember {
 
 export interface MeetingSuggestion {
   id: string;
+  meetingId: string;
+  meetingTitle: string;
+  meetingOn: string;
   position: number;
   source: 'ai' | 'manual';
   title: string;
@@ -100,3 +103,8 @@ export const createSuggestionsInput = z.object({
   /** Une lettre par personne, qui liste toutes ses tâches de la réunion. */
   tell: z.boolean().default(false),
 });
+
+export interface MeetingBacklog {
+  analysing: { id: string; title: string; status: 'pending' | 'failed'; error: string; createdAt: string }[];
+  items: MeetingSuggestion[];
+}

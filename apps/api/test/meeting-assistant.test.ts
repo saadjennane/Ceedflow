@@ -182,6 +182,34 @@ describe('the Meeting Assistant', { skip: skipWithoutServer }, () => {
     assert.equal(tasks.filter((t) => t.title === 'Écrire aux startups').length, 1, 'never made twice');
   });
 
+  it('gathers what is waiting in one backlog, adds several meetings at once, and deletes a meeting without its tasks', async () => {
+    const sarah = people[`Sarah${mark}`]!;
+    ai = async () => ({ summary: '', meetingTitle: `Backlog A ${mark}`, meetingDate: null, tasks: [raw({ title: `Relancer le partenaire ${mark}`, assignee_name: `Sarah${mark}` })] });
+    const a = await settle((await call('Saad', 'POST', '/api/meeting-assistant/meetings', { content: notes })).body.id);
+    ai = async () => ({ summary: '', meetingTitle: `Backlog B ${mark}`, meetingDate: null, tasks: [raw({ title: `Imprimer les badges ${mark}`, assignee_name: `Sarah${mark}` }), raw({ title: `Écarter ceci ${mark}` })] });
+    const b = await settle((await call('Saad', 'POST', '/api/meeting-assistant/meetings', { content: notes })).body.id);
+
+    const backlog = (await call('Lina', 'GET', '/api/meeting-assistant/backlog')).body as { items: { id: string; meetingId: string; title: string }[] };
+    const mine = backlog.items.filter((i) => i.meetingId === a.id || i.meetingId === b.id);
+    assert.equal(mine.length, 3, 'both meetings, in one list');
+    const drop = mine.find((i) => i.title.startsWith('Écarter'))!;
+    await call('Saad', 'PATCH', `/api/meeting-assistant/suggestions/${drop.id}`, { status: 'dismissed' });
+
+    const ids = mine.filter((i) => i.id !== drop.id).map((i) => i.id);
+    const before = (await letters({ email: sarah.email })).filter((l) => l.kind === 'tasks_given').length;
+    const out = await call('Saad', 'POST', '/api/meeting-assistant/backlog/create', { ids, tell: true });
+    assert.equal(out.body.created.length, 2);
+    assert.equal((await letters({ email: sarah.email })).filter((l) => l.kind === 'tasks_given').length, before + 2, 'a letter per meeting she was given tasks in');
+    const after = (await call('Lina', 'GET', '/api/meeting-assistant/backlog')).body as { items: { meetingId: string }[] };
+    assert.equal(after.items.filter((i) => i.meetingId === a.id || i.meetingId === b.id).length, 0, 'added or dismissed: out of the backlog');
+
+    assert.equal((await call('Lina', 'DELETE', `/api/meeting-assistant/meetings/${a.id}`)).status, 403, 'an observer deletes nothing');
+    assert.equal((await call('Saad', 'DELETE', `/api/meeting-assistant/meetings/${a.id}`)).status, 200);
+    assert.equal((await call('Saad', 'GET', `/api/meeting-assistant/meetings/${a.id}`)).status, 404);
+    const kept = await listTasks({ ownerIds: [sarah.recordId] });
+    assert.ok(kept.some((t) => t.title === `Relancer le partenaire ${mark}`), 'its task stays in Tasks');
+  });
+
   it('keeps the notes when the analysis fails, and lets it run again', async () => {
     ai = async () => {
       throw new Error('OpenAI answered 503: overloaded');
