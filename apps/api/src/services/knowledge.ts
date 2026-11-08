@@ -127,7 +127,7 @@ export async function testAi(): Promise<{ ok: boolean; message: string }> {
   const { provider, model } = await kbSettings();
   if (!provider) return { ok: false, message: 'No AI provider is chosen.' };
   try {
-    await askJson(provider, model, 'Answer only with the JSON object {"ok": true}.', 'Connection test.', { maxTokens: 50, timeoutMs: 30_000 });
+    await askJson(provider, model, 'Answer only with the JSON object {"ok": true}.', 'Connection test.', { maxTokens: 2000, timeoutMs: 60_000 });
     return { ok: true, message: `${provider === 'openai' ? 'OpenAI' : 'Anthropic'} answers with ${model}.` };
   } catch (err) {
     return { ok: false, message: (err as Error).message };

@@ -190,9 +190,23 @@ export interface KbSettings {
   keys: { anthropic: boolean; openai: boolean };
 }
 
+/** Les modèles proposés, le recommandé en tête. « Other model… » reste possible pour un nom plus récent. */
+export const KB_MODELS: Record<'anthropic' | 'openai', { id: string; label: string }[]> = {
+  openai: [
+    { id: 'gpt-6.1-sol', label: 'GPT-6.1 Sol — recommended: strong reasoning, moderate cost' },
+    { id: 'gpt-6-astra', label: 'GPT-6 Astra — the most capable, five times the price' },
+    { id: 'gpt-6-luna', label: 'GPT-6 Luna — the cheapest, for high volumes' },
+  ],
+  anthropic: [
+    { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5 — recommended: strong reasoning, moderate cost' },
+    { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 — the most capable, higher price' },
+    { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 — the cheapest, for high volumes' },
+  ],
+};
+
 export const KB_DEFAULT_MODEL: Record<'anthropic' | 'openai', string> = {
-  anthropic: 'claude-sonnet-5-5',
-  openai: '',
+  anthropic: KB_MODELS.anthropic[0]!.id,
+  openai: KB_MODELS.openai[0]!.id,
 };
 
 /* ---------------------------------------------------------------- */

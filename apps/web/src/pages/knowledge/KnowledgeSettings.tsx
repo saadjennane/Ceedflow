@@ -3,12 +3,14 @@
  * l'analyse se fait, et les catégories. Un administrateur les change ; le
  * président ne se désigne jamais lui-même.
  */
-import { KB_DEFAULT_MODEL, type KbCategory, type KbSettings } from '@ceed/shared';
+import { KB_DEFAULT_MODEL, KB_MODELS, type KbCategory, type KbSettings } from '@ceed/shared';
 import { useEffect, useState } from 'react';
 import { ApiError, api } from '../../lib/api';
 import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
 import { useToast } from '../../ui/Overlays';
+
+const OTHER = '__other';
 
 export function KnowledgeSettings({ mayManage }: { mayManage: boolean }) {
   const settings = useAsync(() => api.get<KbSettings>('/api/kb/settings'), 'kb-settings');
@@ -20,6 +22,7 @@ export function KnowledgeSettings({ mayManage }: { mayManage: boolean }) {
   const [busy, setBusy] = useState(false);
   const [test, setTest] = useState<{ ok: boolean; message: string } | null>(null);
   const [newCat, setNewCat] = useState('');
+  const [other, setOther] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
@@ -65,6 +68,8 @@ export function KnowledgeSettings({ mayManage }: { mayManage: boolean }) {
 
   const s = settings.data;
   if (!s) return <div className="faint">Loading…</div>;
+  /* Un nom qui n'est pas dans la liste se garde et se montre dans le champ libre. */
+  const listed = !provider || !model || KB_MODELS[provider].some((m) => m.id === model);
   const keyThere = provider ? s.keys[provider] : false;
 
   return (
@@ -97,7 +102,9 @@ export function KnowledgeSettings({ mayManage }: { mayManage: boolean }) {
               onChange={(e) => {
                 const p = e.target.value as KbSettings['provider'];
                 setProvider(p);
-                if (p && !model) setModel(KB_DEFAULT_MODEL[p]);
+                /* Un autre fournisseur : son modèle recommandé, pas le nom de celui d'avant. */
+                setModel(p ? KB_DEFAULT_MODEL[p] : '');
+                setOther(false);
               }}
             >
               <option value="">None — analyses fail until one is chosen</option>
@@ -107,7 +114,37 @@ export function KnowledgeSettings({ mayManage }: { mayManage: boolean }) {
           </div>
           <div className="field" style={{ flex: '1 1 180px' }}>
             <label htmlFor="kb-model">Model</label>
-            <input id="kb-model" className="input" disabled={!mayManage || !provider} value={model} onChange={(e) => setModel(e.target.value)} placeholder={provider === 'anthropic' ? 'claude-sonnet-5-5' : 'the OpenAI model name'} />
+            <select
+              id="kb-model"
+              className="select"
+              disabled={!mayManage || !provider}
+              value={other || !listed ? OTHER : model}
+              onChange={(e) => {
+                if (e.target.value === OTHER) {
+                  setOther(true);
+                  return;
+                }
+                setOther(false);
+                setModel(e.target.value);
+              }}
+            >
+              {!provider && <option value="">—</option>}
+              {(provider ? KB_MODELS[provider] : []).map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+              {provider && <option value={OTHER}>Other model…</option>}
+            </select>
+            {provider && (other || !listed) && (
+              <input
+                className="input"
+                style={{ marginTop: 6 }}
+                disabled={!mayManage}
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder="The exact model name, as the provider writes it"
+                aria-label="Model name"
+              />
+            )}
           </div>
         </div>
         {provider && (

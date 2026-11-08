@@ -36,7 +36,9 @@ export async function askJson(
   user: string,
   opts: { maxTokens?: number; timeoutMs?: number } = {},
 ): Promise<unknown> {
-  const maxTokens = opts.maxTokens ?? 4000;
+  /* Large : un modèle qui raisonne compte sa réflexion dans cette limite, et une
+     limite trop courte le laisse sans place pour répondre. On ne paie que l'usage. */
+  const maxTokens = opts.maxTokens ?? 16_000;
   const signal = AbortSignal.timeout(opts.timeoutMs ?? 120_000);
   if (!model.trim()) throw new HttpError(422, 'No model is set — choose one in Settings → Knowledge Base.');
 
@@ -70,7 +72,18 @@ export async function askJson(
       ],
     }),
   });
-  const data = (await res.json().catch(() => ({}))) as { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
+  const data = (await res.json().catch(() => ({}))) as {
+    choices?: { message?: { content?: string }; finish_reason?: string }[];
+    error?: { message?: string };
+  };
   if (!res.ok) throw new Error(`OpenAI answered ${res.status}: ${data.error?.message ?? 'no detail'}`);
-  return jsonIn(data.choices?.[0]?.message?.content ?? '');
+  const choice = data.choices?.[0];
+  if (!choice?.message?.content?.trim()) {
+    throw new Error(
+      choice?.finish_reason === 'length'
+        ? 'The model used its whole answer budget before answering — run it again, or choose another model.'
+        : 'The model returned an empty answer — run it again.',
+    );
+  }
+  return jsonIn(choice.message.content);
 }
