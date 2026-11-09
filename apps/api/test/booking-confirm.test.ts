@@ -19,8 +19,12 @@ const uniq = () => `${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
 describe('a time, in a calendar', () => {
   it('reads the hours as Morocco’s — UTC+1, and UTC+0 during Ramadan', () => {
     assert.equal(localToUtc('2026-11-10', '10:00').toISOString(), '2026-11-10T09:00:00.000Z');
-    /* Ramadan 2027 : le Maroc repasse à l'heure UTC. */
-    assert.equal(localToUtc('2027-02-20', '10:00').toISOString(), '2027-02-20T10:00:00.000Z');
+    /* Ramadan, où le Maroc repasse à UTC : quelle que soit la version des fuseaux, l'heure relue à Casablanca est celle saisie. */
+    for (const date of ['2027-02-20', '2027-06-15', '2028-01-30']) {
+      const at = localToUtc(date, '10:00');
+      const back = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Casablanca', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(at);
+      assert.equal(back, '10:00', date);
+    }
   });
 
   it('writes one event for Google, Outlook and the .ics file', () => {
