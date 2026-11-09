@@ -33,6 +33,14 @@ export interface Letter {
    * programme sends goes to the same place.
    */
   sendAfter?: Date | null;
+  /** Files carried with it — text only, an invitation.ics for now. */
+  attachments?: Attachment[];
+}
+
+export interface Attachment {
+  filename: string;
+  content: string;
+  contentType: string;
 }
 
 export interface OutboxRow extends Letter {
@@ -135,8 +143,8 @@ export async function post(letter: Letter): Promise<string | null> {
     const held = fenced || (await suppressed(to)) || !sendingIsLive();
     const id = newId('msg');
     await (await db()).query(
-      `insert into outbox (id, kind, to_email, to_name, subject, body, record_id, block_id, candidate_id, state, send_after, error)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      `insert into outbox (id, kind, to_email, to_name, subject, body, record_id, block_id, candidate_id, state, send_after, error, attachments)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::text::jsonb)`,
       [
         id,
         letter.kind,
@@ -150,6 +158,7 @@ export async function post(letter: Letter): Promise<string | null> {
         held ? 'held' : 'queued',
         letter.sendAfter ?? null,
         fenced ? 'Blocked: a test programme writes only to test addresses.' : '',
+        JSON.stringify(letter.attachments ?? []),
       ],
     );
     return id;
@@ -190,6 +199,15 @@ async function handOver(row: OutboxRow): Promise<{ ok: true; id: string } | { ok
       subject: row.subject,
       text: row.body,
       ...(replyFor(row.to) ? { reply_to: replyFor(row.to) } : {}),
+      ...(row.attachments?.length
+        ? {
+            attachments: row.attachments.map((a) => ({
+              filename: a.filename,
+              content: Buffer.from(a.content, 'utf8').toString('base64'),
+              content_type: a.contentType,
+            })),
+          }
+        : {}),
     }),
   });
   const body = (await res.json().catch(() => ({}))) as Sent;
@@ -212,7 +230,7 @@ export async function flush(limit = 25): Promise<{ sent: number; failed: number 
   const conn = await db();
   const rows = await conn.query<OutboxRow & { to: string }>(
     `select id, kind, to_email as "to", to_name as "toName", subject, body,
-            state, error, attempts, created_at::text as "createdAt", sent_at::text as "sentAt"
+            state, error, attempts, created_at::text as "createdAt", sent_at::text as "sentAt", attachments
        from outbox
       where state = 'queued' and (send_after is null or send_after <= now())
       order by send_after nulls first, created_at limit $1`,
@@ -258,7 +276,7 @@ export async function flushOne(id: string): Promise<{ state: OutboxState; error:
   const [row] = await conn.query<OutboxRow & { to: string }>(
     `select id, kind, to_email as "to", to_name as "toName", subject, body,
             state, error, attempts, created_at::text as "createdAt", sent_at::text as "sentAt",
-            delivered_at::text as "deliveredAt"
+            delivered_at::text as "deliveredAt", attachments
        from outbox where id = $1`,
     [id],
   );

@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { markAsJury } from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { committeeView, seatOnFreeSlots } from '../services/committee.js';
-import { committeeAudiences, committeeNotices, committeeRoster } from '../services/committeeNotices.js';
+import { committeeAudiences, committeeNotices, committeeRoster, confirmSeat } from '../services/committeeNotices.js';
 import { appLink } from '../services/deliverables.js';
 import { launchNotice, sendDueNotices } from '../services/notices.js';
 import { outreachView } from '../services/sourcing.js';
@@ -196,6 +196,7 @@ export async function actionRoutes(app: FastifyInstance) {
     );
 
     return {
+      assignmentId: found.assignment.id,
       programName: detail?.program.name ?? '',
       editionName: detail?.name ?? '',
       colour: detail?.program.colour ?? '#2F5BFF',
@@ -267,6 +268,10 @@ export async function actionRoutes(app: FastifyInstance) {
     await repo.respondToAssignment(found.assignment.id, input.rsvpState, slotIndex, input.note ?? '');
     reply.code(200);
     const after = await repo.findAssignmentById(found.assignment.id);
+    /* Confirmée, ou à une autre heure : la lettre de confirmation part, avec l'invitation pour l'agenda. */
+    const changed =
+      found.assignment.rsvpState !== 'confirmed' || (after?.slotIndex ?? null) !== found.assignment.slotIndex;
+    if (input.rsvpState === 'confirmed' && changed) await confirmSeat(found.block.id, found.candidate.id);
     return { rsvpState: input.rsvpState, slotIndex: after?.slotIndex ?? null };
   });
 

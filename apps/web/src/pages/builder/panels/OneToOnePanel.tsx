@@ -7,6 +7,8 @@
  */
 import {
   ONE_TO_ONE_PERSON_VARIABLES,
+  ONE_TO_ONE_CONFIRM_VARIABLES,
+  ONE_TO_ONE_PERSON_CONFIRM_VARIABLES,
   ONE_TO_ONE_STARTUP_VARIABLES,
   RSVP_MODES,
   daySlots,
@@ -152,6 +154,39 @@ export function OneToOneSetup({
           variables={ONE_TO_ONE_PERSON_VARIABLES}
         />
         <AccessTemplate value={messages.access} onChange={(v) => patch({ messages: { ...messages, access: v } })} />
+
+        {/* La confirmation : part seule, dès que la startup a réservé ou confirmé. */}
+        <h3 className="section-title" style={{ marginTop: 18 }}>Confirmation</h3>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={messages.confirmOn}
+            onChange={(e) => patch({ messages: { ...messages, confirmOn: e.target.checked } })}
+          />
+          <span>When a startup books or confirms its time, confirm it by email — with an invitation to add to their calendar</span>
+        </label>
+        {messages.confirmOn && (
+          <>
+            <Template
+              label="Confirmation to the startup"
+              help="Sent the moment it books, confirms, or moves its time. {{calendrier}} gives the Google Calendar and Outlook links; an invitation.ics file is attached for every other calendar."
+              value={messages.confirm}
+              onChange={(v) => patch({ messages: { ...messages, confirm: v } })}
+              subject={messages.subjects.confirm}
+              onSubject={(v) => patch({ messages: { ...messages, subjects: { ...messages.subjects, confirm: v } } })}
+              variables={ONE_TO_ONE_CONFIRM_VARIABLES}
+            />
+            <Template
+              label="Confirmation to the interlocutor"
+              help="Sent at the same moment to whoever the startup meets, with the same invitation for their calendar."
+              value={messages.confirmPerson}
+              onChange={(v) => patch({ messages: { ...messages, confirmPerson: v } })}
+              subject={messages.subjects.confirmPerson}
+              onSubject={(v) => patch({ messages: { ...messages, subjects: { ...messages.subjects, confirmPerson: v } } })}
+              variables={ONE_TO_ONE_PERSON_CONFIRM_VARIABLES}
+            />
+          </>
+        )}
 
         {/* Les rappels : partent seuls, le matin, une fois chacun. */}
         <h3 className="section-title" style={{ marginTop: 18 }}>Reminders</h3>

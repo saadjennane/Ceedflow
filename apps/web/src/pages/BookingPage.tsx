@@ -3,10 +3,12 @@ import { useParams } from 'react-router-dom';
 import { ApiError, api } from '../lib/api';
 import { formatDate } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
+import { AddToCalendar } from '../ui/AddToCalendar';
 import { Icon } from '../ui/Icon';
 import '../ui/builder.css';
 
 interface BookingPayload {
+  assignmentId: string;
   programName: string;
   editionName: string;
   colour: string;
@@ -133,6 +135,19 @@ export function BookingPage() {
                 {picks && ' Changing your mind? Pick another time below.'}
               </div>
             </div>
+          )}
+          {state === 'confirmed' && data.session.heldOn && (
+            <AddToCalendar
+              event={{
+                uid: `${data.assignmentId}@ceedflow.com`,
+                title: `${data.blockName} — ${data.programName}`,
+                date: data.session.heldOn,
+                start: booked?.startsAt ?? null,
+                minutes: data.session.minutesPerStartup || 30,
+                location: data.session.location,
+                description: [`${data.programName} — ${data.editionName}`, window.location.href].join('\n'),
+              }}
+            />
           )}
           {state === 'declined' && (
             <div className="callout warn">

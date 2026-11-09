@@ -17,3 +17,4 @@ export * from './reporting.js';
 export * from './knowledge.js';
 export * from './meetingNotes.js';
 export * from './funding.js';
+export * from './calendar.js';

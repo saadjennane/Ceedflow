@@ -10,6 +10,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { formatDate } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
+import { AddToCalendar } from '../ui/AddToCalendar';
 import { Icon } from '../ui/Icon';
 import '../ui/builder.css';
 
@@ -200,6 +201,19 @@ export function MeetPage() {
                 {picks && ' Changing your mind? Pick another time below.'}
               </div>
             </div>
+          )}
+          {data.status === 'planned' && data.rsvpState === 'confirmed' && data.heldOn && (
+            <AddToCalendar
+              event={{
+                uid: `${data.id}@ceedflow.com`,
+                title: `${data.blockName} — ${data.personName || data.programName}`,
+                date: data.heldOn,
+                start: data.startTime,
+                minutes: data.durationMinutes,
+                location: data.meetingLink || data.location,
+                description: [`${data.programName} — ${data.editionName}`, window.location.href].join('\n'),
+              }}
+            />
           )}
           {data.rsvpState === 'declined' && (
             <div className="callout warn">

@@ -47,10 +47,13 @@ import {
   missingRequired,
   shownAnswers,
   shownFieldIds,
+  calendarSentence,
+  icsOf,
+  type CalendarEvent,
 } from '@ceed/shared';
 import { accessFor } from './invitations.js';
 import { isTestRecord } from './testIdentity.js';
-import { post } from './mail.js';
+import { post, type Attachment } from './mail.js';
 import { publicOrigin } from './platform.js';
 import { findAccount } from './auth.js';
 import { all, one } from '../db/client.js';
@@ -888,6 +891,8 @@ export async function answerInvitation(token: string, accept: boolean, note = ''
          or ($4::text is not null and series_id = $4 and status = 'planned' and held_on >= current_date)`,
     [found.meeting.id, accept ? 'confirmed' : 'declined', accept ? '' : note.trim().slice(0, 1000), found.meeting.seriesId],
   );
+  /* Oui à l'heure proposée : la confirmation part — une fois, pas à chaque clic. */
+  if (accept && found.meeting.rsvpState !== 'confirmed') await confirmBooking(found.meeting.id);
   return (await invitationFor(token))!.page;
 }
 
@@ -916,7 +921,9 @@ function startupLetter(
   origin: string | null,
   quand: string,
   lieu: string,
-  letter: 'announce' | 'eve' | 'late',
+  letter: 'announce' | 'eve' | 'late' | 'confirm',
+  /** Ce que seule une lettre ajoute — {{calendrier}} pour la confirmation. */
+  more: Record<string, string> = {},
 ): { to: string; subject: string; body: string } | null {
   const to = candidate.email?.trim();
   if (!to) return null;
@@ -950,11 +957,111 @@ function startupLetter(
     /* Le lien seul, pour une phrase écrite à sa façon. */
     lien_preparation: !prepForm(config) ? '' : m.id === 'preview' ? PREP_PLACEHOLDER : origin ? `${origin}/prepare/${m.id}` : '',
   };
+  const template =
+    letter === 'eve'
+      ? { subject: config.reminders.subjects.eveStartup, body: config.reminders.eveStartup }
+      : letter === 'confirm'
+        ? { subject: config.messages.subjects.confirm, body: config.messages.confirm }
+        : { subject: config.messages.subjects.startup, body: config.messages.startup };
+  const filled = { ...values, ...more };
+  return { to, subject: fillTemplate(template.subject, filled), body: fillTemplate(template.body, filled) };
+}
+
+/** Le rendez-vous, tel qu'il entre dans un agenda. */
+function eventOf(m: OneToOneMeeting, title: string, programme: string, link: string): CalendarEvent | null {
+  if (!m.heldOn) return null;
   return {
-    to,
-    subject: fillTemplate(letter === 'eve' ? config.reminders.subjects.eveStartup : config.messages.subjects.startup, values),
-    body: fillTemplate(letter === 'eve' ? config.reminders.eveStartup : config.messages.startup, values),
+    uid: `${m.id}@ceedflow.com`,
+    title,
+    date: m.heldOn,
+    start: m.startTime,
+    minutes: m.durationMinutes,
+    location: m.meetingLink || m.location,
+    description: [programme, m.meetingLink && m.location ? `Lieu : ${m.location}` : '', link].filter(Boolean).join('\n'),
   };
+}
+
+const invitationFile = (event: CalendarEvent): Attachment => ({
+  filename: 'invitation.ics',
+  /* Chaque nouvelle heure passe devant la précédente : l'agenda remplace, il n'ajoute pas. */
+  content: icsOf(event, Math.floor(Date.now() / 1000)),
+  contentType: 'text/calendar; charset=utf-8; method=PUBLISH',
+});
+
+/**
+ * La confirmation, dès que la startup a réservé ou confirmé son heure : à
+ * elle, et à chacun de ceux qui la reçoivent — l'heure redite, et de quoi la
+ * mettre dans son agenda. Jamais une raison de faire échouer la réservation.
+ */
+export async function confirmBooking(id: string): Promise<{ startup: boolean; people: number }> {
+  const out = { startup: false, people: 0 };
+  try {
+    const m = await getMeeting(id);
+    if (!m || !m.heldOn || m.status !== 'planned' || m.rsvpState !== 'confirmed') return out;
+    const ctx = await repo.blockContext(m.blockId);
+    const detail = ctx ? await repo.getEditionDetail(ctx.editionId) : null;
+    const config = ctx?.block.config as OneToOneConfig | undefined;
+    if (!ctx || !detail || !config || !config.messages.confirmOn) return out;
+    const origin = await publicOrigin();
+    const programme = `${detail.program.name} — ${detail.name}`;
+    const { quand, lieu } = sentencesOf(m);
+
+    const candidate = await repo.getCandidate(m.candidateId);
+    const startupEvent = eventOf(m, `${ctx.block.name} — ${meetingWith(m) || detail.program.name}`, programme, origin ? `${origin}/meet/${m.token}` : '');
+    const written =
+      candidate && startupEvent
+        ? startupLetter(m, candidate, config, programme, origin, quand, lieu, 'confirm', { calendrier: calendarSentence(startupEvent) })
+        : null;
+    if (candidate && written && startupEvent) {
+      out.startup = Boolean(
+        await post({
+          kind: 'one_to_one_confirm',
+          to: written.to,
+          toName: candidate.contactName,
+          recordId: candidate.personId,
+          blockId: m.blockId,
+          candidateId: m.candidateId,
+          subject: written.subject,
+          body: written.body,
+          attachments: [invitationFile(startupEvent)],
+        }),
+      );
+    }
+
+    for (const personId of peopleOf(m)) {
+      const person = await dir.getRecord(personId);
+      const to = person?.email?.trim();
+      const link = origin ? `${origin}/meeting/${m.id}` : '';
+      const event = eventOf(m, `${ctx.block.name} — ${m.orgName}`, programme, link);
+      if (!person || !to || !event) continue;
+      const values = {
+        prenom: firstNameOf(person.name, person.firstName),
+        startup: m.orgName,
+        programme,
+        quand,
+        lieu,
+        visio: m.meetingLink ? `Lien de la réunion : ${m.meetingLink}` : '',
+        lien: link,
+        acces: '',
+        calendrier: calendarSentence(event),
+      };
+      const posted = await post({
+        kind: 'one_to_one_confirm_person',
+        to,
+        toName: person.name,
+        recordId: personId,
+        blockId: m.blockId,
+        candidateId: m.candidateId,
+        subject: fillTemplate(config.messages.subjects.confirmPerson, values),
+        body: fillTemplate(config.messages.confirmPerson, values),
+        attachments: [invitationFile(event)],
+      });
+      if (posted) out.people += 1;
+    }
+  } catch {
+    /* La réservation est faite ; une lettre qui ne part pas ne la défait pas. */
+  }
+  return out;
 }
 
 /** Un lien d'une lettre, vérifié : où il mène, et s'il y mène vraiment pour elle. */
@@ -1415,6 +1522,8 @@ export async function bookSlot(token: string, cell: { dayId: string; startTime: 
     [found.meeting.id, pick.onDate, pick.startTime, pick.personId, pick.dayId, theDay?.minutesPerMeeting ?? found.meeting.durationMinutes,
       theDay?.location ?? '', together && theDay ? theDay.interlocutors : [], theDay ? linkForSlot(theDay, pick.startTime) : ''],
   );
+  /* Une case prise — ou une autre à la place de la première : la confirmation dit la nouvelle heure. */
+  await confirmBooking(found.meeting.id);
   return (await invitationFor(token))!.page;
 }
 

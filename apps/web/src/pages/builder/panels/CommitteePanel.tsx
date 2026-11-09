@@ -1,6 +1,7 @@
 import {
   COMMITTEE_JURY_VARIABLES,
   COMMITTEE_STARTUP_VARIABLES,
+  COMMITTEE_CONFIRM_VARIABLES,
   blockMissing,
   blockStatus,
   windowMinutes,
@@ -959,6 +960,33 @@ function MessagesTab({
           variables={COMMITTEE_STARTUP_VARIABLES}
           example={{ panel: 'Séance 1', lien: where }}
         />
+
+        {/* La confirmation : part seule, dès que la startup a choisi ou confirmé son heure. */}
+        {config.rsvpMode !== 'none' && (
+          <>
+            <h3 className="section-title" style={{ marginTop: 18 }}>Confirmation</h3>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={config.messages.confirmOn}
+                onChange={(e) => patch({ messages: { ...config.messages, confirmOn: e.target.checked } })}
+              />
+              <span>When a startup picks or confirms its time, confirm it by email — with an invitation to add to their calendar</span>
+            </label>
+            {config.messages.confirmOn && (
+              <Template
+                label="Confirmation to the startup"
+                help="Sent the moment it confirms, or picks another time. {{calendrier}} gives the Google Calendar and Outlook links; an invitation.ics file is attached for every other calendar."
+                value={config.messages.confirm}
+                onChange={(v) => set('confirm', v)}
+                subject={config.messages.subjects.confirm}
+                onSubject={(v) => setSubject('confirm', v)}
+                variables={COMMITTEE_CONFIRM_VARIABLES}
+                example={{ panel: 'Séance 1', lien: where }}
+              />
+            )}
+          </>
+        )}
         </>
       )}
 

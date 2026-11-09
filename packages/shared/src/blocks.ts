@@ -993,6 +993,14 @@ export const COMMITTEE_JURY_VARIABLES = [
 ] as const;
 
 /** What a letter to a startup being convened may carry. */
+/** Ce que la lettre de confirmation ajoute : de quoi mettre le rendez-vous dans son agenda. */
+export const CALENDAR_VARIABLE = {
+  name: 'calendrier',
+  label: 'Add to calendar',
+  what: 'The Google Calendar and Outlook links for this time — an invitation.ics file is attached to the letter as well',
+  example: 'Ajoutez ce rendez-vous à votre agenda :\nGoogle Agenda : https://calendar.google.com/…\nOutlook : https://outlook.office.com/…\nOu ouvrez le fichier invitation.ics joint (Apple Calendar, Outlook…).',
+} as const;
+
 export const COMMITTEE_STARTUP_VARIABLES = [
   { name: 'phase', label: 'Step name', what: 'The name of this block, as you named it', example: 'Jury Day' },
   { name: 'acces', label: 'First login (email + password)', what: 'The password somebody with no account yet needs — empty for everybody who already signs in', example: accessBlock('prenom@startup-exemple.ma', '••••-••••-••••') },
@@ -1007,6 +1015,8 @@ export const COMMITTEE_STARTUP_VARIABLES = [
   { name: 'reponse', label: 'Slot-picking / RSVP link', what: 'Their own link to pick a time or to confirm — empty when nothing is asked', example: 'https://www.ceedflow.com/book/…', byMode: [{ mode: 'Slot picking', text: 'https://www.ceedflow.com/book/… — la page où elle choisit son heure' }, { mode: 'RSVP', text: 'https://www.ceedflow.com/book/… — la page où elle confirme ou refuse' }, { mode: 'No RSVP', text: '(vide)' }] },
   { name: 'lien', label: 'Link to their space', what: 'Their own space on this platform', example: 'https://www.ceedflow.com/me?tab=Programs' },
 ] as const;
+
+export const COMMITTEE_CONFIRM_VARIABLES = [...COMMITTEE_STARTUP_VARIABLES, CALENDAR_VARIABLE] as const;
 
 const COMMITTEE_JURY = `Bonjour {{jure}},
 
@@ -1073,6 +1083,25 @@ export function inviteLetterGap(mode: RsvpMode, text: string, linkVariables: rea
     : `The startups confirm or decline from their own link — add ${linkVariables.map((v) => `{{${v}}}`).join(' or ')} so the letter carries it.`;
 }
 
+/**
+ * La confirmation, dès que la startup a choisi ou confirmé son heure : l'heure
+ * redite, et de quoi la mettre dans son agenda.
+ */
+export const SUBJECT_COMMITTEE_CONFIRM = 'Confirmé : {{phase}}, le {{date}}{{heure}}';
+export const COMMITTEE_CONFIRM = `Bonjour {{prenom}},
+
+C'est noté, merci d'avoir confirmé.
+
+{{quand}}
+
+{{calendrier}}
+
+Pour changer d'heure ou nous prévenir d'un empêchement : {{reponse}}
+
+À très bientôt,
+
+L'équipe CEED`;
+
 export const committeeConfigSchema = z.preprocess(
   (value) => {
     // `rsvpDeadline` was the booking page's only date before it had a window of
@@ -1107,11 +1136,15 @@ export const committeeConfigSchema = z.preprocess(
       .object({
         jury: z.string().default(COMMITTEE_JURY),
         startup: z.string().default(COMMITTEE_STARTUP),
-        /** Ce que chacune de ces deux lettres porte en objet. */
+        /** Sent by itself the moment a startup picks or confirms its time. */
+        confirmOn: z.boolean().default(true),
+        confirm: z.string().default(COMMITTEE_CONFIRM),
+        /** Ce que chacune de ces lettres porte en objet. */
         subjects: z
           .object({
             jury: z.string().default(SUBJECT_COMMITTEE_JURY),
             startup: z.string().default(SUBJECT_COMMITTEE_STARTUP),
+            confirm: z.string().default(SUBJECT_COMMITTEE_CONFIRM),
           })
           .default({}),
         /**
@@ -1693,6 +1726,9 @@ export const ONE_TO_ONE_STARTUP_VARIABLES = [
   { name: 'lien_preparation', label: 'Preparation link', what: 'The link alone to prepare the session in its member space, signed in — for a sentence of your own. Empty when the brick asks for no preparation', example: 'https://www.ceedflow.com/prepare/…' },
 ] as const;
 
+
+export const ONE_TO_ONE_CONFIRM_VARIABLES = [...ONE_TO_ONE_STARTUP_VARIABLES, CALENDAR_VARIABLE] as const;
+
 export const ONE_TO_ONE_PERSON_VARIABLES = [
   { name: 'prenom', label: 'First name', what: 'The interlocutor’s first name', example: 'Prénom' },
   { name: 'startup', label: 'Startup', what: 'The startup they meet', example: 'Startup Exemple' },
@@ -1703,6 +1739,42 @@ export const ONE_TO_ONE_PERSON_VARIABLES = [
   { name: 'lien', label: 'Meeting & report link', what: 'Where they open the meeting and write the report', example: 'https://www.ceedflow.com/meeting/…' },
   { name: 'acces', label: 'First login (email + password)', what: 'The password somebody with no account yet needs — empty for everybody else', example: '' },
 ] as const;
+
+export const ONE_TO_ONE_PERSON_CONFIRM_VARIABLES = [...ONE_TO_ONE_PERSON_VARIABLES, CALENDAR_VARIABLE] as const;
+
+/** La confirmation, dès que la startup a réservé ou confirmé : à elle, et à qui la reçoit. */
+export const ONE_TO_ONE_CONFIRM_SUBJECT = 'Confirmé : votre rendez-vous avec {{interlocuteur}}';
+export const ONE_TO_ONE_CONFIRM = `Bonjour {{prenom}},
+
+C'est noté : {{startup}} a rendez-vous avec {{interlocuteur}}, dans le cadre de {{programme}}.
+
+{{quand}}
+
+{{lieu}}
+
+{{visio}}
+
+{{calendrier}}
+
+{{preparation}}
+
+Pour changer d'heure : {{lien}}
+
+À bientôt.`;
+export const ONE_TO_ONE_PERSON_CONFIRM_SUBJECT = '{{startup}} a réservé son rendez-vous';
+export const ONE_TO_ONE_PERSON_CONFIRM = `Bonjour {{prenom}},
+
+{{startup}} a choisi son rendez-vous avec vous, dans le cadre de {{programme}}.
+
+{{quand}}
+
+{{lieu}}
+
+{{visio}}
+
+{{calendrier}}
+
+La startup, sa préparation et le compte rendu : {{lien}}`;
 
 export const ONE_TO_ONE_STARTUP_SUBJECT = 'Un rendez-vous avec {{interlocuteur}} — {{programme}}';
 export const ONE_TO_ONE_STARTUP_DEFAULT = `Bonjour {{prenom}},
@@ -1835,10 +1907,16 @@ export const oneToOneConfigSchema = z.object({
     .object({
       startup: z.string().default(ONE_TO_ONE_STARTUP_DEFAULT),
       person: z.string().default(ONE_TO_ONE_PERSON_DEFAULT),
+      /** Sent by itself the moment a startup books or confirms: to it, and to whoever it meets. */
+      confirmOn: z.boolean().default(true),
+      confirm: z.string().default(ONE_TO_ONE_CONFIRM),
+      confirmPerson: z.string().default(ONE_TO_ONE_PERSON_CONFIRM),
       subjects: z
         .object({
           startup: z.string().default(ONE_TO_ONE_STARTUP_SUBJECT),
           person: z.string().default(ONE_TO_ONE_PERSON_SUBJECT),
+          confirm: z.string().default(ONE_TO_ONE_CONFIRM_SUBJECT),
+          confirmPerson: z.string().default(ONE_TO_ONE_PERSON_CONFIRM_SUBJECT),
         })
         .default({}),
       access: z.string().default(ACCESS_DEFAULT),

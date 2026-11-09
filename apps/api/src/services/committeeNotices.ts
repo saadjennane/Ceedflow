@@ -15,7 +15,9 @@ import {
   ACCESS_SAMPLE,
   COMMITTEE_JURY_VARIABLES,
   COMMITTEE_STARTUP_VARIABLES,
+  calendarSentence,
   fillTemplate,
+  icsOf,
   firstNameOf,
   longDate,
   type CommitteeConfig,
@@ -26,7 +28,7 @@ import { committeeView, type SessionView } from './committee.js';
 import { appLink } from './deliverables.js';
 import { publicOrigin } from './platform.js';
 import { accessFor, wouldAccess } from './invitations.js';
-import { suppressedAmong } from './mail.js';
+import { post, suppressedAmong } from './mail.js';
 import type { Gate, NoticeSource, NoticeTargetRow } from './notices.js';
 
 export const COMMITTEE_KINDS = { jury: 'committee_jury', startup: 'committee_startup' } as const;
@@ -294,3 +296,56 @@ export const committeeNotices: NoticeSource = {
     };
   },
 };
+
+/**
+ * La confirmation, dès qu'une startup a choisi ou confirmé son passage : son
+ * heure redite, et de quoi la mettre dans son agenda. Jamais une raison de
+ * faire échouer la réponse qu'elle vient de donner.
+ */
+export async function confirmSeat(blockId: string, candidateId: string): Promise<boolean> {
+  try {
+    const view = await everyone(blockId);
+    if (!view || !letters(view).confirmOn) return false;
+    const sitting = sittingOf(view.sessions, (s) => s.assignments.some((a) => a.candidate.id === candidateId));
+    if (!sitting?.session.heldOn) return false;
+    const seat = sitting.assignments.find((a) => a.candidate.id === candidateId)!;
+    if (seat.assignment.rsvpState !== 'confirmed' || !seat.candidate.email) return false;
+    const values = await committeeValues(blockId, COMMITTEE_KINDS.startup, candidateId);
+    if (!values) return false;
+    /* Sans heure donnée, le jour entier : il entre quand même dans l'agenda. */
+    const slot = seat.slot ?? null;
+    const context = await repo.blockContext(blockId);
+    const detail = context ? await repo.getEditionDetail(context.editionId) : null;
+    const event = {
+      uid: `${seat.assignment.id}@ceedflow.com`,
+      title: `${view.block.name} — ${detail?.program.name ?? 'CEED'}`,
+      date: sitting.session.heldOn,
+      start: slot?.startsAt ?? null,
+      minutes: sitting.session.minutesPerStartup || 30,
+      location: sitting.session.location,
+      description: [detail ? `${detail.program.name} — ${detail.name}` : '', values.reponse].filter(Boolean).join('\n'),
+    };
+    const filled = { ...values, calendrier: calendarSentence(event) };
+    const config = letters(view);
+    const posted = await post({
+      kind: 'committee_confirm',
+      to: seat.candidate.email,
+      toName: seat.candidate.contactName,
+      recordId: seat.candidate.personId,
+      blockId,
+      candidateId,
+      subject: fillTemplate(config.subjects.confirm, filled),
+      body: fillTemplate(config.confirm, filled),
+      attachments: [
+        {
+          filename: 'invitation.ics',
+          content: icsOf(event, Math.floor(Date.now() / 1000)),
+          contentType: 'text/calendar; charset=utf-8; method=PUBLISH',
+        },
+      ],
+    });
+    return Boolean(posted);
+  } catch {
+    return false;
+  }
+}
