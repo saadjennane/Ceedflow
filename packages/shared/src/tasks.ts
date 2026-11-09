@@ -91,6 +91,8 @@ export const taskSchema = z.object({
   /** L'édition et le programme, directement ou par la candidature de la startup. */
   inEditionId: z.string().nullable().default(null),
   programId: z.string().nullable().default(null),
+  /** La couleur du programme, pour l'étiquette d'une carte. */
+  programColour: z.string().nullable().default(null),
   subjectName: z.string().default(''),
   stuckReason: z.string().default(''),
   unblocker: z.object({ id: z.string(), name: z.string() }).nullable().default(null),

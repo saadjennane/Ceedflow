@@ -21,6 +21,7 @@ const COLS = `
          coalesce(p.name || ' · ' || e.name, cp.name || ' · ' || ce.name, '') as "editionName",
          coalesce(t.edition_id, c.edition_id) as "inEditionId",
          coalesce(e.program_id, ce.program_id) as "programId",
+         coalesce(p.colour, cp.colour) as "programColour",
          coalesce(r.name, co.name, '') as "subjectName",
          coalesce((select json_agg(json_build_object('id', ow.id, 'name', ow.name) order by tw.added_at, ow.name)
                      from task_owners tw join records ow on ow.id = tw.record_id where tw.task_id = t.id), '[]'::json) as owners,

@@ -60,6 +60,22 @@ export function TasksPage() {
   const waitingForMe = useAsync(() => api.get<Task[]>('/api/tasks/waiting'), `tasks-waiting:${tasks.data?.length ?? 0}`);
   const toast = useToast();
 
+  const [byOwner, setByOwner] = useState(() => {
+    try {
+      return localStorage.getItem('ceed.taskByOwner') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const setByOwnerMode = (next: boolean) => {
+    setByOwner(next);
+    try {
+      localStorage.setItem('ceed.taskByOwner', next ? '1' : '0');
+    } catch {
+      /* rien à retenir, tant pis */
+    }
+  };
+
   const setViewMode = (next: View) => {
     setView(next);
     try {
@@ -188,11 +204,27 @@ export function TasksPage() {
       <div className="page stack" style={{ gap: 14 }}>
         <div className="row wrap">
           <SearchBox value={query} onChange={setQuery} placeholder="Search a task, a name" />
-          <select className="select" style={{ width: 'auto' }} value={ownerFilter} onChange={(e) => setFilter('owner', e.target.value)} aria-label="Owner">
-            <option value="">Every owner</option>
-            <option value="me">Mine</option>
-            {(options.data?.members ?? []).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
+          {/* Les owners en pastilles : on voit l'équipe, un clic filtre, un second rend tout. */}
+          <div className="row owner-pills" role="group" aria-label="Owner">
+            <button className={!ownerFilter ? 'owner-pill all on' : 'owner-pill all'} aria-pressed={!ownerFilter} onClick={() => setFilter('owner', '')}>
+              All
+            </button>
+            {(options.data?.members ?? []).map((m) => {
+              const on = ownerId === m.id;
+              return (
+                <button
+                  key={m.id}
+                  className={on ? 'owner-pill on' : 'owner-pill'}
+                  aria-pressed={on}
+                  aria-label={m.id === meId ? `${m.name} (me)` : m.name}
+                  title={m.id === meId ? `${m.name} (me)` : m.name}
+                  onClick={() => setFilter('owner', on ? '' : m.id)}
+                >
+                  <Avatar person={m} size={30} />
+                </button>
+              );
+            })}
+          </div>
           <select className="select" style={{ width: 'auto', maxWidth: 260 }} value={programFilter} onChange={(e) => setFilter('program', e.target.value)} aria-label="Programme">
             <option value="">Every programme</option>
             {(programs.data ?? []).map((p) => (
@@ -206,6 +238,12 @@ export function TasksPage() {
             {rows.filter((t) => isOpen(t)).length} open
           </span>
           <div className="spacer" />
+          {view === 'board' && (
+            <label className="check">
+              <input type="checkbox" checked={byOwner} onChange={(e) => setByOwnerMode(e.target.checked)} />
+              <span>Group by owner</span>
+            </label>
+          )}
           {/* Le tableau a sa colonne Done : la case n'y aurait rien à cacher. */}
           {view === 'list' && (
             <label className="check">
@@ -214,6 +252,8 @@ export function TasksPage() {
             </label>
           )}
         </div>
+
+        {all.length > 0 && <TaskStats tasks={rows} meId={meId} />}
 
         {waitingForMe.data && waitingForMe.data.length > 0 && (
           <section className="card card-pad stack" style={{ gap: 6, borderColor: 'var(--warn)' }}>
@@ -240,7 +280,21 @@ export function TasksPage() {
           </div>
         )}
 
-        {view === 'board' && all.length > 0 && <Board tasks={rows} onMove={move} onOpen={(t) => setOpenId(t.id)} />}
+        {view === 'board' && all.length > 0 && !byOwner && <Board tasks={rows} onMove={move} onOpen={(t) => setOpenId(t.id)} />}
+        {/* Par owner : une rangée chacun, ses tâches dans les mêmes colonnes. Une tâche partagée est dans chaque rangée. */}
+        {view === 'board' && all.length > 0 && byOwner &&
+          owners(rows).map((o) => (
+            <section key={o.id} className="stack" style={{ gap: 8 }}>
+              <div className="row" style={{ gap: 8 }}>
+                <Avatar person={o} size={28} />
+                <strong style={{ fontFamily: 'var(--display)', fontSize: 14 }}>{o.name}</strong>
+                <span className="faint num" style={{ fontSize: 12.5 }}>
+                  {rows.filter((t) => isOpen(t) && t.owners.some((x) => x.id === o.id)).length} open
+                </span>
+              </div>
+              <Board tasks={rows.filter((t) => t.owners.some((x) => x.id === o.id))} onMove={move} onOpen={(t) => setOpenId(t.id)} />
+            </section>
+          ))}
 
         {view === 'list' && late.length > 0 && (
           <section className="card">
@@ -295,6 +349,10 @@ export function TasksPage() {
   );
 }
 
+/** Les owners des tâches montrées, chacun une fois, dans l'ordre alphabétique. */
+const owners = (tasks: Task[]) =>
+  [...new Map(tasks.flatMap((t) => t.owners).map((o) => [o.id, o])).values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+
 /** Une tâche, telle qu'on la lit dans une liste. */
 export function Row({ task, onTick, onOpen }: { task: Task; onTick: () => void; onOpen?: () => void }) {
   const done = task.state === 'done';
@@ -312,6 +370,8 @@ export function Row({ task, onTick, onOpen }: { task: Task; onTick: () => void; 
           <button
             className="task-title"
             style={{ textDecoration: done ? 'line-through' : undefined }}
+            /* La description ne charge pas la liste : elle s'ouvre avec la tâche, et se lit au survol. */
+            title={task.detail ? task.detail.slice(0, 600) : undefined}
             onClick={onOpen}
           >
             {task.title}
@@ -333,7 +393,6 @@ export function Row({ task, onTick, onOpen }: { task: Task; onTick: () => void; 
             taskPeople(task),
             task.editionName ? `· ${task.editionName}` : null,
             task.subjectName ? `· ${task.subjectName}` : task.aboutName && !task.editionName ? `· ${task.aboutName}` : null,
-            task.detail || null,
           ]
             .filter(Boolean)
             .join(' ')}
@@ -395,6 +454,9 @@ function Board({
 }) {
   const [dragged, setDragged] = useState<string | null>(null);
   const [over, setOver] = useState<TaskState | null>(null);
+  /* Une longue colonne se replie : les premières cartes, puis « + N more ». */
+  const [unfolded, setUnfolded] = useState<Set<TaskState>>(new Set());
+  const total = tasks.length || 1;
 
   const drop = (state: TaskState) => (e: DragEvent) => {
     e.preventDefault();
@@ -414,6 +476,16 @@ function Board({
             ? (a, b) => (b.doneAt ?? '').localeCompare(a.doneAt ?? '')
             : (a, b) => Number(isLate(b)) - Number(isLate(a)) || byUrgency(a, b),
         );
+        const cap = col.state === 'done' ? 4 : 8;
+        const open = unfolded.has(col.state);
+        const shown = open ? cards : cards.slice(0, cap);
+        const toggle = () =>
+          setUnfolded((u) => {
+            const next = new Set(u);
+            if (next.has(col.state)) next.delete(col.state);
+            else next.add(col.state);
+            return next;
+          });
         return (
           <section
             key={col.state}
@@ -429,11 +501,18 @@ function Board({
             onDrop={drop(col.state)}
           >
             <header className="task-col-head">
-              <strong>{col.label}</strong>
-              <span className="badge num">{cards.length}</span>
+              <div className="row" style={{ gap: 8 }}>
+                <span className="task-col-dot" aria-hidden="true" />
+                <strong>{col.label}</strong>
+                <span className="task-col-count num">{cards.length}</span>
+              </div>
+              {/* Sa part du tout : où s'entasse le travail, d'un coup d'œil. */}
+              <div className="task-col-bar" aria-hidden="true">
+                <span style={{ width: `${cards.length ? Math.max(4, Math.round((cards.length / total) * 100)) : 0}%` }} />
+              </div>
             </header>
             <div className="task-col-cards">
-              {cards.map((task) => (
+              {shown.map((task) => (
                 <Card
                   key={task.id}
                   task={task}
@@ -453,6 +532,11 @@ function Board({
                   onOpen={() => onOpen(task)}
                 />
               ))}
+              {cards.length > cap && (
+                <button className="task-col-more" onClick={toggle}>
+                  {open ? 'Show less' : `+ ${cards.length - cap} more`}
+                </button>
+              )}
               {!cards.length && <div className="task-col-empty faint">Nothing here</div>}
             </div>
           </section>
@@ -462,7 +546,25 @@ function Board({
   );
 }
 
-/** Une tâche, telle qu'on la lit sur un tableau. */
+/** Des initiales sur une pastille, d'une couleur qui reste la même pour la même personne. */
+const AVATAR_TINTS = ['#8fb0ff', '#ffc48a', '#7fe0bd', '#d8b4ff', '#ffd36e', '#9fe3f0', '#ffaec9', '#c3d98a'];
+export function Avatar({ person, size = 26 }: { person: { id: string; name: string }; size?: number }) {
+  const words = person.name.trim().split(/\s+/);
+  const initials = ((words[0]?.[0] ?? '') + (words.length > 1 ? (words[words.length - 1]?.[0] ?? '') : '')).toUpperCase();
+  let h = 0;
+  for (const ch of person.id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return (
+    <span
+      className="avatar"
+      title={person.name}
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.4), background: AVATAR_TINTS[h % AVATAR_TINTS.length] }}
+    >
+      {initials || '?'}
+    </span>
+  );
+}
+
+/** Une tâche, telle qu'on la lit sur un tableau : son programme, ce qui presse, qui la porte, ce qu'elle attend. */
 function Card({
   task, dragging, onDragStart, onDragEnd, prev, next, onMove, onOpen,
 }: {
@@ -476,30 +578,52 @@ function Card({
   onOpen: () => void;
 }) {
   const done = task.state === 'done';
+  const late = isLate(task);
+  const steps = progress(task);
+  const programme = task.editionName ? task.editionName.split(' · ')[0] : '';
   return (
     <article
-      className={`task-card${dragging ? ' dragging' : ''}`}
+      className={`task-card${dragging ? ' dragging' : ''}${done ? ' done' : ''}`}
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
     >
-      <button className="task-title" style={{ textDecoration: done ? 'line-through' : undefined }} onClick={onOpen}>
+      {(programme || task.priority !== 'medium') && (
+        <div className="row wrap" style={{ gap: 6 }}>
+          {programme && (
+            <span className="task-tag" title={task.editionName}>
+              <span className="task-tag-dot" style={{ background: task.programColour || 'var(--blue)' }} />
+              {programme}
+            </span>
+          )}
+          {task.priority === 'high' && <span className="task-prio high">High</span>}
+          {task.priority === 'low' && <span className="task-prio">Low</span>}
+        </div>
+      )}
+      <button className="task-title task-card-title" onClick={onOpen} title={task.detail ? task.detail.slice(0, 600) : undefined}>
         {task.title}
       </button>
-      <span className="faint" style={{ fontSize: 12 }}>
-        {[taskPeople(task), task.subjectName || task.editionName ? `· ${task.subjectName || task.editionName}` : null]
-          .filter(Boolean)
-          .join(' ')}
-      </span>
-      {task.state === 'stuck' && task.unblocker && (
-        <span style={{ fontSize: 12, color: 'var(--stop)' }} title={task.stuckReason}>
-          <Icon name="alert" size={11} /> To unblock: <strong>{task.unblocker.name}</strong>
+      {(task.subjectName || task.delegate) && (
+        <span className="faint task-card-sub">
+          <Icon name="file" size={11} /> {[task.subjectName, task.delegate ? `with ${task.delegate.name}` : ''].filter(Boolean).join(' · ')}
         </span>
       )}
+      {steps.total > 0 && (
+        <div className="task-steps" title={`${steps.done} of ${steps.total} lines ticked`}>
+          <div className="task-steps-bar"><span style={{ width: `${Math.round((steps.done / steps.total) * 100)}%` }} /></div>
+          <span className="num">{steps.done}/{steps.total}</span>
+        </div>
+      )}
+      {task.state === 'stuck' && (
+        <div className="task-note stuck">
+          <strong>{task.unblocker ? `Waiting on ${task.unblocker.name}` : 'Stuck'}</strong>
+          {task.stuckReason && <span>{task.stuckReason}</span>}
+        </div>
+      )}
       {task.state === 'to_validate' && task.validator && (
-        <span style={{ fontSize: 12, color: 'var(--warn)' }} title={task.validationNote}>
-          To validate by: <strong>{task.validator.name}</strong>
-        </span>
+        <div className="task-note validate">
+          To validate by <strong>{task.validator.name}</strong>
+        </div>
       )}
       {done && task.doneByName && (
         <span className="faint" style={{ fontSize: 11.5 }}>
@@ -507,16 +631,23 @@ function Card({
           {task.doneAt ? ` · ${formatDate(task.doneAt)}` : ''}
         </span>
       )}
-      <div className="row" style={{ gap: 4, marginTop: 2 }}>
-        {task.priority === 'high' && <span className="badge stop">High</span>}
-        {task.priority === 'low' && <span className="badge">Low</span>}
-        <Progress task={task} bare />
-        {task.dueOn && (
-          <span className={isLate(task) ? 'badge warn' : 'badge'} style={{ whiteSpace: 'nowrap' }}>
-            {formatDate(task.dueOn)}
+      <div className="row task-card-foot">
+        <div className="avatar-stack">
+          {task.owners.map((o) => <Avatar key={o.id} person={o} />)}
+        </div>
+        <div className="spacer" />
+        {task.attachments > 0 && (
+          <span className="faint" style={{ fontSize: 11.5 }} title="Attachments">
+            <Icon name="file" size={11} /> {task.attachments}
           </span>
         )}
-        <div className="spacer" />
+        {task.dueOn && (
+          <span className={`task-due${late ? ' late' : done ? ' done' : ''}`}>
+            <Icon name="calendar" size={11} /> {formatDate(task.dueOn)}
+          </span>
+        )}
+      </div>
+      <div className="row task-card-tools">
         {task.editionId && (
           <Link className="btn ghost sm" to={`/editions/${task.editionId}`} aria-label="Open the edition">
             <Icon name="layers" size={13} />
@@ -527,6 +658,7 @@ function Card({
             <Icon name="chevronRight" size={13} />
           </Link>
         )}
+        <div className="spacer" />
         {prev && (
           <button className="btn ghost sm" onClick={() => onMove(prev.state)} title={`Move to ${prev.label}`} aria-label={`Move to ${prev.label}`}>
             <Icon name="chevronLeft" size={13} />
@@ -539,6 +671,38 @@ function Card({
         )}
       </div>
     </article>
+  );
+}
+
+/** Les chiffres du moment, sur ce qui est filtré : ce qui est ouvert, en retard, bloqué, à valider, à rendre cette semaine. */
+function TaskStats({ tasks, meId }: { tasks: Task[]; meId: string }) {
+  const open = tasks.filter((t) => isOpen(t));
+  const today = new Date();
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const sunday = new Date(today);
+  sunday.setDate(today.getDate() + ((7 - today.getDay()) % 7));
+  const stuck = open.filter((t) => t.state === 'stuck');
+  const toValidate = open.filter((t) => t.state === 'to_validate');
+  const programmes = new Set(open.map((t) => t.programId).filter(Boolean)).size;
+  const stats = [
+    { key: 'open', label: 'Open', value: open.length, hint: programmes ? `across ${programmes} programme${programmes === 1 ? '' : 's'}` : '' },
+    { key: 'late', label: 'Late', value: open.filter((t) => isLate(t)).length, hint: 'past their date' },
+    { key: 'stuck', label: 'Stuck', value: stuck.length, hint: meId ? `${stuck.filter((t) => t.unblocker?.id === meId).length} waiting on you` : '' },
+    { key: 'validate', label: 'To validate', value: toValidate.length, hint: meId ? `${toValidate.filter((t) => t.validator?.id === meId).length} by you` : '' },
+    { key: 'week', label: 'Due this week', value: open.filter((t) => t.dueOn && t.dueOn >= iso(today) && t.dueOn <= iso(sunday)).length, hint: 'by Sunday' },
+  ];
+  return (
+    <div className="task-stats">
+      {stats.map((s) => (
+        <div key={s.key} className="task-stat" data-kind={s.key}>
+          <span className="task-stat-label">{s.label}</span>
+          <div className="row" style={{ gap: 8, alignItems: 'baseline' }}>
+            <span className="task-stat-value num">{s.value}</span>
+            {s.hint && <span className="faint" style={{ fontSize: 12 }}>{s.hint}</span>}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
