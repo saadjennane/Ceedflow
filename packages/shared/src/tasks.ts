@@ -14,7 +14,7 @@
 import { z } from 'zod';
 import { accessBlock } from './blocks.js';
 
-export const TASK_STATES = ['open', 'doing', 'stuck', 'done', 'dropped'] as const;
+export const TASK_STATES = ['open', 'doing', 'stuck', 'to_validate', 'done', 'dropped'] as const;
 export type TaskState = (typeof TASK_STATES)[number];
 
 /**
@@ -23,7 +23,7 @@ export type TaskState = (typeof TASK_STATES)[number];
  * « En cours » et « bloquée » ne sont pas « faite » : elles comptent dans ce
  * qui est ouvert, et une échéance passée les met en retard comme les autres.
  */
-export const OPEN_TASK_STATES = ['open', 'doing', 'stuck'] as const satisfies readonly TaskState[];
+export const OPEN_TASK_STATES = ['open', 'doing', 'stuck', 'to_validate'] as const satisfies readonly TaskState[];
 export const isOpen = (task: Pick<Task, 'state'>): boolean =>
   (OPEN_TASK_STATES as readonly string[]).includes(task.state);
 
@@ -32,6 +32,7 @@ export const BOARD_COLUMNS: { state: TaskState; label: string }[] = [
   { state: 'open', label: 'To do' },
   { state: 'doing', label: 'In progress' },
   { state: 'stuck', label: 'Stuck' },
+  { state: 'to_validate', label: 'To validate' },
   { state: 'done', label: 'Done' },
 ];
 
@@ -73,7 +74,7 @@ export const taskSchema = z.object({
   dueOn: z.string().nullable().default(null),
   state: z.enum(TASK_STATES).default('open'),
   priority: z.enum(TASK_PRIORITIES).default('medium'),
-  /** La fiche qui doit s'en occuper : une personne, ou une organisation. */
+  /** L'owner principal — toujours quelqu'un de l'équipe CEED. */
   ownerId: z.string(),
   ownerName: z.string().default(''),
   ownerKind: z.enum(['person', 'org']).default('person'),
@@ -81,6 +82,18 @@ export const taskSchema = z.object({
   editionId: z.string().nullable().default(null),
   blockId: z.string().nullable().default(null),
   candidateId: z.string().nullable().default(null),
+  /** Tous les owners, de l'équipe CEED : une tâche partagée, terminée une fois pour tous. */
+  owners: z.array(z.object({ id: z.string(), name: z.string() })).default([]),
+  /** À qui la tâche est confiée hors de l'équipe : un mentor, une startup, une organisation. */
+  delegate: z.object({ id: z.string(), name: z.string(), kind: z.enum(['person', 'org']) }).nullable().default(null),
+  /** Le programme, à côté du sujet (startup, personne, organisation). */
+  editionName: z.string().default(''),
+  subjectName: z.string().default(''),
+  stuckReason: z.string().default(''),
+  unblocker: z.object({ id: z.string(), name: z.string() }).nullable().default(null),
+  validator: z.object({ id: z.string(), name: z.string() }).nullable().default(null),
+  validationNote: z.string().default(''),
+  attachments: z.number().int().default(0),
   /** De quoi l'écrire en une ligne sans aller chercher ailleurs. */
   aboutName: z.string().default(''),
   /** Le genre de la fiche liée, quand c'est une fiche : une personne ou une organisation. */
@@ -108,8 +121,10 @@ export const createTaskInput = z.object({
   detail: z.string().default(''),
   dueOn: z.string().nullable().default(null),
   priority: z.enum(TASK_PRIORITIES).default('medium'),
-  /** Un destinataire par tâche. Plusieurs personnes, plusieurs tâches. */
-  ownerIds: z.array(z.string()).min(1, 'Who is it for?'),
+  /** Les owners, de l'équipe CEED — une seule tâche, partagée. */
+  ownerIds: z.array(z.string()).min(1, 'Who owns it?'),
+  /** Confiée à quelqu'un hors de l'équipe : un mentor, une startup, une organisation. */
+  delegateId: z.string().nullable().default(null),
   recordId: z.string().nullable().default(null),
   editionId: z.string().nullable().default(null),
   blockId: z.string().nullable().default(null),
@@ -133,8 +148,12 @@ export const createTaskInput = z.object({
 
 export const taskPatch = z.object({
   state: z.enum(TASK_STATES).optional(),
-  /** Changer ce à quoi la tâche se rapporte — une attache à la fois, ou aucune. */
-  link: z.object({ kind: z.enum(['person', 'org', 'edition', 'candidate']), id: z.string().min(1) }).nullable().optional(),
+  ownerIds: z.array(z.string()).min(1, 'A task keeps at least one owner.').optional(),
+  delegateId: z.string().nullable().optional(),
+  /** Le programme et le sujet, chacun facultatif. */
+  about: z
+    .object({ editionId: z.string().nullable(), subject: z.object({ kind: z.enum(['person', 'org', 'candidate']), id: z.string().min(1) }).nullable() })
+    .optional(),
   priority: z.enum(TASK_PRIORITIES).optional(),
   title: z.string().min(1).optional(),
   detail: z.string().optional(),
@@ -185,7 +204,7 @@ export const byDue = (a: Task, b: Task): number => {
  * tâche n'est d'aucun programme : son courrier est celui de la maison, écrit
  * une fois pour tout l'espace, et ces deux clés sont tout ce qu'il contient.
  */
-export const HOUSE_LETTERS = ['task_given', 'tasks_given', 'task_late'] as const;
+export const HOUSE_LETTERS = ['task_given', 'tasks_given', 'task_late', 'task_stuck', 'task_to_validate'] as const;
 export type HouseLetterKey = (typeof HOUSE_LETTERS)[number];
 
 export const TASK_GIVEN_SUBJECT = 'Une tâche pour vous — {{tache}}';
@@ -294,6 +313,14 @@ export const HOUSE_LETTER_DEFAULTS: Record<HouseLetterKey, { subject: string; bo
   task_given: { subject: TASK_GIVEN_SUBJECT, body: TASK_GIVEN_DEFAULT },
   tasks_given: { subject: TASKS_GIVEN_SUBJECT, body: TASKS_GIVEN_DEFAULT },
   task_late: { subject: TASK_LATE_SUBJECT, body: TASK_LATE_DEFAULT },
+  task_stuck: {
+    subject: 'Une tâche est bloquée — {{tache}}',
+    body: `Bonjour {{prenom}},\n\n{{par}} est bloqué(e) sur une tâche et vous désigne pour la débloquer :\n\n{{tache}}\n\n{{raison}}\n\nVous la retrouvez ici : {{lien}}`,
+  },
+  task_to_validate: {
+    subject: 'À valider — {{tache}}',
+    body: `Bonjour {{prenom}},\n\n{{par}} vous demande de valider une tâche :\n\n{{tache}}\n\n{{raison}}\n\nVous la validez ici : {{lien}}`,
+  },
 };
 
 export const houseLetterSchema = z.object({
@@ -323,3 +350,80 @@ export const LATE_AGAIN_AFTER_DAYS = 7;
 
 /** « 1 tâche », « 3 tâches » — compté et nommé, pour une ligne d'objet. */
 export const howMany = (n: number): string => `${n} tâche${n === 1 ? '' : 's'}`;
+
+/** Bloquée : pourquoi, et qui peut débloquer. */
+export const taskStuckInput = z.object({
+  reason: z.string().trim().min(1, 'Say what blocks it.').max(2000),
+  unblockerId: z.string().min(1, 'Who can unblock it?'),
+  tell: z.boolean().default(true),
+});
+
+/** À valider : un mot éventuel, et qui valide. */
+export const taskSubmitInput = z.object({
+  note: z.string().trim().max(2000).default(''),
+  validatorId: z.string().min(1, 'Who validates it?'),
+  tell: z.boolean().default(true),
+});
+
+/** Le valideur : valider (la tâche est faite) ou renvoyer (elle reprend). */
+export const taskValidateInput = z.object({
+  action: z.enum(['approve', 'send_back']),
+  note: z.string().trim().max(2000).default(''),
+});
+
+export const taskAttachInput = z.object({ uploadId: z.string().min(1) });
+
+/** Ce qui arrive à une tâche, dans l'ordre : qui, quoi, quand. */
+export interface TaskEvent {
+  id: string;
+  kind: string;
+  actorName: string;
+  note: string;
+  meta: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface TaskAttachment {
+  id: string;
+  uploadId: string;
+  filename: string;
+  mime: string;
+  size: number;
+  addedByName: string;
+  createdAt: string;
+}
+
+export const TASK_EVENT_WORD: Record<string, string> = {
+  created: 'Created',
+  owners: 'Owners changed',
+  delegated: 'Entrusted',
+  undelegated: 'No longer entrusted',
+  state: 'Moved',
+  stuck: 'Stuck',
+  submitted: 'Sent for validation',
+  validated: 'Validated',
+  sent_back: 'Sent back',
+  about: 'Link changed',
+  attached: 'File attached',
+  detached: 'File removed',
+  edited: 'Edited',
+  priority: 'Priority changed',
+  due: 'Due date changed',
+};
+
+/** Ce que les lettres « bloquée » et « à valider » peuvent nommer. */
+export const TASK_WAITING_VARIABLES = [
+  { name: 'prenom', label: 'First name', what: 'The first name of the colleague asked', example: 'Prénom' },
+  { name: 'tache', label: 'The task', what: 'Its title', example: 'Préparer le budget' },
+  { name: 'par', label: 'Who asks', what: 'The colleague who asks', example: 'Prénom Nom' },
+  { name: 'raison', label: 'Their words', what: 'What blocks it, or the note for the validator — empty when none', example: 'Il manque les chiffres de 2025.' },
+  { name: 'lien', label: 'Link to the task', what: 'Where they open it', example: 'https://www.ceedflow.com/tasks?task=…' },
+] as const;
+
+/** Qui est sur une tâche, en une ligne : ses owners, et à qui elle est confiée. */
+export const taskPeople = (t: Pick<Task, 'owners' | 'ownerName' | 'delegate'>): string =>
+  [(t.owners?.length ? t.owners.map((o) => o.name).join(', ') : t.ownerName), t.delegate ? `→ ${t.delegate.name}` : ''].filter(Boolean).join(' ');
+
+/** Qui la fait : celui à qui elle est confiée, sinon son owner principal. */
+export const taskDoer = (t: Pick<Task, 'ownerId' | 'ownerName' | 'delegate'>): { id: string; name: string } =>
+  t.delegate ? { id: t.delegate.id, name: t.delegate.name } : { id: t.ownerId, name: t.ownerName };

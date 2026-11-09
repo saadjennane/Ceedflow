@@ -13,7 +13,7 @@
  * pour quand. La liste répond à « qu'est-ce qui presse », le tableau à
  * « qu'est-ce qui coince » — d'où la colonne Stuck.
  */
-import { BOARD_COLUMNS, byUrgency, isLate, isOpen, progress, type MeetingBacklog, type Task, type TaskState } from '@ceed/shared';
+import { BOARD_COLUMNS, byUrgency, isLate, isOpen, progress, taskPeople, type MeetingBacklog, type Task, type TaskState } from '@ceed/shared';
 import { useMemo, useState, type DragEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -56,6 +56,8 @@ export function TasksPage() {
   const waiting = useAsync(() => api.get<MeetingBacklog>('/api/meeting-assistant/backlog'), `backlog-count:${tab}`);
   const me = useAccount().me;
   const [extracting, setExtracting] = useState(false);
+  /* Ce qui m'attend : une tâche à débloquer, ou à valider. */
+  const waitingForMe = useAsync(() => api.get<Task[]>('/api/tasks/waiting'), `tasks-waiting:${tasks.data?.length ?? 0}`);
   const toast = useToast();
 
   const setViewMode = (next: View) => {
@@ -75,7 +77,7 @@ export function TasksPage() {
       .filter(
         (t) =>
           !needle ||
-          [t.title, t.detail, t.ownerName, t.aboutName].join(' ').toLowerCase().includes(needle),
+          [t.title, t.detail, taskPeople(t), t.aboutName].join(' ').toLowerCase().includes(needle),
       );
   }, [all, query, showDone, view]);
 
@@ -96,6 +98,12 @@ export function TasksPage() {
   /* La carte change de colonne tout de suite, et revient si le serveur dit
      non : attendre la réponse pour la voir bouger rend le geste hésitant. */
   const move = async (task: Task, state: TaskState) => {
+    /* Bloquée ou à valider : il faut une raison et une personne — la tâche s'ouvre pour les demander. */
+    if (state === 'stuck' || state === 'to_validate') {
+      setOpenId(task.id);
+      toast(state === 'stuck' ? 'Click “Stuck”: say what blocks it, and who can unblock it.' : 'Click “To validate”: choose who validates it.');
+      return;
+    }
     if (task.state === state) return;
     const before = all;
     tasks.set(all.map((t) => (t.id === task.id ? { ...t, state } : t)));
@@ -174,6 +182,19 @@ export function TasksPage() {
           )}
         </div>
 
+        {waitingForMe.data && waitingForMe.data.length > 0 && (
+          <section className="card card-pad stack" style={{ gap: 6, borderColor: 'var(--warn)' }}>
+            <strong style={{ fontFamily: 'var(--display)', fontSize: 13.5 }}>Waiting for you</strong>
+            {waitingForMe.data.map((t) => (
+              <button key={t.id} className="linkish row" style={{ gap: 8, textAlign: 'left', fontSize: 13 }} onClick={() => setOpenId(t.id)}>
+                <span className={t.state === 'stuck' ? 'badge stop' : 'badge warn'}>{t.state === 'stuck' ? 'Unblock' : 'Validate'}</span>
+                <span style={{ flex: 1 }}>{t.title}</span>
+                <span className="faint" style={{ fontSize: 12 }}>{taskPeople(t)}</span>
+              </button>
+            ))}
+          </section>
+        )}
+
         {tasks.error && <div className="empty">{tasks.error}</div>}
 
         {!all.length && !tasks.error && (
@@ -221,9 +242,10 @@ export function TasksPage() {
           key={opened.id}
           task={opened}
           onClose={() => setOpenId(null)}
-          onChanged={(saved) =>
-            tasks.set(saved ? all.map((t) => (t.id === saved.id ? saved : t)) : all.filter((t) => t.id !== opened.id))
-          }
+          onChanged={(saved) => {
+            tasks.set(saved ? all.map((t) => (t.id === saved.id ? saved : t)) : all.filter((t) => t.id !== opened.id));
+            waitingForMe.reload();
+          }}
         />
       )}
 
@@ -270,11 +292,14 @@ export function Row({ task, onTick, onOpen }: { task: Task; onTick: () => void; 
         {task.priority === 'high' && <span className="badge stop" style={{ marginLeft: 7 }}>High</span>}
         {task.priority === 'low' && <span className="badge" style={{ marginLeft: 7 }}>Low</span>}
         {task.state === 'doing' && <span className="badge info" style={{ marginLeft: 7 }}>In progress</span>}
-        {task.state === 'stuck' && <span className="badge stop" style={{ marginLeft: 7 }}>Stuck</span>}
+        {task.state === 'stuck' && <span className="badge stop" style={{ marginLeft: 7 }} title={task.stuckReason}>Stuck{task.unblocker ? ` · ${task.unblocker.name}` : ''}</span>}
+        {task.state === 'to_validate' && <span className="badge warn" style={{ marginLeft: 7 }}>To validate{task.validator ? ` · ${task.validator.name}` : ''}</span>}
+        {task.attachments > 0 && <span className="faint" style={{ marginLeft: 7, fontSize: 11.5 }} title="Attachments"><Icon name="file" size={11} /> {task.attachments}</span>}
         <span className="faint" style={{ display: 'block', fontSize: 12 }}>
           {[
-            task.ownerName,
-            task.aboutName && task.aboutName !== task.ownerName ? `· ${task.aboutName}` : null,
+            taskPeople(task),
+            task.editionName ? `· ${task.editionName}` : null,
+            task.subjectName ? `· ${task.subjectName}` : task.aboutName && !task.editionName ? `· ${task.aboutName}` : null,
             task.detail || null,
           ]
             .filter(Boolean)
@@ -429,7 +454,7 @@ function Card({
         {task.title}
       </button>
       <span className="faint" style={{ fontSize: 12 }}>
-        {[task.ownerName, task.aboutName && task.aboutName !== task.ownerName ? `· ${task.aboutName}` : null]
+        {[taskPeople(task), task.subjectName || task.editionName ? `· ${task.subjectName || task.editionName}` : null]
           .filter(Boolean)
           .join(' ')}
       </span>

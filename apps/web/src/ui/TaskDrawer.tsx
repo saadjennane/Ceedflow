@@ -8,15 +8,49 @@
  * Chaque champ s'enregistre en le quittant, sans bouton : c'est un panneau
  * qu'on ouvre pour changer une chose, pas un formulaire qu'on remplit.
  */
-import { BOARD_COLUMNS, TASK_PRIORITIES, TASK_PRIORITY_LABEL, isLate, progress, type Task, type TaskItem, type TaskPriority, type TaskState } from '@ceed/shared';
+import {
+  BOARD_COLUMNS, MAX_UPLOAD_BYTES, TASK_EVENT_WORD, TASK_PRIORITIES, TASK_PRIORITY_LABEL, isLate, progress,
+  type DirectoryRecord, type MeetingOptions, type Task, type TaskAttachment, type TaskEvent, type TaskItem, type TaskPriority,
+} from '@ceed/shared';
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
+import { useAsync } from '../lib/useAsync';
 import { formatDate } from '../lib/format';
 import { Icon } from './Icon';
 import { ConfirmDialog, Drawer, useToast } from './Overlays';
 import { DropRow, Grip, moved, nudged, useDragging } from './Reorderable';
-import { LinkPicker } from './LinkPicker';
+import { PeoplePicker } from '../pages/directory/PeoplePicker';
+import { Modal } from './Overlays';
+
+const STATE_WORD: Record<string, string> = Object.fromEntries(BOARD_COLUMNS.map((c) => [c.state, c.label]));
+
+/** Une ligne d'historique, dite en mots. */
+function eventLine(e: TaskEvent): string {
+  const m = e.meta as Record<string, string>;
+  switch (e.kind) {
+    case 'created':
+      return `Created${m.owners ? ` — owners: ${(m.owners as unknown as string[]).join(', ')}` : ''}${m.delegate ? ` · entrusted to ${m.delegate}` : ''}`;
+    case 'owners':
+      return `Owners: ${m.from || '—'} → ${m.to}`;
+    case 'delegated':
+      return `Entrusted to ${m.to}${m.from ? ` (was ${m.from})` : ''}`;
+    case 'undelegated':
+      return `No longer entrusted to ${m.from}`;
+    case 'state':
+      return `${STATE_WORD[m.from] ?? m.from} → ${STATE_WORD[m.to] ?? m.to}`;
+    case 'stuck':
+      return `Stuck — asked ${m.unblocker} to unblock it`;
+    case 'submitted':
+      return `Sent to ${m.validator} for validation`;
+    case 'priority':
+      return `Priority: ${m.from} → ${m.to}`;
+    case 'due':
+      return `Due date: ${m.from ? formatDate(m.from) : 'none'} → ${m.to ? formatDate(m.to) : 'none'}`;
+    default:
+      return TASK_EVENT_WORD[e.kind] ?? e.kind;
+  }
+}
 
 export function TaskDrawer({
   task: initial,
@@ -31,19 +65,28 @@ export function TaskDrawer({
   const [task, setTask] = useState(initial);
   const [draft, setDraft] = useState({ title: initial.title, detail: initial.detail, dueOn: initial.dueOn ?? '' });
   const [removing, setRemoving] = useState(false);
+  const [asking, setAsking] = useState<'stuck' | 'submit' | 'send_back' | null>(null);
+  const [uploading, setUploading] = useState(false);
   const toast = useToast();
+  const options = useAsync(() => api.get<MeetingOptions>('/api/meeting-assistant/options'), 'meeting-options');
+  const history = useAsync(() => api.get<{ events: TaskEvent[]; attachments: TaskAttachment[] }>(`/api/tasks/${task.id}/history`), `task-history:${task.id}:${task.state}`);
+  const team = options.data?.members ?? [];
+  const me = options.data?.me ?? '';
 
-  const save = async (patch: Partial<{ title: string; detail: string; dueOn: string | null; state: TaskState; priority: TaskPriority; link: { kind: string; id: string } | null }>) => {
+  const took = (saved: Task) => {
+    setTask(saved);
+    onChanged(saved);
+    history.reload();
+  };
+  const run = async (fn: () => Promise<Task>) => {
     try {
-      const saved = await api.patch<Task>(`/api/tasks/${task.id}`, patch);
-      setTask(saved);
-      onChanged(saved);
+      took(await fn());
     } catch (err) {
       toast((err as Error).message, true);
     }
   };
+  const save = (patch: Record<string, unknown>) => run(() => api.patch<Task>(`/api/tasks/${task.id}`, patch));
 
-  /* Un intitulé vidé ne s'enregistre pas : il revient à ce qu'il était. */
   const leaveTitle = () => {
     const title = draft.title.trim();
     if (!title) setDraft((d) => ({ ...d, title: task.title }));
@@ -60,13 +103,34 @@ export function TaskDrawer({
     }
   };
 
+  const attach = async (file: File) => {
+    if (file.size > MAX_UPLOAD_BYTES) return toast(`That file is ${(file.size / 1024 / 1024).toFixed(1)} MB — the limit is 10 MB.`, true);
+    setUploading(true);
+    try {
+      const body = new FormData();
+      body.append('fieldId', 'task');
+      body.append('file', file);
+      const res = await fetch('/api/public/uploads', { method: 'POST', body });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? 'Upload failed.');
+      await api.post(`/api/tasks/${task.id}/attachments`, { uploadId: json.id });
+      history.reload();
+      took((await api.get<Task[]>(`/api/tasks?open=all`)).find((t) => t.id === task.id) ?? task);
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const ownerIds = task.owners.map((o) => o.id);
+  const subtitle = [task.owners.map((o) => o.name).join(', ') || task.ownerName, task.delegate ? `→ ${task.delegate.name}` : null].filter(Boolean).join(' ');
+
   return (
     <>
       <Drawer
         title={task.title}
-        subtitle={[task.ownerName, task.aboutName && task.aboutName !== task.ownerName ? task.aboutName : null]
-          .filter(Boolean)
-          .join(' · ')}
+        subtitle={subtitle}
         onClose={onClose}
         footer={
           <>
@@ -85,29 +149,52 @@ export function TaskDrawer({
               <button
                 key={col.state}
                 className={task.state === col.state ? 'on' : ''}
-                onClick={() => task.state !== col.state && save({ state: col.state })}
+                onClick={() => {
+                  if (task.state === col.state) return;
+                  if (col.state === 'stuck') setAsking('stuck');
+                  else if (col.state === 'to_validate') setAsking('submit');
+                  else save({ state: col.state });
+                }}
               >
                 {col.label}
               </button>
             ))}
           </div>
           {task.state === 'done' && (task.doneByName || task.doneAt) && (
-            <div className="hint">
-              Done{task.doneByName ? ` by ${task.doneByName}` : ''}
-              {task.doneAt ? ` · ${formatDate(task.doneAt)}` : ''}
-            </div>
+            <div className="hint">Done{task.doneByName ? ` by ${task.doneByName}` : ''}{task.doneAt ? ` · ${formatDate(task.doneAt)}` : ''}</div>
           )}
         </div>
 
+        {task.state === 'stuck' && (
+          <div className="callout warn">
+            <Icon name="alert" size={15} />
+            <div>
+              <strong>Stuck</strong>{task.unblocker && ` — ${task.unblocker.name} is asked to unblock it`}
+              {task.stuckReason && <div style={{ whiteSpace: 'pre-wrap' }}>{task.stuckReason}</div>}
+            </div>
+          </div>
+        )}
+        {task.state === 'to_validate' && (
+          <div className="callout">
+            <Icon name="check" size={15} />
+            <div style={{ flex: 1 }}>
+              <strong>To validate</strong>{task.validator && ` by ${task.validator.name}`}
+              {task.validationNote && <div style={{ whiteSpace: 'pre-wrap' }}>{task.validationNote}</div>}
+              {task.validator?.id === me && (
+                <div className="row" style={{ gap: 6, marginTop: 6 }}>
+                  <button className="btn primary sm" onClick={() => run(() => api.post<Task>(`/api/tasks/${task.id}/validate`, { action: 'approve' }))}>
+                    <Icon name="check" size={12} /> Validate
+                  </button>
+                  <button className="btn sm" onClick={() => setAsking('send_back')}>Send back</button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="field">
           <label htmlFor="task-title">Task</label>
-          <input
-            id="task-title"
-            className="input"
-            value={draft.title}
-            onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
-            onBlur={leaveTitle}
-          />
+          <input id="task-title" className="input" value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} onBlur={leaveTitle} />
         </div>
 
         <div className="field">
@@ -122,99 +209,140 @@ export function TaskDrawer({
           />
         </div>
 
-        <Checklist
-          task={task}
-          onSaved={(saved) => {
-            setTask(saved);
-            onChanged(saved);
+        <Checklist task={task} onSaved={took} />
+
+        <div className="row wrap" style={{ gap: 10 }}>
+          <div className="field" style={{ flex: '1 1 160px' }}>
+            <label htmlFor="task-due">Due date</label>
+            <input
+              id="task-due"
+              className="input"
+              type="date"
+              value={draft.dueOn}
+              onChange={(e) => {
+                setDraft((d) => ({ ...d, dueOn: e.target.value }));
+                save({ dueOn: e.target.value || null });
+              }}
+            />
+            {isLate(task) && <div className="hint" style={{ color: 'var(--stop)' }}>Late.</div>}
+          </div>
+          <div className="field" style={{ flex: '1 1 130px' }}>
+            <label htmlFor="task-priority">Priority</label>
+            <select id="task-priority" className="select" value={task.priority ?? 'medium'} onChange={(e) => save({ priority: e.target.value as TaskPriority })}>
+              {TASK_PRIORITIES.map((p) => <option key={p} value={p}>{TASK_PRIORITY_LABEL[p]}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div className="field">
+          <label>Owners</label>
+          <div className="work-pick">
+            {team.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                className={ownerIds.includes(m.id) ? 'track on' : 'track'}
+                onClick={() => {
+                  const next = ownerIds.includes(m.id) ? ownerIds.filter((x) => x !== m.id) : [...ownerIds, m.id];
+                  if (!next.length) return toast('A task keeps at least one owner.', true);
+                  save({ ownerIds: next });
+                }}
+              >
+                {m.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="field">
+          <label>Entrusted to</label>
+          {task.delegate ? (
+            <div className="row" style={{ gap: 8 }}>
+              <Link to={`/directory/${task.delegate.id}`} onClick={onClose} style={{ flex: 1 }}>{task.delegate.name}</Link>
+              <button className="btn ghost sm" onClick={() => save({ delegateId: null })}>Remove</button>
+            </div>
+          ) : (
+            <div className="row wrap" style={{ gap: 8 }}>
+              <div style={{ flex: '1 1 200px' }}>
+                <PeoplePicker label="A person" value={[]} onChange={(ids) => ids.length && save({ delegateId: ids[ids.length - 1] })} />
+              </div>
+              <div style={{ flex: '1 1 200px' }}>
+                <PeoplePicker kind="org" label="Or an organisation" value={[]} onChange={(ids) => ids.length && save({ delegateId: ids[ids.length - 1] })} />
+              </div>
+            </div>
+          )}
+        </div>
+
+        <AboutField task={task} editions={options.data?.editions ?? []} onSave={(about) => save({ about })} />
+
+        <div className="field">
+          <label>Attachments</label>
+          {(history.data?.attachments ?? []).map((a) => (
+            <div key={a.id} className="row" style={{ gap: 8, fontSize: 13 }}>
+              <Icon name="file" size={13} />
+              <a href={`/api/uploads/${a.uploadId}`} target="_blank" rel="noreferrer" style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{a.filename}</a>
+              <span className="faint" style={{ fontSize: 11.5 }}>{a.addedByName} · {formatDate(a.createdAt)}</span>
+              <button
+                className="btn ghost icon sm"
+                aria-label={`Remove ${a.filename}`}
+                onClick={async () => {
+                  try {
+                    await api.del(`/api/tasks/${task.id}/attachments/${a.id}`);
+                    history.reload();
+                  } catch (err) {
+                    toast((err as Error).message, true);
+                  }
+                }}
+              >
+                <Icon name="x" size={12} />
+              </button>
+            </div>
+          ))}
+          <label className="dropzone" style={{ marginTop: 6 }}>
+            <input type="file" disabled={uploading} onChange={(e) => e.target.files?.[0] && attach(e.target.files[0])} />
+            <Icon name="file" size={15} />
+            <span>{uploading ? 'Sending…' : 'Attach an image or a document — 10 MB at most'}</span>
+          </label>
+        </div>
+
+        <div className="field">
+          <label>History</label>
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {(history.data?.events ?? []).map((e) => (
+              <li key={e.id} style={{ fontSize: 12.5 }}>
+                <span className="faint">{formatDate(e.createdAt)} · {e.actorName || '—'}</span>
+                <div>{eventLine(e)}</div>
+                {e.note && <div className="faint" style={{ whiteSpace: 'pre-wrap' }}>“{e.note}”</div>}
+              </li>
+            ))}
+            {history.data && !history.data.events.length && (
+              <li className="faint" style={{ fontSize: 12.5 }}>
+                {task.createdByName ? `Given by ${task.createdByName}` : 'Given'} · {formatDate(task.createdAt)}
+              </li>
+            )}
+          </ul>
+          <span className="faint" style={{ fontSize: 12 }}>{task.toldAt ? `Told by email on ${formatDate(task.toldAt)}` : 'Nobody was written to'}</span>
+        </div>
+      </Drawer>
+
+      {asking && (
+        <AskDialog
+          kind={asking}
+          team={team.filter((m) => m.id !== me)}
+          onClose={() => setAsking(null)}
+          onDone={(body) => {
+            setAsking(null);
+            if (asking === 'stuck') return run(() => api.post<Task>(`/api/tasks/${task.id}/stuck`, body));
+            if (asking === 'submit') return run(() => api.post<Task>(`/api/tasks/${task.id}/submit`, body));
+            return run(() => api.post<Task>(`/api/tasks/${task.id}/validate`, { action: 'send_back', note: body.note }));
           }}
         />
-
-        <div className="field">
-          <label htmlFor="task-due">Due date</label>
-          <input
-            id="task-due"
-            className="input"
-            type="date"
-            value={draft.dueOn}
-            onChange={(e) => {
-              setDraft((d) => ({ ...d, dueOn: e.target.value }));
-              save({ dueOn: e.target.value || null });
-            }}
-          />
-          {isLate(task) && <div className="hint" style={{ color: 'var(--stop)' }}>Late.</div>}
-        </div>
-
-        <div className="field">
-          <label htmlFor="task-priority">Priority</label>
-          <select id="task-priority" className="select" value={task.priority ?? 'medium'} onChange={(e) => save({ priority: e.target.value as TaskPriority })}>
-            {TASK_PRIORITIES.map((p) => (
-              <option key={p} value={p}>{TASK_PRIORITY_LABEL[p]}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="field">
-          <label>Link</label>
-          <div>
-            <LinkPicker
-              value={
-                task.candidateId
-                  ? { kind: 'candidate', id: task.candidateId, name: task.aboutName }
-                  : task.recordId
-                    ? { kind: task.recordKind ?? 'person', id: task.recordId, name: task.aboutName }
-                    : task.editionId || task.blockId
-                      ? { kind: 'edition', id: task.editionId ?? '', name: task.aboutName }
-                      : null
-              }
-              editable
-              onLink={(link) => save({ link })}
-            />
-          </div>
-        </div>
-
-        {/* Ce qui ne se change pas ici, mais se lit : à qui, à propos de quoi,
-            qui l'a demandée, et si la personne le sait. */}
-        <div className="field">
-          <label>Owner</label>
-          <div className="row" style={{ gap: 8 }}>
-            <span style={{ flex: 1 }}>{task.ownerName}</span>
-            <Link className="btn ghost sm" to={`/directory/${task.ownerId}`} onClick={onClose}>
-              <Icon name="chevronRight" size={13} />
-            </Link>
-          </div>
-        </div>
-
-        {task.aboutName && (
-          <div className="field">
-            <label>Link</label>
-            <div className="row" style={{ gap: 8 }}>
-              <span style={{ flex: 1 }}>{task.aboutName}</span>
-              {task.editionId && (
-                <Link className="btn ghost sm" to={`/editions/${task.editionId}`} onClick={onClose}>
-                  <Icon name="layers" size={13} />
-                </Link>
-              )}
-              {task.recordId && (
-                <Link className="btn ghost sm" to={`/directory/${task.recordId}`} onClick={onClose}>
-                  <Icon name="chevronRight" size={13} />
-                </Link>
-              )}
-            </div>
-          </div>
-        )}
-
-        <p className="faint" style={{ margin: 0, fontSize: 12 }}>
-          {task.createdByName ? `Given by ${task.createdByName}` : 'Given'} · {formatDate(task.createdAt)}
-          {' · '}
-          {task.toldAt ? `told on ${formatDate(task.toldAt)}` : 'nobody was written to'}
-        </p>
-      </Drawer>
+      )}
 
       {removing && (
         <ConfirmDialog
           title="Delete this task?"
-          body={`“${task.title}” disappears for ${task.ownerName} too. To keep a trace, mark it done instead.`}
+          body={`“${task.title}” disappears for everybody on it. To keep a trace, mark it done instead.`}
           confirmLabel="Delete"
           destructive
           onConfirm={remove}
@@ -222,6 +350,121 @@ export function TaskDrawer({
         />
       )}
     </>
+  );
+}
+
+/** Le programme et le sujet d'une tâche, chacun facultatif, et ensemble. */
+function AboutField({ task, editions, onSave }: { task: Task; editions: { id: string; name: string }[]; onSave: (about: { editionId: string | null; subject: { kind: 'person' | 'org' | 'candidate'; id: string } | null }) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [editionId, setEditionId] = useState(task.editionId ?? '');
+  const [kind, setKind] = useState<'' | 'person' | 'org' | 'candidate'>(task.candidateId ? 'candidate' : task.recordId ? (task.recordKind ?? 'person') : '');
+  const [id, setId] = useState(task.candidateId ?? task.recordId ?? '');
+  const records = useAsync(async () => (editing && (kind === 'person' || kind === 'org') ? api.get<DirectoryRecord[]>(`/api/records?kind=${kind}`) : null), `about:${editing}:${kind}`);
+  const startups = useAsync(async () => (editing && kind === 'candidate' && editionId ? api.get<{ id: string; orgName: string }[]>(`/api/editions/${editionId}/candidates`) : null), `about-s:${editing}:${editionId}`);
+  if (!editing) {
+    return (
+      <div className="field">
+        <label>Link</label>
+        <div className="row wrap" style={{ gap: 8, fontSize: 13 }}>
+          {task.editionName && <Link to={`/editions/${task.editionId}`}>{task.editionName}</Link>}
+          {task.subjectName && (task.recordId ? <Link to={`/directory/${task.recordId}`}>{task.subjectName}</Link> : <span>{task.subjectName}</span>)}
+          {!task.editionName && !task.subjectName && <span className="faint">Nothing</span>}
+          <button className="linkish" style={{ fontSize: 12 }} onClick={() => setEditing(true)}>Change</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="field">
+      <label>Link</label>
+      <div className="row wrap" style={{ gap: 6 }}>
+        <select className="input" style={{ flex: '1 1 200px' }} value={editionId} onChange={(e) => setEditionId(e.target.value)} aria-label="Programme">
+          <option value="">No programme</option>
+          {editions.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+        </select>
+        <select className="input" style={{ flex: '1 1 160px' }} value={kind} onChange={(e) => { setKind(e.target.value as typeof kind); setId(''); }} aria-label="About">
+          <option value="">About nothing else</option>
+          <option value="candidate">A startup of this programme</option>
+          <option value="person">An individual</option>
+          <option value="org">An organisation</option>
+        </select>
+      </div>
+      {(kind === 'person' || kind === 'org') && (
+        <select className="input" style={{ marginTop: 6 }} value={id} onChange={(e) => setId(e.target.value)} aria-label="Which one">
+          <option value="">Pick…</option>
+          {(records.data ?? []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+        </select>
+      )}
+      {kind === 'candidate' && (
+        <select className="input" style={{ marginTop: 6 }} disabled={!editionId} value={id} onChange={(e) => setId(e.target.value)} aria-label="Which startup">
+          <option value="">{editionId ? 'Pick a startup…' : 'A programme first'}</option>
+          {(startups.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.orgName}</option>)}
+        </select>
+      )}
+      <div className="row" style={{ gap: 6, marginTop: 6 }}>
+        <button className="btn sm primary" disabled={Boolean(kind) && !id} onClick={() => { onSave({ editionId: editionId || null, subject: kind && id ? { kind, id } : null }); setEditing(false); }}>Save</button>
+        <button className="btn ghost sm" onClick={() => setEditing(false)}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+/** Bloquée, à valider, renvoyée : la raison ou le mot, et la personne. */
+function AskDialog({ kind, team, onClose, onDone }: { kind: 'stuck' | 'submit' | 'send_back'; team: { id: string; name: string }[]; onClose: () => void; onDone: (body: { reason?: string; note?: string; unblockerId?: string; validatorId?: string; tell?: boolean }) => void }) {
+  const [text, setText] = useState('');
+  const [who, setWho] = useState('');
+  const [tell, setTell] = useState(true);
+  const words = kind === 'stuck'
+    ? { title: 'What blocks it?', who: 'Who can unblock it', go: 'Mark as stuck', textNeeded: true }
+    : kind === 'submit'
+      ? { title: 'Send for validation', who: 'Who validates it', go: 'Send for validation', textNeeded: false }
+      : { title: 'Send it back', who: '', go: 'Send back', textNeeded: true };
+  return (
+    <Modal
+      title={words.title}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn ghost" onClick={onClose}>Cancel</button>
+          <div className="spacer" />
+          <button
+            className="btn primary"
+            disabled={(words.textNeeded && !text.trim()) || (Boolean(words.who) && !who)}
+            onClick={() =>
+              onDone(kind === 'stuck' ? { reason: text, unblockerId: who, tell } : kind === 'submit' ? { note: text, validatorId: who, tell } : { note: text })
+            }
+          >
+            {words.go}
+          </button>
+        </>
+      }
+    >
+      <div className="stack" style={{ gap: 10 }}>
+        <textarea
+          className="textarea"
+          rows={3}
+          autoFocus
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={kind === 'stuck' ? 'The figures for 2025 are missing…' : kind === 'submit' ? 'A word for the validator (optional)' : 'What is missing?'}
+        />
+        {words.who && (
+          <div className="field">
+            <label>{words.who}</label>
+            <select className="select" value={who} onChange={(e) => setWho(e.target.value)}>
+              <option value="">Choose a colleague…</option>
+              {team.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </div>
+        )}
+        {words.who && (
+          <label className="check">
+            <input type="checkbox" checked={tell} onChange={(e) => setTell(e.target.checked)} />
+            <span>Tell them by email</span>
+          </label>
+        )}
+      </div>
+    </Modal>
   );
 }
 

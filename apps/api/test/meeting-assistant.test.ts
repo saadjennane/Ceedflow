@@ -236,16 +236,16 @@ describe('the Meeting Assistant', { skip: skipWithoutServer }, () => {
     const out = await call('Saad', 'POST', `/api/meeting-assistant/meetings/${m.id}/create`, { ids: [rafid.id, ghost.id] });
     const [t1, t2] = await Promise.all(out.body.created.map((c: { taskId: string }) => getTask(c.taskId)));
     assert.equal(t1!.candidateId, cand.id);
-    assert.equal(t1!.editionId, null, 'one link at a time');
+    assert.equal(t1!.editionId, null, 'the startup’s candidacy carries its programme');
     assert.equal(t2!.recordId, sarah.recordId);
 
     const onItsPage = await listTasks({ recordId: startup.id });
     assert.ok(onItsPage.some((t) => t.id === t1!.id), 'a task on its candidacy shows on the startup’s own page');
-    const moved = (await changeTask(t2!.id, { link: { kind: 'edition', id: editionId } }, null))!;
-    assert.equal(moved.editionId, editionId);
-    assert.equal(moved.recordId, null, 'the old link goes');
-    assert.equal((await changeTask(t2!.id, { link: null }, null))!.editionId, null);
-    await assert.rejects(changeTask(t2!.id, { link: { kind: 'candidate', id: 'nope' } }, null));
+    const moved = (await changeTask(t2!.id, { about: { editionId, subject: { kind: 'person', id: sarah.recordId } } }, null))!;
+    assert.equal(moved.editionId, editionId, 'a programme…');
+    assert.equal(moved.recordId, sarah.recordId, '…and a subject, together');
+    assert.equal((await changeTask(t2!.id, { about: { editionId: null, subject: null } }, null))!.editionId, null);
+    await assert.rejects(changeTask(t2!.id, { about: { editionId: null, subject: { kind: 'candidate', id: 'nope' } } }, null));
   });
 
   it('gives the importer the tasks a personal list or a “je” gives them — never somebody else’s', async () => {

@@ -12,6 +12,7 @@ import { memberActions } from '../src/services/memberActions.js';
 import { answerInvitation, changeMeeting, planMeetings, saveReport } from '../src/services/oneToOne.js';
 import { changeTask, createTasks } from '../src/services/tasks.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
+import { teammate } from './helpers.js';
 
 const uniq = () => Math.random().toString(36).slice(2, 8);
 const REPORT = [{ id: 'note', label: 'Note', type: 'long_text', required: false, options: [], help: '' }];
@@ -101,7 +102,7 @@ describe('a member’s Home', { skip: skipWithoutServer }, () => {
   it('lists a task given to the startup, and drops it once done', async () => {
     const { org, founder } = await setUp();
     const [task] = await createTasks(
-      { title: 'Envoyer le RC', detail: '', dueOn: '2020-01-01', ownerIds: [org.id], recordId: null, editionId: null, blockId: null, candidateId: null },
+      { title: 'Envoyer le RC', detail: '', dueOn: '2020-01-01', ownerIds: [(await teammate()).id], delegateId: org.id, recordId: null, editionId: null, blockId: null, candidateId: null },
       null,
     );
     let home = await memberActions(founder.id);

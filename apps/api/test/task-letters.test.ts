@@ -17,7 +17,7 @@ import { setHouseLetter } from '../src/services/houseLetters.js';
 import { letters } from '../src/services/mail.js';
 import { changeTask, createTasks } from '../src/services/tasks.js';
 import { sendLateDigests, tellOwner, whoHears } from '../src/services/taskNotices.js';
-import { closeDb, skipWithoutServer } from './helpers.js';
+import { closeDb, skipWithoutServer, teammate } from './helpers.js';
 
 const uniq = () => Math.random().toString(36).slice(2, 8);
 const CEED = { id: 'acc_ceed', name: 'Rima Arrach' };
@@ -27,8 +27,12 @@ const day = (shift: number) => new Date(Date.now() + shift * 86400000).toISOStri
 /** Après l'heure d'envoi, pour que la garde du matin ne soit pas ce qu'on teste. */
 const MORNING = new Date('2026-10-12T09:00:00Z');
 
-const give = (ownerId: string, title: string, dueOn: string | null = null) =>
-  createTasks({ ...blank, title, dueOn, ownerIds: [ownerId] }, CEED);
+/** Une tâche de l'équipe, confiée à quelqu'un : c'est à lui qu'on écrit. */
+let owner = '';
+const give = async (delegateId: string, title: string, dueOn: string | null = null) => {
+  owner ||= (await teammate('Owner')).id;
+  return createTasks({ ...blank, title, dueOn, ownerIds: [owner], delegateId }, CEED);
+};
 
 describe('telling somebody a task is theirs', { skip: skipWithoutServer }, () => {
   before(migrate);

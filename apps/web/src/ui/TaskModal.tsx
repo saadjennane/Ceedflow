@@ -1,19 +1,13 @@
 /**
  * Donner une tâche.
  *
- * Quatre champs, nommés par ce qu'ils sont : Task, Description, Owner, Link.
- * Les intitulés en phrase — « what has to be done », « who does it » — se
- * lisent bien une fois et se cherchent ensuite, parce qu'on ne retient pas une
- * question comme on retient un mot.
- *
- * Le lien se choisit, il ne se subit plus : la fenêtre s'ouvre parfois depuis
- * une fiche ou un programme et le pré-remplit, mais depuis la page des tâches
- * il n'y avait aucun moyen de dire de quoi on parlait.
- *
- * Plusieurs destinataires créent plusieurs tâches, et c'est dit sous le champ :
- * sinon « fait » serait un mot sans sujet.
+ * Elle appartient à l'équipe CEED — un ou plusieurs owners, une seule tâche
+ * partagée — et peut être confiée à quelqu'un d'autre : un mentor, une
+ * startup, une organisation, qui la voit dans son espace. Elle se rapporte à
+ * un programme ET, éventuellement, à un sujet : une startup de ce programme,
+ * une personne, une organisation.
  */
-import { TASK_PRIORITIES, TASK_PRIORITY_LABEL, type DirectoryRecord, type ProgramWithEditions, type TaskPriority } from '@ceed/shared';
+import { TASK_PRIORITIES, TASK_PRIORITY_LABEL, type DirectoryRecord, type MeetingOptions, type TaskPriority } from '@ceed/shared';
 import { useState } from 'react';
 import { ApiError, api } from '../lib/api';
 import { useAsync } from '../lib/useAsync';
@@ -57,16 +51,8 @@ interface TeamGroup {
   people: { id: string; name: string; kind: 'person' | 'org' }[];
 }
 
-/** Ce à quoi une tâche peut se rapporter. Une seule chose à la fois. */
-type LinkKind = '' | 'person' | 'org' | 'edition' | 'candidate';
 
-const LINK_KINDS: { value: LinkKind; label: string }[] = [
-  { value: '', label: 'Nothing' },
-  { value: 'person', label: 'An individual' },
-  { value: 'org', label: 'An organisation' },
-  { value: 'edition', label: 'A programme' },
-  { value: 'candidate', label: 'A startup in a programme' },
-];
+type Subject = '' | 'person' | 'org' | 'candidate';
 
 export function TaskModal({
   attach,
@@ -80,121 +66,76 @@ export function TaskModal({
   const bulk = attach?.startups?.length ? attach.startups : null;
   const names = (bulk ?? []).map((s) => s.orgName);
   const [mode, setMode] = useState<BulkMode>('one');
-  /* Une tâche par startup, confiée à la startup elle-même : sans ce choix, il
-     faudrait la cocher dans l'équipe — et chaque startup recevrait alors une
-     tâche pour chacune des autres. */
   const [toStartup, setToStartup] = useState(false);
   const [draft, setDraft] = useState<{ title: string; detail: string; dueOn: string; priority: TaskPriority }>({ title: '', detail: '', dueOn: '', priority: 'medium' });
   const [items, setItems] = useState<string[]>(names);
   const [line, setLine] = useState('');
-  const [people, setPeople] = useState<string[]>(
-    attach?.owner?.kind === 'person' ? [attach.owner.id] : [],
-  );
-  const [orgs, setOrgs] = useState<string[]>(attach?.owner?.kind === 'org' ? [attach.owner.id] : []);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [tell, setTell] = useState(true);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
-  /* Le lien, tel que l'endroit d'où l'on vient l'a déjà rempli. Le genre se
-     déduit de ce qui est posé, et `owner` tranche entre personne et société
-     dans le seul cas où une fiche arrive ici — sa propre page. */
-  const [link, setLink] = useState<{
-    kind: LinkKind;
-    recordId: string;
-    editionId: string;
-    candidateId: string;
-  }>(() => ({
-    kind: attach?.candidateId
-      ? 'candidate'
-      : attach?.editionId
-        ? 'edition'
-        : attach?.recordId
-          ? attach.owner?.id === attach.recordId
-            ? attach.owner.kind
-            : 'person'
-          : '',
-    recordId: attach?.recordId ?? '',
-    editionId: attach?.editionId ?? '',
-    candidateId: attach?.candidateId ?? '',
-  }));
+  /* L'équipe CEED, les programmes, et qui je suis : de quoi choisir les owners. */
+  const options = useAsync(() => api.get<MeetingOptions>('/api/meeting-assistant/options'), 'meeting-options');
+  const team = options.data?.members ?? [];
+  const isTeam = (id: string) => team.some((m) => m.id === id);
+  const [owners, setOwners] = useState<string[] | null>(null);
+  /* Sur la fiche de quelqu'un de l'équipe, il est owner ; sur celle d'un externe, la tâche lui est confiée. */
+  const ownersNow = owners ?? (options.data ? [...new Set([options.data.me, ...(attach?.owner && isTeam(attach.owner.id) ? [attach.owner.id] : [])])] : []);
+  const [delegate, setDelegate] = useState<{ kind: 'person' | 'org'; id: string } | null>(null);
+  const delegateNow = delegate ?? (attach?.owner && options.data && !isTeam(attach.owner.id) ? attach.owner : null);
+  const [delegateTouched, setDelegateTouched] = useState(false);
+  const delegateValue = delegateTouched ? delegate : delegateNow;
 
-  /* Les sociétés aussi peuvent porter une tâche : « Rafid Tech doit envoyer
-     son RIB » n'est à personne en particulier, et tous ceux qui tiennent sa
-     page la voient. */
-  const companies = useAsync(() => api.get<DirectoryRecord[]>('/api/records?kind=org'), 'orgs-for-task');
-  const persons = useAsync(
-    async () => (link.kind === 'person' ? api.get<DirectoryRecord[]>('/api/records?kind=person') : null),
-    `people-for-link:${link.kind}`,
-  );
-  const programs = useAsync(
-    async () =>
-      link.kind === 'edition' || link.kind === 'candidate'
-        ? api.get<ProgramWithEditions[]>('/api/programs')
-        : null,
-    `programs-for-link:${link.kind}`,
+  const [editionId, setEditionId] = useState(attach?.editionId ?? '');
+  const [subject, setSubject] = useState<{ kind: Subject; id: string }>(() => ({
+    kind: attach?.candidateId ? 'candidate' : attach?.recordId ? (attach.owner?.id === attach.recordId ? attach.owner.kind : 'person') : '',
+    id: attach?.candidateId ?? attach?.recordId ?? '',
+  }));
+  const records = useAsync(
+    async () => (subject.kind === 'person' || subject.kind === 'org' ? api.get<DirectoryRecord[]>(`/api/records?kind=${subject.kind}`) : null),
+    `task-subject:${subject.kind}`,
   );
   const startups = useAsync(
-    async () =>
-      link.kind === 'candidate' && link.editionId
-        ? api.get<{ id: string; orgName: string }[]>(`/api/editions/${link.editionId}/candidates`)
-        : null,
-    `startups-for-link:${link.kind}:${link.editionId}`,
+    async () => (subject.kind === 'candidate' && editionId ? api.get<{ id: string; orgName: string }[]>(`/api/editions/${editionId}/candidates`) : null),
+    `task-startups:${subject.kind}:${editionId}`,
   );
-  /* Depuis un programme, on ne cherche pas dans l'annuaire entier : les quatre
-     groupes de son équipe sont la réponse à « owner », et ils tiennent sur
-     l'écran. */
-  const team = useAsync(
+  /* Depuis un programme, les gens de son équipe sont la réponse à « à qui la confier ». */
+  const programTeam = useAsync(
     async () => (attach?.editionId ? api.get<TeamGroup[]>(`/api/editions/${attach.editionId}/team`) : null),
     attach?.editionId ?? 'no-edition',
   );
 
   const set = (partial: Partial<typeof draft>) => setDraft((d) => ({ ...d, ...partial }));
-  const picked = [...people, ...orgs];
   const each = Boolean(bulk) && mode === 'each';
-  const bySelf = each && toStartup;
-  /* À qui, tel qu'on le prévient : les startups elles-mêmes, ou l'équipe cochée. */
-  const owners = bySelf ? [...new Set(bulk!.map((s) => s.orgId))] : picked;
-  const count = each ? (bySelf ? bulk!.length : bulk!.length * picked.length) : picked.length;
+  const count = each ? bulk!.length : 1;
+  const hearers = [...new Set([...ownersNow.filter((o) => o !== options.data?.me), ...(delegateValue ? [delegateValue.id] : [])])];
 
-  /* Les noms des startups vont dans la checklist en mode « une tâche », et en
-     sortent dans l'autre ; ce qu'on y a ajouté à la main reste. */
   const switchMode = (next: BulkMode) => {
     setMode(next);
     const own = items.filter((i) => !names.includes(i));
     setItems(next === 'one' ? [...names, ...own] : own);
   };
 
-  const editions = (programs.data ?? []).flatMap((p) =>
-    p.editions.map((e) => ({ id: e.id, label: `${p.name} — ${e.name}` })),
-  );
-
   const save = async () => {
     setSaving(true);
     setErrors({});
     try {
-      /* Une ligne tapée et pas encore validée fait partie de la liste : on
-         ne la perd pas parce qu'on a cliqué « Give it » avant Entrée. */
       const checklist = [...items, line].map((l) => l.trim()).filter(Boolean);
+      const base = { ...draft, items: checklist, dueOn: draft.dueOn || null, ownerIds: ownersNow, blockId: attach?.blockId ?? null, tell };
       if (each) {
-        /* Une requête par startup : chacune porte son lien, et une startup qui
-           échoue n'empêche pas les autres d'avoir la leur. */
         let given = 0;
         const failed: string[] = [];
         for (const startup of bulk!) {
           try {
-            const made = await api.post<unknown[]>('/api/tasks', {
-              ...draft,
-              items: checklist,
-              dueOn: draft.dueOn || null,
-              ownerIds: bySelf ? [startup.orgId] : picked,
-              recordId: null,
-              editionId: null,
+            await api.post<unknown[]>('/api/tasks', {
+              ...base,
+              delegateId: toStartup ? startup.orgId : (delegateValue?.id ?? null),
+              editionId: attach?.editionId ?? null,
               candidateId: startup.id,
-              blockId: attach?.blockId ?? null,
-              tell,
+              recordId: null,
             });
-            given += made.length;
+            given += 1;
           } catch (err) {
             if (err instanceof ApiError && err.fields) {
               setErrors(err.fields);
@@ -208,21 +149,14 @@ export function TaskModal({
         onSaved();
         return;
       }
-      const made = await api.post<unknown[]>('/api/tasks', {
-        ...draft,
-        items: checklist,
-        dueOn: draft.dueOn || null,
-        ownerIds: owners,
-        /* Une attache et une seule : c'est la liste d'une édition qui sait
-           retrouver les tâches liées à ses startups, et non la tâche qui porte
-           deux attaches en se contredisant. */
-        recordId: link.kind === 'person' || link.kind === 'org' ? link.recordId || null : null,
-        editionId: link.kind === 'edition' ? link.editionId || null : null,
-        candidateId: link.kind === 'candidate' ? link.candidateId || null : null,
-        blockId: attach?.blockId ?? null,
-        tell,
+      await api.post<unknown[]>('/api/tasks', {
+        ...base,
+        delegateId: delegateValue?.id ?? null,
+        editionId: editionId || null,
+        recordId: subject.kind === 'person' || subject.kind === 'org' ? subject.id || null : null,
+        candidateId: subject.kind === 'candidate' ? subject.id || null : null,
       });
-      toast(made.length === 1 ? 'Given.' : `Given to ${made.length}.`);
+      toast('Given.');
       onSaved();
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrors(err.fields);
@@ -239,7 +173,7 @@ export function TaskModal({
       footer={
         <>
           <button className="btn ghost" onClick={onClose}>Cancel</button>
-          <button className="btn primary" disabled={saving || !draft.title.trim() || !count} onClick={save}>
+          <button className="btn primary" disabled={saving || !draft.title.trim() || !ownersNow.length} onClick={save}>
             {saving ? 'Giving…' : count > 1 ? `Give ${count} tasks` : 'Give it'}
           </button>
         </>
@@ -249,28 +183,16 @@ export function TaskModal({
         <div className="field">
           <label>{bulk.length} startups</label>
           <div className="seg" role="group" aria-label="How">
-            <button className={mode === 'one' ? 'on' : ''} onClick={() => switchMode('one')}>
-              One task, a line per startup
-            </button>
-            <button className={mode === 'each' ? 'on' : ''} onClick={() => switchMode('each')}>
-              One task per startup
-            </button>
+            <button className={mode === 'one' ? 'on' : ''} onClick={() => switchMode('one')}>One task, a line per startup</button>
+            <button className={mode === 'each' ? 'on' : ''} onClick={() => switchMode('each')}>One task per startup</button>
           </div>
           <div className="hint">
-            {mode === 'one'
-              ? 'Say, a call with all of them: one task, and each startup is a line to tick.'
-              : 'The same task, given once for each startup and linked to it.'}
+            {mode === 'one' ? 'Say, a call with all of them: one task, and each startup is a line to tick.' : 'The same task, once for each startup and linked to it.'}
           </div>
         </div>
       )}
 
-      <TextField
-        label="Task"
-        value={draft.title}
-        error={errors.title}
-        placeholder="Chase the commercial register"
-        onChange={(v) => set({ title: v })}
-      />
+      <TextField label="Task" value={draft.title} error={errors.title} placeholder="Chase the commercial register" onChange={(v) => set({ title: v })} />
 
       <div className="field">
         <label>Description</label>
@@ -278,20 +200,14 @@ export function TaskModal({
       </div>
 
       <div className="field">
-        <label htmlFor="task-line">
-          Checklist <span className="faint" style={{ fontWeight: 400 }}>· optional</span>
-        </label>
+        <label htmlFor="task-line">Checklist <span className="faint" style={{ fontWeight: 400 }}>· optional</span></label>
         {items.length > 0 && (
           <div className="rows" style={{ gap: 2, marginBottom: 6 }}>
             {items.map((item, at) => (
               <div key={at} className="check-item">
                 <input type="checkbox" disabled aria-hidden />
                 <span style={{ flex: 1, fontSize: 13 }}>{item}</span>
-                <button
-                  className="btn ghost icon sm"
-                  aria-label={`Remove ${item}`}
-                  onClick={() => setItems((list) => list.filter((_, i) => i !== at))}
-                >
+                <button className="btn ghost icon sm" aria-label={`Remove ${item}`} onClick={() => setItems((list) => list.filter((_, i) => i !== at))}>
                   <Icon name="x" size={12} />
                 </button>
               </div>
@@ -312,200 +228,138 @@ export function TaskModal({
             }
           }}
         />
-        {owners.length > 1 && items.length > 0 && (
-          <div className="hint">Each of them gets their own copy to tick.</div>
-        )}
       </div>
 
-      {each && (
+      <div className="field">
+        <label>Owners</label>
+        <div className="help">The CEED team. Pick as many as you like — one task, shared: any of them moves it on, it is done once for all.</div>
+        <div className="work-pick" style={{ marginTop: 4 }}>
+          {team.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              className={ownersNow.includes(m.id) ? 'track on' : 'track'}
+              onClick={() => setOwners(ownersNow.includes(m.id) ? ownersNow.filter((x) => x !== m.id) : [...ownersNow, m.id])}
+            >
+              {m.name}
+            </button>
+          ))}
+        </div>
+        {errors.ownerIds && <div style={{ color: 'var(--stop)', fontSize: 12 }}>{errors.ownerIds}</div>}
+      </div>
+
+      {each ? (
         <label className="check">
           <input type="checkbox" checked={toStartup} onChange={(e) => setToStartup(e.target.checked)} />
-          <span>Give each one to the startup itself</span>
+          <span>Entrust each one to the startup itself — it sees it in its space</span>
         </label>
-      )}
-
-      {bySelf ? null : team.data ? (
+      ) : (
         <div className="field">
-          <label>Owner</label>
-          <div className="help">The team of this programme. Pick as many as you like — one task each.</div>
-          <div className="stack" style={{ gap: 8, marginTop: 4 }}>
-            {team.data
-              .filter((group) => group.people.length > 0)
-              .map((group) => (
-                <div key={group.key}>
-                  <div className="eyebrow">{group.label}</div>
+          <label>Entrust to <span className="faint" style={{ fontWeight: 400 }}>· optional</span></label>
+          <div className="help">Somebody outside the team who does it — a mentor, a juror, a startup. They see it in their space.</div>
+          {programTeam.data && (
+            <div className="stack" style={{ gap: 6, marginTop: 4 }}>
+              {programTeam.data.filter((g) => g.people.length).map((g) => (
+                <div key={g.key}>
+                  <div className="eyebrow">{g.label}</div>
                   <div className="work-pick">
-                    {group.people.map((person) => {
-                      const chosen = person.kind === 'org' ? orgs : people;
-                      const put = person.kind === 'org' ? setOrgs : setPeople;
-                      return (
-                        <button
-                          key={person.id}
-                          type="button"
-                          className={chosen.includes(person.id) ? 'track on' : 'track'}
-                          onClick={() =>
-                            put((x) =>
-                              x.includes(person.id) ? x.filter((o) => o !== person.id) : [...x, person.id],
-                            )
-                          }
-                        >
-                          {person.name}
-                        </button>
-                      );
-                    })}
+                    {g.people.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className={delegateValue?.id === p.id ? 'track on' : 'track'}
+                        onClick={() => {
+                          setDelegateTouched(true);
+                          setDelegate(delegateValue?.id === p.id ? null : { kind: p.kind, id: p.id });
+                        }}
+                      >
+                        {p.name}
+                      </button>
+                    ))}
                   </div>
                 </div>
               ))}
-            {team.data.every((group) => !group.people.length) && (
-              <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
-                Nobody is on this programme yet — no jury, no mentor, no startup.
-              </p>
-            )}
+            </div>
+          )}
+          <div className="row wrap" style={{ gap: 8, marginTop: 6 }}>
+            <div style={{ flex: '1 1 220px' }}>
+              <PeoplePicker
+                label="A person"
+                value={delegateValue?.kind === 'person' ? [delegateValue.id] : []}
+                onChange={(ids) => {
+                  setDelegateTouched(true);
+                  setDelegate(ids.length ? { kind: 'person', id: ids[ids.length - 1]! } : null);
+                }}
+              />
+            </div>
+            <div style={{ flex: '1 1 220px' }}>
+              <PeoplePicker
+                kind="org"
+                label="Or an organisation"
+                value={delegateValue?.kind === 'org' ? [delegateValue.id] : []}
+                onChange={(ids) => {
+                  setDelegateTouched(true);
+                  setDelegate(ids.length ? { kind: 'org', id: ids[ids.length - 1]! } : null);
+                }}
+              />
+            </div>
           </div>
         </div>
-      ) : (
-        <>
-          <PeoplePicker label="Owner" value={people} onChange={setPeople} />
-
-          {/* Cherchée, et non déroulée : quatre cents sociétés en pastilles
-              demandaient une coupure, et une liste coupée fait passer une
-              société absente pour inconnue. */}
-          <PeoplePicker
-            kind="org"
-            label="Or an organisation"
-            value={orgs}
-            onChange={setOrgs}
-            help="Everybody on its page sees it — whatever they may do there — and the first one to deal with it ticks it."
-          />
-        </>
       )}
 
-      {/* Le lien : de quoi parle cette tâche. Choisi ici, et non déduit de la
-          page d'où l'on vient — depuis la liste des tâches, il n'y en avait
-          aucun moyen. */}
       {bulk ? (
         <div className="field">
           <label>Link</label>
-          <div className="help">
-            {each ? 'Each task is linked to its own startup.' : `Linked to ${attach?.about ?? 'this programme'}.`}
-          </div>
+          <div className="help">{each ? 'Each task is linked to its programme and its own startup.' : `Linked to ${attach?.about ?? 'this programme'}.`}</div>
         </div>
       ) : (
-      <div className="field">
-        <label htmlFor="task-link">Link</label>
-        <div className="help">What it is about. Optional — and one thing at a time.</div>
-        <select
-          id="task-link"
-          className="input"
-          value={link.kind}
-          onChange={(e) =>
-            /* Changer de genre vide ce qui le remplissait : un identifiant de
-               fiche gardé sous « une édition » partirait en silence au
-               serveur, et la tâche se lierait à ce qu'on vient de quitter. */
-            setLink({ kind: e.target.value as LinkKind, recordId: '', editionId: '', candidateId: '' })
-          }
-        >
-          {LINK_KINDS.map((k) => (
-            <option key={k.value} value={k.value}>{k.label}</option>
-          ))}
-        </select>
-
-        {link.kind === 'person' && (
-          <select
-            className="input"
-            aria-label="Which individual"
-            style={{ marginTop: 6 }}
-            value={link.recordId}
-            onChange={(e) => setLink((l) => ({ ...l, recordId: e.target.value }))}
-          >
-            <option value="">Pick someone…</option>
-            {(persons.data ?? []).map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        )}
-
-        {link.kind === 'org' && (
-          <select
-            className="input"
-            aria-label="Which organisation"
-            style={{ marginTop: 6 }}
-            value={link.recordId}
-            onChange={(e) => setLink((l) => ({ ...l, recordId: e.target.value }))}
-          >
-            <option value="">Pick an organisation…</option>
-            {(companies.data ?? []).map((o) => (
-              <option key={o.id} value={o.id}>{o.name}</option>
-            ))}
-          </select>
-        )}
-
-        {(link.kind === 'edition' || link.kind === 'candidate') && (
-          <select
-            className="input"
-            aria-label="Which edition"
-            style={{ marginTop: 6 }}
-            value={link.editionId}
-            onChange={(e) => setLink((l) => ({ ...l, editionId: e.target.value, candidateId: '' }))}
-          >
-            <option value="">Pick a programme…</option>
-            {editions.map((e) => (
-              <option key={e.id} value={e.id}>{e.label}</option>
-            ))}
-          </select>
-        )}
-
-        {link.kind === 'candidate' && (
-          <select
-            className="input"
-            aria-label="Which startup"
-            style={{ marginTop: 6 }}
-            disabled={!link.editionId}
-            value={link.candidateId}
-            onChange={(e) => setLink((l) => ({ ...l, candidateId: e.target.value }))}
-          >
-            <option value="">{link.editionId ? 'Pick a startup…' : 'A programme first'}</option>
-            {(startups.data ?? []).map((c) => (
-              <option key={c.id} value={c.id}>{c.orgName}</option>
-            ))}
-          </select>
-        )}
-      </div>
+        <div className="field">
+          <label>Link</label>
+          <div className="help">A programme, and what it is about — both optional, and they go together.</div>
+          <div className="row wrap" style={{ gap: 8 }}>
+            <select className="input" style={{ flex: '1 1 220px' }} aria-label="Programme" value={editionId} onChange={(e) => {
+              setEditionId(e.target.value);
+              if (subject.kind === 'candidate') setSubject({ kind: 'candidate', id: '' });
+            }}>
+              <option value="">No programme</option>
+              {(options.data?.editions ?? []).map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+            <select className="input" style={{ flex: '1 1 180px' }} aria-label="About" value={subject.kind} onChange={(e) => setSubject({ kind: e.target.value as Subject, id: '' })}>
+              <option value="">About nothing else</option>
+              <option value="candidate">A startup of this programme</option>
+              <option value="person">An individual</option>
+              <option value="org">An organisation</option>
+            </select>
+          </div>
+          {(subject.kind === 'person' || subject.kind === 'org') && (
+            <select className="input" style={{ marginTop: 6 }} aria-label="Which one" value={subject.id} onChange={(e) => setSubject((x) => ({ ...x, id: e.target.value }))}>
+              <option value="">{subject.kind === 'person' ? 'Pick someone…' : 'Pick an organisation…'}</option>
+              {(records.data ?? []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+          )}
+          {subject.kind === 'candidate' && (
+            <select className="input" style={{ marginTop: 6 }} aria-label="Which startup" disabled={!editionId} value={subject.id} onChange={(e) => setSubject((x) => ({ ...x, id: e.target.value }))}>
+              <option value="">{editionId ? 'Pick a startup…' : 'A programme first'}</option>
+              {(startups.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.orgName}</option>)}
+            </select>
+          )}
+        </div>
       )}
 
-      <div className="field">
-        <label htmlFor="task-due">Due date</label>
-        <input
-          id="task-due"
-          className="input"
-          type="date"
-          value={draft.dueOn}
-          onChange={(e) => set({ dueOn: e.target.value })}
-        />
-        <div className="hint">Leave it empty for something with no date. Late is counted from the day after.</div>
+      <div className="row wrap" style={{ gap: 10 }}>
+        <div className="field" style={{ flex: '1 1 180px' }}>
+          <label htmlFor="task-due">Due date</label>
+          <input id="task-due" className="input" type="date" value={draft.dueOn} onChange={(e) => set({ dueOn: e.target.value })} />
+        </div>
+        <div className="field" style={{ flex: '1 1 140px' }}>
+          <label htmlFor="task-priority">Priority</label>
+          <select id="task-priority" className="select" value={draft.priority} onChange={(e) => set({ priority: e.target.value as TaskPriority })}>
+            {TASK_PRIORITIES.map((p) => <option key={p} value={p}>{TASK_PRIORITY_LABEL[p]}</option>)}
+          </select>
+        </div>
       </div>
 
-      <div className="field">
-        <label htmlFor="task-priority">Priority</label>
-        <select id="task-priority" className="select" value={draft.priority} onChange={(e) => set({ priority: e.target.value as TaskPriority })}>
-          {TASK_PRIORITIES.map((p) => (
-            <option key={p} value={p}>{TASK_PRIORITY_LABEL[p]}</option>
-          ))}
-        </select>
-      </div>
-
-      <TellLine ownerIds={owners} tell={tell} onTell={setTell} />
-
-      {each && !bySelf && picked.length > 1 && (
-        <p className="faint" style={{ margin: 0, fontSize: 12 }}>
-          <Icon name="alert" size={12} /> {picked.length} people × {bulk!.length} startups: {count} tasks.
-        </p>
-      )}
-      {!each && picked.length > 1 && (
-        <p className="faint" style={{ margin: 0, fontSize: 12 }}>
-          <Icon name="alert" size={12} /> One task each, so that “done” can name somebody.
-        </p>
-      )}
+      <TellLine ownerIds={each && toStartup ? [...ownersNow.filter((o) => o !== options.data?.me), ...bulk!.map((b) => b.orgId)] : hearers} tell={tell} onTell={setTell} />
     </Modal>
   );
 }

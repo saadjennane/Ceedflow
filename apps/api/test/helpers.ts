@@ -24,3 +24,14 @@ export async function freshSchema(name: string): Promise<void> {
 export async function closeDb(): Promise<void> {
   await (await db()).close();
 }
+
+/** Quelqu'un de l'équipe CEED : les seules fiches qui peuvent être owner d'une tâche. */
+export async function teammate(name = 'Équipe'): Promise<{ id: string; name: string }> {
+  const { createRecord } = await import('../src/db/directory.js');
+  const { createAccount, setStaffRole } = await import('../src/services/auth.js');
+  const mark = Math.random().toString(36).slice(2, 10);
+  const r = await createRecord({ kind: 'person', name: `${name} ${mark}`, origin: 'manual' });
+  const a = await createAccount({ email: `team.${mark}@example.test`, password: 'chosen-by-them', recordId: r.id });
+  await setStaffRole(a.id, 'editor');
+  return { id: r.id, name: r.name };
+}

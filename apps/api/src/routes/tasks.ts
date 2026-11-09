@@ -10,23 +10,32 @@
  * ouvrant le chantier, et elle tient en une ligne de garde plutôt qu'en un
  * système de droits.
  */
-import { createTaskInput, createTaskItemInput, taskItemOrder, taskItemPatch, taskPatch } from '@ceed/shared';
+import {
+  createTaskInput, createTaskItemInput, taskAttachInput, taskItemOrder, taskItemPatch, taskPatch, taskStuckInput, taskSubmitInput,
+  taskValidateInput,
+} from '@ceed/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import * as dir from '../db/directory.js';
 import { houseLetter } from '../services/houseLetters.js';
 import { teamOf } from '../services/people.js';
-import { tellOwner, whoHears } from '../services/taskNotices.js';
+import { tellOwner, tellWaiting, whoHears } from '../services/taskNotices.js';
 import {
-  addItems, changeItem, changeTask, createTasks, dropItem, dropTask, getTask, listTasks, orderItems,
+  addItems, attachToTask, changeItem, changeTask, createTasks, detachFromTask, dropItem, dropTask, getTask, listTasks, markStuck,
+  orderItems, submitForValidation, taskAttachments, taskHistory, validateTask, waitingFor,
 } from '../services/tasks.js';
 import { workspaceGuard } from './guard.js';
-import { notFound, parse } from './util.js';
+import { HttpError, notFound, parse } from './util.js';
 
-/** Le collègue qui agit, tel qu'on l'inscrira sur la tâche. */
+/** Le collègue qui agit, tel qu'on l'inscrira sur la tâche : sa fiche, et son nom. */
 const actor = async (req: FastifyRequest) => {
   if (!req.staff) return null;
   const record = await dir.getRecord(req.staff.recordId);
-  return { id: req.staff.id, name: record?.name?.trim() || req.staff.email };
+  return { id: req.staff.recordId, name: record?.name?.trim() || req.staff.email };
+};
+const must = async (req: FastifyRequest) => {
+  const who = await actor(req);
+  if (!who) throw new HttpError(401, 'Sign in to the CEED workspace.');
+  return who;
 };
 
 export async function taskRoutes(app: FastifyInstance) {
@@ -65,7 +74,8 @@ export async function taskRoutes(app: FastifyInstance) {
     const made = await createTasks(input, await actor(req));
     /* La lettre après l'enregistrement, et jamais à sa place : une tâche
        confiée reste confiée même si le courrier ne part pas. */
-    if (input.tell) for (const task of made) await tellOwner(task.id);
+    const by = await actor(req);
+    if (input.tell) for (const task of made) await tellOwner(task.id, by?.id ?? null);
     reply.code(201);
     return Promise.all(made.map(async (t) => (await getTask(t.id)) ?? t));
   });
@@ -73,7 +83,60 @@ export async function taskRoutes(app: FastifyInstance) {
   app.patch('/api/tasks/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const patch = parse(taskPatch, req.body);
-    return (await changeTask(id, patch, await actor(req))) ?? notFound(reply, 'Task not found.');
+    const by = await actor(req);
+    /* Une tâche à valider ne se termine que par son valideur. */
+    const before = await getTask(id);
+    if (before?.state === 'to_validate' && patch.state === 'done' && before.validator?.id !== by?.id && req.staff?.role !== 'admin') {
+      throw new HttpError(403, `${before.validator?.name || 'Its validator'} validates this task.`);
+    }
+    return (await changeTask(id, patch, by)) ?? notFound(reply, 'Task not found.');
+  });
+
+  /* ---- Bloquée, à valider, validée ---- */
+
+  app.post('/api/tasks/:id/stuck', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const input = parse(taskStuckInput, req.body);
+    const by = await must(req);
+    const task = await markStuck(id, input, by);
+    if (!task) return notFound(reply, 'Task not found.');
+    if (input.tell && input.unblockerId !== by.id) await tellWaiting(id, 'task_stuck', input.unblockerId, by.name);
+    return task;
+  });
+
+  app.post('/api/tasks/:id/submit', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const input = parse(taskSubmitInput, req.body);
+    const by = await must(req);
+    const task = await submitForValidation(id, input, by);
+    if (!task) return notFound(reply, 'Task not found.');
+    if (input.tell && input.validatorId !== by.id) await tellWaiting(id, 'task_to_validate', input.validatorId, by.name);
+    return task;
+  });
+
+  app.post('/api/tasks/:id/validate', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const by = await must(req);
+    return (await validateTask(id, parse(taskValidateInput, req.body), by, req.staff?.role === 'admin')) ?? notFound(reply, 'Task not found.');
+  });
+
+  /** Ce qui attend la personne connectée : débloquer, ou valider. */
+  app.get('/api/tasks/waiting', async (req) => waitingFor((await must(req)).id));
+
+  app.get('/api/tasks/:id/history', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!(await getTask(id))) return notFound(reply, 'Task not found.');
+    return { events: await taskHistory(id), attachments: await taskAttachments(id) };
+  });
+
+  app.post('/api/tasks/:id/attachments', async (req) => {
+    const { id } = req.params as { id: string };
+    return attachToTask(id, parse(taskAttachInput, req.body).uploadId, await actor(req));
+  });
+
+  app.delete('/api/tasks/:id/attachments/:attachmentId', async (req) => {
+    const { id, attachmentId } = req.params as { id: string; attachmentId: string };
+    return detachFromTask(id, attachmentId, await actor(req));
   });
 
   /* ---- La checklist : écrite ici, et seulement ici ----

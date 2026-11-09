@@ -1,4 +1,4 @@
-import { isLate, type Edition, type ProgramWithEditions, type Task } from '@ceed/shared';
+import { isLate, type Edition, type ProgramWithEditions, type Task, taskPeople } from '@ceed/shared';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { CreateEditionModal, CreateProgramModal } from '../pages/CreateModals';
@@ -106,7 +106,7 @@ export function ProgramsPage() {
               </strong>{' '}
               {late
                 .slice(0, 3)
-                .map((t) => `${t.title} — ${t.ownerName}`)
+                .map((t) => `${t.title} — ${taskPeople(t)}`)
                 .join(' · ')}
               {late.length > 3 ? ' …' : ''}
             </div>

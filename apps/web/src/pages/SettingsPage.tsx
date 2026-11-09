@@ -4,6 +4,7 @@ import {
   TASK_GIVEN_VARIABLES,
   TASK_LATE_VARIABLES,
   TASKS_GIVEN_VARIABLES,
+  TASK_WAITING_VARIABLES,
   type HouseLetter,
   type HouseLetterKey,
   type ProgramWithEditions,
@@ -633,6 +634,16 @@ const LETTER_SAYS: Record<HouseLetterKey, { title: string; what: string; help: s
     what: 'One letter per person listing all their tasks from a meeting, when the Meeting Assistant creates them with “Email each person” ticked.',
     help: 'What each person reads about everything a meeting gave them.',
   },
+  task_stuck: {
+    title: 'When a task is stuck',
+    what: 'Goes to the colleague asked to unblock a task, the moment it is marked stuck.',
+    help: 'What blocks it, and where to open it.',
+  },
+  task_to_validate: {
+    title: 'When a task is to validate',
+    what: 'Goes to the colleague asked to validate a task, the moment it is sent for validation.',
+    help: 'The note left for them, and where to validate it.',
+  },
   task_late: {
     title: 'When a task is late',
     what: 'One letter per person rather than one per task, the morning after the date passes, and again a week later if it is still open.',
@@ -640,7 +651,9 @@ const LETTER_SAYS: Record<HouseLetterKey, { title: string; what: string; help: s
   },
 };
 
-const VARIABLES: Record<HouseLetterKey, typeof TASK_GIVEN_VARIABLES | typeof TASK_LATE_VARIABLES | typeof TASKS_GIVEN_VARIABLES> = {
+const VARIABLES: Record<HouseLetterKey, typeof TASK_GIVEN_VARIABLES | typeof TASK_LATE_VARIABLES | typeof TASKS_GIVEN_VARIABLES | typeof TASK_WAITING_VARIABLES> = {
+  task_stuck: TASK_WAITING_VARIABLES,
+  task_to_validate: TASK_WAITING_VARIABLES,
   task_given: TASK_GIVEN_VARIABLES,
   tasks_given: TASKS_GIVEN_VARIABLES,
   task_late: TASK_LATE_VARIABLES,

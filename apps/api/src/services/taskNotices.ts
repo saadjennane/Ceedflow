@@ -115,7 +115,15 @@ export type Told = { told: true; letterId: string } | { told: false; why: string
  * rendue si la lettre n'a pas pu partir : une tâche marquée annoncée sans que
  * rien ne soit parti est la seule façon de ne jamais réessayer.
  */
-export async function tellOwner(taskId: string): Promise<Told> {
+/** Qui entend parler d'une tâche : ses owners de l'équipe, et celui à qui elle est confiée. */
+export const recipientsOf = (task: Task, except: string | null = null): string[] =>
+  [...new Set([...(task.delegate ? [task.delegate.id] : []), ...task.owners.map((o) => o.id)])].filter((id) => id !== except);
+
+/**
+ * Annonce une tâche, une fois : à celui à qui elle est confiée, et aux owners
+ * — sauf à qui vient de la créer, qui la connaît.
+ */
+export async function tellOwner(taskId: string, except: string | null = null): Promise<Told> {
   const letter = await houseLetter('task_given');
   if (!letter.enabled) return { told: false, why: 'off' };
 
@@ -123,30 +131,67 @@ export async function tellOwner(taskId: string): Promise<Told> {
   if (!task) return { told: false, why: 'gone' };
   if (task.toldAt) return { told: false, why: 'already' };
 
-  const hearer = await whoHears(task.ownerId);
-  if (hearer.blocked) return { told: false, why: hearer.blocked };
-
   const claimed = await all<{ id: string }>(
     'update tasks set told_at = now() where id = $1 and told_at is null returning id',
     [taskId],
   );
   if (!claimed.length) return { told: false, why: 'already' };
 
-  const values = await givenValues(task, hearer, letter.body);
-  const id = await post({
-    kind: 'task_given',
-    to: hearer.email,
-    toName: hearer.toName,
-    subject: fillTemplate(letter.subject, values),
-    body: fillTemplate(letter.body, values),
-    recordId: task.ownerId,
-  });
-
-  if (!id) {
-    await all('update tasks set told_at = null where id = $1', [taskId]);
-    return { told: false, why: 'not_posted' };
+  let first: string | null = null;
+  let why = 'no_one';
+  for (const recordId of recipientsOf(task, except)) {
+    const hearer = await whoHears(recordId);
+    if (hearer.blocked) {
+      why = hearer.blocked;
+      continue;
+    }
+    const values = await givenValues(task, hearer, letter.body);
+    const id = await post({
+      kind: 'task_given',
+      to: hearer.email,
+      toName: hearer.toName,
+      subject: fillTemplate(letter.subject, values),
+      body: fillTemplate(letter.body, values),
+      recordId,
+    });
+    if (id) first ??= id;
+    else why = 'not_posted';
   }
-  return { told: true, letterId: id };
+  if (!first) {
+    await all('update tasks set told_at = null where id = $1', [taskId]);
+    return { told: false, why };
+  }
+  return { told: true, letterId: first };
+}
+
+/**
+ * Prévenir une personne de l'équipe qu'une tâche l'attend : la débloquer, ou
+ * la valider. Une lettre de la maison chacune, modifiable dans les réglages.
+ */
+export async function tellWaiting(taskId: string, kind: 'task_stuck' | 'task_to_validate', recordId: string, byName: string): Promise<boolean> {
+  const letter = await houseLetter(kind);
+  if (!letter.enabled) return false;
+  const task = await getTask(taskId);
+  if (!task) return false;
+  const hearer = await whoHears(recordId);
+  if (hearer.blocked) return false;
+  const values = {
+    prenom: firstNameOf(hearer.toName),
+    tache: task.title,
+    par: byName,
+    raison: kind === 'task_stuck' ? task.stuckReason : task.validationNote,
+    lien: `${await linkFor(recordId)}${task.id ? `?task=${task.id}` : ''}`,
+  };
+  return Boolean(
+    await post({
+      kind,
+      to: hearer.email,
+      toName: hearer.toName,
+      subject: fillTemplate(letter.subject, values),
+      body: fillTemplate(letter.body, values),
+      recordId,
+    }),
+  );
 }
 
 async function givenValues(task: Task, hearer: Hearer, template: string): Promise<Record<string, string>> {
@@ -177,7 +222,7 @@ export async function tellOwnersAtOnce(
   if (!letter.enabled || !taskIds.length) return { told: 0, notTold: taskIds.length };
   const tasks = (await Promise.all(taskIds.map((id) => getTask(id)))).filter((t): t is Task => Boolean(t) && !t!.toldAt);
   const byOwner = new Map<string, Task[]>();
-  for (const t of tasks) byOwner.set(t.ownerId, [...(byOwner.get(t.ownerId) ?? []), t]);
+  for (const t of tasks) for (const r of recipientsOf(t)) byOwner.set(r, [...(byOwner.get(r) ?? []), t]);
 
   let told = 0;
   let notTold = taskIds.length - tasks.length;
@@ -187,12 +232,9 @@ export async function tellOwnersAtOnce(
       notTold += list.length;
       continue;
     }
-    const claimed = await all<{ id: string }>(
-      'update tasks set told_at = now() where id = any($1::text[]) and told_at is null returning id',
-      [list.map((t) => t.id)],
-    );
-    const mine = list.filter((t) => claimed.some((c) => c.id === t.id));
-    if (!mine.length) continue;
+    /* Réclamées une fois pour toutes : chacun de leurs destinataires est prévenu dans ce même passage. */
+    await all('update tasks set told_at = now() where id = any($1::text[]) and told_at is null', [list.map((t) => t.id)]);
+    const mine = list;
     const PRIORITY_SAID = { high: 'priorité haute', medium: '', low: 'priorité basse' } as const;
     const lines = mine
       .map((t) =>
@@ -220,10 +262,7 @@ export async function tellOwnersAtOnce(
       recordId: ownerId,
     });
     if (id) told += mine.length;
-    else {
-      await all('update tasks set told_at = null where id = any($1::text[])', [mine.map((t) => t.id)]);
-      notTold += mine.length;
-    }
+    else notTold += mine.length;
   }
   return { told, notTold };
 }
@@ -245,11 +284,14 @@ interface LateRow {
  * exactement comme à l'écran. Les deux doivent dire la même chose, sinon une
  * tâche est rouge dans une lettre et pas dans la liste.
  */
-const LATE_AND_DUE_A_LETTER = `
-      state in ('open', 'doing', 'stuck')
-  and due_on is not null
-  and due_on < current_date
-  and (late_letter_at is null or late_letter_at < now() - interval '${LATE_AGAIN_AFTER_DAYS} days')`;
+const LATE = `
+      t.state in ('open', 'doing', 'stuck', 'to_validate')
+  and t.due_on is not null
+  and t.due_on < current_date`;
+
+/** Les personnes qu'une tâche concerne : ses owners, et celui à qui elle est confiée. */
+const RECIPIENTS = `(select x.record_id from task_owners x where x.task_id = t.id
+                     union select t.delegate_id where t.delegate_id is not null)`;
 
 /**
  * Envoie un récapitulatif par personne en retard.
@@ -267,10 +309,11 @@ export async function sendLateDigests(now = new Date()): Promise<{ sent: number;
   if (!letter.enabled) return { sent: 0, skipped: 0 };
 
   const owners = await all<{ ownerId: string }>(
-    `select t.owner_id as "ownerId" from tasks t
-       join records o on o.id = t.owner_id and o.deleted_at is null
-      where ${LATE_AND_DUE_A_LETTER}
-      group by t.owner_id`,
+    `select distinct r.id as "ownerId" from tasks t
+       join records r on r.id in ${RECIPIENTS} and r.deleted_at is null
+      where ${LATE}
+        and not exists (select 1 from task_late_letters l where l.task_id = t.id and l.record_id = r.id
+                          and l.sent_at > now() - interval '${LATE_AGAIN_AFTER_DAYS} days')`,
   );
 
   let sent = 0;
@@ -284,12 +327,22 @@ export async function sendLateDigests(now = new Date()): Promise<{ sent: number;
       continue;
     }
 
-    const claimed = await all<LateRow>(
-      `update tasks set late_letter_at = now()
-        where owner_id = $1 and ${LATE_AND_DUE_A_LETTER}
-        returning id, title, due_on::text as "dueOn"`,
+    /* Réclamées pour cette personne seulement : une tâche partagée prévient chacun. */
+    const due = await all<LateRow>(
+      `select t.id, t.title, t.due_on::text as "dueOn" from tasks t
+        where ${LATE} and $1 in ${RECIPIENTS}`,
       [ownerId],
     );
+    const claimedIds = (
+      await all<{ taskId: string }>(
+        `insert into task_late_letters (task_id, record_id) select unnest($1::text[]), $2
+         on conflict (task_id, record_id) do update set sent_at = now()
+           where task_late_letters.sent_at < now() - interval '${LATE_AGAIN_AFTER_DAYS} days'
+         returning task_id as "taskId"`,
+        [due.map((t) => t.id), ownerId],
+      )
+    ).map((r) => r.taskId);
+    const claimed = due.filter((t) => claimedIds.includes(t.id));
     if (!claimed.length) continue;
 
     const lines = claimed
@@ -319,7 +372,7 @@ export async function sendLateDigests(now = new Date()): Promise<{ sent: number;
     } else {
       /* Rendues, pour que le prochain tick réessaie : une tâche tamponnée sans
          lettre partie est une tâche dont on ne reparlera pas avant une semaine. */
-      await all(`update tasks set late_letter_at = null where id = any($1::text[])`, [claimed.map((t) => t.id)]);
+      await all(`delete from task_late_letters where record_id = $1 and task_id = any($2::text[])`, [ownerId, claimed.map((t) => t.id)]);
       skipped += 1;
     }
   }

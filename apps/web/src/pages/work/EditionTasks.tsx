@@ -5,7 +5,7 @@
  * destinataire : la question qu'on se pose ici n'est pas « qu'est-ce qui
  * traîne » mais « où en est chacun ».
  */
-import { isLate, isOpen, type Task } from '@ceed/shared';
+import { isLate, isOpen, type Task, taskDoer } from '@ceed/shared';
 import { useState } from 'react';
 import { api } from '../../lib/api';
 import { useAsync } from '../../lib/useAsync';
@@ -26,8 +26,8 @@ export function EditionTasks({ editionId, editionName }: { editionId: string; ed
   const all = (tasks.data ?? []).filter((t) => (showDone ? true : isOpen(t)));
   /* Par destinataire, et ceux qui ont du retard d'abord : c'est la personne
      qu'on va relancer, pas la tâche. */
-  const byOwner = [...new Map(all.map((t) => [t.ownerId, t.ownerName])).entries()].sort((a, b) => {
-    const lateOf = (id: string) => all.filter((t) => t.ownerId === id && isLate(t)).length;
+  const byOwner = [...new Map(all.map((t) => [taskDoer(t).id, taskDoer(t).name])).entries()].sort((a, b) => {
+    const lateOf = (id: string) => all.filter((t) => taskDoer(t).id === id && isLate(t)).length;
     return lateOf(b[0]) - lateOf(a[0]) || a[1].localeCompare(b[1]);
   });
 
@@ -64,7 +64,7 @@ export function EditionTasks({ editionId, editionName }: { editionId: string; ed
       )}
 
       {byOwner.map(([ownerId, ownerName]) => {
-        const theirs = all.filter((t) => t.ownerId === ownerId);
+        const theirs = all.filter((t) => taskDoer(t).id === ownerId);
         const late = theirs.filter((t) => isLate(t)).length;
         return (
           <section className="card" key={ownerId}>

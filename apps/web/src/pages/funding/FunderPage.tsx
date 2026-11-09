@@ -3,7 +3,7 @@
  * web disent de lui, et ce qu'on fait pour lui. Une organisation de
  * l'annuaire — la même fiche, vue depuis Funding.
  */
-import { FUNDING_ORG_ROLE_LABEL, OPEN_STAGES, type FunderView, type FundingOrgRole, type Task } from '@ceed/shared';
+import { FUNDING_ORG_ROLE_LABEL, OPEN_STAGES, type FunderView, type FundingOrgRole, type Task, taskPeople } from '@ceed/shared';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
@@ -86,7 +86,7 @@ export function FunderPage() {
               {tasks.data.map((t) => (
                 <Link key={t.id} to={`/tasks?task=${t.id}`} className="rowcard card-pad row" style={{ gap: 8, textDecoration: 'none', color: 'inherit' }}>
                   <span style={{ flex: 1 }}>{t.title}</span>
-                  <span className="faint" style={{ fontSize: 12 }}>{t.ownerName}{t.dueOn ? ` · ${formatDate(t.dueOn)}` : ''}</span>
+                  <span className="faint" style={{ fontSize: 12 }}>{taskPeople(t)}{t.dueOn ? ` · ${formatDate(t.dueOn)}` : ''}</span>
                 </Link>
               ))}
             </div>

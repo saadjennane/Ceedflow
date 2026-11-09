@@ -15,10 +15,10 @@ import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
 import { teamOf } from '../src/services/people.js';
 import {
-  addItems, changeItem, changeTask, createTasks, dropTask, getTask, listTasks, orderItems,
+  addItems, changeItem, changeTask, createTasks, dropTask, getTask, listTasks, markStuck, orderItems,
 } from '../src/services/tasks.js';
 import { restore } from '../src/services/trash.js';
-import { closeDb, skipWithoutServer } from './helpers.js';
+import { closeDb, skipWithoutServer, teammate } from './helpers.js';
 
 const uniq = () => Math.random().toString(36).slice(2, 8);
 const CEED = { id: 'acc_ceed', name: 'Reda Rzig' };
@@ -36,21 +36,31 @@ describe('a task', { skip: skipWithoutServer }, () => {
     const one = await dir.createRecord({ kind: 'person', name: `Karim ${mark}`, origin: 'manual' });
     const two = await dir.createRecord({ kind: 'person', name: `Sanaa ${mark}`, origin: 'manual' });
     await dir.linkRecords({ personId: one.id, orgId: org.id, access: 'admin' });
-    return { org, one, two };
+    const owner = await teammate();
+    return { org, one, two, owner };
   };
 
-  it('given to two people, is two tasks', async () => {
-    /* Sinon « fait » ne veut rien dire : fait par qui, et l'autre doit-elle
-       encore s'en occuper ? */
-    const { one, two } = await people();
-    const made = await createTasks({ ...blank, title: 'Relire la grille', ownerIds: [one.id, two.id] }, CEED);
-    assert.equal(made.length, 2);
-    assert.deepEqual(made.map((t) => t.ownerName).sort(), [one.name, two.name].sort());
+  it('owned by two of the team, is one task — closed once, for both', async () => {
+    const [a, b] = [await teammate('Reda'), await teammate('Ghita')];
+    const made = await createTasks({ ...blank, title: 'Relire la grille', ownerIds: [a.id, b.id] }, CEED);
+    assert.equal(made.length, 1, 'one shared task');
+    assert.deepEqual(made[0]!.owners.map((o) => o.name).sort(), [a.name, b.name].sort());
+    assert.equal((await listTasks({ ownerIds: [b.id] })).filter((t) => t.id === made[0]!.id).length, 1, 'in each owner’s tasks');
+    await changeTask(made[0]!.id, { state: 'done' }, { id: a.id, name: a.name });
+    assert.equal((await getTask(made[0]!.id))?.doneByName, a.name, 'done once, by whoever did it');
+  });
+
+  it('is owned by the CEED team only, and can be entrusted to anybody', async () => {
+    const { one, owner } = await people();
+    await assert.rejects(createTasks({ ...blank, title: 'x', ownerIds: [one.id] }, CEED), /CEED team/);
+    const [task] = await createTasks({ ...blank, title: 'Relire', ownerIds: [owner.id], delegateId: one.id }, CEED);
+    assert.equal(task!.delegate?.id, one.id);
+    assert.equal(task!.ownerId, owner.id);
   });
 
   it('given to a company, reaches whoever holds its page', async () => {
-    const { org, one, two } = await people();
-    await createTasks({ ...blank, title: 'Envoyer le RIB', ownerIds: [org.id] }, CEED);
+    const { org, one, two, owner } = await people();
+    await createTasks({ ...blank, title: 'Envoyer le RIB', ownerIds: [owner.id], delegateId: org.id }, CEED);
 
     const hers = await listTasks({ ownerIds: [one.id, ...(await dir.orgIdsOf(one.id))], open: true });
     assert.ok(hers.some((t) => t.title === 'Envoyer le RIB'), 'celle qui tient la page la voit');
@@ -68,8 +78,8 @@ describe('a task', { skip: skipWithoutServer }, () => {
   });
 
   it('remembers the last hand that closed it, not the first', async () => {
-    const { one } = await people();
-    const [task] = await createTasks({ ...blank, title: 'Appeler le notaire', ownerIds: [one.id] }, CEED);
+    const { one, owner } = await people();
+    const [task] = await createTasks({ ...blank, title: 'Appeler le notaire', ownerIds: [owner.id], delegateId: one.id }, CEED);
     const done = await changeTask(task!.id, { state: 'done' }, { id: one.id, name: 'Karim' });
     assert.equal(done?.doneByName, 'Karim');
     assert.ok(done?.doneAt);
@@ -86,8 +96,8 @@ describe('a task', { skip: skipWithoutServer }, () => {
     /* La corbeille ne supprime pas, elle met de côté — trente jours. Une tâche
        confiée à quelqu'un qu'on vient de mettre de côté n'a rien à faire dans
        une liste de choses à faire, et elle doit revenir intacte s'il revient. */
-    const { one } = await people();
-    await createTasks({ ...blank, title: 'Relancer', ownerIds: [one.id] }, CEED);
+    const { one, owner } = await people();
+    await createTasks({ ...blank, title: 'Relancer', ownerIds: [owner.id], delegateId: one.id }, CEED);
     assert.equal((await listTasks({ ownerIds: [one.id] })).length, 1);
 
     const plan = (await dir.removalPlan(one.id))!;
@@ -102,23 +112,18 @@ describe('a task', { skip: skipWithoutServer }, () => {
 describe('a checklist', { skip: skipWithoutServer }, () => {
   before(migrate);
 
-  const someone = async () =>
-    dir.createRecord({ kind: 'person', name: `Karim ${uniq()}`, origin: 'manual' });
+  const someone = async () => teammate('Karim');
 
-  it('is copied to each person the task is given to', async () => {
-    /* Chacun coche la sienne, comme chacun close la sienne. */
+  it('is one list, shared by the task’s owners', async () => {
     const [one, two] = [await someone(), await someone()];
     const made = await createTasks(
       { ...blank, title: 'Préparer le jury', ownerIds: [one.id, two.id], items: ['Grille', ' ', 'Salle'] },
       CEED,
     );
-    assert.equal(made.length, 2);
-    for (const task of made) assert.deepEqual(task.items.map((i) => i.label), ['Grille', 'Salle'], 'les lignes vides en moins');
-    assert.notEqual(made[0]!.items[0]!.id, made[1]!.items[0]!.id);
-
-    await changeItem(made[0]!.id, made[0]!.items[0]!.id, { done: true }, CEED);
-    const other = await getTask(made[1]!.id);
-    assert.equal(progress(other!).done, 0, 'cocher la sienne ne coche pas celle de l’autre');
+    assert.equal(made.length, 1);
+    assert.deepEqual(made[0]!.items.map((i) => i.label), ['Grille', 'Salle'], 'les lignes vides en moins');
+    await changeItem(made[0]!.id, made[0]!.items[0]!.id, { done: true }, { id: one.id, name: one.name });
+    assert.equal(progress((await getTask(made[0]!.id))!).done, 1, 'ticked by one, ticked for both');
   });
 
   it('says who ticked a line, and forgets it when unticked', async () => {
@@ -141,7 +146,7 @@ describe('a checklist', { skip: skipWithoutServer }, () => {
     assert.equal((await getTask(fresh!.id))?.state, 'doing');
 
     const [stuck] = await createTasks({ ...blank, title: 'B', ownerIds: [owner], items: ['un'] }, CEED);
-    await changeTask(stuck!.id, { state: 'stuck' }, CEED);
+    await markStuck(stuck!.id, { reason: 'En attente', unblockerId: owner }, CEED);
     await changeItem(stuck!.id, stuck!.items[0]!.id, { done: true }, CEED);
     assert.equal((await getTask(stuck!.id))?.state, 'stuck', 'bloquée, elle le reste');
   });
@@ -219,7 +224,7 @@ describe('the team of a programme', { skip: skipWithoutServer }, () => {
     const track = (await repo.getEditionDetail(edition.id))!.tracks[0]!;
     const org = await dir.createRecord({ kind: 'org', name: `Rafid ${mark}`, origin: 'manual' });
     const candidate = await repo.createCandidate({ editionId: edition.id, trackId: track.id, orgId: org.id });
-    const who = await dir.createRecord({ kind: 'person', name: `Rima ${mark}`, origin: 'manual' });
+    const who = await teammate('Rima');
 
     await createTasks(
       { ...blank, title: 'Vérifier le registre', ownerIds: [who.id], candidateId: candidate.id },

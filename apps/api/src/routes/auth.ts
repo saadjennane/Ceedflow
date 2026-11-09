@@ -517,7 +517,8 @@ export async function authRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const task = await getTask(id);
     const mine = [account.recordId, ...(await dir.orgIdsOf(account.recordId))];
-    if (!task || !mine.includes(task.ownerId)) return notFound(reply, 'Task not found.');
+    /* Une tâche qu'on lui a confiée — ou dont il est owner. */
+    if (!task || !(mine.includes(task.delegate?.id ?? '') || task.owners.some((o) => mine.includes(o.id)))) return notFound(reply, 'Task not found.');
     const who = await dir.getRecord(account.recordId);
     /* Rien d'autre que l'état : le texte et l'échéance appartiennent à qui l'a
        demandée. */
@@ -531,7 +532,7 @@ export async function authRoutes(app: FastifyInstance) {
     const { id, itemId } = req.params as { id: string; itemId: string };
     const task = await getTask(id);
     const mine = [account.recordId, ...(await dir.orgIdsOf(account.recordId))];
-    if (!task || !mine.includes(task.ownerId)) return notFound(reply, 'Task not found.');
+    if (!task || !(mine.includes(task.delegate?.id ?? '') || task.owners.some((o) => mine.includes(o.id)))) return notFound(reply, 'Task not found.');
     const who = await dir.getRecord(account.recordId);
     const { done } = parse(taskItemPatch.pick({ done: true }).required(), req.body);
     if (!(await changeItem(id, itemId, { done }, { id: account.recordId, name: who?.name ?? '' }))) {
