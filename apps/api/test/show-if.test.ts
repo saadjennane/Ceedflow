@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import {
-  missingRequired, requiredShown, shownAnswers, shownFieldIds, type DeliverableItem, type FormField,
+  formProgress, missingRequired, requiredShown, shownAnswers, shownFieldIds, type DeliverableItem, type FormField,
 } from '@ceed/shared';
 import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
@@ -35,6 +35,12 @@ describe('a question shown only if', () => {
     assert.ok(!shownFieldIds(form, { legal: 'SA', capital: '10 000' }).has('capitalProof'), 'its parent is hidden: hidden too');
     assert.ok(shownFieldIds(form, { sectors: ['Fintech', 'Agritech'] }).has('farm'));
     assert.ok(!shownFieldIds(form, { sectors: ['Fintech'] }).has('farm'));
+  });
+
+  it('counts progress on the questions one sees — a hidden one is not missing', () => {
+    assert.deepEqual(formProgress(form, {}), { done: 0, total: 2 });
+    assert.deepEqual(formProgress(form, { legal: 'SARL' }), { done: 1, total: 3 }, 'its follow-up appears, unanswered');
+    assert.deepEqual(formProgress(form, { legal: 'SA', capital: 'kept' }), { done: 1, total: 2 }, 'a hidden answer does not count');
   });
 
   it('is never required hidden, and its answer does not leave once hidden', () => {

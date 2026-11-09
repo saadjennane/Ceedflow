@@ -258,6 +258,13 @@ export function shownAnswers(fields: readonly FormField[], answers: Record<strin
   return Object.fromEntries(Object.entries(answers).filter(([id]) => !known.has(id) || shown.has(id)));
 }
 
+/** Où en est un formulaire : les questions répondues, parmi celles qu'on voit. */
+export function formProgress(fields: readonly FormField[], answers: Record<string, unknown>): { done: number; total: number } {
+  const shown = shownFieldIds(fields, answers);
+  const visible = fields.filter((f) => shown.has(f.id));
+  return { done: visible.filter((f) => !blankAnswer(answers[f.id])).length, total: visible.length };
+}
+
 /** Les questions obligatoires restées vides, parmi celles qu'on voit. */
 export function missingRequired(fields: readonly FormField[], answers: Record<string, unknown>): FormField[] {
   const shown = shownFieldIds(fields, answers);

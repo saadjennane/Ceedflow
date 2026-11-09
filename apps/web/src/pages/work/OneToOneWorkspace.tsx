@@ -28,6 +28,7 @@ import {
   prepForm,
   reportForm,
   sharedReport,
+  formProgress,
 } from '@ceed/shared';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { ApiError, api } from '../../lib/api';
@@ -412,6 +413,7 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
                                         {m.rsvpState === 'declined' && m.rsvpNote ? ' 💬' : ''}
                                       </span>
                                     )}
+                                    <DocProgress meeting={m} config={data.config} />
                                   </div>
                                 </button>
                                 <div className="seat-actions">
@@ -1847,5 +1849,42 @@ function WriteModal({ meetingId, orgName, onClose, onSend }: { meetingId: string
       {letter.error && <div className="callout warn"><Icon name="alert" size={15} /> {letter.error}</div>}
       {letter.data ? <LetterPreview letter={letter.data} /> : !letter.error && <div className="faint">Writing…</div>}
     </Modal>
+  );
+}
+
+/**
+ * Où en sont la préparation et le compte rendu d'un rendez-vous, d'un coup
+ * d'œil : les questions répondues sur celles qu'on voit, puis « envoyée ». En
+ * document partagé, il n'y en a qu'un — et une seule pastille.
+ */
+function DocProgress({ meeting, config }: { meeting: OneToOneMeeting; config: OneToOneConfig }) {
+  const prep = prepForm(config);
+  const report = reportForm(config);
+  const pill = (label: string, fields: { id: string }[], answers: Record<string, unknown>, sent: boolean, sentWord: string) => {
+    if (!fields.length) return null;
+    const { done, total } = formProgress(fields as never, answers ?? {});
+    const tone = sent ? 'badge ok' : done === 0 ? 'badge' : done >= total ? 'badge info' : 'badge warn';
+    return (
+      <span className={tone} title={`${label}: ${done} of ${total} answered${sent ? ` — ${sentWord}` : ''}`}>
+        {label} {sent ? `✓ ${sentWord}` : `${done}/${total}`}
+      </span>
+    );
+  };
+  if (sharedReport(config) && prep) {
+    /* Un seul document : ce que la startup a préparé, complété par l'interlocuteur. */
+    const answers = { ...(meeting.prep ?? {}), ...(meeting.report ?? {}) };
+    const { done, total } = formProgress(prep.fields as never, answers);
+    if (meeting.reportSubmittedAt) return <span className="badge ok" title="The shared document is complete">Doc ✓ report sent</span>;
+    return (
+      <span className={done === 0 ? 'badge' : meeting.prepSubmittedAt ? 'badge info' : 'badge warn'} title={`Shared document: ${done} of ${total} answered`}>
+        Doc {done}/{total}{meeting.prepSubmittedAt ? ' · prep sent' : ''}
+      </span>
+    );
+  }
+  return (
+    <>
+      {prep && pill('Prep', prep.fields, meeting.prep ?? {}, Boolean(meeting.prepSubmittedAt), 'sent')}
+      {pill('Report', report.fields, meeting.report ?? {}, Boolean(meeting.reportSubmittedAt), 'sent')}
+    </>
   );
 }
