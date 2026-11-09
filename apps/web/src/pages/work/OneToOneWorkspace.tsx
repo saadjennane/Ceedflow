@@ -1568,6 +1568,8 @@ function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void })
   const [startup, setStartup] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  /* Les préparations envoyées, avant tout compte rendu : de quoi lire les réponses des startups dès qu'elles arrivent. */
+  const [withPreps, setWithPreps] = useState(false);
   /* Le compte rendu final a deux parties : la préparation de la startup, puis
      le compte rendu de l'interlocuteur. Le reporting lit les deux, la
      préparation sous son propre nom. */
@@ -1580,32 +1582,33 @@ function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void })
   const fields = [...prepFields, ...reportForm(data.config).fields];
   const whole = (m: OneToOneMeeting): Record<string, unknown> =>
     shared
-      ? Object.keys(m.report).length ? m.report : (m.prep ?? {})
-      : { ...Object.fromEntries(Object.entries(m.prep ?? {}).map(([k, v]) => [`prep:${k}`, v])), ...m.report };
+      ? m.reportSubmittedAt ? { ...(m.prep ?? {}), ...m.report } : (m.prep ?? {})
+      : { ...Object.fromEntries(Object.entries(m.prep ?? {}).map(([k, v]) => [`prep:${k}`, v])), ...(m.reportSubmittedAt ? m.report : {}) };
 
   /* Les comptes rendus envoyés : un brouillon n'est pas encore une réponse. */
   const sent = useMemo(
     () =>
       data.meetings.filter(
         (m) =>
-          m.reportSubmittedAt &&
+          (m.reportSubmittedAt || (withPreps && m.prepSubmittedAt && m.status !== 'cancelled')) &&
           (!person || takesPart(m, person)) &&
           (!startup || m.candidateId === startup) &&
           (!from || (m.heldOn ?? '') >= from) &&
           (!to || (m.heldOn ?? '') <= to),
       ),
-    [data.meetings, person, startup, from, to],
+    [data.meetings, person, startup, from, to, withPreps],
   );
   const summaries = fields.map((f) => summarise(f, sent.map(whole)));
 
   const exportAll = () => {
-    const head: Cell[] = ['Date', 'Time', 'Startup', 'Interlocutor', 'Status', ...fields.map((f) => f.label), 'Sent'];
+    const head: Cell[] = ['Date', 'Time', 'Startup', 'Interlocutor', 'Status', 'Source', ...fields.map((f) => f.label), 'Sent'];
     const rows: Cell[][] = [head];
     for (const m of sent) {
       rows.push([
         m.heldOn ?? '', m.startTime ?? '', m.orgName, meetingWith(m), MEETING_STATUS_LABEL[m.status],
+        m.reportSubmittedAt ? 'Report' : 'Preparation only',
         ...fields.map((f) => asText(whole(m)[f.id])),
-        m.reportSubmittedAt?.slice(0, 10) ?? '',
+        (m.reportSubmittedAt ?? m.prepSubmittedAt)?.slice(0, 10) ?? '',
       ]);
     }
     download(toWorkbook([{ name: 'Reports', rows }]), `${data.block.name} — reports.xlsx`);
@@ -1635,6 +1638,12 @@ function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void })
         </select>
         <input className="input" type="date" style={{ width: 150 }} value={from} onChange={(e) => setFrom(e.target.value)} aria-label="From" />
         <input className="input" type="date" style={{ width: 150 }} value={to} onChange={(e) => setTo(e.target.value)} aria-label="To" />
+        {prepForm(data.config) && (
+          <label className="check" style={{ fontSize: 12.5 }} title="Answers the startups sent before their session — not yet completed by a report">
+            <input type="checkbox" checked={withPreps} onChange={(e) => setWithPreps(e.target.checked)} />
+            <span>Include preparations sent</span>
+          </label>
+        )}
         <div className="spacer" />
         <button className="btn sm" disabled={!sent.length} onClick={exportAll}>
           <Icon name="file" size={13} /> Export
@@ -1643,7 +1652,12 @@ function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void })
 
       {!sent.length ? (
         <div className="empty" style={{ padding: 24 }}>
-          <p style={{ margin: 0 }}>No report sent{person || startup || from || to ? ' for this selection' : ' yet'}.</p>
+          <p style={{ margin: 0 }}>
+            No {withPreps ? 'report or preparation' : 'report'} sent{person || startup || from || to ? ' for this selection' : ' yet'}.
+            {!withPreps && prepForm(data.config) && data.meetings.some((m) => m.prepSubmittedAt && !m.reportSubmittedAt) && (
+              <> Some preparations are in — tick “Include preparations sent” to read them.</>
+            )}
+          </p>
         </div>
       ) : tab === 'startups' ? (
         <ByStartup meetings={sent.map((m) => ({ ...m, report: whole(m) }))} fields={fields} onOpen={onOpen} />
@@ -1670,7 +1684,10 @@ function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void })
               {sent.map((m) => (
                 <tr key={m.id} style={{ cursor: 'pointer' }} onClick={() => onOpen(m.id)}>
                   <td className="num">{when(m)}</td>
-                  <td className="name">{m.orgName}</td>
+                  <td className="name">
+                    {m.orgName}
+                    {!m.reportSubmittedAt && <span className="badge" style={{ marginLeft: 6 }}>Preparation only</span>}
+                  </td>
                   <td className="muted">{meetingWith(m)}</td>
                   {fields.map((f) => (
                     <td key={f.id} className="muted" style={{ maxWidth: 280 }}>
