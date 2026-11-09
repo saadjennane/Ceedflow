@@ -19,6 +19,8 @@ const COLS = `
          coalesce(r.name, co.name, b.name, p.name || ' · ' || e.name, '') as "aboutName",
          r.kind as "recordKind",
          coalesce(p.name || ' · ' || e.name, cp.name || ' · ' || ce.name, '') as "editionName",
+         coalesce(t.edition_id, c.edition_id) as "inEditionId",
+         coalesce(e.program_id, ce.program_id) as "programId",
          coalesce(r.name, co.name, '') as "subjectName",
          coalesce((select json_agg(json_build_object('id', ow.id, 'name', ow.name) order by tw.added_at, ow.name)
                      from task_owners tw join records ow on ow.id = tw.record_id where tw.task_id = t.id), '[]'::json) as owners,
@@ -61,6 +63,8 @@ export interface TaskFilter {
   /** Ce qu'une personne doit faire : les siennes, et celles de ses sociétés. */
   ownerIds?: string[];
   editionId?: string;
+  /** Liée à l'une des éditions de ce programme, directement ou par une startup. */
+  programId?: string;
   recordId?: string;
   /** Les closes restent lisibles, mais ne s'affichent pas d'elles-mêmes. */
   open?: boolean;
@@ -81,6 +85,10 @@ export async function listTasks(filter: TaskFilter = {}): Promise<Task[]> {
        attend » comprend ce qu'on a demandé pour Rafid Tech, sinon la tâche
        n'est visible que depuis la fiche de la startup. */
     where.push(`(t.edition_id = $${params.length} or c.edition_id = $${params.length})`);
+  }
+  if (filter.programId) {
+    params.push(filter.programId);
+    where.push(`coalesce(e.program_id, ce.program_id) = $${params.length}`);
   }
   if (filter.recordId) {
     params.push(filter.recordId);
@@ -273,7 +281,12 @@ export async function markStuck(id: string, input: { reason: string; unblockerId
     `update tasks set state = 'stuck', stuck_reason = $2, unblocker_id = $3, done_at = null, done_by = null, done_by_name = '' where id = $1`,
     [id, input.reason, input.unblockerId],
   );
-  await logTask(id, 'stuck', by, input.reason, { unblocker: await nameOf(input.unblockerId) });
+  /* Qui est sollicité pour débloquer devient owner : la tâche est aussi la sienne. */
+  const joined = await all<{ record_id: string }>(
+    'insert into task_owners (task_id, record_id, added_by_name) values ($1, $2, $3) on conflict do nothing returning record_id',
+    [id, input.unblockerId, by?.name ?? ''],
+  );
+  await logTask(id, 'stuck', by, input.reason, { unblocker: await nameOf(input.unblockerId), joined: joined.length > 0 });
   return getTask(id);
 }
 

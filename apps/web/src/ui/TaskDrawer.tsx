@@ -40,7 +40,7 @@ function eventLine(e: TaskEvent): string {
     case 'state':
       return `${STATE_WORD[m.from] ?? m.from} → ${STATE_WORD[m.to] ?? m.to}`;
     case 'stuck':
-      return `Stuck — asked ${m.unblocker} to unblock it`;
+      return `Stuck — asked ${m.unblocker} to unblock it${(m as unknown as { joined?: boolean }).joined ? ', now an owner' : ''}`;
     case 'submitted':
       return `Sent to ${m.validator} for validation`;
     case 'priority':

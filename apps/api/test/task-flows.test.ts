@@ -62,6 +62,14 @@ describe('a task’s flow', { skip: skipWithoutServer }, () => {
     assert.equal(t.editionId, edition.id);
     assert.equal(t.recordId, org.id);
     assert.equal(t.subjectName, org.name);
+    assert.equal(t.programId, program.id);
+    /* Une tâche posée sur une startup du programme, sans édition directe : retrouvée aussi. */
+    const track = (await repo.getEditionDetail(edition.id))!.tracks[0]!;
+    const cand = await repo.createCandidate({ editionId: edition.id, trackId: track.id, orgId: org.id, personId: null, originBlockId: null });
+    const viaStartup = (await call('Saad', 'POST', '/api/tasks', { title: `Via startup ${mark}`, ownerIds: [people.Saad!.recordId], candidateId: cand.id, tell: false })).body[0];
+    assert.equal(viaStartup.inEditionId, edition.id);
+    const ofProgram = (await call('Saad', 'GET', `/api/tasks?programId=${program.id}`)).body as { id: string }[];
+    assert.deepEqual(ofProgram.map((x) => x.id).sort(), [t.id, viaStartup.id].sort(), 'the programme’s tasks, direct or through a startup');
   });
 
   it('when stuck, says why and asks a colleague to unblock it — who is told, and sees it waiting', async () => {
@@ -72,6 +80,7 @@ describe('a task’s flow', { skip: skipWithoutServer }, () => {
     assert.equal(stuck.state, 'stuck');
     assert.equal(stuck.stuckReason, 'Chiffres 2025 manquants');
     assert.equal(stuck.unblocker.id, people.Ghita!.recordId);
+    assert.ok(stuck.owners.some((o: { id: string }) => o.id === people.Ghita!.recordId), 'who unblocks it becomes an owner too');
     const [mail] = await letters({ email: people.Ghita!.email });
     assert.equal(mail!.kind, 'task_stuck');
     assert.match(mail!.body, /Chiffres 2025 manquants/);

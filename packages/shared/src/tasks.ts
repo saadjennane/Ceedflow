@@ -88,6 +88,9 @@ export const taskSchema = z.object({
   delegate: z.object({ id: z.string(), name: z.string(), kind: z.enum(['person', 'org']) }).nullable().default(null),
   /** Le programme, à côté du sujet (startup, personne, organisation). */
   editionName: z.string().default(''),
+  /** L'édition et le programme, directement ou par la candidature de la startup. */
+  inEditionId: z.string().nullable().default(null),
+  programId: z.string().nullable().default(null),
   subjectName: z.string().default(''),
   stuckReason: z.string().default(''),
   unblocker: z.object({ id: z.string(), name: z.string() }).nullable().default(null),

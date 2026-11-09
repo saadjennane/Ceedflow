@@ -42,8 +42,8 @@ export async function taskRoutes(app: FastifyInstance) {
   app.addHook('preHandler', workspaceGuard());
 
   app.get('/api/tasks', async (req) => {
-    const { editionId, recordId, open } = req.query as Record<string, string | undefined>;
-    return listTasks({ editionId, recordId, open: open !== 'all' });
+    const { editionId, programId, recordId, open } = req.query as Record<string, string | undefined>;
+    return listTasks({ editionId, programId, recordId, open: open !== 'all' });
   });
 
   /** Qui travaille sur cette édition, en quatre groupes. */

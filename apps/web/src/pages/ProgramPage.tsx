@@ -1,8 +1,8 @@
-import { DEFAULT_OUTCOMES, PROGRAM_TYPES, type BlockOutcome, type ProgramWithEditions } from '@ceed/shared';
+import { DEFAULT_OUTCOMES, PROGRAM_TYPES, type BlockOutcome, type ProgramWithEditions, isLate, taskPeople, type Task } from '@ceed/shared';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
-import { formatRange } from '../lib/format';
+import { formatDate, formatRange } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
 import { SelectField, TextArea, TextField } from '../ui/Field';
 import { Icon } from '../ui/Icon';
@@ -153,6 +153,8 @@ export function ProgramPage() {
           </div>
         )}
 
+        <ProgramTasks programId={p.id} />
+
         <div>
           <button className="btn danger sm" onClick={() => setConfirmDelete(true)}>
             <Icon name="trash" size={13} /> Delete program
@@ -277,5 +279,46 @@ function EditProgramModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Les tâches du programme, toutes éditions confondues : celles liées à une
+ * édition, et celles posées sur l'une de ses startups.
+ */
+function ProgramTasks({ programId }: { programId: string }) {
+  const tasks = useAsync(() => api.get<Task[]>(`/api/tasks?programId=${programId}`), `program-tasks:${programId}`);
+  const open = tasks.data ?? [];
+  return (
+    <>
+      <div className="row">
+        <h2 style={{ fontSize: 15 }}>Open tasks</h2>
+        <span className="badge num">{open.length}</span>
+        <div className="spacer" />
+        {open.length > 0 && <Link className="btn ghost sm" to={`/tasks?program=p:${programId}`}>Open in Tasks</Link>}
+      </div>
+      {!tasks.data ? (
+        <div className="faint">Loading…</div>
+      ) : !open.length ? (
+        <div className="faint" style={{ fontSize: 13 }}>No open task linked to this programme.</div>
+      ) : (
+        <div className="rows">
+          {open.map((t) => (
+            <Link key={t.id} to={`/tasks?task=${t.id}`} className="rowcard card-pad row wrap" style={{ gap: 8, textDecoration: 'none', color: 'inherit' }}>
+              <span style={{ flex: 1, minWidth: 200 }}>
+                <strong style={{ fontSize: 13.5 }}>{t.title}</strong>
+                <span className="faint" style={{ display: 'block', fontSize: 12 }}>
+                  {[taskPeople(t), t.editionName, t.subjectName].filter(Boolean).join(' · ')}
+                </span>
+              </span>
+              {t.state === 'stuck' && <span className="badge stop">Stuck</span>}
+              {t.state === 'to_validate' && <span className="badge warn">To validate</span>}
+              {t.priority === 'high' && <span className="badge stop">High</span>}
+              {t.dueOn && <span className={isLate(t) ? 'badge warn' : 'badge'}>{formatDate(t.dueOn)}</span>}
+            </Link>
+          ))}
+        </div>
+      )}
+    </>
   );
 }

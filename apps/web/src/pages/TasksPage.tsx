@@ -13,7 +13,7 @@
  * pour quand. La liste répond à « qu'est-ce qui presse », le tableau à
  * « qu'est-ce qui coince » — d'où la colonne Stuck.
  */
-import { BOARD_COLUMNS, byUrgency, isLate, isOpen, progress, taskPeople, type MeetingBacklog, type Task, type TaskState } from '@ceed/shared';
+import { BOARD_COLUMNS, byUrgency, isLate, isOpen, progress, taskPeople, type MeetingBacklog, type MeetingOptions, type ProgramWithEditions, type Task, type TaskState } from '@ceed/shared';
 import { useMemo, useState, type DragEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -70,16 +70,35 @@ export function TasksPage() {
   };
 
   const all = tasks.data ?? [];
+  /* Filtrer par owner et par programme — gardé dans l'adresse, pour se partager une vue. */
+  const options = useAsync(() => api.get<MeetingOptions>('/api/meeting-assistant/options'), 'meeting-options');
+  const programs = useAsync(() => api.get<ProgramWithEditions[]>('/api/programs'), 'tasks-programs');
+  const ownerFilter = params.get('owner') ?? '';
+  const programFilter = params.get('program') ?? '';
+  const setFilter = (key: 'owner' | 'program', value: string) =>
+    setParams((p) => {
+      const next = new URLSearchParams(p);
+      if (value) next.set(key, value);
+      else next.delete(key);
+      return next;
+    });
+  const meId = options.data?.me ?? '';
+  const ownerId = ownerFilter === 'me' ? meId : ownerFilter;
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return all
+      .filter((t) => !ownerId || t.owners.some((o) => o.id === ownerId) || t.delegate?.id === ownerId)
+      .filter((t) =>
+        !programFilter ||
+        (programFilter.startsWith('p:') ? t.programId === programFilter.slice(2) : t.inEditionId === programFilter.slice(2)),
+      )
       .filter((t) => (showDone || view === 'board' ? true : isOpen(t)))
       .filter(
         (t) =>
           !needle ||
           [t.title, t.detail, taskPeople(t), t.aboutName].join(' ').toLowerCase().includes(needle),
       );
-  }, [all, query, showDone, view]);
+  }, [all, query, showDone, view, ownerId, programFilter]);
 
   const opened = all.find((t) => t.id === openId) ?? null;
   /* En retard d'abord ; puis le plus prioritaire, puis le plus proche. */
@@ -169,6 +188,20 @@ export function TasksPage() {
       <div className="page stack" style={{ gap: 14 }}>
         <div className="row wrap">
           <SearchBox value={query} onChange={setQuery} placeholder="Search a task, a name" />
+          <select className="select" style={{ width: 'auto' }} value={ownerFilter} onChange={(e) => setFilter('owner', e.target.value)} aria-label="Owner">
+            <option value="">Every owner</option>
+            <option value="me">Mine</option>
+            {(options.data?.members ?? []).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+          <select className="select" style={{ width: 'auto', maxWidth: 260 }} value={programFilter} onChange={(e) => setFilter('program', e.target.value)} aria-label="Programme">
+            <option value="">Every programme</option>
+            {(programs.data ?? []).map((p) => (
+              <optgroup key={p.id} label={p.name}>
+                <option value={`p:${p.id}`}>{p.name} — all editions</option>
+                {p.editions.map((e) => <option key={e.id} value={`e:${e.id}`}>{e.name}</option>)}
+              </optgroup>
+            ))}
+          </select>
           <span className="faint num" style={{ fontSize: 12.5 }}>
             {rows.filter((t) => isOpen(t)).length} open
           </span>
@@ -458,6 +491,16 @@ function Card({
           .filter(Boolean)
           .join(' ')}
       </span>
+      {task.state === 'stuck' && task.unblocker && (
+        <span style={{ fontSize: 12, color: 'var(--stop)' }} title={task.stuckReason}>
+          <Icon name="alert" size={11} /> To unblock: <strong>{task.unblocker.name}</strong>
+        </span>
+      )}
+      {task.state === 'to_validate' && task.validator && (
+        <span style={{ fontSize: 12, color: 'var(--warn)' }} title={task.validationNote}>
+          To validate by: <strong>{task.validator.name}</strong>
+        </span>
+      )}
       {done && task.doneByName && (
         <span className="faint" style={{ fontSize: 11.5 }}>
           Done by {task.doneByName}

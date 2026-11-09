@@ -420,7 +420,9 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
    tableau plutôt que d'élargir la page. */
 .task-board {
   display: grid;
-  grid-template-columns: repeat(4, minmax(240px, 1fr));
+  /* Toutes les colonnes sur une rangée, Done à droite — on défile plutôt que de la renvoyer à la ligne. */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(240px, 1fr);
   gap: 12px;
   align-items: start;
   overflow-x: auto;
