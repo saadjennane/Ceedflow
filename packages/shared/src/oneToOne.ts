@@ -214,9 +214,9 @@ const empty = (v: unknown) => v === undefined || v === null || v === '' || (Arra
 
 /** One question's answers, summed up the way a form's response page does. */
 export type QuestionSummary =
-  | { kind: 'choice'; field: FormField; answered: number; counts: { option: string; count: number }[] }
+  | { kind: 'choice'; field: FormField; answered: number; counts: { option: string; count: number; by: string[] }[] }
   | { kind: 'number'; field: FormField; answered: number; average: number | null; min: number | null; max: number | null }
-  | { kind: 'text'; field: FormField; answered: number; answers: string[] }
+  | { kind: 'text'; field: FormField; answered: number; answers: string[]; by: string[] }
   | { kind: 'file'; field: FormField; answered: number };
 
 /**
@@ -226,14 +226,23 @@ export type QuestionSummary =
  * still counted, under its own words, rather than vanishing from the total.
  * A number gives its average and its range; a text, its answers, newest first.
  */
-export function summarise(field: FormField, reports: Record<string, unknown>[]): QuestionSummary {
-  const given = reports.map((r) => r[field.id]).filter((v) => !empty(v));
+export function summarise(field: FormField, reports: Record<string, unknown>[], who: string[] = []): QuestionSummary {
+  /* Qui a répondu quoi : la startup derrière chaque réponse, pour ne pas s'y perdre. */
+  const pairs = reports.map((r, i) => ({ v: r[field.id], by: who[i] ?? '' })).filter((x) => !empty(x.v));
+  const given = pairs.map((x) => x.v);
   if (field.type === 'select' || field.type === 'multiselect') {
-    const counts = new Map<string, number>(field.options.map((o) => [o, 0]));
-    for (const v of given) for (const o of Array.isArray(v) ? v : [v]) counts.set(String(o), (counts.get(String(o)) ?? 0) + 1);
+    const counts = new Map<string, { count: number; by: string[] }>(field.options.map((o) => [o, { count: 0, by: [] }]));
+    for (const { v, by } of pairs) {
+      for (const o of Array.isArray(v) ? v : [v]) {
+        const c = counts.get(String(o)) ?? { count: 0, by: [] };
+        c.count += 1;
+        if (by) c.by.push(by);
+        counts.set(String(o), c);
+      }
+    }
     return {
       kind: 'choice', field, answered: given.length,
-      counts: [...counts.entries()].map(([option, count]) => ({ option, count })),
+      counts: [...counts.entries()].map(([option, c]) => ({ option, count: c.count, by: c.by })),
     };
   }
   if (field.type === 'number') {
@@ -246,7 +255,7 @@ export function summarise(field: FormField, reports: Record<string, unknown>[]):
     };
   }
   if (field.type === 'file') return { kind: 'file', field, answered: given.length };
-  return { kind: 'text', field, answered: given.length, answers: given.map(String) };
+  return { kind: 'text', field, answered: given.length, answers: given.map(String), by: pairs.map((x) => x.by) };
 }
 
 /* ------------------------------------------------------------------ */

@@ -1598,7 +1598,7 @@ function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void })
       ),
     [data.meetings, person, startup, from, to, withPreps],
   );
-  const summaries = fields.map((f) => summarise(f, sent.map(whole)));
+  const summaries = fields.map((f) => summarise(f, sent.map(whole), sent.map((m) => m.orgName)));
 
   const exportAll = () => {
     const head: Cell[] = ['Date', 'Time', 'Startup', 'Interlocutor', 'Status', 'Source', ...fields.map((f) => f.label), 'Sent'];
@@ -1717,7 +1717,7 @@ function SummaryCard({ summary: s, total }: { summary: QuestionSummary; total: n
       </div>
       {s.kind === 'choice' && (
         <div className="stack" style={{ gap: 5 }}>
-          {s.counts.map(({ option, count }) => {
+          {s.counts.map(({ option, count, by }) => {
             const max = Math.max(1, ...s.counts.map((c) => c.count));
             return (
               <div className="oto-bar" key={option}>
@@ -1725,9 +1725,12 @@ function SummaryCard({ summary: s, total }: { summary: QuestionSummary; total: n
                 <span className="oto-bar-track">
                   <span className="oto-bar-fill" style={{ width: `${(count / max) * 100}%` }} />
                 </span>
-                <span className="num faint" style={{ width: 70, textAlign: 'right', fontSize: 12 }}>
+                <span className="num faint" style={{ width: 70, textAlign: 'right', fontSize: 12 }} title={by.join(', ')}>
                   {count} · {s.answered ? Math.round((count / s.answered) * 100) : 0} %
                 </span>
+                {by.length > 0 && (
+                  <span className="faint" style={{ flexBasis: '100%', fontSize: 11.5, paddingLeft: 2 }}>{by.join(' · ')}</span>
+                )}
               </div>
             );
           })}
@@ -1752,7 +1755,10 @@ function SummaryCard({ summary: s, total }: { summary: QuestionSummary; total: n
       {s.kind === 'text' && (
         <ul className="oto-answers">
           {s.answers.slice(0, 20).map((a, i) => (
-            <li key={i}>{a}</li>
+            <li key={i}>
+              {s.by[i] && <strong style={{ marginRight: 6 }}>{s.by[i]} —</strong>}
+              {a}
+            </li>
           ))}
           {s.answers.length > 20 && <li className="faint">… and {s.answers.length - 20} more — see Responses.</li>}
         </ul>

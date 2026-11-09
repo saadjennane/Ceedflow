@@ -741,8 +741,9 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
 /* Une barre par option, comme la page des réponses d'un formulaire. */
 .oto-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 4px 10px;
   font-size: 12.5px;
 }
 

@@ -30,12 +30,18 @@ const REPORT: FormField[] = [
 
 describe('what a report sums up to', () => {
   it('counts choices per option, keeping an answer no longer offered', () => {
-    const s = summarise(REPORT[0]!, [{ topic: 'Finance' }, { topic: 'Finance' }, { topic: 'Juridique' }, {}]);
+    const s = summarise(REPORT[0]!, [{ topic: 'Finance' }, { topic: 'Finance' }, { topic: 'Juridique' }, {}], ['Rafid', 'Atlas', 'Badr', 'Dawi']);
     assert.equal(s.kind, 'choice');
     assert.equal(s.answered, 3);
     assert.deepEqual(s.kind === 'choice' && s.counts, [
-      { option: 'Finance', count: 2 }, { option: 'Produit', count: 0 }, { option: 'Juridique', count: 1 },
-    ]);
+      { option: 'Finance', count: 2, by: ['Rafid', 'Atlas'] }, { option: 'Produit', count: 0, by: [] }, { option: 'Juridique', count: 1, by: ['Badr'] },
+    ], 'and who chose what');
+  });
+
+  it('keeps the startup behind each written answer', () => {
+    const field: FormField = { ...REPORT[0]!, id: 't', type: 'long_text', options: [] };
+    const s = summarise(field, [{ t: 'Lever des fonds' }, {}, { t: 'Recruter' }], ['Rafid', 'Atlas', 'Badr']);
+    assert.deepEqual(s.kind === 'text' && [s.answers, s.by], [['Lever des fonds', 'Recruter'], ['Rafid', 'Badr']]);
   });
 
   it('gives a number its average and range', () => {
