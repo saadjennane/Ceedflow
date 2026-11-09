@@ -248,6 +248,30 @@ describe('the Meeting Assistant', { skip: skipWithoutServer }, () => {
     await assert.rejects(changeTask(t2!.id, { link: { kind: 'candidate', id: 'nope' } }, null));
   });
 
+  it('gives the importer the tasks a personal list or a “je” gives them — never somebody else’s', async () => {
+    const sarah = people[`Sarah${mark}`]!;
+    let told = '';
+    ai = async ({ importer }) => {
+      told = importer?.id ?? '';
+      return {
+        summary: '', meetingTitle: 'Ma liste', meetingDate: null,
+        tasks: [
+          raw({ title: `Relire le rapport ${mark}`, assignee_name: 'moi' }),
+          raw({ title: `Appeler le traiteur ${mark}`, assignee_name: 'Je' }),
+          raw({ title: `Réserver la salle ${mark}`, assignee_name: `Sarah${mark}` }),
+          raw({ title: `Écrire au jury ${mark}`, assignee_name: null }),
+        ],
+      };
+    };
+    const m = await settle((await call('Saad', 'POST', '/api/meeting-assistant/meetings', { content: notes })).body.id);
+    assert.equal(told, people.Saad!.recordId, 'the model knows who imports');
+    const [read, call_, room, jury] = m.suggestions;
+    assert.equal(read.assigneeId, people.Saad!.recordId);
+    assert.equal(call_.assigneeId, people.Saad!.recordId);
+    assert.equal(room.assigneeId, sarah.recordId, 'a named colleague stays theirs');
+    assert.equal(jury.assigneeId, null, 'no name, no “je”: left to choose');
+  });
+
   it('keeps the notes when the analysis fails, and lets it run again', async () => {
     ai = async () => {
       throw new Error('OpenAI answered 503: overloaded');

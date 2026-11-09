@@ -211,6 +211,8 @@ export type MeetingAnalyzer = (input: {
   weekday: string;
   members: MeetingMember[];
   editions: { id: string; name: string }[];
+  /** Qui importe le texte : « je », « moi », une liste personnelle — c'est cette personne. */
+  importer: MeetingMember | null;
 }) => Promise<{ summary: string; meetingTitle: string; meetingDate: string | null; tasks: RawTask[] }>;
 
 let analyzerForTests: MeetingAnalyzer | null = null;
@@ -267,7 +269,7 @@ En cas de doute, propose-la avec "needs_review": true et dis pourquoi dans "revi
 Pour chaque tâche :
 - "title" : court, à l'infinitif, explicite (« Préparer le budget prévisionnel »).
 - "description" : l'action attendue, reformulée clairement.
-- "assignee_name" : le nom tel qu'écrit dans le compte rendu, ou null si personne n'est nommé.
+- "assignee_name" : le nom tel qu'écrit dans le compte rendu, ou null si personne n'est nommé. Si le texte parle à la première personne (« je dois », « moi », « I will ») ou si c'est une liste de choses à faire personnelle sans autre nom, écris "moi".
 - "assignee_id" : l'identifiant d'un membre de la liste fournie seulement si la correspondance est sûre et unique ; sinon null. N'invente jamais d'identifiant.
 - "about_kind" et "about_name" : ce dont la tâche parle, s'il y a un sujet clair — "person" (une personne extérieure à l'équipe : un mentor, un juré, un partenaire), "organisation" (une société, un partenaire, un financeur), "startup" (une startup accompagnée dans un programme), "programme" (un programme entier) ; "about_name" est le nom tel qu'écrit. Sinon "none" et null. Le responsable de la tâche n'est pas son sujet.
 - "edition_id" : l'identifiant d'un programme de la liste fournie seulement si le compte rendu rattache clairement cette tâche (ou sa startup) à ce programme ; sinon null.
@@ -292,6 +294,7 @@ export async function analyzeMeetingNotes(
     `Date du jour (à défaut de date dans le compte rendu) : ${input.meetingOn} (${input.weekday}). Fuseau : Africa/Casablanca.`,
     `Programmes (identifiant — nom) :`,
     ...input.editions.map((e) => `${e.id} — ${e.name}`),
+    input.importer ? `Personne qui importe ce texte (« je », « moi », une liste personnelle) : ${input.importer.id} — ${input.importer.name}.` : '',
     `Membres de l'équipe (identifiant — nom) :`,
     ...input.members.map((m) => `${m.id} — ${m.name}`),
     '',
@@ -342,8 +345,8 @@ const WEEKDAYS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi',
  * tâches restent, et ne sont jamais refaites ; les autres sont remplacées.
  */
 export async function runMeetingAnalysis(meetingId: string): Promise<void> {
-  const m = await one<{ id: string; title: string; content: string; meetingOn: string; editionId: string | null }>(
-    `select id, title, content, meeting_on::text as "meetingOn", edition_id as "editionId" from meeting_analyses where id = $1`,
+  const m = await one<{ id: string; title: string; content: string; meetingOn: string; editionId: string | null; createdBy: string | null }>(
+    `select id, title, content, meeting_on::text as "meetingOn", edition_id as "editionId", created_by as "createdBy" from meeting_analyses where id = $1`,
     [meetingId],
   );
   if (!m) return;
@@ -356,7 +359,9 @@ export async function runMeetingAnalysis(meetingId: string): Promise<void> {
       weekday: WEEKDAYS[new Date(`${m.meetingOn}T12:00:00Z`).getUTCDay()]!,
       members: members.map(({ id, name }) => ({ id, name })),
       editions,
+      importer: members.find((x) => x.id === m.createdBy) ?? null,
     });
+    const importer = members.find((x) => x.id === m.createdBy)?.id ?? null;
     /* La date que le compte rendu donne, s'il en donne une plausible : c'est d'elle que partent les échéances. */
     const said = result.meetingDate && /^\d{4}-\d{2}-\d{2}$/.test(result.meetingDate) && Number(result.meetingDate.slice(0, 4)) >= 2000 && result.meetingDate <= casablancaToday(1)
       ? result.meetingDate
@@ -373,7 +378,9 @@ export async function runMeetingAnalysis(meetingId: string): Promise<void> {
       needsReview: boolean; reviewReason: string; duplicateTaskId: string | null;
     }[] = [];
     for (const t of result.tasks.filter((x) => x.title.trim())) {
-      const who = matchMember(t.assignee_name ?? '', t.assignee_id, members);
+      /* « Je », « moi », une liste personnelle : la personne qui a importé le texte. */
+      const self = importer && ['moi', 'je', 'me', 'i', 'myself', 'moi meme'].includes(fold(t.assignee_name ?? '')) ? importer : null;
+      const who = self ? { id: self, note: '' } : matchMember(t.assignee_name ?? '', t.assignee_id, members);
       const due = checkDue(t.due_date, meetingOn);
       const named = t.edition_id && knownEditions.has(t.edition_id) ? t.edition_id : m.editionId;
       /* Une attache et une seule, comme une tâche donnée à la main. */

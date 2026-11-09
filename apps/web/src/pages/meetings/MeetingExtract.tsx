@@ -205,6 +205,28 @@ export function MeetingBacklogView({ onCreated, from }: { onCreated: () => void;
             <input type="checkbox" checked={tell} onChange={(e) => setTell(e.target.checked)} />
             <span>Email each person — one letter listing their tasks</span>
           </label>
+          {items.some((s) => !s.assigneeId) && (
+            <button
+              className="btn sm"
+              disabled={busy}
+              title="Every waiting task with no one assigned becomes yours"
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  const rest = items.filter((s) => !s.assigneeId);
+                  for (const s of rest) await api.patch(`/api/meeting-assistant/suggestions/${s.id}`, { assigneeId: options.data!.me });
+                  toast(`${rest.length} assigned to you.`);
+                  backlog.reload();
+                } catch (err) {
+                  toast((err as Error).message, true);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Assign the rest to me
+            </button>
+          )}
           <button className="btn primary sm" disabled={busy || !ready.length} onClick={() => create(ready.map((s) => s.id))}>
             <Icon name="check" size={13} /> Add all ready ({ready.length})
           </button>
