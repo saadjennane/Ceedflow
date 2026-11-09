@@ -17,10 +17,9 @@ import { closeDb, skipWithoutServer } from './helpers.js';
 const uniq = () => `${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
 
 describe('a time, in a calendar', () => {
-  it('reads the hours as Morocco’s — UTC+1, and UTC+0 during Ramadan', () => {
-    assert.equal(localToUtc('2026-11-10', '10:00').toISOString(), '2026-11-10T09:00:00.000Z');
+  it('reads the hours as Morocco’s, whatever its offset that day', () => {
     /* Ramadan, où le Maroc repasse à UTC : quelle que soit la version des fuseaux, l'heure relue à Casablanca est celle saisie. */
-    for (const date of ['2027-02-20', '2027-06-15', '2028-01-30']) {
+    for (const date of ['2026-11-10', '2027-02-20', '2027-06-15', '2028-01-30']) {
       const at = localToUtc(date, '10:00');
       const back = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Casablanca', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(at);
       assert.equal(back, '10:00', date);
@@ -30,13 +29,17 @@ describe('a time, in a calendar', () => {
   it('writes one event for Google, Outlook and the .ics file', () => {
     const event = { uid: 'mtg_1@ceedflow.com', title: 'Mentoring — Nadia', date: '2026-11-10', start: '10:00', minutes: 45, location: 'CEED, Casablanca' };
     const ics = icsOf(event, 7);
-    assert.match(ics, /DTSTART:20261110T090000Z\r\nDTEND:20261110T094500Z/);
+    /* L'écart du Maroc change avec les données de fuseaux : l'attendu se calcule, il ne s'écrit pas en dur. */
+    const at = localToUtc('2026-11-10', '10:00');
+    const z = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    const [start, end] = [z(at), z(new Date(at.getTime() + 45 * 60_000))];
+    assert.ok(ics.includes(`DTSTART:${start}\r\nDTEND:${end}`));
     assert.match(ics, /UID:mtg_1@ceedflow.com/);
     assert.match(ics, /SEQUENCE:7/);
     assert.match(ics, /LOCATION:CEED\\, Casablanca/, 'commas escaped');
     assert.ok(ics.split('\r\n').every((line) => new TextEncoder().encode(line).length <= 75), 'lines folded');
-    assert.ok(googleCalendarUrl(event).includes('dates=20261110T090000Z%2F20261110T094500Z'));
-    assert.ok(outlookCalendarUrl(event).includes('startdt=2026-11-10T09%3A00%3A00.000Z'));
+    assert.ok(googleCalendarUrl(event).includes(`dates=${start}%2F${end}`));
+    assert.ok(outlookCalendarUrl(event).includes(`startdt=${encodeURIComponent(at.toISOString())}`));
     assert.ok(calendarSentence(event).includes('invitation.ics'));
   });
 
@@ -142,7 +145,8 @@ describe('a booking, confirmed', { skip: skipWithoutServer }, () => {
     assert.equal(letter!.kind, 'committee_confirm');
     assert.ok(letter!.body.includes('09:20'));
     assert.ok(!letter!.body.includes('{{'));
-    assert.match(letter!.attachments[0]!.content, /DTSTART:20300410T082000Z/);
+    const nine20 = localToUtc('2030-04-10', '09:20').toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    assert.ok(letter!.attachments[0]!.content.includes(`DTSTART:${nine20}`));
 
     /* La même réponse renvoyée ne réécrit pas. */
     await app.inject({ method: 'POST', url: `/api/public/book/${token}`, payload: { rsvpState: 'confirmed', slotIndex: 1 } });
