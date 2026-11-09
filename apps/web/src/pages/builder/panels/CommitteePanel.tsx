@@ -86,13 +86,16 @@ export function CommitteeSetup({
   config,
   patch,
   tab = 'Overview',
+  onChanged,
 }: {
   block: Block;
   config: CommitteeConfig;
   patch: (partial: Partial<CommitteeConfig>) => void;
   tab?: CommitteeTab;
+  /** Un panel ajouté, changé ou retiré : le parcours relit la brique, qui sait alors qu'elle en a. */
+  onChanged?: () => void;
 }) {
-  if (tab === 'Panels') return <PanelsTab block={block} config={config} />;
+  if (tab === 'Panels') return <PanelsTab block={block} config={config} onChanged={onChanged} />;
   if (tab === 'Invitations') return <InvitationsTab block={block} config={config} patch={patch} />;
   if (tab === 'Messages') return <MessagesTab block={block} config={config} patch={patch} />;
   return <OverviewTab config={config} patch={patch} />;
@@ -275,7 +278,7 @@ function InvitationsTab({
 /* Panels: created, named and juried here                              */
 /* ------------------------------------------------------------------ */
 
-function PanelsTab({ block, config }: { block: Block; config: CommitteeConfig }) {
+function PanelsTab({ block, config, onChanged }: { block: Block; config: CommitteeConfig; onChanged?: () => void }) {
   const view = useAsync(() => api.get<CommitteeView>(`/api/blocks/${block.id}/committee`), block.id);
   /** The id being edited, or 'new' for one that does not exist yet. */
   const [editing, setEditing] = useState<string | null>(null);
@@ -302,7 +305,11 @@ function PanelsTab({ block, config }: { block: Block; config: CommitteeConfig })
       elsewhere.set(row.candidate.id, [...(elsewhere.get(row.candidate.id) ?? []), sv.session.name || word]);
     }
   }
-  const reload = async () => view.set(await api.get<CommitteeView>(`/api/blocks/${block.id}/committee`));
+  /* Le compte des séances de la brique — son statut, sa carte — vient du parcours : il le relit aussi. */
+  const reload = async () => {
+    view.set(await api.get<CommitteeView>(`/api/blocks/${block.id}/committee`));
+    onChanged?.();
+  };
 
   /**
    * Copies a sitting: everything that describes it — name, date, hours, minutes

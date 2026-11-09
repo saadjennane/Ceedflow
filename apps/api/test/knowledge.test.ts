@@ -9,8 +9,9 @@ import cookie from '@fastify/cookie';
 import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import { knowledgeRoutes } from '../src/routes/knowledge.js';
+import { meetingAssistantRoutes } from '../src/routes/meetingAssistant.js';
 import { SESSION_COOKIE, createAccount, createSession, setStaffRole } from '../src/services/auth.js';
-import { getVersion, neighboursOf, useAnalyzerForTests, type KbAnalyzer } from '../src/services/knowledge.js';
+import { getVersion, neighboursOf, useAnalyzerForTests, useChecklistDrafterForTests, type KbAnalyzer } from '../src/services/knowledge.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
 describe('the Knowledge Base', { skip: skipWithoutServer }, () => {
@@ -31,6 +32,7 @@ describe('the Knowledge Base', { skip: skipWithoutServer }, () => {
     await migrate();
     await app.register(cookie);
     await app.register(knowledgeRoutes);
+    await app.register(meetingAssistantRoutes);
     await app.ready();
     await member('Saad', 'admin');
     await member('Rita', 'admin');
@@ -219,5 +221,74 @@ describe('the Knowledge Base', { skip: skipWithoutServer }, () => {
     const history = (await call('Lina', 'GET', '/api/kb/history')).body as { entryId: string; action: string; actor: { id: string } | null }[];
     const mine = history.filter((h) => h.entryId === made.body.entryId).map((h) => h.action).reverse();
     assert.deepEqual(mine, ['created', 'analysis_done', 'review_changes', 'resubmitted', 'reviewed', 'rejected'], 'the text did not change: its analysis still stands');
+  });
+  it('keeps a checklist as task templates, and puts its points in the backlog each time it is launched — never before it is published', async () => {
+    ai = async () => ({ summary: 'Rien à signaler.', findings: [] });
+    const empty = await call('Yasmine', 'POST', '/api/kb/entries', { categoryId: 'kbc_programmes', title: `Vide ${mark}`, body: '', format: 'checklist', items: [] });
+    assert.equal(empty.status, 422, 'a checklist needs at least one point');
+
+    const made = await call('Yasmine', 'POST', '/api/kb/entries', {
+      categoryId: 'kbc_programmes', title: `Préparer un comité ${mark}`, body: 'Trois semaines avant le jury.', format: 'checklist',
+      items: [{ title: `Réserver la salle ${mark}`, note: 'Technopark, salle B' }, { title: `Inviter les jurés ${mark}` }],
+    });
+    assert.equal(made.status, 201);
+    const v = await settle(made.body.versionId);
+    assert.equal(v.format, 'checklist');
+    assert.equal(v.items.length, 2);
+    assert.equal(v.items[1]!.note, '');
+
+    const early = await call('Yasmine', 'POST', `/api/meeting-assistant/backlog/checklist/${made.body.entryId}`, {});
+    assert.equal(early.status, 409, 'only a published checklist is launched');
+
+    await call('Omar', 'POST', `/api/kb/versions/${v.id}/review`, { action: 'reviewed', contentHash: v.contentHash });
+    await call('Rita', 'POST', `/api/kb/versions/${v.id}/validate`, { action: 'approve', contentHash: v.contentHash });
+    assert.equal((await call('Lina', 'POST', `/api/meeting-assistant/backlog/checklist/${made.body.entryId}`, {})).status, 403, 'an observer does not launch');
+
+    for (let run = 1; run <= 2; run++) {
+      const launched = await call('Yasmine', 'POST', `/api/meeting-assistant/backlog/checklist/${made.body.entryId}`, {});
+      assert.equal(launched.status, 201);
+      assert.equal(launched.body.added, 2);
+    }
+    const backlog = (await call('Yasmine', 'GET', '/api/meeting-assistant/backlog')).body;
+    const mine = backlog.items.filter((s: { title: string }) => s.title.includes(mark));
+    assert.equal(mine.length, 4, 'two launches, two groups of two');
+    assert.equal(new Set(mine.map((s: { meetingId: string }) => s.meetingId)).size, 2);
+    const salle = mine.find((s: { title: string }) => s.title.startsWith('Réserver'))!;
+    assert.equal(salle.meetingKind, 'checklist');
+    assert.equal(salle.meetingTitle, `Préparer un comité ${mark}`);
+    assert.equal(salle.description, 'Technopark, salle B');
+    assert.equal(salle.assigneeId, null, 'a template: the owner is given when the task is created');
+    assert.equal(salle.link, null);
+    const history = (await call('Yasmine', 'GET', '/api/meeting-assistant/meetings')).body as { title: string }[];
+    assert.ok(!history.some((m) => m.title.includes(mark)), 'a checklist is not a meeting');
+
+    const info = await call('Yasmine', 'POST', '/api/kb/entries', { categoryId: 'kbc_programmes', title: `Info ${mark}`, body: 'À lire.', items: [{ title: 'ignoré' }] });
+    const iv = await settle(info.body.versionId);
+    assert.equal(iv.format, 'info');
+    assert.deepEqual(iv.items, [], 'an information keeps no points');
+  });
+  it('reads a process in a pasted text and proposes its steps — saving nothing, and saying so when there is none', async () => {
+    let read = '';
+    useChecklistDrafterForTests(async (text) => {
+      read = text;
+      return text.includes('jury')
+        ? { title: 'Préparer un comité', context: 'Avant chaque jury.', items: [{ title: ' Réserver la salle ', note: 'Trois semaines avant' }, { title: '', note: 'vide' }, { title: 'Inviter les jurés', note: '' }] }
+        : { title: '', context: '', items: [] };
+    });
+    try {
+      const before = (await call('Yasmine', 'GET', '/api/kb')).body.items.length;
+      const got = await call('Yasmine', 'POST', '/api/kb/checklist-draft', { text: '  Pour le jury, on réserve la salle puis on invite les jurés.  ' });
+      assert.equal(got.status, 200);
+      assert.equal(read, 'Pour le jury, on réserve la salle puis on invite les jurés.');
+      assert.deepEqual(got.body.items, [{ title: 'Réserver la salle', note: 'Trois semaines avant' }, { title: 'Inviter les jurés', note: '' }], 'a point with no title is dropped');
+      assert.equal(got.body.title, 'Préparer un comité');
+      assert.equal((await call('Yasmine', 'GET', '/api/kb')).body.items.length, before, 'nothing saved');
+
+      assert.equal((await call('Yasmine', 'POST', '/api/kb/checklist-draft', { text: 'Bonjour, merci.' })).status, 422, 'no process in it');
+      assert.equal((await call('Yasmine', 'POST', '/api/kb/checklist-draft', { text: '   ' })).status, 422);
+      assert.equal((await call('Lina', 'POST', '/api/kb/checklist-draft', { text: 'Le jury…' })).status, 403, 'an observer reads only');
+    } finally {
+      useChecklistDrafterForTests(null);
+    }
   });
 });

@@ -373,7 +373,7 @@ export function BlockDrawer({
           />
         )}
         {block.type === 'committee' && (
-          <CommitteeSetup block={block} config={draft as unknown as CommitteeConfig} patch={patch} tab={committeeTab} />
+          <CommitteeSetup block={block} config={draft as unknown as CommitteeConfig} patch={patch} tab={committeeTab} onChanged={onChanged} />
         )}
         {block.type === 'selection' && (
           <SelectionSetup

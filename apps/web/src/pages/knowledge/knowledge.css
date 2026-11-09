@@ -48,3 +48,13 @@
 @media (max-width: 640px) {
   .kb-timeline time { flex-basis: 70px; }
 }
+
+/* Une checklist : ses points, chacun un modèle de tâche. */
+.kb-checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.kb-checklist li { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; }
+.kb-checklist li > svg { flex: none; margin-top: 3px; color: var(--ink-3); }
+.kb-items { display: flex; flex-direction: column; gap: 8px; }
+.kb-item { display: grid; grid-template-columns: 22px 1fr auto; gap: 6px; align-items: start; }
+.kb-item .num { color: var(--ink-3); font-size: 12.5px; padding-top: 8px; text-align: right; }
+.kb-item-fields { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.kb-item-tools { display: flex; gap: 2px; }

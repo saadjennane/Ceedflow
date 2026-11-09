@@ -20,7 +20,7 @@ export interface MeetingSuggestion {
   meetingTitle: string;
   meetingOn: string;
   /** Une réunion analysée, ou le groupe des tâches écrites à la main. */
-  meetingKind: 'meeting' | 'manual';
+  meetingKind: 'meeting' | 'manual' | 'checklist';
   position: number;
   source: 'ai' | 'manual';
   title: string;

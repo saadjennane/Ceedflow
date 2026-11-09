@@ -152,11 +152,12 @@ export function KnowledgePage() {
           <div className="rows">
             {shown.map((i) => (
               <Link key={i.entryId} to={`/knowledge/${i.entryId}`} className="rowcard card-pad kb-row" style={{ textDecoration: 'none', color: 'inherit' }}>
-                <Icon name="file" size={16} />
+                <Icon name={i.format === 'checklist' ? 'check' : 'file'} size={16} />
                 <div className="kb-row-main">
                   <strong>{tab === 'knowledge' ? i.official?.title : i.open?.title ?? i.latest.title}</strong>
                   <p className="faint">{i.excerpt}</p>
                   <div className="row wrap faint" style={{ gap: 8, fontSize: 12, marginTop: 4 }}>
+                    {i.format === 'checklist' && <span className="badge info">Checklist</span>}
                     {i.category && <span>{i.category.name}</span>}
                     {tab === 'knowledge' && i.official && (
                       <span>v{i.official.number} · published {formatDate(i.official.publishedAt)}</span>

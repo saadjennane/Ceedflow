@@ -191,7 +191,7 @@ export function MeetingBacklogView({ onCreated, from }: { onCreated: () => void;
   const canWrite = options.data.canWrite;
   /* Prêtes : un responsable, un intitulé — et pas un doublon possible, qui reste à trancher à la main. */
   const ready = items.filter((s) => s.assigneeId && s.title.trim() && !s.duplicate);
-  const groups = [...new Map(items.map((s) => [s.meetingId, { id: s.meetingId, title: s.meetingTitle, on: s.meetingOn, manual: s.meetingKind === 'manual' }])).values()]
+  const groups = [...new Map(items.map((s) => [s.meetingId, { id: s.meetingId, title: s.meetingTitle, on: s.meetingOn, manual: s.meetingKind !== 'meeting', checklist: s.meetingKind === 'checklist' }])).values()]
     /* Ce qu'on a ajouté à la main d'abord : c'est le plus souvent ce qu'on vient d'écrire. */
     .sort((a, b) => Number(b.manual) - Number(a.manual));
 
@@ -272,7 +272,13 @@ export function MeetingBacklogView({ onCreated, from }: { onCreated: () => void;
       {groups.map((g) => (
         <section key={g.id} className="prop-group">
           <div className="prop-group-head">
-            {g.manual ? (
+            {g.checklist ? (
+              <>
+                <Icon name="check" size={13} />
+                <strong>{g.title}</strong>
+                <span className="faint" style={{ fontSize: 12 }}>Checklist · {formatDate(g.on)}</span>
+              </>
+            ) : g.manual ? (
               <strong>Added by hand</strong>
             ) : (
               <>

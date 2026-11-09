@@ -11,6 +11,8 @@
 import {
   TASK_PRIORITIES,
   newId,
+  type KbChecklistItem,
+  type KbChecklistLaunch,
   type MeetingMember,
   type MeetingOptions,
   type MeetingRow,
@@ -693,7 +695,12 @@ export async function createFromSuggestions(
     try {
       /* La phrase d'origine, gardée avec la tâche : on retrouve d'où elle vient. */
       /* La phrase d'origine pour une tâche lue dans un compte rendu ; rien pour une tâche écrite à la main. */
-      const source = meeting.kind === 'manual' ? '' : `Source — ${meeting.title} (${meeting.meetingOn})${s.sourceExcerpt ? ` : « ${s.sourceExcerpt} »` : ''}`;
+      const source =
+        meeting.kind === 'manual'
+          ? ''
+          : meeting.kind === 'checklist'
+            ? `Checklist — ${meeting.title} (Knowledge Base)`
+            : `Source — ${meeting.title} (${meeting.meetingOn})${s.sourceExcerpt ? ` : « ${s.sourceExcerpt} »` : ''}`;
       const [task] = await createTasks(
         {
           title: s.title,
@@ -790,4 +797,38 @@ export async function addToBacklog(input: { title: string }, actor: MeetingActor
     [id, bucket.id, input.title.trim().slice(0, 300), actor.recordId],
   );
   return { id };
+}
+
+/**
+ * Lancer une checklist de la Knowledge Base : ses points, tels que la version
+ * officielle les écrit, arrivent dans le backlog sous un groupe à son nom. Des
+ * modèles — ni owner ni lien : ils se donnent au moment de créer chaque tâche.
+ * Autant de lancements qu'il en faut, chacun son groupe.
+ */
+export async function launchChecklist(entryId: string, actor: MeetingActor): Promise<KbChecklistLaunch> {
+  mustWrite(actor);
+  const v = await one<{ id: string; title: string; format: string; items: KbChecklistItem[] }>(
+    `select v.id, v.title, v.format, v.items
+       from kb_entries e join kb_versions v on v.id = e.official_version_id
+      where e.id = $1`,
+    [entryId],
+  );
+  if (!v) throw new HttpError(409, 'Only a published checklist goes to the backlog.');
+  if (v.format !== 'checklist' || !v.items?.length) throw new HttpError(409, 'This knowledge is not a checklist.');
+  const groupId = newId('mtg', 10);
+  await (await db()).tx(async () => {
+    await all(
+      `insert into meeting_analyses (id, kind, title, meeting_on, content, status, created_by, created_by_name, analysed_at, kb_version_id)
+       values ($1, 'checklist', $2, current_date, '', 'done', $3, $4, now(), $5)`,
+      [groupId, v.title, actor.recordId, actor.name, v.id],
+    );
+    for (const [i, item] of v.items.entries()) {
+      await all(
+        `insert into meeting_task_suggestions (id, meeting_id, position, source, title, description)
+         values ($1, $2, $3, 'manual', $4, $5)`,
+        [newId('mts', 10), groupId, i + 1, item.title.slice(0, 300), item.note ?? ''],
+      );
+    }
+  });
+  return { groupId, added: v.items.length };
 }

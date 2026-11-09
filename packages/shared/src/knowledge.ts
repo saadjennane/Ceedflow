@@ -35,6 +35,27 @@ export const KB_STATUS_LABEL: Record<KbStatus, string> = {
 /** Les statuts d'une version encore en chemin — une seule par connaissance. */
 export const KB_OPEN: readonly KbStatus[] = ['draft', 'analysis_pending', 'analysis_failed', 'to_review', 'changes_requested', 'to_validate'];
 
+/**
+ * Deux formats : une information à lire, ou une checklist — une procédure dont
+ * les points se posent dans le backlog des tâches, à chaque fois qu'on la lance.
+ */
+export const KB_FORMATS = ['info', 'checklist'] as const;
+export type KbFormat = (typeof KB_FORMATS)[number];
+export const KB_FORMAT_LABEL: Record<KbFormat, string> = { info: 'Information', checklist: 'Checklist' };
+
+/** Un point de checklist : un modèle de tâche, sans owner ni lien — ils se donnent à la création. */
+export interface KbChecklistItem {
+  title: string;
+  note: string;
+}
+
+/** Le texte entier d'une version — ce que l'IA lit, ce que l'empreinte couvre. */
+export function kbText(v: { body: string; format?: KbFormat; items?: KbChecklistItem[] }): string {
+  if (v.format !== 'checklist' || !v.items?.length) return v.body;
+  const list = v.items.map((i) => `- [ ] ${i.title}${i.note ? ` — ${i.note}` : ''}`).join('\n');
+  return [v.body.trim(), `Checklist :\n${list}`].filter(Boolean).join('\n\n');
+}
+
 export const KB_FINDING_KINDS = ['duplicate', 'conflict', 'clarification'] as const;
 export type KbFindingKind = (typeof KB_FINDING_KINDS)[number];
 export const KB_FINDING_LABEL: Record<KbFindingKind, string> = {
@@ -71,6 +92,8 @@ export interface KbVersion {
   number: number;
   title: string;
   body: string;
+  format: KbFormat;
+  items: KbChecklistItem[];
   contentHash: string;
   changeSummary: string;
   status: KbStatus;
@@ -146,6 +169,8 @@ export interface KbListItem {
   entryId: string;
   category: KbCategory | null;
   official: Pick<KbVersion, 'id' | 'number' | 'title' | 'publishedAt' | 'author'> | null;
+  /** Le format de ce qu'on lit : l'officielle, sinon celle en chemin. */
+  format: KbFormat;
   open: Pick<KbVersion, 'id' | 'number' | 'title' | 'status' | 'author' | 'createdAt' | 'updatedAt'> | null;
   /** Le dernier état connu, pour l'historique : rejetée, par exemple. */
   latest: Pick<KbVersion, 'id' | 'number' | 'title' | 'status'>;
@@ -216,26 +241,50 @@ export const KB_DEFAULT_MODEL: Record<'anthropic' | 'openai', string> = {
 const title = z.string().trim().min(1, 'Give it a title.').max(200, 'Two hundred characters at most.');
 const body = z.string().max(100_000, 'A hundred thousand characters at most.');
 
-export const kbCreateInput = z.object({
-  categoryId: z.string().min(1, 'Pick a category.'),
-  title,
-  body,
-});
+const format = z.enum(KB_FORMATS).default('info');
+const items = z
+  .array(
+    z.object({
+      title: z.string().trim().min(1, 'Every point needs a title.').max(300, 'Three hundred characters at most.'),
+      note: z.string().trim().max(2000, 'Two thousand characters at most.').default(''),
+    }),
+  )
+  .max(100, 'A hundred points at most.')
+  .default([]);
+/** Une checklist sans point n'en est pas une ; une information n'en garde aucun. */
+const withFormat = <T extends { format: KbFormat; items: KbChecklistItem[] }>(v: T, ctx: z.RefinementCtx) => {
+  if (v.format === 'checklist' && !v.items.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['items'], message: 'Add at least one point to the checklist.' });
+  }
+};
+const content = { title, body, format, items };
 
-export const kbUpdateInput = z.object({
-  title,
-  body,
-  changeSummary: z.string().trim().max(1000).default(''),
-});
+export const kbCreateInput = z
+  .object({ categoryId: z.string().min(1, 'Pick a category.'), ...content })
+  .superRefine(withFormat)
+  .transform((v) => ({ ...v, items: v.format === 'checklist' ? v.items : [] }));
 
-export const kbEditInput = z.object({
-  title,
-  body,
+export const kbUpdateInput = z
+  .object({ ...content, changeSummary: z.string().trim().max(1000).default('') })
+  .superRefine(withFormat)
+  .transform((v) => ({ ...v, items: v.format === 'checklist' ? v.items : [] }));
+
+export const kbEditInput = z
+  .object({
+  ...content,
   changeSummary: z.string().trim().max(1000).default(''),
   categoryId: z.string().optional(),
   /** La révision lue : une autre arrivée entre-temps refuse l'enregistrement. */
   revision: z.number().int().min(1),
-});
+  })
+  .superRefine(withFormat)
+  .transform((v) => ({ ...v, items: v.format === 'checklist' ? v.items : [] }));
+
+/** Lancer une checklist : ses points arrivent dans le backlog, un groupe à son nom. */
+export interface KbChecklistLaunch {
+  groupId: string;
+  added: number;
+}
 
 export const kbReviewInput = z.object({
   action: z.enum(['reviewed', 'changes']),

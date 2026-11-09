@@ -6,13 +6,14 @@ import {
   KB_FINDING_LABEL,
   KB_OPEN,
   kbFindingBlocks,
+  kbText,
   type KbEntryDetail,
   type KbFinding,
   type KbFindingKind,
   type KbVersion,
 } from '@ceed/shared';
 import { useEffect, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
@@ -41,6 +42,7 @@ export function KnowledgeEntryPage() {
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
   const toast = useToast();
+  const navigate = useNavigate();
 
   const d = data.data;
   const open = d?.versions.find((v) => KB_OPEN.includes(v.status)) ?? null;
@@ -122,8 +124,29 @@ export function KnowledgeEntryPage() {
             <Icon name="edit" size={13} /> Edit
           </button>
         )}
+        {/* Une checklist publiée se lance : ses points arrivent dans le backlog, à assigner et lier. */}
+        {official?.format === 'checklist' && me.canWrite && (
+          <button
+            className="btn primary"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const made = await api.post<{ added: number }>(`/api/meeting-assistant/backlog/checklist/${entryId}`, {});
+                toast(`${made.added} task${made.added === 1 ? '' : 's'} added to the backlog — give each an owner and a link there.`);
+                navigate('/tasks?tab=backlog');
+              } catch (err) {
+                toast((err as Error).message, true);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <Icon name="check" size={13} /> Add to backlog
+          </button>
+        )}
         {!open && me.canWrite && (
-          <button className="btn primary" onClick={() => setEditing('update')}>
+          <button className={official?.format === 'checklist' ? 'btn' : 'btn primary'} onClick={() => setEditing('update')}>
             <Icon name="plus" size={13} /> Propose an update
           </button>
         )}
@@ -134,6 +157,7 @@ export function KnowledgeEntryPage() {
           <div className="row wrap" style={{ gap: 8 }}>
             <StatusBadge status={v.status} />
             <span className="badge">v{v.number}</span>
+            {v.format === 'checklist' && <span className="badge info">Checklist</span>}
             {d.category && <span className="badge">{d.category.name}</span>}
           </div>
           <h2 style={{ margin: 0, fontSize: 22 }}>{v.title}</h2>
@@ -157,8 +181,21 @@ export function KnowledgeEntryPage() {
           </div>
         )}
 
-        <section className="card card-pad">
-          <Markdown text={v.body} />
+        <section className="card card-pad stack" style={{ gap: 12 }}>
+          {v.body.trim() && <Markdown text={v.body} />}
+          {v.format === 'checklist' && (
+            <ol className="kb-checklist">
+              {v.items.map((item, i) => (
+                <li key={i}>
+                  <Icon name="square" size={14} />
+                  <div>
+                    <strong>{item.title}</strong>
+                    {item.note && <div className="faint" style={{ fontSize: 13 }}>{item.note}</div>}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
         </section>
 
         {/* ---- L'analyse ---- */}
@@ -325,7 +362,11 @@ export function KnowledgeEntryPage() {
         <KnowledgeEditor
           mode={editing === 'update' ? { kind: 'update', entryId } : { kind: 'edit', versionId: v.id, revision: v.revision, reviewed: Boolean(v.reviewedBy) }}
           categories={(cats.data ?? []).filter(Boolean) as NonNullable<KbEntryDetail['category']>[]}
-          initial={editing === 'update' ? { title: (official ?? v).title, body: (official ?? v).body } : { title: v.title, body: v.body, categoryId: d.category?.id, changeSummary: v.changeSummary }}
+          initial={
+            editing === 'update'
+              ? { title: (official ?? v).title, body: (official ?? v).body, format: (official ?? v).format, items: (official ?? v).items }
+              : { title: v.title, body: v.body, format: v.format, items: v.items, categoryId: d.category?.id, changeSummary: v.changeSummary }
+          }
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -363,7 +404,7 @@ export function KnowledgeEntryPage() {
           {comparing.before.title !== comparing.after.title && (
             <p style={{ fontSize: 13 }}><strong>Title:</strong> <s>{comparing.before.title}</s> → {comparing.after.title}</p>
           )}
-          <LineDiff before={comparing.before.body} after={comparing.after.body} />
+          <LineDiff before={kbText(comparing.before)} after={kbText(comparing.after)} />
         </Modal>
       )}
     </>

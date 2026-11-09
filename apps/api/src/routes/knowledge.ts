@@ -17,12 +17,14 @@ import {
   kbValidateInput,
 } from '@ceed/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { z } from 'zod';
 import {
   changeCategory,
   commentOn,
   createCategory,
   createKnowledge,
   decideFinding,
+  draftChecklist,
   editVersion,
   flagFinding,
   kbEntry,
@@ -72,6 +74,12 @@ export async function knowledgeRoutes(app: FastifyInstance) {
   app.get('/api/kb/entries/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     return (await kbEntry(id, actorOf(req))) ?? notFound(reply, 'Knowledge not found.');
+  });
+
+  /** Une checklist proposée à partir d'un texte collé — rien ne s'enregistre. */
+  app.post('/api/kb/checklist-draft', async (req) => {
+    const { text } = parse(z.object({ text: z.string().max(200_000, 'Two hundred thousand characters at most.').default('') }), req.body);
+    return draftChecklist(text, actorOf(req));
   });
 
   app.post('/api/kb/entries', async (req, reply) => {

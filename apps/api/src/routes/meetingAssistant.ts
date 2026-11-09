@@ -9,6 +9,7 @@ import { one } from '../db/client.js';
 import {
   addSuggestion,
   addToBacklog,
+  launchChecklist,
   changeSuggestion,
   createFromBacklog,
   createFromSuggestions,
@@ -48,6 +49,12 @@ export async function meetingAssistantRoutes(app: FastifyInstance) {
     const { title } = parse(z.object({ title: z.string().trim().max(300).default('') }), req.body);
     reply.code(201);
     return addToBacklog({ title }, await actorOf(req));
+  });
+  /** Une checklist de la Knowledge Base, lancée : ses points arrivent dans le backlog. */
+  app.post('/api/meeting-assistant/backlog/checklist/:entryId', async (req, reply) => {
+    const { entryId } = req.params as { entryId: string };
+    reply.code(201);
+    return launchChecklist(entryId, await actorOf(req));
   });
   app.post('/api/meeting-assistant/backlog/create', async (req) =>
     createFromBacklog(parse(createSuggestionsInput, req.body), await actorOf(req)),

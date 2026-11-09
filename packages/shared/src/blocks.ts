@@ -2149,7 +2149,7 @@ export function blockMissing(
   if (block.type === 'evaluation') {
     return (block.config as EvaluationConfig).method === 'verdict' ? 'Name a status' : 'Add a criterion';
   }
-  if (block.type === 'committee') return 'Create a sitting';
+  if (block.type === 'committee') return (block.config as CommitteeConfig).format === 'event' ? 'Create a sitting' : 'Create a panel';
   if (block.type === 'deliverable') return 'Ask for something';
   if (block.type === 'one_to_one') {
     return (block.config as OneToOneConfig).interlocutors.length ? 'Add a report question' : 'Name an interlocutor';

@@ -48,7 +48,7 @@ function unsetChip(block: Block): { label: string; tone: 'ok' | 'info' | 'warn' 
         ? { label: 'Name a status', tone: '' }
         : { label: 'Statuses by hand', tone: 'info' };
     case 'committee':
-      return { label: 'No sitting — skipped', tone: '' };
+      return { label: (block.config as CommitteeConfig).format === 'event' ? 'No sitting — skipped' : 'No panel — skipped', tone: '' };
     case 'deliverable':
       return { label: 'Nothing asked yet', tone: '' };
     case 'one_to_one':
@@ -163,7 +163,8 @@ export function blockLine(block: Block, track?: TrackWithPhases): BlockLine {
       const sittings = block.sittings ?? 0;
       // The sittings are the thing: a card that does not name them leaves you
       // wondering why a jury day planned for the 28th says nothing about it.
-      const bits = [sittings ? plural(sittings, 'sitting') : 'No sitting yet'];
+      const unit = c.format === 'event' ? 'sitting' : 'panel';
+      const bits = [sittings ? plural(sittings, unit) : `No ${unit} yet`];
       // Who will judge is the other half of the question. A committee with
       // sittings and nobody on them looks ready and reaches no one.
       if (sittings) bits.push(block.jurors ? plural(block.jurors, 'juror') : 'nobody on them yet');
