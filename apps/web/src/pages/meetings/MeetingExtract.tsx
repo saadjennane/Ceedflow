@@ -131,7 +131,20 @@ export function MeetingBacklogView({ onCreated, from }: { onCreated: () => void;
   const options = useAsync(() => api.get<MeetingOptions>('/api/meeting-assistant/options'), 'meeting-options');
   const [tell, setTell] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
   const toast = useToast();
+
+  /* Une tâche écrite à la main, sans compte rendu : elle arrive dans « Added by hand », à mon nom. */
+  const addByHand = async () => {
+    if (!newTitle.trim()) return;
+    try {
+      await api.post('/api/meeting-assistant/backlog/add', { title: newTitle.trim() });
+      setNewTitle('');
+      backlog.reload();
+    } catch (err) {
+      toast((err as Error).message, true);
+    }
+  };
 
   /* Une analyse en cours : la liste se remet à jour d'elle-même. */
   const analysing = backlog.data?.analysing.some((a) => a.status === 'pending');
@@ -178,7 +191,9 @@ export function MeetingBacklogView({ onCreated, from }: { onCreated: () => void;
   const canWrite = options.data.canWrite;
   /* Prêtes : un responsable, un intitulé — et pas un doublon possible, qui reste à trancher à la main. */
   const ready = items.filter((s) => s.assigneeId && s.title.trim() && !s.duplicate);
-  const groups = [...new Map(items.map((s) => [s.meetingId, { id: s.meetingId, title: s.meetingTitle, on: s.meetingOn }])).values()];
+  const groups = [...new Map(items.map((s) => [s.meetingId, { id: s.meetingId, title: s.meetingTitle, on: s.meetingOn, manual: s.meetingKind === 'manual' }])).values()]
+    /* Ce qu'on a ajouté à la main d'abord : c'est le plus souvent ce qu'on vient d'écrire. */
+    .sort((a, b) => Number(b.manual) - Number(a.manual));
 
   return (
     <div className="stack" style={{ gap: 14 }}>
@@ -193,6 +208,23 @@ export function MeetingBacklogView({ onCreated, from }: { onCreated: () => void;
           {a.status === 'failed' && <Link className="btn sm" to={`/tasks/meetings/${a.id}`}>Open</Link>}
         </div>
       ))}
+
+      {canWrite && (
+        <div className="row" style={{ gap: 8 }}>
+          <input
+            className="input"
+            style={{ flex: 1 }}
+            value={newTitle}
+            placeholder="Add a task to the backlog — no notes needed"
+            onChange={(e) => setNewTitle(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addByHand()}
+            aria-label="New task"
+          />
+          <button className="btn" disabled={!newTitle.trim()} onClick={addByHand}>
+            <Icon name="plus" size={13} /> Add a task
+          </button>
+        </div>
+      )}
 
       {canWrite && items.length > 0 && (
         <div className="row wrap" style={{ gap: 10 }}>
@@ -234,14 +266,20 @@ export function MeetingBacklogView({ onCreated, from }: { onCreated: () => void;
       )}
 
       {!items.length && !backlog.data.analysing.length && (
-        <div className="empty">Nothing waiting. Use AI Extract Tasks to turn meeting notes into tasks.</div>
+        <div className="empty">Nothing waiting. Add a task above, or use AI Extract Tasks to turn meeting notes into tasks.</div>
       )}
 
       {groups.map((g) => (
         <section key={g.id} className="prop-group">
           <div className="prop-group-head">
-            <Link to={`/tasks/meetings/${g.id}`}><strong>{g.title || 'Meeting notes'}</strong></Link>
-            <span className="faint" style={{ fontSize: 12 }}>{formatDate(g.on)}</span>
+            {g.manual ? (
+              <strong>Added by hand</strong>
+            ) : (
+              <>
+                <Link to={`/tasks/meetings/${g.id}`}><strong>{g.title || 'Meeting notes'}</strong></Link>
+                <span className="faint" style={{ fontSize: 12 }}>{formatDate(g.on)}</span>
+              </>
+            )}
           </div>
           {items.filter((s) => s.meetingId === g.id).map((s) => (
             <ProposalCard

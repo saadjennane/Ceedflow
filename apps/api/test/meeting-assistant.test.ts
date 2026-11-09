@@ -272,6 +272,25 @@ describe('the Meeting Assistant', { skip: skipWithoutServer }, () => {
     assert.equal(jury.assigneeId, null, 'no name, no “je”: left to choose');
   });
 
+  it('takes a task written by hand into the backlog — no notes, no history, no source line', async () => {
+    assert.equal((await call('Lina', 'POST', '/api/meeting-assistant/backlog/add', { title: 'x' })).status, 403);
+    const added = await call('Saad', 'POST', '/api/meeting-assistant/backlog/add', { title: `Écrire au jury ${mark}` });
+    assert.equal(added.status, 201);
+    const backlog = (await call('Saad', 'GET', '/api/meeting-assistant/backlog')).body as { items: { id: string; meetingKind: string; assigneeId: string | null }[] };
+    const mine = backlog.items.find((i) => i.id === added.body.id)!;
+    assert.equal(mine.meetingKind, 'manual');
+    assert.equal(mine.assigneeId, people.Saad!.recordId, 'mine by default');
+    const history = (await call('Saad', 'GET', '/api/meeting-assistant/meetings')).body as { title: string }[];
+    assert.ok(!history.some((h) => h.title === 'Added by hand'), 'not a meeting in the history');
+    const again = await call('Saad', 'POST', '/api/meeting-assistant/backlog/add', { title: `Deuxième ${mark}` });
+    const items = (await call('Saad', 'GET', '/api/meeting-assistant/backlog')).body.items as { id: string; meetingId: string }[];
+    assert.equal(items.find((i) => i.id === again.body.id)!.meetingId, items.find((i) => i.id === added.body.id)!.meetingId, 'one group for everything added by hand');
+    const out = await call('Saad', 'POST', '/api/meeting-assistant/backlog/create', { ids: [added.body.id] });
+    const task = (await getTask(out.body.created[0].taskId))!;
+    assert.equal(task.title, `Écrire au jury ${mark}`);
+    assert.ok(!task.detail.includes('Source'), 'no source line for a task written by hand');
+  });
+
   it('keeps the notes when the analysis fails, and lets it run again', async () => {
     ai = async () => {
       throw new Error('OpenAI answered 503: overloaded');

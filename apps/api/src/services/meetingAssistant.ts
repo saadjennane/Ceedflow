@@ -477,6 +477,7 @@ export async function listMeetings(): Promise<MeetingRow[]> {
        from meeting_analyses m
        left join editions e on e.id = m.edition_id
        left join programs p on p.id = e.program_id
+      where m.kind = 'meeting'
       order by m.meeting_on desc, m.created_at desc
       limit 500`,
   );
@@ -485,7 +486,7 @@ export async function listMeetings(): Promise<MeetingRow[]> {
 /** Les propositions, avec la réunion d'où elles viennent. */
 async function suggestionsWhere(where: string, params: unknown[]): Promise<MeetingSuggestion[]> {
   const rows = await all<{
-    meetingId: string; meetingTitle: string; meetingOn: string;
+    meetingId: string; meetingTitle: string; meetingOn: string; meetingKind: 'meeting' | 'manual';
     id: string; position: number; source: 'ai' | 'manual'; title: string; description: string; assigneeId: string | null;
     assigneeName: string | null; assigneeSaid: string; assigneeNote: string; dueOn: string | null; dueNote: string;
     priority: TaskPriority; sourceExcerpt: string; confidence: 'high' | 'medium' | 'low'; needsReview: boolean; reviewReason: string;
@@ -495,7 +496,7 @@ async function suggestionsWhere(where: string, params: unknown[]): Promise<Meeti
     dupId: string | null; dupTitle: string | null; dupOwner: string | null; dupState: string | null; dupDue: string | null;
     taskId: string | null; taskTitle: string | null; taskState: string | null;
   }>(
-    `select s.meeting_id as "meetingId", ma.title as "meetingTitle", ma.meeting_on::text as "meetingOn", s.id, s.position, s.source, s.title, s.description, s.assignee_id as "assigneeId", r.name as "assigneeName",
+    `select s.meeting_id as "meetingId", ma.title as "meetingTitle", ma.meeting_on::text as "meetingOn", ma.kind as "meetingKind", s.id, s.position, s.source, s.title, s.description, s.assignee_id as "assigneeId", r.name as "assigneeName",
             s.assignee_said as "assigneeSaid", s.assignee_note as "assigneeNote", s.due_on::text as "dueOn", s.due_note as "dueNote",
             s.priority, s.source_excerpt as "sourceExcerpt", s.confidence, s.needs_review as "needsReview", s.review_reason as "reviewReason",
             s.status, s.error, s.edition_id as "editionId", sp.name || ' — ' || se.name as "editionName",
@@ -521,7 +522,7 @@ async function suggestionsWhere(where: string, params: unknown[]): Promise<Meeti
     params,
   );
   return rows.map((r) => ({
-      meetingId: r.meetingId, meetingTitle: r.meetingTitle, meetingOn: r.meetingOn,
+      meetingId: r.meetingId, meetingTitle: r.meetingTitle, meetingOn: r.meetingOn, meetingKind: r.meetingKind,
       id: r.id, position: r.position, source: r.source, title: r.title, description: r.description,
       assigneeId: r.assigneeId, assigneeName: r.assigneeName ?? '', assigneeSaid: r.assigneeSaid, assigneeNote: r.assigneeNote,
       dueOn: r.dueOn, dueNote: r.dueNote, editionId: r.editionId, editionName: r.editionName ?? '', priority: r.priority,
@@ -652,8 +653,8 @@ export async function createFromSuggestions(
   actor: MeetingActor,
 ): Promise<{ created: { id: string; taskId: string }[]; failed: { id: string; error: string }[]; skipped: string[]; told: number }> {
   mustWrite(actor);
-  const meeting = await one<{ title: string; meetingOn: string; editionId: string | null }>(
-    `select title, meeting_on::text as "meetingOn", edition_id as "editionId" from meeting_analyses where id = $1`,
+  const meeting = await one<{ title: string; meetingOn: string; editionId: string | null; kind: string }>(
+    `select title, meeting_on::text as "meetingOn", edition_id as "editionId", kind from meeting_analyses where id = $1`,
     [meetingId],
   );
   if (!meeting) throw new HttpError(404, 'Meeting not found.');
@@ -691,7 +692,8 @@ export async function createFromSuggestions(
     }
     try {
       /* La phrase d'origine, gardée avec la tâche : on retrouve d'où elle vient. */
-      const source = `Source — ${meeting.title} (${meeting.meetingOn})${s.sourceExcerpt ? ` : « ${s.sourceExcerpt} »` : ''}`;
+      /* La phrase d'origine pour une tâche lue dans un compte rendu ; rien pour une tâche écrite à la main. */
+      const source = meeting.kind === 'manual' ? '' : `Source — ${meeting.title} (${meeting.meetingOn})${s.sourceExcerpt ? ` : « ${s.sourceExcerpt} »` : ''}`;
       const [task] = await createTasks(
         {
           title: s.title,
@@ -728,7 +730,7 @@ export async function meetingBacklog(): Promise<{ analysing: { id: string; title
   return {
     analysing: await all(
       `select id, title, status, error, created_at::text as "createdAt" from meeting_analyses
-        where status = 'pending' or (status = 'failed' and created_at > now() - interval '7 days')
+        where kind = 'meeting' and (status = 'pending' or (status = 'failed' and created_at > now() - interval '7 days'))
         order by created_at desc`,
     ),
     items: await suggestionsWhere(`where s.status in ('proposed', 'failed')`, []),
@@ -763,4 +765,29 @@ export async function createFromBacklog(
     out.told += r.told;
   }
   return out;
+}
+
+/**
+ * Ajouter au backlog une tâche écrite à la main, sans compte rendu : elle se
+ * range dans le groupe « Added by hand », créé la première fois.
+ */
+export async function addToBacklog(input: { title: string }, actor: MeetingActor): Promise<{ id: string }> {
+  mustWrite(actor);
+  let bucket = await one<{ id: string }>(`select id from meeting_analyses where kind = 'manual' order by created_at limit 1`);
+  if (!bucket) {
+    const id = newId('mtg', 10);
+    await all(
+      `insert into meeting_analyses (id, kind, title, meeting_on, content, status, created_by, created_by_name, analysed_at)
+       values ($1, 'manual', 'Added by hand', current_date, '', 'done', $2, $3, now())`,
+      [id, actor.recordId, actor.name],
+    );
+    bucket = { id };
+  }
+  const id = newId('mts', 10);
+  await all(
+    `insert into meeting_task_suggestions (id, meeting_id, position, source, title, assignee_id)
+     values ($1, $2, (select coalesce(max(position), 0) + 1 from meeting_task_suggestions where meeting_id = $2), 'manual', $3, $4)`,
+    [id, bucket.id, input.title.trim().slice(0, 300), actor.recordId],
+  );
+  return { id };
 }

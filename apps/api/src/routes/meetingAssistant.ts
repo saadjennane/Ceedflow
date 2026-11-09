@@ -4,9 +4,11 @@
  */
 import { createSuggestionsInput, meetingInput, suggestionPatch } from '@ceed/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { z } from 'zod';
 import { one } from '../db/client.js';
 import {
   addSuggestion,
+  addToBacklog,
   changeSuggestion,
   createFromBacklog,
   createFromSuggestions,
@@ -41,6 +43,12 @@ export async function meetingAssistantRoutes(app: FastifyInstance) {
   app.get('/api/meeting-assistant/options', async (req) => meetingOptions(await actorOf(req)));
   app.get('/api/meeting-assistant/meetings', async () => listMeetings());
   app.get('/api/meeting-assistant/backlog', async () => meetingBacklog());
+  /** Une tâche écrite à la main, dans le backlog — sans passer par un compte rendu. */
+  app.post('/api/meeting-assistant/backlog/add', async (req, reply) => {
+    const { title } = parse(z.object({ title: z.string().trim().max(300).default('') }), req.body);
+    reply.code(201);
+    return addToBacklog({ title }, await actorOf(req));
+  });
   app.post('/api/meeting-assistant/backlog/create', async (req) =>
     createFromBacklog(parse(createSuggestionsInput, req.body), await actorOf(req)),
   );

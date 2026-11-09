@@ -19,6 +19,8 @@ export interface MeetingSuggestion {
   meetingId: string;
   meetingTitle: string;
   meetingOn: string;
+  /** Une réunion analysée, ou le groupe des tâches écrites à la main. */
+  meetingKind: 'meeting' | 'manual';
   position: number;
   source: 'ai' | 'manual';
   title: string;
