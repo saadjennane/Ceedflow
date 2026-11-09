@@ -14,8 +14,7 @@ import {
   type OrgProfile,
   type Task,
   type MemberAction,
-  type MemberActivity,
-} from '@ceed/shared';
+  type MemberActivity, requiredShown, itemComplete, type DeliverableItem } from '@ceed/shared';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
@@ -465,6 +464,21 @@ function MemberSpaceReady({
             home={preview ? (preview.home ?? { actions: [], upcoming: [] }) : (home.data ?? null)}
             error={preview ? null : home.error}
             programs={programs.data ?? []}
+            documents={(states.data ?? []).map((st) => ({
+              editionId: st.programme.editionId,
+              programName: st.programme.programName,
+              lists: st.owed.map((ask) => {
+                const mine = (id: string) => ask.returns.find((r) => r.itemId === id);
+                const need = requiredShown(ask.config.items as DeliverableItem[], (id) => mine(id)?.value);
+                return {
+                  name: ask.block.name,
+                  sent: need.filter((i) => itemComplete(i, mine(i.id)?.value)).length,
+                  of: need.length,
+                  accepted: ask.returns.filter((r) => r.state === 'accepted').length,
+                  back: ask.returns.filter((r) => r.state === 'rejected').length,
+                };
+              }),
+            }))}
             onTick={async (task) => {
               try {
                 await api.patch(`/api/me/tasks/${task.id}`, { state: 'done' });

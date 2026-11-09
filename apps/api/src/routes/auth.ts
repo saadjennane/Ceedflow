@@ -701,9 +701,17 @@ export async function authRoutes(app: FastifyInstance) {
       return notFound(reply, 'That is not one of the things being asked for.');
     }
     const block = await repo.getBlock(input.blockId);
-    if (!block || blockStatus(block) !== 'live') {
+    /* Une pièce refusée se renvoie toujours, même la liste fermée : la refuser,
+       c'est demander la bonne version. Le reste de la liste, lui, est figé. */
+    const sentBack = asked.returns.find((r) => r.itemId === input.itemId)?.state === 'rejected';
+    if (!block || (blockStatus(block) !== 'live' && !sentBack)) {
       throw new HttpError(403, 'That list is not open. Ask the team if you still need to send something.');
     }
+    /* « Remplacer » vide d'abord le champ : sur une liste fermée, ce vide
+       effacerait la pièce refusée — et le droit de renvoyer la bonne. Seul
+       l'envoi du nouveau fichier compte. */
+    const emptyValue = input.value === null || input.value === undefined || input.value === '' || (Array.isArray(input.value) && !input.value.length);
+    if (blockStatus(block) !== 'live' && emptyValue) return deliverablesFor(candidate.editionId, candidate);
 
     /* Une adresse ou un numéro fautif est refusé ici aussi : l'écran le dit en
        écrivant, mais c'est l'API qui garde le fichier, et une règle qui ne vit

@@ -64,6 +64,7 @@ export function MemberHome({
   onOpen,
   onGo,
   withProgrammes = true,
+  documents = [],
 }: {
   /** What the server read for them: null while it loads. */
   home: { actions: MemberAction[]; upcoming: MemberActivity[] } | null;
@@ -78,6 +79,12 @@ export function MemberHome({
   onGo: (href: string) => void;
   /** The programmes block — not on a programme's own page, which is one of them. */
   withProgrammes?: boolean;
+  /**
+   * Leurs listes de pièces, même quand tout est envoyé : c'est là qu'on revient
+   * remplacer un document. Sans cette entrée, une liste complète disparaissait
+   * de l'accueil avec la dernière chose à faire.
+   */
+  documents?: { editionId: string; programName: string; lists: { name: string; sent: number; of: number; accepted: number; back: number }[] }[];
 }) {
   const { t, lang } = useLang();
   const [filter, setFilter] = useState<'all' | ActionStatus>('all');
@@ -263,6 +270,41 @@ export function MemberHome({
           </div>
         )}
       </section>
+
+      {/* ---- Ses documents : toujours là, pour revenir voir ou remplacer ---- */}
+      {documents.some((d) => d.lists.length) && (
+        <section className="card card-pad stack" style={{ gap: 10 }}>
+          <div className="eyebrow">{t('docs.title')}</div>
+          <div className="rows">
+            {documents.flatMap((d) =>
+              d.lists.map((l) => (
+                <button
+                  className="rowcard row"
+                  key={`${d.editionId}:${l.name}`}
+                  style={{ padding: '11px 13px', gap: 11, width: '100%', textAlign: 'left' }}
+                  onClick={() => onOpen(d.editionId)}
+                >
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <strong style={{ fontSize: 13.5 }}>{l.name}</strong>
+                    <span className="faint" style={{ display: 'block', fontSize: 12.5 }}>
+                      {[
+                        d.programName,
+                        l.of && l.sent >= l.of ? t('docs.allSent') : `${l.sent}/${l.of} ${t('docs.sent')}`,
+                        l.accepted ? `${l.accepted} ${t('docs.accepted')}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
+                  </span>
+                  {l.back > 0 && <span className="badge warn">{l.back} {t('docs.back')}</span>}
+                  <span className="faint" style={{ fontSize: 12.5 }}>{t('docs.view')}</span>
+                  <Icon name="chevronRight" size={15} />
+                </button>
+              )),
+            )}
+          </div>
+        </section>
+      )}
 
       {/* ---- Ses programmes ---- */}
       {withProgrammes && (

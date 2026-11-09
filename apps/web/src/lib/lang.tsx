@@ -119,6 +119,12 @@ const WORDS = {
   'owed.done': { fr: 'Tout est transmis', en: 'Everything is in' },
   'owed.reading': { fr: 'Tout est transmis — CEED en prend connaissance', en: 'Everything is in — CEED is reading it' },
   'owed.before': { fr: 'avant le', en: 'before' },
+  'docs.title': { fr: 'Livrables', en: 'Deliverables' },
+  'docs.allSent': { fr: 'tout est envoyé', en: 'all sent' },
+  'docs.sent': { fr: 'envoyés', en: 'sent' },
+  'docs.accepted': { fr: 'validés', en: 'accepted' },
+  'docs.back': { fr: 'à renvoyer', en: 'to send again' },
+  'docs.view': { fr: 'Voir ou remplacer', en: 'View or replace' },
   'owed.closed': {
     fr: 'Cette liste est close. Ce que vous avez envoyé est ci-dessous — parlez-en à CEED s’il faut encore changer quelque chose.',
     en: 'This list is closed. What you sent is below — talk to CEED if something still has to change.',

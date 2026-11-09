@@ -134,6 +134,8 @@ export function ProgramJourney({
           candidateId={state.candidateId}
           orgName={state.orgName}
           given={state.owed}
+          /* Sur la page du programme, la liste est ce qu'on vient chercher : ouverte. */
+          startOpen
           onSaved={(owed) => onOwed(state.candidateId, owed)}
           readOnly={readOnly}
         />

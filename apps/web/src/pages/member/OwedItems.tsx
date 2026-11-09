@@ -443,7 +443,8 @@ export function OwedList({
               <DeliverableItemInput
                 item={item}
                 value={item.id in typed ? typed[item.id] : (mine?.value ?? null)}
-                readOnly={readOnly || !ask.open}
+                /* Fermée, la liste reste lisible — sauf une pièce refusée, qui attend sa bonne version. */
+                readOnly={readOnly || (!ask.open && mine?.state !== 'rejected')}
                 error={refused[item.id]}
                 onChange={(v) => write(item, v)}
               />
