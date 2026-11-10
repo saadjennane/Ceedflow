@@ -13,8 +13,7 @@ import {
   type Me,
   type OrgProfile,
   type Task,
-  type MemberAction,
-  type MemberActivity, requiredShown, itemComplete, type DeliverableItem } from '@ceed/shared';
+  type MemberHomeData, requiredShown, itemComplete, type DeliverableItem } from '@ceed/shared';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
@@ -78,7 +77,7 @@ export interface MemberPreview {
   /** Son parcours dans chaque programme, par candidature. */
   journeys?: Record<string, Journey | null>;
   /** Sa page d'accueil, lue comme elle la lit. */
-  home?: { actions: MemberAction[]; upcoming: MemberActivity[] };
+  home?: MemberHomeData;
 }
 
 export function MemberPage({ preview }: { preview?: MemberPreview } = {}) {
@@ -243,7 +242,7 @@ function MemberSpaceReady({
   /* Tout ce qu'il y a à faire et ce qui vient, lu une fois côté serveur sur
      les objets eux-mêmes : tâches, livrables, fiche, évaluations, comptes
      rendus, créneaux à choisir ou à confirmer. */
-  const home = useAsync<{ actions: MemberAction[]; upcoming: MemberActivity[] }>(
+  const home = useAsync<MemberHomeData>(
     async () => (preview ? { actions: [], upcoming: [] } : api.get('/api/me/actions')),
     preview ? 'preview-home' : 'my-home',
   );
@@ -465,6 +464,7 @@ function MemberSpaceReady({
           <MemberHome
             home={preview ? (preview.home ?? { actions: [], upcoming: [] }) : (home.data ?? null)}
             error={preview ? null : home.error}
+            firstName={name.split(/\s+/)[0] || undefined}
             programs={programs.data ?? []}
             documents={(states.data ?? []).map((st) => ({
               editionId: st.programme.editionId,

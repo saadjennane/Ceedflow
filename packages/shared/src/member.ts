@@ -34,6 +34,35 @@ export interface MemberAction {
   task?: Task;
 }
 
+/** Ce qu'une startup a déjà fait, à relire ou à reprendre. */
+export interface MemberDone {
+  id: string;
+  kind: 'application' | 'selection' | 'committee' | 'deliverable' | 'one_to_one' | 'preparation' | 'kpi';
+  /** Le jour où c'est arrivé. */
+  at: string;
+  label: string;
+  programName: string | null;
+  editionId: string | null;
+  /** Où le relire — ou le modifier, quand c'est encore permis. */
+  href: string;
+}
+
+/** Les phases d'un programme, telles qu'une candidature les traverse. */
+export interface MemberStep {
+  name: string;
+  state: 'done' | 'current' | 'upcoming';
+}
+
+/** La page d'accueil d'un membre. */
+export interface MemberHomeData {
+  actions: MemberAction[];
+  upcoming: MemberActivity[];
+  /** Le plus récent d'abord. */
+  done?: MemberDone[];
+  /** Par édition. */
+  steps?: Record<string, MemberStep[]>;
+}
+
 /** Something on the calendar — not a thing to do, unless it asks for one. */
 export interface MemberActivity {
   id: string;

@@ -134,6 +134,7 @@ export function ProgramJourney({
           onOpen={() => undefined}
           onGo={onGo}
           withProgrammes={false}
+          split
         />
       )}
 
@@ -154,8 +155,12 @@ export function ProgramJourney({
 
       {/* L'historique : ce qui s'est passé, du plus récent au plus ancien. */}
       {j && (
-        <section className="card card-pad stack" style={{ gap: 10 }}>
-          <div className="eyebrow">{fr ? 'Historique' : 'History'}</div>
+        <section className="stack" style={{ gap: 10 }} aria-labelledby="pj-history">
+          <div className="mh-head">
+            <h2 id="pj-history">{fr ? 'Historique' : 'History'}</h2>
+            {j.history.length > 0 && <span className="faint num">{j.history.length}</span>}
+          </div>
+          <div className="card card-pad">
           {!j.history.length && (
             <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
               {fr ? 'Rien encore : ce que vous ferez dans ce programme apparaîtra ici.' : 'Nothing yet: what you do in this programme will appear here.'}
@@ -214,6 +219,7 @@ export function ProgramJourney({
               );
             })}
           </ol>
+          </div>
         </section>
       )}
     </div>

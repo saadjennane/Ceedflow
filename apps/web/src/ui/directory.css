@@ -1279,3 +1279,58 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
 .dir-figs b { font-size: 15px; }
 .dir-face .dir-logo { border-radius: 999px; font-size: 20px; border: 3px solid var(--surface); box-shadow: var(--shadow-2); }
 @media (prefers-reduced-motion: reduce) { .dir-card { transition: none; } .dir-card:hover { transform: none; } }
+
+/* L'accueil d'un membre : à venir, réalisé, programmes — chaque ligne s'ouvre. */
+.mh-head { display: flex; align-items: baseline; gap: 10px; }
+.mh-head h2 { margin: 0; font-family: var(--display); font-size: 19px; font-weight: 600; }
+.mh-list { padding: 6px; display: flex; flex-direction: column; }
+.mh-row { display: flex; flex-wrap: wrap; align-items: center; border-radius: var(--r); }
+.mh-hit {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; padding: 12px 14px;
+  border: 1px solid transparent; border-radius: var(--r); background: none; color: inherit; font: inherit;
+  text-align: left; cursor: pointer; transition: background 0.12s, border-color 0.12s;
+}
+.mh-hit:hover:not(:disabled) { background: var(--wash); border-color: var(--line); }
+.mh-hit:disabled { cursor: default; }
+.mh-what { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mh-what strong { font-size: 14px; }
+.mh-what small { font-size: 12.5px; color: var(--ink-3); }
+.mh-cta { font-size: 13px; font-weight: 600; color: var(--blue); white-space: nowrap; }
+.mh-when { width: 62px; flex: none; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.mh-when b { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: var(--blue); }
+.mh-when small { font-size: 12px; color: var(--ink-3); }
+.mh-when.late b { color: var(--stop); }
+.mh-when.today b { color: var(--warn); }
+.mh-when.later b { color: var(--ink-3); }
+.mh-feature {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 18px; padding: 18px 20px; width: 100%;
+  border-radius: 18px; border: 1px solid var(--blue); background: var(--blue-soft); color: inherit; font: inherit;
+  text-align: left; cursor: pointer; transition: box-shadow 0.12s;
+}
+.mh-feature:hover:not(:disabled) { box-shadow: 0 0 0 3px var(--glow); }
+.mh-feature .mh-what { flex: 1 1 260px; }
+.mh-feature-date {
+  width: 82px; height: 82px; flex: none; border-radius: 14px; background: var(--surface); border: 1px solid var(--line);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+}
+.mh-feature-date b { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; color: var(--blue); }
+.mh-feature-date b.today { color: var(--warn); }
+.mh-feature-date span { font-family: var(--display); font-size: 22px; font-weight: 600; }
+.mh-ok { width: 36px; height: 36px; border-radius: 50%; background: var(--ok-wash); color: var(--ok); display: grid; place-items: center; flex: none; }
+.mh-dot { width: 30px; height: 30px; border-radius: 50%; flex: none; display: grid; place-items: center; background: var(--blue-soft); color: var(--blue); }
+.mh-dot.selection, .mh-dot.deliverable { background: var(--ok-wash); color: var(--ok); }
+.mh-progs { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
+.mh-prog { padding: 6px; display: flex; flex-direction: column; }
+.mh-mark { width: 38px; height: 38px; border-radius: 11px; flex: none; display: grid; place-items: center; color: #fff; font-family: var(--display); font-weight: 700; font-size: 17px; }
+.mh-steps { display: flex; gap: 4px; }
+.mh-steps span { flex: 1; height: 5px; border-radius: 99px; background: var(--line); }
+.mh-steps span.current { opacity: 0.55; }
+.mh-mini {
+  display: flex; align-items: center; gap: 12px; padding: 9px 14px; border: 0; border-radius: var(--r-sm);
+  background: none; color: inherit; font: inherit; font-size: 13.5px; text-align: left; cursor: pointer;
+}
+.mh-mini:hover { background: var(--wash); }
+.mh-when-mini { width: 54px; flex: none; font-size: 11px; font-weight: 700; color: var(--blue); }
+.mh-when-mini.late { color: var(--stop); }
+.mh-when-mini.today { color: var(--warn); }
+.mh-when-mini.later { color: var(--ink-3); }

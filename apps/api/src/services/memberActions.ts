@@ -21,6 +21,9 @@ import {
   type Candidate,
   type MemberAction,
   type MemberActivity,
+  type MemberDone,
+  type MemberHomeData,
+  type MemberStep,
   meetingWith,
   requiredShown,
 } from '@ceed/shared';
@@ -33,6 +36,7 @@ import { meetingsFor, prepsDueFor } from './oneToOne.js';
 import { reviewsFor } from './reviews.js';
 import { measuresDueFor } from './reporting.js';
 import { listTasks } from './tasks.js';
+import { journeyOf } from './journey.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -42,9 +46,11 @@ const statusOf = (dueOn: string | null, started: boolean): ActionStatus =>
 
 const RANK: Record<ActionStatus, number> = { late: 0, in_progress: 1, pending: 2 };
 
-export async function memberActions(recordId: string): Promise<{ actions: MemberAction[]; upcoming: MemberActivity[] }> {
+export async function memberActions(recordId: string): Promise<MemberHomeData & { done: MemberDone[]; steps: Record<string, MemberStep[]> }> {
   const actions: MemberAction[] = [];
   const upcoming: MemberActivity[] = [];
+  const done: MemberDone[] = [];
+  const steps: Record<string, MemberStep[]> = {};
   const now = today();
 
   /* ---- Tasks CEED gave them, or their organisations ---- */
@@ -99,6 +105,22 @@ export async function memberActions(recordId: string): Promise<{ actions: Member
       const got = await candidacyActions(candidate, where, now);
       actions.push(...got.actions);
       upcoming.push(...got.upcoming);
+      /* Ce qui est fait, et où le relire : sa page quand il en a une, le programme sinon. */
+      const journey = await journeyOf(candidate);
+      if (journey) {
+        steps[program.editionId] = journey.phases.map((p) => ({ name: p.name, state: p.state }));
+        journey.history.forEach((e, i) =>
+          done.push({
+            id: `${candidate.id}:${e.kind}:${e.at}:${i}`,
+            kind: e.kind,
+            at: e.at,
+            label: e.label,
+            programName: program.programName,
+            editionId: program.editionId,
+            href: e.href ?? `/me?tab=Programs&prog=${program.editionId}`,
+          }),
+        );
+      }
     }
   }
 
@@ -176,7 +198,8 @@ export async function memberActions(recordId: string): Promise<{ actions: Member
     (a, b) => RANK[a.status] - RANK[b.status] || (a.dueOn ?? '9999').localeCompare(b.dueOn ?? '9999'),
   );
   upcoming.sort((a, b) => `${a.on ?? '9999'} ${a.startsAt ?? ''}`.localeCompare(`${b.on ?? '9999'} ${b.startsAt ?? ''}`));
-  return { actions, upcoming };
+  done.sort((a, b) => b.at.localeCompare(a.at));
+  return { actions, upcoming, done: done.slice(0, 40), steps };
 }
 
 /**

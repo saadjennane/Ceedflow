@@ -12,10 +12,10 @@
 import {
   itemComplete,
   longDate,
-  type ActionStatus,
   type DeliverableItem,
   type MemberAction,
-  type MemberActivity,
+  type MemberDone,
+  type MemberHomeData,
   type Task,
   type TaskItem,
   requiredShown,
@@ -55,6 +55,27 @@ export function owedLine(owed: Owed[]): { left: number; of: number; closesAt: st
   return of === 0 ? null : { left, of, closesAt, back };
 }
 
+type Tone = 'late' | 'today' | 'soon' | 'later';
+
+/** Une ligne de « À venir » : une chose à faire ou un rendez-vous, dite pareil. */
+interface NextLine {
+  id: string;
+  /** Pour trier : la date, ou rien. */
+  on: string | null;
+  top: string;
+  sub: string;
+  tone: Tone;
+  title: string;
+  detail: string;
+  cta: string | null;
+  href: string | null;
+  editionId: string | null;
+  task?: Task;
+  role?: string;
+  /** Un rendez-vous : celui qui vient en premier est mis en avant. */
+  meeting?: boolean;
+}
+
 export function MemberHome({
   home,
   error,
@@ -64,12 +85,15 @@ export function MemberHome({
   onOpen,
   onGo,
   withProgrammes = true,
+  withDone = withProgrammes,
+  split = false,
+  firstName,
   documents = [],
 }: {
   /** What the server read for them: null while it loads. */
-  home: { actions: MemberAction[]; upcoming: MemberActivity[] } | null;
+  home: MemberHomeData | null;
   error?: string | null;
-  /** Their programmes, for the strip at the bottom. */
+  /** Their programmes, for the cards at the bottom. */
   programs: MyProgram[];
   onTick: (task: Task) => void;
   /** Cocher une ligne de sa checklist, sans clore la tâche. */
@@ -79,6 +103,12 @@ export function MemberHome({
   onGo: (href: string) => void;
   /** The programmes block — not on a programme's own page, which is one of them. */
   withProgrammes?: boolean;
+  /** Ce qui est fait — la page d'un programme a déjà son historique. */
+  withDone?: boolean;
+  /** La page d'un programme : « À faire » et « À venir » séparés, plutôt qu'une seule liste. */
+  split?: boolean;
+  /** Pour dire bonjour ; sans, pas d'en-tête. */
+  firstName?: string;
   /**
    * Leurs listes de pièces, même quand tout est envoyé : c'est là qu'on revient
    * remplacer un document. Sans cette entrée, une liste complète disparaissait
@@ -87,11 +117,10 @@ export function MemberHome({
   documents?: { editionId: string; programName: string; lists: { name: string; sent: number; of: number; accepted: number; back: number }[] }[];
 }) {
   const { t, lang } = useLang();
-  const [filter, setFilter] = useState<'all' | ActionStatus>('all');
+  const fr = lang === 'fr';
+  const [allDone, setAllDone] = useState(false);
+  const now = isoToday();
 
-  /* Une ligne par chose à faire, tous programmes et rôles confondus, dans
-     l'ordre du plus pressé : ce qui compte est le geste, le programme n'est
-     que l'endroit où il se fait. */
   const titleOf = (a: MemberAction): string => {
     switch (a.kind) {
       case 'task':
@@ -115,16 +144,6 @@ export function MemberHome({
         return `${a.answer === 'book' ? t('act.bookMeeting') : t('act.confirmMeeting')} ${a.label}`;
     }
   };
-  const detailOf = (a: MemberAction): string =>
-    [
-      a.programName,
-      a.orgName && a.kind !== 'profile' ? a.orgName : null,
-      a.kind === 'profile' && a.left ? `${a.left} ${t('act.missing')}` : null,
-      a.kind !== 'profile' && a.of ? `${a.left} ${t('act.left')} ${a.of}` : null,
-      a.dueOn ? `${t('owed.before')} ${longDate(a.dueOn)}` : null,
-    ]
-      .filter(Boolean)
-      .join(' · ');
   const ctaOf = (a: MemberAction): string | null =>
     a.kind === 'task'
       ? null
@@ -138,207 +157,352 @@ export function MemberHome({
               ? t('cta.report')
               : a.kind === 'prepare'
                 ? t('cta.prepare')
-              : a.kind === 'kpi'
-                ? t('cta.kpi')
-              : a.answer === 'book'
-                ? t('cta.book')
-                : t('cta.confirm');
+                : a.kind === 'kpi'
+                  ? t('cta.kpi')
+                  : a.answer === 'book'
+                    ? t('cta.book')
+                    : t('cta.confirm');
 
-  const actions = home?.actions ?? [];
-  const shown = filter === 'all' ? actions : actions.filter((a) => a.status === filter);
-  const count = (s: ActionStatus) => actions.filter((a) => a.status === s).length;
-  const pendingByEdition = new Map<string, number>();
-  for (const a of actions) if (a.editionId) pendingByEdition.set(a.editionId, (pendingByEdition.get(a.editionId) ?? 0) + 1);
+  /* La date en deux lignes : le jour, puis l'heure ou ce qu'elle signifie. */
+  const day = (on: string) =>
+    on === now
+      ? fr ? 'AUJ.' : 'TODAY'
+      : new Date(`${on}T12:00:00`).toLocaleDateString(fr ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'short' }).replace('.', '').toUpperCase();
+  const toneOf = (on: string | null, late: boolean): Tone =>
+    late || (on && on < now) ? 'late' : on === now ? 'today' : on && on <= plusDays(now, 7) ? 'soon' : 'later';
+
+  const lines: NextLine[] = [];
+  for (const a of home?.actions ?? []) {
+    const late = a.status === 'late';
+    lines.push({
+      id: a.id,
+      on: a.dueOn?.slice(0, 10) ?? null,
+      top: a.dueOn ? day(a.dueOn.slice(0, 10)) : fr ? 'À FAIRE' : 'TO DO',
+      sub: late ? (fr ? 'en retard' : 'late') : a.dueOn ? (fr ? 'avant' : 'due') : a.status === 'in_progress' ? (fr ? 'commencé' : 'started') : '',
+      tone: toneOf(a.dueOn?.slice(0, 10) ?? null, late),
+      title: titleOf(a),
+      detail: [
+        a.programName,
+        a.kind === 'profile' && a.left ? `${a.left} ${t('act.missing')}` : null,
+        a.kind !== 'profile' && a.of ? `${a.left} ${t('act.left')} ${a.of}` : null,
+      ].filter(Boolean).join(' · '),
+      cta: ctaOf(a),
+      href: a.href || null,
+      editionId: a.editionId,
+      task: a.task,
+      role: a.role !== 'member' && a.role !== 'startup' ? a.role : undefined,
+    });
+  }
+  for (const u of home?.upcoming ?? []) {
+    lines.push({
+      id: u.id,
+      on: u.on,
+      top: u.on ? day(u.on) : '—',
+      sub: u.startsAt ?? '',
+      tone: toneOf(u.on, false),
+      title:
+        u.kind === 'committee'
+          ? `${t('up.committee')} — ${u.label}`
+          : u.kind === 'jury_sitting'
+            ? `${t('up.sitting')} — ${u.label}`
+            : `${t('up.meeting')} ${u.label}`,
+      detail: [u.programName, u.location].filter(Boolean).join(' · '),
+      cta: u.href ? (fr ? 'Ouvrir' : 'Open') : null,
+      href: u.href,
+      editionId: u.editionId,
+      role: u.role !== 'startup' ? u.role : undefined,
+      meeting: true,
+    });
+  }
+  /* Une liste de pièces toute envoyée reste à portée : on y revient remplacer. */
+  for (const d of documents) {
+    for (const l of d.lists) {
+      if (lines.some((x) => x.editionId === d.editionId && x.title.endsWith(`— ${l.name}`))) continue;
+      lines.push({
+        id: `docs:${d.editionId}:${l.name}`,
+        on: null,
+        top: fr ? 'PIÈCES' : 'ITEMS',
+        sub: l.back ? (fr ? 'à renvoyer' : 'to resend') : '',
+        tone: l.back ? 'late' : 'later',
+        title: `${l.name} — ${l.of && l.sent >= l.of ? t('docs.allSent') : `${l.sent}/${l.of} ${t('docs.sent')}`}`,
+        detail: [d.programName, l.accepted ? `${l.accepted} ${t('docs.accepted')}` : null].filter(Boolean).join(' · '),
+        cta: t('docs.view'),
+        href: `/me?tab=Programs&prog=${d.editionId}`,
+        editionId: d.editionId,
+      });
+    }
+  }
+  const rank = (x: NextLine) => (x.tone === 'late' ? 0 : 1);
+  lines.sort((a, b) => rank(a) - rank(b) || (a.on ?? '9999').localeCompare(b.on ?? '9999'));
+  /* Le prochain rendez-vous, s'il est dans la semaine, passe devant. */
+  const featured = lines.find((x) => x.meeting && x.on && x.on >= now && x.on <= plusDays(now, 7)) ?? null;
+  const rest = lines.filter((x) => x !== featured);
+  const toDo = (home?.actions ?? []).length;
+  const todoLines = lines.filter((x) => !x.meeting);
+  const calLines = lines.filter((x) => x.meeting);
+
+  const go = (line: NextLine) => {
+    if (line.href) onGo(line.href);
+    else if (line.editionId) onOpen(line.editionId);
+  };
+
+  const done = home?.done ?? [];
+  const shownDone = allDone ? done : done.slice(0, 5);
+  const verbOf = (k: MemberDone['kind']) =>
+    k === 'preparation'
+      ? fr ? 'Voir ou modifier' : 'View or edit'
+      : k === 'deliverable'
+        ? t('docs.view')
+        : k === 'application'
+          ? fr ? 'Relire' : 'Read'
+          : fr ? 'Voir' : 'View';
+  const doneIcon: Record<MemberDone['kind'], string> = {
+    application: 'form', selection: 'check', committee: 'gavel', deliverable: 'file', one_to_one: 'users', preparation: 'edit', kpi: 'board',
+  };
+
   const active = programs.filter((p) => p.mine.length > 0);
 
-  return (
-    <div className="stack" style={{ gap: 16 }}>
-      {/* ---- À faire ---- */}
-      <section className="card card-pad stack" style={{ gap: 10 }}>
-        <div className="row wrap" style={{ gap: 6 }}>
-          <div className="eyebrow" style={{ flex: 1 }}>{t('home.todo')}</div>
-          {actions.length > 0 &&
-            (['all', 'late', 'in_progress', 'pending'] as const).map((f) =>
-              f !== 'all' && !count(f) ? null : (
-                <button
-                  key={f}
-                  className={filter === f ? 'track on' : 'track'}
-                  aria-pressed={filter === f}
-                  onClick={() => setFilter(f)}
-                >
-                  {f === 'all' ? t('home.all') : t(`status.${f}` as const)}{' '}
-                  <span className="num">{f === 'all' ? actions.length : count(f)}</span>
-                </button>
-              ),
-            )}
+  const Row = ({ line }: { line: NextLine }) => (
+    <div className="mh-row">
+      {line.task && (
+        <input type="checkbox" aria-label={line.title} checked={false} onChange={() => onTick(line.task!)} style={{ marginLeft: 12 }} />
+      )}
+      <button type="button" className="mh-hit" onClick={() => go(line)} disabled={!line.href && !line.editionId}>
+        <span className={`mh-when ${line.tone}`}>
+          <b>{line.top}</b>
+          {line.sub && <small>{line.sub}</small>}
+        </span>
+        <span className="mh-what">
+          <strong>{line.title}</strong>
+          {line.detail && <small>{line.detail}</small>}
+        </span>
+        {line.role && <span className="badge info">{t(`role.${line.role}` as 'role.mentor')}</span>}
+        {line.cta && <span className="mh-cta">{line.cta}</span>}
+        {(line.href || line.editionId) && <Icon name="chevronRight" size={15} />}
+      </button>
+      {line.task && line.task.items.length > 0 && (
+        <div className="stack" style={{ gap: 2, padding: '0 14px 10px 44px', width: '100%' }}>
+          {line.task.detail && <span className="faint" style={{ fontSize: 12.5 }}>{line.task.detail}</span>}
+          {line.task.items.map((item) => (
+            <label key={item.id} className="check" style={{ fontSize: 13 }}>
+              <input type="checkbox" checked={item.done} onChange={() => onTickItem(line.task!, item)} />
+              <span style={{ textDecoration: item.done ? 'line-through' : undefined }}>{item.label}</span>
+            </label>
+          ))}
         </div>
+      )}
+    </div>
+  );
 
+  return (
+    <div className="stack" style={{ gap: 26 }}>
+      {firstName && (
+        <header className="stack" style={{ gap: 4 }}>
+          <span className="faint" style={{ fontSize: 13 }}>{longDate(now)}</span>
+          <h1 style={{ margin: 0, fontSize: 28 }}>{fr ? `Bonjour ${firstName}` : `Hello ${firstName}`}</h1>
+          {home && (
+            <span className="muted" style={{ fontSize: 14.5 }}>
+              {toDo
+                ? fr ? `${toDo} chose${toDo > 1 ? 's' : ''} à faire.` : `${toDo} thing${toDo > 1 ? 's' : ''} to do.`
+                : fr ? 'Rien à faire : vous êtes à jour.' : 'Nothing to do: you are up to date.'}
+              {featured?.tone === 'today' ? (fr ? ' Un rendez-vous aujourd’hui.' : ' A meeting today.') : ''}
+            </span>
+          )}
+        </header>
+      )}
+
+      {/* ---- La page d'un programme : à faire d'un côté, le calendrier de l'autre ---- */}
+      {split && (
+        <>
+          <section className="stack" style={{ gap: 10 }} aria-labelledby="mh-cal">
+            <div className="mh-head">
+              <h2 id="mh-cal">{t('home.upcoming')}</h2>
+              {calLines.length > 0 && <span className="faint num">{calLines.length}</span>}
+            </div>
+            {home && !calLines.length && <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{t('home.noUpcoming')}</p>}
+            {calLines.length > 0 && (
+              <div className="card mh-list">
+                {calLines.map((line) => <Row key={line.id} line={line} />)}
+              </div>
+            )}
+          </section>
+          <section className="stack" style={{ gap: 10 }} aria-labelledby="mh-todo">
+            <div className="mh-head">
+              <h2 id="mh-todo">{t('home.todo')}</h2>
+              {todoLines.length > 0 && <span className="faint num">{todoLines.length}</span>}
+            </div>
+            {error ? (
+              <div className="callout warn">
+                <Icon name="alert" size={15} /> {t('home.error')}
+              </div>
+            ) : !home ? (
+              <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{t('home.loading')}</p>
+            ) : todoLines.length ? (
+              <div className="card mh-list">
+                {todoLines.map((line) => <Row key={line.id} line={line} />)}
+              </div>
+            ) : (
+              <div className="card card-pad row" style={{ gap: 12 }}>
+                <span className="mh-ok"><Icon name="check" size={16} /></span>
+                <span className="stack" style={{ gap: 2 }}>
+                  <strong style={{ fontSize: 14 }}>{t('home.nothing')}</strong>
+                  <span className="faint" style={{ fontSize: 12.5 }}>{t('home.nothingMore')}</span>
+                </span>
+              </div>
+            )}
+          </section>
+        </>
+      )}
+
+      {!split && (
+      <>
+      {/* ---- À venir : ce qu'il y a à faire et ce qui est prévu, dans l'ordre ---- */}
+      <section className="stack" style={{ gap: 10 }} aria-labelledby="mh-next">
+        <div className="mh-head">
+          <h2 id="mh-next">{t('home.upcoming')}</h2>
+          {lines.length > 0 && <span className="faint num">{lines.length}</span>}
+        </div>
         {error ? (
           <div className="callout warn">
             <Icon name="alert" size={15} /> {t('home.error')}
           </div>
         ) : !home ? (
           <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{t('home.loading')}</p>
-        ) : !shown.length ? (
-          <div className="stack" style={{ gap: 2 }}>
-            <p style={{ margin: 0, fontSize: 13.5 }}>{t('home.nothing')}</p>
-            <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{t('home.nothingMore')}</p>
-          </div>
         ) : (
-          <div className="rows">
-            {shown.map((a) => (
-              <div key={a.id} className="rowcard stack" style={{ gap: 0, padding: 0 }}>
-                <div className="row" style={{ padding: '11px 13px', gap: 11 }}>
-                  {/* Une tâche se coche — et seulement par sa case : un clic sur
-                      la ligne ne la déclare plus faite sans qu'on l'ait voulu. */}
-                  {a.kind === 'task' && a.task ? (
-                    <input type="checkbox" aria-label={a.label} checked={false} onChange={() => onTick(a.task!)} />
-                  ) : null}
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span className="row wrap" style={{ gap: 6 }}>
-                      <strong style={{ fontSize: 13.5, color: a.status === 'late' ? 'var(--stop)' : undefined }}>
-                        {titleOf(a)}
-                      </strong>
-                      <span className={a.status === 'late' ? 'badge stop' : a.status === 'in_progress' ? 'badge warn' : 'badge'}>
-                        {t(`status.${a.status}` as const)}
-                      </span>
-                      {a.role !== 'member' && a.role !== 'startup' && <span className="badge info">{t(`role.${a.role}` as const)}</span>}
-                    </span>
-                    {detailOf(a) && (
-                      <span className="faint" style={{ display: 'block', fontSize: 12.5, marginTop: 2 }}>{detailOf(a)}</span>
-                    )}
+          <>
+            {featured && (
+              <button type="button" className="mh-feature" onClick={() => go(featured)} disabled={!featured.href}>
+                <span className="mh-feature-date">
+                  <b className={featured.tone === 'today' ? 'today' : ''}>{featured.top}</b>
+                  <span className="num">{featured.sub || '—'}</span>
+                </span>
+                <span className="mh-what">
+                  <strong style={{ fontSize: 17 }}>{featured.title}</strong>
+                  {featured.detail && <small>{featured.detail}</small>}
+                </span>
+                {featured.href && (
+                  <span className="btn primary">
+                    {fr ? 'Ouvrir' : 'Open'} <Icon name="chevronRight" size={14} />
                   </span>
-                  {ctaOf(a) && (
-                    <button className="btn sm primary" onClick={() => onGo(a.href)}>
-                      {ctaOf(a)} <Icon name="chevronRight" size={13} />
-                    </button>
-                  )}
-                </div>
-                {/* Les lignes de la checklist sous la tâche. */}
-                {a.task && a.task.items.length > 0 && (
-                  <div className="stack" style={{ gap: 2, padding: '0 13px 10px 37px' }}>
-                    {a.task.detail && <span className="faint" style={{ fontSize: 12.5 }}>{a.task.detail}</span>}
-                    {a.task.items.map((line) => (
-                      <label key={line.id} className="check" style={{ fontSize: 13 }}>
-                        <input type="checkbox" checked={line.done} onChange={() => onTickItem(a.task!, line)} />
-                        <span style={{ textDecoration: line.done ? 'line-through' : undefined }}>{line.label}</span>
-                      </label>
-                    ))}
-                  </div>
                 )}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* ---- À venir : le calendrier, qui n'est pas une liste de tâches ---- */}
-      <section className="card card-pad stack" style={{ gap: 10 }}>
-        <div className="eyebrow">{t('home.upcoming')}</div>
-        {!home ? null : !home.upcoming.length ? (
-          <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{t('home.noUpcoming')}</p>
-        ) : (
-          <div className="rows">
-            {home.upcoming.map((u) => (
-              <button
-                key={u.id}
-                className="rowcard row"
-                style={{ padding: '10px 13px', gap: 11, width: '100%', textAlign: 'left' }}
-                disabled={!u.href}
-                onClick={() => u.href && onGo(u.href)}
-              >
-                <span className="num" style={{ minWidth: 92, fontSize: 12.5 }}>
-                  {u.on ? longDate(u.on) : ''}
-                  {u.startsAt && <span className="faint" style={{ display: 'block' }}>{u.startsAt}</span>}
-                </span>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <strong style={{ fontSize: 13.5 }}>
-                    {u.kind === 'committee'
-                      ? `${t('up.committee')} — ${u.label}`
-                      : u.kind === 'jury_sitting'
-                        ? `${t('up.sitting')} — ${u.label}`
-                        : `${t('up.meeting')} ${u.label}`}
-                  </strong>
-                  <span className="faint" style={{ display: 'block', fontSize: 12.5 }}>
-                    {[u.programName, u.location].filter(Boolean).join(' · ')}
-                  </span>
-                </span>
-                {u.role !== 'startup' && <span className="badge info">{t(`role.${u.role}` as const)}</span>}
-                {u.href && <Icon name="chevronRight" size={15} />}
               </button>
-            ))}
-          </div>
+            )}
+            {rest.length > 0 ? (
+              <div className="card mh-list">
+                {rest.map((line) => <Row key={line.id} line={line} />)}
+              </div>
+            ) : (
+              !featured && (
+                <div className="card card-pad row" style={{ gap: 12 }}>
+                  <span className="mh-ok"><Icon name="check" size={16} /></span>
+                  <span className="stack" style={{ gap: 2 }}>
+                    <strong style={{ fontSize: 14 }}>{t('home.nothing')}</strong>
+                    <span className="faint" style={{ fontSize: 12.5 }}>{t('home.nothingMore')}</span>
+                  </span>
+                </div>
+              )
+            )}
+          </>
         )}
       </section>
 
-      {/* ---- Ses documents : toujours là, pour revenir voir ou remplacer ---- */}
-      {documents.some((d) => d.lists.length) && (
-        <section className="card card-pad stack" style={{ gap: 10 }}>
-          <div className="eyebrow">{t('docs.title')}</div>
-          <div className="rows">
-            {documents.flatMap((d) =>
-              d.lists.map((l) => (
-                <button
-                  className="rowcard row"
-                  key={`${d.editionId}:${l.name}`}
-                  style={{ padding: '11px 13px', gap: 11, width: '100%', textAlign: 'left' }}
-                  onClick={() => onOpen(d.editionId)}
-                >
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <strong style={{ fontSize: 13.5 }}>{l.name}</strong>
-                    <span className="faint" style={{ display: 'block', fontSize: 12.5 }}>
-                      {[
-                        d.programName,
-                        l.of && l.sent >= l.of ? t('docs.allSent') : `${l.sent}/${l.of} ${t('docs.sent')}`,
-                        l.accepted ? `${l.accepted} ${t('docs.accepted')}` : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </span>
+      </>
+      )}
+
+      {/* ---- Réalisé : ce qui est fait, à relire ou à reprendre ---- */}
+      {withDone && done.length > 0 && (
+        <section className="stack" style={{ gap: 10 }} aria-labelledby="mh-done">
+          <div className="mh-head">
+            <h2 id="mh-done">{fr ? 'Réalisé' : 'Done'}</h2>
+            <span className="faint">{fr ? 'récemment' : 'lately'}</span>
+            <span style={{ flex: 1 }} />
+            {done.length > 5 && (
+              <button type="button" className="linkish" onClick={() => setAllDone((v) => !v)}>
+                {allDone ? (fr ? 'Voir moins' : 'Show less') : `${fr ? 'Voir tout' : 'See all'} (${done.length})`}
+              </button>
+            )}
+          </div>
+          <div className="card mh-list">
+            {shownDone.map((d) => (
+              <div className="mh-row" key={d.id}>
+                <button type="button" className="mh-hit" onClick={() => onGo(d.href)}>
+                  <span className={`mh-dot ${d.kind}`}><Icon name={doneIcon[d.kind]} size={13} /></span>
+                  <span className="mh-what">
+                    <strong>{d.label}</strong>
+                    <small>{[longDate(d.at.slice(0, 10)), d.programName].filter(Boolean).join(' · ')}</small>
                   </span>
-                  {l.back > 0 && <span className="badge warn">{l.back} {t('docs.back')}</span>}
-                  <span className="faint" style={{ fontSize: 12.5 }}>{t('docs.view')}</span>
+                  <span className="mh-cta">{verbOf(d.kind)}</span>
                   <Icon name="chevronRight" size={15} />
                 </button>
-              )),
-            )}
+              </div>
+            ))}
           </div>
         </section>
       )}
 
-      {/* ---- Ses programmes ---- */}
+      {/* ---- Ses programmes, chacun avec ce qui l'attend ---- */}
       {withProgrammes && (
-      <section className="card card-pad stack" style={{ gap: 10 }}>
-        <div className="eyebrow">{t('home.programmes')}</div>
-        <div className="rows">
-          {active.length === 0 && (
-            <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{t('prog.noneMore')}</p>
-          )}
-          {active.map((p) => (
-            <button
-              className="rowcard row"
-              key={p.editionId}
-              style={{ padding: '11px 13px', gap: 11, width: '100%', textAlign: 'left' }}
-              onClick={() => onOpen(p.editionId)}
-            >
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <strong style={{ fontSize: 13.5 }}>{p.programName}</strong>
-                <span className="faint" style={{ display: 'block', fontSize: 12.5 }}>
-                  {[p.editionName, p.mine[0]?.phase ? `${lang === 'fr' ? 'Phase' : 'Phase'} : ${p.mine[0].phase}` : null, p.startsOn ? longDate(p.startsOn) : null]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </span>
-              </span>
-              {(pendingByEdition.get(p.editionId) ?? 0) > 0 && (
-                <span className="badge warn num">{pendingByEdition.get(p.editionId)}</span>
-              )}
-              <span className="faint" style={{ fontSize: 12.5 }}>{lang === 'fr' ? 'Ouvrir' : 'Open'}</span>
-              <Icon name="chevronRight" size={15} />
-            </button>
-          ))}
-        </div>
-      </section>
+        <section className="stack" style={{ gap: 10 }} aria-labelledby="mh-prog">
+          <div className="mh-head">
+            <h2 id="mh-prog">{fr ? 'Programmes' : 'Programmes'}</h2>
+            {active.length > 0 && <span className="faint num">{active.length}</span>}
+          </div>
+          {active.length === 0 && <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{t('prog.noneMore')}</p>}
+          <div className="mh-progs">
+            {active.map((p) => {
+              const steps = home?.steps?.[p.editionId] ?? [];
+              const next = lines.filter((x) => x.editionId === p.editionId).slice(0, 3);
+              const status = p.mine[0]?.status;
+              return (
+                <article key={p.editionId} className="card mh-prog">
+                  <button type="button" className="mh-hit stack" style={{ alignItems: 'stretch', gap: 12 }} onClick={() => onOpen(p.editionId)}>
+                    <span className="row" style={{ gap: 12 }}>
+                      <span className="mh-mark" style={{ background: p.colour ?? 'var(--blue)' }} aria-hidden="true">
+                        {p.programName.slice(0, 1).toUpperCase()}
+                      </span>
+                      <span className="mh-what">
+                        <strong>{p.programName}</strong>
+                        <small>{[p.editionName, p.mine[0]?.phase].filter(Boolean).join(' · ')}</small>
+                      </span>
+                      {status && <span className={status === 'Selected' ? 'badge ok' : 'badge'}>{status}</span>}
+                      <Icon name="chevronRight" size={15} />
+                    </span>
+                    {steps.length > 0 && (
+                      <span className="mh-steps" title={steps.map((s) => s.name).join(' → ')}>
+                        {steps.map((s, i) => (
+                          <span key={i} className={s.state} style={s.state !== 'upcoming' ? { background: p.colour ?? 'var(--blue)' } : undefined} />
+                        ))}
+                      </span>
+                    )}
+                  </button>
+                  {next.map((line) => (
+                    <button type="button" key={line.id} className="mh-mini" onClick={() => go(line)}>
+                      <span className={`mh-when-mini ${line.tone}`}>{line.top}</span>
+                      <span style={{ flex: 1, minWidth: 0 }}>{line.title}</span>
+                      <Icon name="chevronRight" size={13} />
+                    </button>
+                  ))}
+                  {!next.length && (
+                    <span className="faint" style={{ fontSize: 12.5, padding: '6px 14px 12px' }}>
+                      {fr ? 'Rien de prévu pour l’instant.' : 'Nothing planned for now.'}
+                    </span>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </section>
       )}
     </div>
   );
 }
+
+const isoToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const plusDays = (iso: string, n: number) => {
+  const d = new Date(`${iso}T12:00:00`);
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};

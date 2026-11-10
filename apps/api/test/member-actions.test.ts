@@ -84,6 +84,11 @@ describe('a member’s Home', { skip: skipWithoutServer }, () => {
     await repo.saveReturn(due.id, candidate.id, 'deck', 'https://deck.example.test');
     owed = (await memberActions(founder.id)).actions.find((a) => a.kind === 'deliverable');
     assert.equal(owed, undefined, 'sent, and gone');
+    const home = await memberActions(founder.id);
+    const sent = home.done.find((d) => d.kind === 'deliverable');
+    assert.ok(sent, 'and among what is done');
+    assert.equal(sent!.href, `/me?tab=Programs&prog=${candidate.editionId}`, 'opens where it can be read or replaced');
+    assert.ok(home.steps[candidate.editionId]?.length, 'the programme’s phases, for its card');
   });
 
   it('keeps asking for a refused document once the list is closed, and nothing else', async () => {
