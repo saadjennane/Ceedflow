@@ -1065,7 +1065,7 @@ export async function funnelRoutes(app: FastifyInstance) {
     for (const c of candidacies.values()) {
       owed[c.id] = await deliverablesFor(c.editionId, c);
       agenda[c.id] = await agendaFor(c.id);
-      journeys[c.id] = await journeyOf(c);
+      journeys[c.id] = await journeyOf(c, { groupDeliverables: true });
     }
     return {
       candidate: { id: candidate.id, orgName: candidate.orgName, contactName: candidate.contactName, email: candidate.email },

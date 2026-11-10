@@ -12,7 +12,7 @@
  * Only what the startup has a right to see: a selection counts once it has
  * been announced, and a jury's verdict, which stays CEED's, never appears.
  */
-import { meetingWith, orderedBlocks, prepForm, shownFieldIds, type Candidate, type FormField, type OneToOneConfig, type TrackWithPhases } from '@ceed/shared';
+import { itemComplete, meetingWith, orderedBlocks, prepForm, requiredShown, type DeliverableItem, shownFieldIds, type Candidate, type FormField, type OneToOneConfig, type TrackWithPhases } from '@ceed/shared';
 import { all } from '../db/client.js';
 import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
@@ -86,11 +86,16 @@ async function mine(recordId: string, candidateId: string): Promise<Candidate | 
 
 export async function journeyFor(recordId: string, candidateId: string): Promise<Journey | null> {
   const candidate = await mine(recordId, candidateId);
-  return candidate ? journeyOf(candidate) : null;
+  return candidate ? journeyOf(candidate, { groupDeliverables: true }) : null;
 }
 
-/** Le parcours lui-même, sans demander qui le lit — l'équipe CEED, ou la startup après vérification. */
-export async function journeyOf(candidate: Candidate): Promise<Journey | null> {
+/**
+ * Le parcours lui-même, sans demander qui le lit — l'équipe CEED, ou la startup après vérification.
+ *
+ * `groupDeliverables` : une ligne par liste de pièces plutôt qu'une par pièce —
+ * ce que lit la startup, qui ouvre la liste pour le détail. L'équipe garde le détail.
+ */
+export async function journeyOf(candidate: Candidate, opts: { groupDeliverables?: boolean } = {}): Promise<Journey | null> {
   const detail = await repo.getEditionDetail(candidate.editionId);
   const track = detail?.tracks.find((t) => t.id === candidate.trackId);
   if (!detail || !track) return null;
@@ -128,11 +133,35 @@ export async function journeyOf(candidate: Candidate): Promise<Journey | null> {
     /* Les pièces envoyées, et celles que CEED a acceptées. */
     if (block.type === 'deliverable') {
       const items = (block.config as { items?: FormField[] }).items ?? [];
-      for (const r of await repo.listReturnsFor(block.id, candidate.id)) {
+      const returns = await repo.listReturnsFor(block.id, candidate.id);
+      /* La liste où la pièce se relit et se remplace. */
+      const href = `/me?tab=Programs&prog=${candidate.editionId}&list=${block.id}`;
+      if (opts.groupDeliverables) {
+        const dates = returns.flatMap((r) => [r.returnedAt, r.state === 'accepted' ? r.reviewedAt : null]).filter((d): d is string => Boolean(d));
+        if (dates.length) {
+          const valueOf = (id: string) => returns.find((r) => r.itemId === id)?.value;
+          const required = requiredShown(items as DeliverableItem[], valueOf);
+          const counted = required.length ? required : (items as DeliverableItem[]);
+          const sent = counted.filter((i) => itemComplete(i, valueOf(i.id))).length;
+          const accepted = returns.filter((r) => r.state === 'accepted').length;
+          const back = returns.filter((r) => r.state === 'rejected').length;
+          history.push({
+            at: dates.sort().pop()!,
+            kind: 'deliverable',
+            label: [
+              `${block.name} — ${sent}/${counted.length} envoyée${sent > 1 ? 's' : ''}`,
+              accepted ? `${accepted} acceptée${accepted > 1 ? 's' : ''}` : null,
+              back ? `${back} à renvoyer` : null,
+            ].filter(Boolean).join(' · '),
+            phase: phaseOf(block.id),
+            href,
+          });
+        }
+        continue;
+      }
+      for (const r of returns) {
         const item = items.find((i) => i.id === r.itemId);
         const what = item?.label || 'Pièce';
-        /* La liste où la pièce se relit et se remplace. */
-        const href = `/me?tab=Programs&prog=${candidate.editionId}&list=${block.id}`;
         if (r.returnedAt) history.push({ at: r.returnedAt, kind: 'deliverable', label: `Envoyé — ${what}`, phase: phaseOf(block.id), href });
         if (r.state === 'accepted' && r.reviewedAt) {
           history.push({ at: r.reviewedAt, kind: 'deliverable', label: `Accepté — ${what}`, phase: phaseOf(block.id), href });

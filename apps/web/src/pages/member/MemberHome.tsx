@@ -224,16 +224,28 @@ export function MemberHome({
             ? `${t('up.sitting')} — ${u.label}`
             : `${t('up.meeting')} ${u.label}`,
       detail: [u.programName, u.location].filter(Boolean).join(' · '),
-      cta: u.href ? (fr ? 'Ouvrir' : 'Open') : null,
+      /* Le bouton dit ce qu'il ouvre : la préparation, ou le rendez-vous. */
+      cta: !u.href ? null : u.href.startsWith('/prepare/') ? (fr ? 'Préparer la séance' : 'Prepare the session') : fr ? 'Ouvrir' : 'Open',
       href: u.href,
       editionId: u.editionId,
       role: u.role !== 'startup' ? u.role : undefined,
       meeting: true,
     });
   }
-  /* Une liste de pièces toute envoyée reste à portée : on y revient remplacer. */
+  /* Une liste toute envoyée n'est plus à faire : c'est une bonne nouvelle, dite à part
+     sur la page du programme, et rangée dans « Réalisé » sur l'accueil. */
+  const settled: { id: string; title: string; detail: string; href: string }[] = [];
   for (const d of documents) {
     for (const l of d.lists) {
+      if (l.of && l.sent >= l.of && !l.back) {
+        settled.push({
+          id: `settled:${d.editionId}:${l.blockId}`,
+          title: l.name,
+          detail: [`${l.sent}/${l.of} ${t('docs.sent')}`, l.accepted ? `${l.accepted} ${t('docs.accepted')}` : null].filter(Boolean).join(' · '),
+          href: `/me?tab=Programs&prog=${d.editionId}&list=${l.blockId}`,
+        });
+        continue;
+      }
       if (lines.some((x) => x.editionId === d.editionId && x.title.endsWith(`— ${l.name}`))) continue;
       lines.push({
         id: `docs:${d.editionId}:${l.name}`,
@@ -354,17 +366,32 @@ export function MemberHome({
               </div>
             ) : !home ? (
               <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>{t('home.loading')}</p>
-            ) : todoLines.length ? (
+            ) : (
               <div className="card mh-list">
                 {todoLines.map((line) => <Row key={line.id} line={line} />)}
-              </div>
-            ) : (
-              <div className="card card-pad row" style={{ gap: 12 }}>
-                <span className="mh-ok"><Icon name="check" size={16} /></span>
-                <span className="stack" style={{ gap: 2 }}>
-                  <strong style={{ fontSize: 14 }}>{t('home.nothing')}</strong>
-                  <span className="faint" style={{ fontSize: 12.5 }}>{t('home.nothingMore')}</span>
-                </span>
+                {!todoLines.length && (
+                  <div className="row" style={{ gap: 12, padding: '12px 14px' }}>
+                    <span className="mh-ok"><Icon name="check" size={16} /></span>
+                    <span className="stack" style={{ gap: 2 }}>
+                      <strong style={{ fontSize: 14 }}>{t('home.nothing')}</strong>
+                      <span className="faint" style={{ fontSize: 12.5 }}>{t('home.nothingMore')}</span>
+                    </span>
+                  </div>
+                )}
+                {/* Ce qui est déjà bon, à savoir — et à rouvrir pour remplacer une pièce. */}
+                {settled.map((x) => (
+                  <div className="mh-row" key={x.id}>
+                    <button type="button" className="mh-hit" onClick={() => onGo(x.href)}>
+                      <span className="mh-dot deliverable"><Icon name="check" size={13} /></span>
+                      <span className="mh-what">
+                        <strong>{x.title}</strong>
+                        <small>{x.detail}</small>
+                      </span>
+                      <span className="mh-cta">{t('docs.view')}</span>
+                      <Icon name="chevronRight" size={15} />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </section>
@@ -399,7 +426,7 @@ export function MemberHome({
                 </span>
                 {featured.href && (
                   <span className="btn primary">
-                    {fr ? 'Ouvrir' : 'Open'} <Icon name="chevronRight" size={14} />
+                    {featured.cta} <Icon name="chevronRight" size={14} />
                   </span>
                 )}
               </button>

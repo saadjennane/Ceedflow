@@ -7,7 +7,7 @@ import { after, before, describe, it } from 'node:test';
 import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
-import { journeyFor } from '../src/services/journey.js';
+import { journeyFor, journeyOf } from '../src/services/journey.js';
 import { changeMeeting, planMeetings } from '../src/services/oneToOne.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 import { directoryRows } from '../src/services/people.js';
@@ -71,6 +71,20 @@ describe('a startup’s journey through a programme', { skip: skipWithoutServer 
     const [late] = await planMeetings(mentoring.id, { candidateIds: [c.id], personId: mentor.id, invite: 'none', heldOn: '2026-01-15', startTime: '10:00' });
     j = (await journeyFor(founder.id, c.id))!;
     assert.ok(j.history.some((h) => h.kind === 'one_to_one' && h.at === '2026-01-15' && h.href === `/meet/${late!.token}`));
+
+    // Les pièces : une ligne par liste pour la startup, le détail pour l'équipe.
+    const docs = await repo.createBlock(second.id, 'deliverable', 'Deliverables');
+    const piece = (id: string) => ({ id, type: 'short_text', label: id, help: '', required: true, options: [], showInTable: false, pageId: '' });
+    await repo.updateBlock(docs.id, { config: { visibility: 'open', items: [piece('deck'), piece('rib')] } });
+    await repo.saveReturn(docs.id, c.id, 'deck', 'v1');
+    await repo.saveReturn(docs.id, c.id, 'rib', 'FR76');
+    j = (await journeyFor(founder.id, c.id))!;
+    const lists = j.history.filter((h) => h.kind === 'deliverable');
+    assert.equal(lists.length, 1, 'one line for the list');
+    assert.match(lists[0]!.label, /^Deliverables — 2\/2 envoyées/);
+    assert.equal(lists[0]!.href, `/me?tab=Programs&prog=${edition.id}&list=${docs.id}`);
+    const forTeam = (await journeyOf(c))!.history.filter((h) => h.kind === 'deliverable');
+    assert.equal(forTeam.length, 2, 'the team keeps each piece');
 
     // L'annuaire le dit sans ouvrir la fiche : la séance du mentor, le programme de la startup.
     const rows = await directoryRows();

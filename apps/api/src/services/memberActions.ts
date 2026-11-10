@@ -106,7 +106,7 @@ export async function memberActions(recordId: string): Promise<MemberHomeData & 
       actions.push(...got.actions);
       upcoming.push(...got.upcoming);
       /* Ce qui est fait, et où le relire : sa page quand il en a une, le programme sinon. */
-      const journey = await journeyOf(candidate);
+      const journey = await journeyOf(candidate, { groupDeliverables: true });
       if (journey) {
         steps[program.editionId] = journey.phases.map((p) => ({ name: p.name, state: p.state }));
         journey.history.forEach((e, i) =>
