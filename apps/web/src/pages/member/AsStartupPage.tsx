@@ -17,10 +17,12 @@ interface AsMember {
   who: { name: string; email: string } | null;
   programs: MemberPreview['programs'];
   panels: MemberPreview['panels'];
-  owed: Owed[];
-  agenda: MemberPreview['agenda'][string];
+  /** Par candidature : toutes celles de la personne, pas seulement celle-ci. */
+  owed: Record<string, Owed[]>;
+  agenda: MemberPreview['agenda'];
   profile: MemberPreview['profile'];
   home: MemberPreview['home'];
+  journeys: MemberPreview['journeys'];
 }
 
 export function AsStartupPage() {
@@ -30,7 +32,7 @@ export function AsStartupPage() {
   if (seen.error) return <div className="member-shell"><div className="empty">{seen.error}</div></div>;
   if (!seen.data) return <div className="member-shell" />;
 
-  const { candidate, who, programs, panels, owed, agenda, profile, home } = seen.data;
+  const { candidate, who, programs, panels, owed, agenda, profile, home, journeys } = seen.data;
   return (
     <MemberPage
       preview={{
@@ -38,10 +40,11 @@ export function AsStartupPage() {
         orgName: candidate.orgName,
         programs,
         panels,
-        owed: { [candidate.id]: owed },
-        agenda: { [candidate.id]: agenda },
+        owed,
+        agenda,
         profile,
         home,
+        journeys,
       }}
     />
   );

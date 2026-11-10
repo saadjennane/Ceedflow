@@ -30,7 +30,7 @@ import '../../ui/directory.css';
 import { initials } from '../directory/DirectoryPage';
 import { OwedItems, type Owed } from './OwedItems';
 import { type AgendaEntry } from './Agenda';
-import { ProgramJourney } from './ProgramJourney';
+import { ProgramJourney, type Journey } from './ProgramJourney';
 import { ProgramsSection } from './ProgramsSection';
 import { MemberHome, type CandidacyState } from './MemberHome';
 import { LangProvider, useLang } from '../../lib/lang';
@@ -75,6 +75,8 @@ export interface MemberPreview {
   agenda: Record<string, AgendaEntry[]>;
   /** La fiche de la startup, pour la lire comme elle la lit. */
   profile: OrgProfile | null;
+  /** Son parcours dans chaque programme, par candidature. */
+  journeys?: Record<string, Journey | null>;
   /** Sa page d'accueil, lue comme elle la lit. */
   home?: { actions: MemberAction[]; upcoming: MemberActivity[] };
 }
@@ -510,6 +512,7 @@ function MemberSpaceReady({
                 states.set((states.data ?? []).map((x) => (x.candidateId === candidateId ? { ...x, owed } : x)))
               }
               readOnly={Boolean(preview)}
+              previewJourneys={preview?.journeys}
               onBack={() => setEdition('')}
               onTick={async (task) => {
                 await api.patch(`/api/me/tasks/${task.id}`, { state: 'done' }).catch((err) => toast((err as Error).message, true));

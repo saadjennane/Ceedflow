@@ -192,7 +192,8 @@ export async function candidacyActions(
   const upcoming: MemberActivity[] = [];
 
   for (const owed of await deliverablesFor(candidate.editionId, candidate)) {
-    if (!owed.open) continue;
+    /* Une liste fermée ne demande plus rien — sauf la pièce refusée, qui se renvoie toujours. */
+    if (!owed.open && !owed.returns.some((r) => r.state === 'rejected')) continue;
     const valueOf = (id: string) => owed.returns.find((r) => r.itemId === id)?.value;
     const required = requiredShown(owed.config.items, valueOf);
     const sent = required.filter((i) => itemComplete(i, valueOf(i.id))).length;

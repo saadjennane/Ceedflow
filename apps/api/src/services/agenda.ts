@@ -121,7 +121,9 @@ export async function agendaFor(candidateId: string): Promise<AgendaEntry[]> {
       location: m.location,
       /* Vide tant qu'une startup invitée à choisir n'a pas dit chez qui. */
       with: m.personName || undefined,
-      link: asks ? `/meet/${m.token}` : null,
+      /* Toujours le lien du rendez-vous : c'est là que la startup rouvre sa
+         préparation, même déjà envoyée, tant qu'elle n'est pas verrouillée. */
+      link: `/meet/${m.token}`,
       meetingLink: m.meetingLink || undefined,
       ...(asks ? { answer: (m.invite === 'slots' ? 'book' : 'confirm') as 'book' | 'confirm', answerBy: m.answerBy } : {}),
     });

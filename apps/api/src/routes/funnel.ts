@@ -28,6 +28,7 @@ import { z } from 'zod';
 import * as dir from '../db/directory.js';
 import { accountOfRecord } from '../services/auth.js';
 import { agendaFor } from '../services/agenda.js';
+import { journeyOf } from '../services/journey.js';
 import { peopleByIds } from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { SESSION_COOKIE, accountForToken } from '../services/auth.js';
@@ -1047,16 +1048,36 @@ export async function funnelRoutes(app: FastifyInstance) {
     const account = candidate.personId ? await accountOfRecord(candidate.personId) : null;
     /* La fiche de la startup, pour que CEED voie aussi ce qu'il en manque. */
     const org = candidate.orgId ? await dir.getRecord(candidate.orgId) : null;
+    /* Toutes ses candidatures, pas seulement celle par laquelle on est entré :
+       la page montre chacun de ses programmes, et chacun doit se lire comme il se lit. */
+    const programs = candidate.personId ? await programsFor(candidate.personId) : [];
+    const candidacies = new Map<string, Candidate>([[candidate.id, candidate]]);
+    for (const p of programs) {
+      for (const c of p.mine) {
+        if (candidacies.has(c.id)) continue;
+        const other = await repo.getCandidate(c.id);
+        if (other) candidacies.set(c.id, other);
+      }
+    }
+    const owed: Record<string, Awaited<ReturnType<typeof deliverablesFor>>> = {};
+    const agenda: Record<string, Awaited<ReturnType<typeof agendaFor>>> = {};
+    const journeys: Record<string, Awaited<ReturnType<typeof journeyOf>>> = {};
+    for (const c of candidacies.values()) {
+      owed[c.id] = await deliverablesFor(c.editionId, c);
+      agenda[c.id] = await agendaFor(c.id);
+      journeys[c.id] = await journeyOf(c);
+    }
     return {
       candidate: { id: candidate.id, orgName: candidate.orgName, contactName: candidate.contactName, email: candidate.email },
       personId: candidate.personId,
       who: person
         ? { name: person.name, email: person.email, account: account?.state ?? null }
         : null,
-      programs: candidate.personId ? await programsFor(candidate.personId) : [],
+      programs,
       panels: candidate.personId ? await reviewsFor(candidate.personId) : [],
-      owed: await deliverablesFor(candidate.editionId, candidate),
-      agenda: await agendaFor(candidate.id),
+      owed,
+      agenda,
+      journeys,
       /* Sa page d'accueil telle qu'il la voit : les mêmes lignes, lues de la même façon. */
       home: candidate.personId ? await memberActions(candidate.personId) : { actions: [], upcoming: [] },
       profile: org ? profileOf(org) : null,

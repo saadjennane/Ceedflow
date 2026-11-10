@@ -12,7 +12,7 @@
  * Only what the startup has a right to see: a selection counts once it has
  * been announced, and a jury's verdict, which stays CEED's, never appears.
  */
-import { meetingWith, orderedBlocks, type Candidate, type FormField, type TrackWithPhases } from '@ceed/shared';
+import { meetingWith, orderedBlocks, prepForm, shownFieldIds, type Candidate, type FormField, type OneToOneConfig, type TrackWithPhases } from '@ceed/shared';
 import { all } from '../db/client.js';
 import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
@@ -32,6 +32,8 @@ export interface JourneyEvent {
   label: string;
   /** The phase of the block it comes from. */
   phase: string | null;
+  /** Où relire ce qui a été fait : la préparation, la séance, les indicateurs. Absent quand le contenu est sur la page même. */
+  href?: string;
 }
 
 export interface Journey {
@@ -47,6 +49,8 @@ export interface Journey {
   /** The next phase, when there is one. */
   next: string | null;
   history: JourneyEvent[];
+  /** La candidature telle qu'elle a été envoyée, question par question. */
+  application: { label: string; value: unknown; type: string }[];
 }
 
 /** La phase où se trouve une candidature : la dernière dont une brique la prend. */
@@ -150,9 +154,11 @@ export async function journeyOf(candidate: Candidate): Promise<Journey | null> {
 
   /* Les One to One tenus, et les préparations envoyées. */
   const meetings = await all<{
-    blockId: string; heldOn: string | null; status: string; personName: string; withNames: string; prepSubmittedAt: string | null;
+    id: string; token: string; blockId: string; heldOn: string | null; status: string; personName: string; withNames: string; prepSubmittedAt: string | null;
+    past: boolean;
   }>(
-    `select m.block_id as "blockId", m.held_on::text as "heldOn", m.status, coalesce(p.name, '') as "personName",
+    `select m.id, m.token, m.block_id as "blockId", m.held_on::text as "heldOn", m.status, coalesce(p.name, '') as "personName",
+            (m.held_on is not null and m.held_on < current_date) as past,
             coalesce((select string_agg(w.name, ' & ' order by w.name) from records w
                        where w.id in (select jsonb_array_elements_text(m.with_ids))), '') as "withNames",
             m.prep_submitted_at::text as "prepSubmittedAt"
@@ -162,11 +168,16 @@ export async function journeyOf(candidate: Candidate): Promise<Journey | null> {
   );
   for (const m of meetings) {
     const who = meetingWith(m);
-    if (m.status === 'held' && m.heldOn) {
-      history.push({ at: m.heldOn, kind: 'one_to_one', label: `One to One${who ? ` avec ${who}` : ''}`, phase: phaseOf(m.blockId) });
+    /* La préparation se relit sur sa page ; sans préparation, la séance a la sienne. */
+    const block = blocks.find((b) => b.id === m.blockId);
+    const prep = block ? prepForm(block.config as OneToOneConfig) : null;
+    const href = prep ? `/prepare/${m.id}` : `/meet/${m.token}`;
+    /* Tenue — ou passée sans que personne ne l'ait marquée : elle a eu lieu pour la startup. */
+    if (m.heldOn && (m.status === 'held' || (m.status === 'planned' && m.past))) {
+      history.push({ at: m.heldOn, kind: 'one_to_one', label: `One to One${who ? ` avec ${who}` : ''}`, phase: phaseOf(m.blockId), href });
     }
-    if (m.prepSubmittedAt) {
-      history.push({ at: m.prepSubmittedAt, kind: 'preparation', label: `Préparation envoyée${who ? ` — ${who}` : ''}`, phase: phaseOf(m.blockId) });
+    if (m.prepSubmittedAt && prep) {
+      history.push({ at: m.prepSubmittedAt, kind: 'preparation', label: `Préparation envoyée${who ? ` — ${who}` : ''}`, phase: phaseOf(m.blockId), href });
     }
   }
 
@@ -179,10 +190,24 @@ export async function journeyOf(candidate: Candidate): Promise<Journey | null> {
   );
   for (const k of measures) {
     const moment = setup.moments.find((m) => m.id === k.momentId);
-    history.push({ at: k.submittedAt, kind: 'kpi', label: `Indicateurs envoyés${moment ? ` — ${moment.name}` : ''}`, phase: null });
+    history.push({
+      at: k.submittedAt, kind: 'kpi', label: `Indicateurs envoyés${moment ? ` — ${moment.name}` : ''}`, phase: null,
+      href: `/kpi/${k.momentId}/${candidate.id}`,
+    });
   }
 
   history.sort((a, b) => b.at.localeCompare(a.at));
+
+  /* Ses réponses, dans l'ordre du formulaire : celles qu'elle a vues et remplies. */
+  const form = blocks.find((b) => b.id === candidate.originBlockId) ?? blocks.find((b) => b.type === 'application');
+  const fields = form?.type === 'application' ? (((form.config as { fields?: FormField[] }).fields ?? []) as FormField[]) : [];
+  const shown = shownFieldIds(fields, candidate.answers);
+  const blank = (v: unknown) => v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0);
+  const application = candidate.submittedAt
+    ? fields
+        .filter((f) => shown.has(f.id) && !blank(candidate.answers[f.id]))
+        .map((f) => ({ label: f.label, value: candidate.answers[f.id], type: f.type }))
+    : [];
   return {
     editionId: candidate.editionId,
     candidateId: candidate.id,
@@ -195,5 +220,6 @@ export async function journeyOf(candidate: Candidate): Promise<Journey | null> {
     phases,
     next: phases.find((p) => p.state === 'upcoming')?.name ?? null,
     history,
+    application,
   };
 }

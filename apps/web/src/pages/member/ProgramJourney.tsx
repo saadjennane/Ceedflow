@@ -8,6 +8,8 @@
  * through it, read off what it actually did.
  */
 import { longDate, type MemberAction, type MemberActivity, type Task, type TaskItem } from '@ceed/shared';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { useLang } from '../../lib/lang';
@@ -15,14 +17,17 @@ import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
 import { MemberHome, type CandidacyState } from './MemberHome';
 import { OwedItems, type Owed } from './OwedItems';
+import { Answer } from './ReviewPage';
 
-interface Journey {
+export interface Journey {
   phases: { id: string; name: string; state: 'done' | 'current' | 'upcoming' }[];
   next: string | null;
   status: string;
   startsOn: string | null;
   endsOn: string | null;
-  history: { at: string; kind: string; label: string; phase: string | null }[];
+  history: { at: string; kind: string; label: string; phase: string | null; href?: string }[];
+  /** Sa candidature, question par question. */
+  application: { label: string; value: unknown; type: string }[];
 }
 
 const KIND_ICON: Record<string, string> = {
@@ -39,6 +44,7 @@ export function ProgramJourney({
   state,
   home,
   readOnly,
+  previewJourneys,
   onBack,
   onOwed,
   onTick,
@@ -48,6 +54,8 @@ export function ProgramJourney({
   state: CandidacyState | null;
   home: { actions: MemberAction[]; upcoming: MemberActivity[] } | null;
   readOnly: boolean;
+  /** En aperçu, le parcours vient avec la page : la route membre n'est pas à CEED. */
+  previewJourneys?: Record<string, Journey | null>;
   onBack: () => void;
   onOwed: (candidateId: string, owed: Owed[]) => void;
   onTick: (task: Task) => void;
@@ -60,9 +68,10 @@ export function ProgramJourney({
     async () => (state && !readOnly ? api.get<Journey>(`/api/me/journey/${state.candidateId}`) : null),
     `journey:${state?.candidateId ?? ''}`,
   );
+  const [reading, setReading] = useState(false);
   if (!state) return <div className="empty">{t('prog.none')}</div>;
   const p = state.programme;
-  const j = journey.data;
+  const j = readOnly ? (previewJourneys?.[state.candidateId] ?? null) : journey.data;
   const editionId = p.editionId;
   const mine = home
     ? {
@@ -130,6 +139,7 @@ export function ProgramJourney({
 
       {/* Les pièces demandées, à remplir ici même. */}
       {state.owed.length > 0 && (
+        <div id="owed" style={{ scrollMarginTop: 16 }}>
         <OwedItems
           candidateId={state.candidateId}
           orgName={state.orgName}
@@ -139,31 +149,70 @@ export function ProgramJourney({
           onSaved={(owed) => onOwed(state.candidateId, owed)}
           readOnly={readOnly}
         />
+        </div>
       )}
 
       {/* L'historique : ce qui s'est passé, du plus récent au plus ancien. */}
       {j && (
         <section className="card card-pad stack" style={{ gap: 10 }}>
-          <div className="eyebrow">{fr ? 'Historique de mon parcours' : 'My journey so far'}</div>
+          <div className="eyebrow">{fr ? 'Historique' : 'History'}</div>
           {!j.history.length && (
             <p className="faint" style={{ margin: 0, fontSize: 12.5 }}>
               {fr ? 'Rien encore : ce que vous ferez dans ce programme apparaîtra ici.' : 'Nothing yet: what you do in this programme will appear here.'}
             </p>
           )}
           <ol className="timeline">
-            {j.history.map((e, i) => (
-              <li key={i} className="timeline-item">
-                <span className="timeline-dot">
-                  <Icon name={KIND_ICON[e.kind] ?? 'check'} size={12} />
-                </span>
-                <span style={{ flex: 1, minWidth: 0 }}>
+            {j.history.map((e, i) => {
+              /* Chaque ligne mène à ce qui a été fait : la candidature se déplie,
+                 les pièces sont plus haut, le reste a sa page. */
+              const open =
+                e.kind === 'application' && j.application.length
+                  ? { onClick: () => setReading((v) => !v) }
+                  : e.kind === 'deliverable' && state.owed.length
+                    ? { onClick: () => document.getElementById('owed')?.scrollIntoView({ behavior: 'smooth' }) }
+                    : null;
+              const body = (
+                <>
                   <strong style={{ fontSize: 13 }}>{e.label}</strong>
                   <span className="faint" style={{ display: 'block', fontSize: 12 }}>
                     {[longDate(e.at.slice(0, 10)), e.phase].filter(Boolean).join(' · ')}
                   </span>
-                </span>
-              </li>
-            ))}
+                </>
+              );
+              const more = e.href || open;
+              return (
+                <li key={i} className="timeline-item">
+                  <span className="timeline-dot">
+                    <Icon name={KIND_ICON[e.kind] ?? 'check'} size={12} />
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    {e.href ? (
+                      <Link to={e.href} className="linkish" style={{ display: 'block', textAlign: 'left' }}>{body}</Link>
+                    ) : open ? (
+                      <button type="button" className="linkish" style={{ display: 'block', textAlign: 'left' }} onClick={open.onClick}>{body}</button>
+                    ) : (
+                      body
+                    )}
+                    {e.kind === 'application' && reading && (
+                      <div className="stack card-pad" style={{ gap: 10, marginTop: 8, border: '1px solid var(--line)', borderRadius: 'var(--r-lg)' }}>
+                        {j.application.map((a) => (
+                          <div key={a.label}>
+                            <div className="eyebrow">{a.label}</div>
+                            <Answer value={a.value} type={a.type} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </span>
+                  {more && (
+                    <Icon
+                      name={e.kind === 'application' && reading ? 'chevronUp' : 'chevronRight'}
+                      size={13}
+                    />
+                  )}
+                </li>
+              );
+            })}
           </ol>
         </section>
       )}

@@ -86,6 +86,27 @@ describe('a member’s Home', { skip: skipWithoutServer }, () => {
     assert.equal(owed, undefined, 'sent, and gone');
   });
 
+  it('keeps asking for a refused document once the list is closed, and nothing else', async () => {
+    const { block, founder, candidate } = await setUp();
+    const due = await repo.createBlock((await repo.getBlock(block.id))!.phaseId, 'deliverable', 'Pièces');
+    const item = (id: string) => ({ id, type: 'short_text', label: id, help: '', required: true, options: [], showInTable: false, pageId: '' });
+    await repo.updateBlock(due.id, { config: { visibility: 'open', items: [item('deck'), item('kbis')] } });
+    await repo.saveReturn(due.id, candidate.id, 'deck', 'v1');
+    await repo.updateBlock(due.id, { config: { visibility: 'closed' } });
+    assert.equal((await memberActions(founder.id)).actions.some((a) => a.kind === 'deliverable'), false, 'closed: nothing asked');
+    await repo.reviewReturn(due.id, candidate.id, 'deck', 'rejected', 'Version illisible');
+    const owed = (await memberActions(founder.id)).actions.find((a) => a.kind === 'deliverable');
+    assert.ok(owed, 'refused: asked again, list closed or not');
+    assert.equal(owed!.back, true);
+  });
+
+  it('links a booked session to its page, where the preparation reopens', async () => {
+    const { block, mentor, founder, candidate } = await setUp();
+    const [m] = await planMeetings(block.id, { candidateIds: [candidate.id], personId: mentor.id, invite: 'none', heldOn: '2030-05-05', startTime: '11:00' });
+    const coming = (await memberActions(founder.id)).upcoming.find((u) => u.kind === 'one_to_one');
+    assert.equal(coming!.href, `/meet/${m!.token}`);
+  });
+
   it('asks the startup to prepare a session, even past its date when it never locks by itself', async () => {
     const { block, mentor, founder, candidate } = await setUp();
     const config = (await repo.getBlock(block.id))!.config as object;

@@ -429,7 +429,7 @@ function ReviewOne({
   );
 }
 
-function Answer({ value, type }: { value: unknown; type: string }) {
+export function Answer({ value, type }: { value: unknown; type: string }) {
   if (type === 'file' && value && typeof value === 'object' && 'uploadId' in value) {
     const file = value as { uploadId: string; filename: string };
     return (

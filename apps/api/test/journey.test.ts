@@ -32,11 +32,20 @@ describe('a startup’s journey through a programme', { skip: skipWithoutServer 
     const founder = await dir.createRecord({ kind: 'person', name: 'Salma Founder', origin: 'manual' });
     await dir.linkRecords({ personId: founder.id, orgId: org.id, access: 'admin' });
     const stranger = await dir.createRecord({ kind: 'person', name: 'Somebody Else', origin: 'manual' });
-    const c = await repo.createCandidate({ editionId: edition.id, trackId: track.id, orgId: org.id, personId: founder.id, originBlockId: form.id });
+    await repo.updateBlock(form.id, {
+      config: { fields: [
+        { id: 'pitch', type: 'long_text', label: 'Votre projet', help: '', required: true, options: [] },
+        { id: 'left', type: 'short_text', label: 'Laissé vide', help: '', required: false, options: [] },
+      ] },
+    });
+    const c = await repo.createCandidate({
+      editionId: edition.id, trackId: track.id, orgId: org.id, personId: founder.id, originBlockId: form.id, answers: { pitch: 'Une plateforme' },
+    });
 
     let j = (await journeyFor(founder.id, c.id))!;
     assert.deepEqual(j.phases.map((p) => p.state), ['current', 'upcoming', 'upcoming'], 'applied: the first phase');
     assert.ok(j.history.some((h) => h.kind === 'application'));
+    assert.deepEqual(j.application.map((a) => [a.label, a.value]), [['Votre projet', 'Une plateforme']], 'its answers, to read again — blanks left out');
     assert.equal(await journeyFor(stranger.id, c.id), null, 'not somebody else’s');
 
     // Retenue, mais pas encore annoncée : elle avance, l'histoire n'en dit rien encore.
@@ -48,7 +57,7 @@ describe('a startup’s journey through a programme', { skip: skipWithoutServer 
 
     await repo.updateBlock(pick.id, { config: { publishedAt: '2026-10-01T09:00:00Z' } });
     const mentor = await dir.createRecord({ kind: 'person', name: `Nadia ${mark}`, origin: 'manual' });
-    await repo.updateBlock(mentoring.id, { config: { interlocutors: [mentor.id], report: { fields: [] }, visibility: 'open' } });
+    await repo.updateBlock(mentoring.id, { config: { interlocutors: [mentor.id], report: { fields: [] }, visibility: 'open', perStartup: 2 } });
     const [m] = await planMeetings(mentoring.id, { candidateIds: [c.id], personId: mentor.id, invite: 'none', heldOn: '2026-10-20', startTime: '10:00' });
     await changeMeeting(m!.id, { status: 'held' });
 
@@ -56,6 +65,12 @@ describe('a startup’s journey through a programme', { skip: skipWithoutServer 
     assert.deepEqual(new Set(j.history.map((h) => h.kind)), new Set(['application', 'selection', 'one_to_one']));
     assert.deepEqual(j.history.map((h) => h.at), [...j.history.map((h) => h.at)].sort().reverse(), 'most recent first');
     assert.equal(j.history.find((h) => h.kind === 'one_to_one')!.phase, 'Accompagnement');
+    assert.equal(j.history.find((h) => h.kind === 'one_to_one')!.href, `/meet/${m!.token}`, 'no preparation: the session’s own page');
+
+    // Passée sans être marquée tenue : elle a eu lieu pour la startup.
+    const [late] = await planMeetings(mentoring.id, { candidateIds: [c.id], personId: mentor.id, invite: 'none', heldOn: '2026-01-15', startTime: '10:00' });
+    j = (await journeyFor(founder.id, c.id))!;
+    assert.ok(j.history.some((h) => h.kind === 'one_to_one' && h.at === '2026-01-15' && h.href === `/meet/${late!.token}`));
 
     // L'annuaire le dit sans ouvrir la fiche : la séance du mentor, le programme de la startup.
     const rows = await directoryRows();
