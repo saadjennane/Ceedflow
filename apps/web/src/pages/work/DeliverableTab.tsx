@@ -10,6 +10,7 @@ import {
   type DeliverableItem,
 } from '@ceed/shared';
 import { useState } from 'react';
+import { SearchBox } from '../../ui/SearchBox';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
@@ -252,6 +253,8 @@ function EntryTable({ item, value }: { item: DeliverableItem; value: unknown }) 
 export function DeliverableTab({ block }: { block: Block }) {
   const view = useAsync(() => api.get<View>(`/api/blocks/${block.id}/deliverables`), block.id);
   const [by, setBy] = useState<'startup' | 'item'>('startup');
+  /* Retrouver une startup par son nom : les chiffres, eux, restent ceux de tout le bloc. */
+  const [query, setQuery] = useState('');
   const [sendingBack, setSendingBack] = useState<{ row: Row; item: DeliverableItem } | null>(null);
   const [reason, setReason] = useState('');
   const [notifying, setNotifying] = useState<'request' | 'reminder' | null>(null);
@@ -298,6 +301,11 @@ export function DeliverableTab({ block }: { block: Block }) {
       </div>
     );
   }
+
+  const needle = query.trim().toLowerCase();
+  const shownRows = needle
+    ? rows.filter((r) => [r.candidate.orgName, r.candidate.contactName].join(' ').toLowerCase().includes(needle))
+    : rows;
 
   const valueOf = (row: Row, itemId: string) => row.returns.find((r) => r.itemId === itemId);
   const sentFor = (itemId: string) => rows.filter((row) => given(valueOf(row, itemId)?.value)).length;
@@ -399,6 +407,7 @@ export function DeliverableTab({ block }: { block: Block }) {
             By item
           </button>
         </div>
+        <SearchBox value={query} onChange={setQuery} placeholder="Search a startup" style={{ width: 220 }} />
         <div className="spacer" />
         <button className="btn sm" onClick={exportMatrix}>
           <Icon name="file" size={13} /> Export
@@ -522,7 +531,7 @@ export function DeliverableTab({ block }: { block: Block }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {shownRows.map((row) => (
                 <tr key={row.candidate.id}>
                   <td className="name">{row.candidate.orgName}</td>
                   <td>
@@ -620,6 +629,13 @@ export function DeliverableTab({ block }: { block: Block }) {
                   })}
                 </tr>
               ))}
+              {shownRows.length === 0 && (
+                <tr>
+                  <td colSpan={3 + items.length} className="faint" style={{ textAlign: 'center', padding: 16 }}>
+                    No startup matches “{query.trim()}”.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -649,7 +665,7 @@ export function DeliverableTab({ block }: { block: Block }) {
                   </span>
                 </div>
                 <div className="rows" style={{ padding: 12 }}>
-                  {rows.map((row) => {
+                  {shownRows.map((row) => {
                     const got = valueOf(row, item.id);
                     return (
                       <div className="rowcard row" key={row.candidate.id} style={{ padding: '8px 11px', gap: 12 }}>

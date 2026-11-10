@@ -10,6 +10,7 @@ import '../../ui/directory.css';
 import { ImportModal } from './ImportModal';
 import { InviteManyModal } from './InviteManyModal';
 import { RecordModal } from './RecordModal';
+import { ColumnFilters, matchesColumns, type ColumnPicks } from './ColumnFilters';
 import { OrgCards, OrgTable, PersonCards, PersonTable, Tiles, type Tile } from './DirectoryViews';
 
 /** Ce qu'une audience de sourcing rend : qui on écrit, et qui reste muet. */
@@ -95,6 +96,8 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
      n'a pas de compte, c'est celui de qui la tient. */
   const [hasAccount, setHasAccount] = useState<'all' | 'with' | 'without'>('all');
   const [query, setQuery] = useState('');
+  /* Un filtre par colonne du tableau. */
+  const [columnPicks, setColumnPicks] = useState<ColumnPicks>({});
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
   /* Picking people to invite. Organisations never sign in, so the column only
@@ -154,6 +157,7 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
         (!fromAudience || fromAudience.has(r.id)) &&
         (hasAccount === 'all' || (hasAccount === 'with' ? Boolean(r.account) : !r.account)) &&
         presetOf(preset, r) &&
+        matchesColumns(isOrg, columnPicks, r) &&
         (!role || (role === '__none' ? !r.roles.length : r.roles.includes(role))) &&
         (!needle ||
           r.name.toLowerCase().includes(needle) ||
@@ -163,7 +167,7 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [all, role, query, audience.data, only, hasAccount, preset]);
+  }, [all, role, query, audience.data, only, hasAccount, preset, columnPicks, isOrg]);
 
   const shown = fromAudience ? all.filter((r) => fromAudience.has(r.id)) : all;
   /* Le résumé, compté sur ce que la page montre. */
@@ -356,6 +360,8 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
             </>
           )}
         </div>
+
+        {all.length > 0 && <ColumnFilters isOrg={isOrg} rows={shown} picks={columnPicks} onChange={setColumnPicks} />}
 
         {records.error ? (
           <div className="empty">{records.error}</div>
