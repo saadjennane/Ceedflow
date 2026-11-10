@@ -635,7 +635,17 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   background: var(--surface);
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.12s, box-shadow 0.12s;
 }
+.task-stat:hover { border-color: var(--ink-3, var(--ink-2)); }
+.task-stat.on { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue) inset; }
+.task-stat[data-kind='late'].on { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn) inset; }
+.task-stat[data-kind='stuck'].on { border-color: var(--stop); box-shadow: 0 0 0 1px var(--stop) inset; }
+.task-stat[data-kind='validate'].on { border-color: #8b5cf6; box-shadow: 0 0 0 1px #8b5cf6 inset; }
 .task-stat-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); }
 .task-stat-value { font-size: 24px; font-weight: 700; font-family: var(--display); color: var(--ink); }
 .task-stat[data-kind='late'] .task-stat-value { color: var(--warn); }

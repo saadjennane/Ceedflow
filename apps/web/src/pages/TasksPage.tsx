@@ -116,10 +116,21 @@ export function TasksPage() {
       );
   }, [all, query, showDone, view, ownerId, programFilter]);
 
+  /* Un chiffre du moment cliqué filtre ce qui est en dessous ; recliqué, il le relâche. */
+  const statFilter = (STAT_KEYS as readonly string[]).includes(params.get('stat') ?? '') ? (params.get('stat') as StatKey) : null;
+  const setStatFilter = (key: StatKey) =>
+    setParams((p) => {
+      const next = new URLSearchParams(p);
+      if (statFilter === key) next.delete('stat');
+      else next.set('stat', key);
+      return next;
+    });
+  const shown = statFilter ? rows.filter(STAT_TEST[statFilter]) : rows;
+
   const opened = all.find((t) => t.id === openId) ?? null;
   /* En retard d'abord ; puis le plus prioritaire, puis le plus proche. */
-  const late = rows.filter((t) => isLate(t)).sort(byUrgency);
-  const rest = rows.filter((t) => !isLate(t)).sort((a, b) => Number(!isOpen(a)) - Number(!isOpen(b)) || byUrgency(a, b));
+  const late = shown.filter((t) => isLate(t)).sort(byUrgency);
+  const rest = shown.filter((t) => !isLate(t)).sort((a, b) => Number(!isOpen(a)) - Number(!isOpen(b)) || byUrgency(a, b));
 
   const tick = async (task: Task) => {
     try {
@@ -253,7 +264,7 @@ export function TasksPage() {
           )}
         </div>
 
-        {all.length > 0 && <TaskStats tasks={rows} meId={meId} />}
+        {all.length > 0 && <TaskStats tasks={rows} meId={meId} active={statFilter} onPick={setStatFilter} />}
 
         {waitingForMe.data && waitingForMe.data.length > 0 && (
           <section className="card card-pad stack" style={{ gap: 6, borderColor: 'var(--warn)' }}>
@@ -280,19 +291,26 @@ export function TasksPage() {
           </div>
         )}
 
-        {view === 'board' && all.length > 0 && !byOwner && <Board tasks={rows} onMove={move} onOpen={(t) => setOpenId(t.id)} />}
+        {statFilter && all.length > 0 && !shown.length && (
+          <div className="empty" style={{ padding: 18 }}>
+            Nothing here.{' '}
+            <button className="linkish" onClick={() => setStatFilter(statFilter)}>Show every task</button>
+          </div>
+        )}
+
+        {view === 'board' && all.length > 0 && !byOwner &&<Board tasks={shown} onMove={move} onOpen={(t) => setOpenId(t.id)} />}
         {/* Par owner : une rangée chacun, ses tâches dans les mêmes colonnes. Une tâche partagée est dans chaque rangée. */}
         {view === 'board' && all.length > 0 && byOwner &&
-          owners(rows).map((o) => (
+          owners(shown).map((o) => (
             <section key={o.id} className="stack" style={{ gap: 8 }}>
               <div className="row" style={{ gap: 8 }}>
                 <Avatar person={o} size={28} />
                 <strong style={{ fontFamily: 'var(--display)', fontSize: 14 }}>{o.name}</strong>
                 <span className="faint num" style={{ fontSize: 12.5 }}>
-                  {rows.filter((t) => isOpen(t) && t.owners.some((x) => x.id === o.id)).length} open
+                  {shown.filter((t) => isOpen(t) && t.owners.some((x) => x.id === o.id)).length} open
                 </span>
               </div>
-              <Board tasks={rows.filter((t) => t.owners.some((x) => x.id === o.id))} onMove={move} onOpen={(t) => setOpenId(t.id)} />
+              <Board tasks={shown.filter((t) => t.owners.some((x) => x.id === o.id))} onMove={move} onOpen={(t) => setOpenId(t.id)} />
             </section>
           ))}
 
@@ -674,33 +692,58 @@ function Card({
   );
 }
 
-/** Les chiffres du moment, sur ce qui est filtré : ce qui est ouvert, en retard, bloqué, à valider, à rendre cette semaine. */
-function TaskStats({ tasks, meId }: { tasks: Task[]; meId: string }) {
-  const open = tasks.filter((t) => isOpen(t));
+const STAT_KEYS = ['open', 'late', 'stuck', 'validate', 'week'] as const;
+type StatKey = (typeof STAT_KEYS)[number];
+
+const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+/** Aujourd'hui → dimanche inclus. */
+const dueThisWeek = (t: Task) => {
+  if (!t.dueOn) return false;
   const today = new Date();
-  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const sunday = new Date(today);
   sunday.setDate(today.getDate() + ((7 - today.getDay()) % 7));
-  const stuck = open.filter((t) => t.state === 'stuck');
-  const toValidate = open.filter((t) => t.state === 'to_validate');
+  return t.dueOn >= isoDay(today) && t.dueOn <= isoDay(sunday);
+};
+/** Ce que chaque chiffre compte — et donc ce qu'il garde quand on le clique. */
+const STAT_TEST: Record<StatKey, (t: Task) => boolean> = {
+  open: (t) => isOpen(t),
+  late: (t) => isOpen(t) && isLate(t),
+  stuck: (t) => isOpen(t) && t.state === 'stuck',
+  validate: (t) => isOpen(t) && t.state === 'to_validate',
+  week: (t) => isOpen(t) && dueThisWeek(t),
+};
+
+/** Les chiffres du moment, sur ce qui est filtré : ce qui est ouvert, en retard, bloqué, à valider, à rendre cette semaine. Chacun filtre au clic. */
+function TaskStats({ tasks, meId, active, onPick }: { tasks: Task[]; meId: string; active: StatKey | null; onPick: (key: StatKey) => void }) {
+  const open = tasks.filter(STAT_TEST.open);
+  const stuck = tasks.filter(STAT_TEST.stuck);
+  const toValidate = tasks.filter(STAT_TEST.validate);
   const programmes = new Set(open.map((t) => t.programId).filter(Boolean)).size;
-  const stats = [
+  const stats: { key: StatKey; label: string; value: number; hint: string }[] = [
     { key: 'open', label: 'Open', value: open.length, hint: programmes ? `across ${programmes} programme${programmes === 1 ? '' : 's'}` : '' },
-    { key: 'late', label: 'Late', value: open.filter((t) => isLate(t)).length, hint: 'past their date' },
+    { key: 'late', label: 'Late', value: tasks.filter(STAT_TEST.late).length, hint: 'past their date' },
     { key: 'stuck', label: 'Stuck', value: stuck.length, hint: meId ? `${stuck.filter((t) => t.unblocker?.id === meId).length} waiting on you` : '' },
     { key: 'validate', label: 'To validate', value: toValidate.length, hint: meId ? `${toValidate.filter((t) => t.validator?.id === meId).length} by you` : '' },
-    { key: 'week', label: 'Due this week', value: open.filter((t) => t.dueOn && t.dueOn >= iso(today) && t.dueOn <= iso(sunday)).length, hint: 'by Sunday' },
+    { key: 'week', label: 'Due this week', value: tasks.filter(STAT_TEST.week).length, hint: 'by Sunday' },
   ];
   return (
     <div className="task-stats">
       {stats.map((s) => (
-        <div key={s.key} className="task-stat" data-kind={s.key}>
+        <button
+          key={s.key}
+          type="button"
+          className={active === s.key ? 'task-stat on' : 'task-stat'}
+          data-kind={s.key}
+          aria-pressed={active === s.key}
+          title={active === s.key ? 'Show every task again' : `Show only: ${s.label.toLowerCase()}`}
+          onClick={() => onPick(s.key)}
+        >
           <span className="task-stat-label">{s.label}</span>
           <div className="row" style={{ gap: 8, alignItems: 'baseline' }}>
             <span className="task-stat-value num">{s.value}</span>
             {s.hint && <span className="faint" style={{ fontSize: 12 }}>{s.hint}</span>}
           </div>
-        </div>
+        </button>
       ))}
     </div>
   );
