@@ -9,13 +9,13 @@
  */
 import { longDate, type MemberAction, type MemberActivity, type Task, type TaskItem } from '@ceed/shared';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/format';
 import { useLang } from '../../lib/lang';
 import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
-import { MemberHome, type CandidacyState } from './MemberHome';
+import { MemberHome, listsOf, type CandidacyState } from './MemberHome';
 import { OwedItems, type Owed } from './OwedItems';
 import { Answer } from './ReviewPage';
 
@@ -69,8 +69,19 @@ export function ProgramJourney({
     `journey:${state?.candidateId ?? ''}`,
   );
   const [reading, setReading] = useState(false);
+  /* Une liste de pièces s'ouvre seule, depuis sa ligne : la page du programme
+     reste une liste de ce qui est à faire et de ce qui est fait. */
+  const [params, setParams] = useSearchParams();
+  const listId = params.get('list');
+  const closeList = () =>
+    setParams((p) => {
+      const next = new URLSearchParams(p);
+      next.delete('list');
+      return next;
+    });
   if (!state) return <div className="empty">{t('prog.none')}</div>;
   const p = state.programme;
+  const openList = listId ? (state.owed.find((o) => o.block.id === listId) ?? null) : null;
   const j = readOnly ? (previewJourneys?.[state.candidateId] ?? null) : journey.data;
   const editionId = p.editionId;
   const mine = home
@@ -124,8 +135,24 @@ export function ProgramJourney({
         )}
       </section>
 
+      {openList && (
+        <section className="stack" style={{ gap: 10 }}>
+          <button type="button" className="linkish row" style={{ gap: 6, alignSelf: 'flex-start' }} onClick={closeList}>
+            <Icon name="chevronLeft" size={13} /> {fr ? 'Retour au programme' : 'Back to the programme'}
+          </button>
+          <OwedItems
+            candidateId={state.candidateId}
+            orgName={state.orgName}
+            given={[openList]}
+            startOpen
+            onSaved={(owed) => onOwed(state.candidateId, owed)}
+            readOnly={readOnly}
+          />
+        </section>
+      )}
+
       {/* Ce qui est attendu, et ce qui vient — les mêmes lignes que la Home. */}
-      {mine && (
+      {!openList && mine && (
         <MemberHome
           home={mine}
           programs={[]}
@@ -135,26 +162,12 @@ export function ProgramJourney({
           onGo={onGo}
           withProgrammes={false}
           split
+          documents={[{ editionId, programName: p.programName, lists: listsOf(state.owed) }]}
         />
-      )}
-
-      {/* Les pièces demandées, à remplir ici même. */}
-      {state.owed.length > 0 && (
-        <div id="owed" style={{ scrollMarginTop: 16 }}>
-        <OwedItems
-          candidateId={state.candidateId}
-          orgName={state.orgName}
-          given={state.owed}
-          /* Sur la page du programme, la liste est ce qu'on vient chercher : ouverte. */
-          startOpen
-          onSaved={(owed) => onOwed(state.candidateId, owed)}
-          readOnly={readOnly}
-        />
-        </div>
       )}
 
       {/* L'historique : ce qui s'est passé, du plus récent au plus ancien. */}
-      {j && (
+      {!openList && j && (
         <section className="stack" style={{ gap: 10 }} aria-labelledby="pj-history">
           <div className="mh-head">
             <h2 id="pj-history">{fr ? 'Historique' : 'History'}</h2>
@@ -169,12 +182,12 @@ export function ProgramJourney({
           <ol className="timeline">
             {j.history.map((e, i) => {
               /* Chaque ligne mène à ce qui a été fait : la candidature se déplie,
-                 les pièces sont plus haut, le reste a sa page. */
+                 le reste a sa page — la liste des pièces comprise. */
               const open =
                 e.kind === 'application' && j.application.length
                   ? { onClick: () => setReading((v) => !v) }
-                  : e.kind === 'deliverable' && state.owed.length
-                    ? { onClick: () => document.getElementById('owed')?.scrollIntoView({ behavior: 'smooth' }) }
+                  : e.href
+                    ? { onClick: () => onGo(e.href!) }
                     : null;
               const body = (
                 <>
@@ -191,9 +204,7 @@ export function ProgramJourney({
                     <Icon name={KIND_ICON[e.kind] ?? 'check'} size={12} />
                   </span>
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    {e.href ? (
-                      <Link to={e.href} className="linkish" style={{ display: 'block', textAlign: 'left' }}>{body}</Link>
-                    ) : open ? (
+                    {open ? (
                       <button type="button" className="linkish" style={{ display: 'block', textAlign: 'left' }} onClick={open.onClick}>{body}</button>
                     ) : (
                       body

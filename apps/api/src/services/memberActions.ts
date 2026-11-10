@@ -232,7 +232,7 @@ export async function candidacyActions(
       status: statusOf(owed.config.closesAt ?? null, sent > 0),
       dueOn: owed.config.closesAt ?? null,
       ...where,
-      href: `/me?tab=Programs&prog=${candidate.editionId}`,
+      href: `/me?tab=Programs&prog=${candidate.editionId}&list=${owed.block.id}`,
       label: owed.block.name,
       orgName: candidate.orgName,
       left: required.length - sent,

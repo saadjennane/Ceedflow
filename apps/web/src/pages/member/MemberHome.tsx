@@ -36,6 +36,23 @@ export interface CandidacyState {
 }
 
 /** What is still theirs to send, in the words the strip uses. */
+/** Chaque liste de pièces, comptée : pour une ligne qui l'ouvre, même toute envoyée. */
+export interface OwedList { blockId: string; name: string; sent: number; of: number; accepted: number; back: number }
+export function listsOf(owed: Owed[]): OwedList[] {
+  return owed.map((ask) => {
+    const mine = (id: string) => ask.returns.find((r) => r.itemId === id);
+    const need = requiredShown(ask.config.items as DeliverableItem[], (id) => mine(id)?.value);
+    return {
+      blockId: ask.block.id,
+      name: ask.block.name,
+      sent: need.filter((i) => itemComplete(i, mine(i.id)?.value)).length,
+      of: need.length,
+      accepted: ask.returns.filter((r) => r.state === 'accepted').length,
+      back: ask.returns.filter((r) => r.state === 'rejected').length,
+    };
+  });
+}
+
 export function owedLine(owed: Owed[]): { left: number; of: number; closesAt: string | null; back: boolean } | null {
   let left = 0;
   let of = 0;
@@ -114,7 +131,7 @@ export function MemberHome({
    * remplacer un document. Sans cette entrée, une liste complète disparaissait
    * de l'accueil avec la dernière chose à faire.
    */
-  documents?: { editionId: string; programName: string; lists: { name: string; sent: number; of: number; accepted: number; back: number }[] }[];
+  documents?: { editionId: string; programName: string; lists: OwedList[] }[];
 }) {
   const { t, lang } = useLang();
   const fr = lang === 'fr';
@@ -227,7 +244,7 @@ export function MemberHome({
         title: `${l.name} — ${l.of && l.sent >= l.of ? t('docs.allSent') : `${l.sent}/${l.of} ${t('docs.sent')}`}`,
         detail: [d.programName, l.accepted ? `${l.accepted} ${t('docs.accepted')}` : null].filter(Boolean).join(' · '),
         cta: t('docs.view'),
-        href: `/me?tab=Programs&prog=${d.editionId}`,
+        href: `/me?tab=Programs&prog=${d.editionId}&list=${l.blockId}`,
         editionId: d.editionId,
       });
     }

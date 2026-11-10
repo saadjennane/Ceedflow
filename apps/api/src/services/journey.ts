@@ -131,9 +131,11 @@ export async function journeyOf(candidate: Candidate): Promise<Journey | null> {
       for (const r of await repo.listReturnsFor(block.id, candidate.id)) {
         const item = items.find((i) => i.id === r.itemId);
         const what = item?.label || 'Pièce';
-        if (r.returnedAt) history.push({ at: r.returnedAt, kind: 'deliverable', label: `Envoyé — ${what}`, phase: phaseOf(block.id) });
+        /* La liste où la pièce se relit et se remplace. */
+        const href = `/me?tab=Programs&prog=${candidate.editionId}&list=${block.id}`;
+        if (r.returnedAt) history.push({ at: r.returnedAt, kind: 'deliverable', label: `Envoyé — ${what}`, phase: phaseOf(block.id), href });
         if (r.state === 'accepted' && r.reviewedAt) {
-          history.push({ at: r.reviewedAt, kind: 'deliverable', label: `Accepté — ${what}`, phase: phaseOf(block.id) });
+          history.push({ at: r.reviewedAt, kind: 'deliverable', label: `Accepté — ${what}`, phase: phaseOf(block.id), href });
         }
       }
     }

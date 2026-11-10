@@ -87,7 +87,7 @@ describe('a member’s Home', { skip: skipWithoutServer }, () => {
     const home = await memberActions(founder.id);
     const sent = home.done.find((d) => d.kind === 'deliverable');
     assert.ok(sent, 'and among what is done');
-    assert.equal(sent!.href, `/me?tab=Programs&prog=${candidate.editionId}`, 'opens where it can be read or replaced');
+    assert.equal(sent!.href, `/me?tab=Programs&prog=${candidate.editionId}&list=${due.id}`, 'opens the list, where it can be read or replaced');
     assert.ok(home.steps[candidate.editionId]?.length, 'the programme’s phases, for its card');
   });
 
@@ -110,6 +110,17 @@ describe('a member’s Home', { skip: skipWithoutServer }, () => {
     const [m] = await planMeetings(block.id, { candidateIds: [candidate.id], personId: mentor.id, invite: 'none', heldOn: '2030-05-05', startTime: '11:00' });
     const coming = (await memberActions(founder.id)).upcoming.find((u) => u.kind === 'one_to_one');
     assert.equal(coming!.href, `/meet/${m!.token}`);
+  });
+
+  it('links a booked session to its preparation, when the brick asks for one', async () => {
+    const { block, mentor, founder, candidate } = await setUp();
+    const config = (await repo.getBlock(block.id))!.config as object;
+    await repo.updateBlock(block.id, {
+      config: { ...config, prep: { enabled: true, fields: [{ id: 't', label: 'Topics', type: 'long_text', required: false, options: [], help: '' }] } },
+    });
+    const [m] = await planMeetings(block.id, { candidateIds: [candidate.id], personId: mentor.id, invite: 'none', heldOn: '2030-05-06', startTime: '11:00' });
+    const coming = (await memberActions(founder.id)).upcoming.find((u) => u.kind === 'one_to_one');
+    assert.equal(coming!.href, `/prepare/${m!.id}`);
   });
 
   it('asks the startup to prepare a session, even past its date when it never locks by itself', async () => {

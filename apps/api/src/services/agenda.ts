@@ -11,7 +11,7 @@
  * candidacy: a sitting moved on Friday has to move on their page too, and a
  * date written down twice is a date that will disagree with itself.
  */
-import { blockStatus, editionTakesInput, orderedBlocks, type CommitteeConfig } from '@ceed/shared';
+import { blockStatus, editionTakesInput, orderedBlocks, prepForm, type CommitteeConfig, type OneToOneConfig } from '@ceed/shared';
 import { all } from '../db/client.js';
 import * as repo from '../db/repo.js';
 
@@ -98,9 +98,9 @@ export async function agendaFor(candidateId: string): Promise<AgendaEntry[]> {
   for (const m of await all<{
     blockName: string; heldOn: string | null; startTime: string | null; durationMinutes: number;
     location: string; personName: string; token: string; invite: string; rsvpState: string;
-    meetingLink: string; answerBy: string | null;
+    meetingLink: string; answerBy: string | null; id: string; config: OneToOneConfig;
   }>(
-    `select b.name as "blockName", m.held_on::text as "heldOn", m.start_time as "startTime",
+    `select m.id, b.config, b.name as "blockName", m.held_on::text as "heldOn", m.start_time as "startTime",
             m.duration_minutes as "durationMinutes", m.location, coalesce((select string_agg(w.name, ' & ' order by w.name) from records w
               where w.id in (select jsonb_array_elements_text(m.with_ids))), p.name, '') as "personName", m.token, m.invite,
             m.meeting_link as "meetingLink", nullif(b.config->>'answerBy', '') as "answerBy",
@@ -121,9 +121,11 @@ export async function agendaFor(candidateId: string): Promise<AgendaEntry[]> {
       location: m.location,
       /* Vide tant qu'une startup invitée à choisir n'a pas dit chez qui. */
       with: m.personName || undefined,
-      /* Toujours le lien du rendez-vous : c'est là que la startup rouvre sa
-         préparation, même déjà envoyée, tant qu'elle n'est pas verrouillée. */
-      link: `/meet/${m.token}`,
+      /* Une heure à choisir ou à confirmer : la page du rendez-vous. Sinon, la
+         préparation quand la brique en demande une — c'est ce qu'il reste à
+         faire avant la séance, et elle s'y modifie tant qu'elle n'est pas
+         verrouillée ; la page du rendez-vous à défaut. */
+      link: asks ? `/meet/${m.token}` : m.config?.prep && prepForm(m.config) ? `/prepare/${m.id}` : `/meet/${m.token}`,
       meetingLink: m.meetingLink || undefined,
       ...(asks ? { answer: (m.invite === 'slots' ? 'book' : 'confirm') as 'book' | 'confirm', answerBy: m.answerBy } : {}),
     });

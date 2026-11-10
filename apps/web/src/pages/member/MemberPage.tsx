@@ -13,7 +13,7 @@ import {
   type Me,
   type OrgProfile,
   type Task,
-  type MemberHomeData, requiredShown, itemComplete, type DeliverableItem } from '@ceed/shared';
+  type MemberHomeData } from '@ceed/shared';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, api } from '../../lib/api';
@@ -31,7 +31,7 @@ import { OwedItems, type Owed } from './OwedItems';
 import { type AgendaEntry } from './Agenda';
 import { ProgramJourney, type Journey } from './ProgramJourney';
 import { ProgramsSection } from './ProgramsSection';
-import { MemberHome, type CandidacyState } from './MemberHome';
+import { MemberHome, listsOf, type CandidacyState } from './MemberHome';
 import { LangProvider, useLang } from '../../lib/lang';
 import { TeamModal } from './TeamPanel';
 import { PhoneLines } from '../../ui/PhoneLines';
@@ -208,6 +208,7 @@ function MemberSpaceReady({
     setParams((p) => {
       const q = new URLSearchParams(p);
       q.set('tab', 'Programs');
+      q.delete('list');
       if (editionId) q.set('prog', editionId);
       else q.delete('prog');
       return q;
@@ -267,9 +268,17 @@ function MemberSpaceReady({
      créneau de comité, des indicateurs — reste fermé, et le dit. */
   const previewGo = (href: string) => {
     if (href.startsWith('/me')) {
-      const prog = new URLSearchParams(href.split('?')[1] ?? '').get('prog');
-      if (prog) setEdition(prog);
-      else setTab('Programs');
+      /* Le même endroit que la startup ouvrirait — onglet, programme, liste —, ici même. */
+      const q = new URLSearchParams(href.split('?')[1] ?? '');
+      setParams((p) => {
+        const next = new URLSearchParams(p);
+        for (const key of ['tab', 'prog', 'list']) {
+          const value = q.get(key);
+          if (value) next.set(key, value);
+          else next.delete(key);
+        }
+        return next;
+      });
       return;
     }
     if (href.startsWith('/meet/') || href.startsWith('/prepare/')) {
@@ -487,17 +496,7 @@ function MemberSpaceReady({
             documents={(states.data ?? []).map((st) => ({
               editionId: st.programme.editionId,
               programName: st.programme.programName,
-              lists: st.owed.map((ask) => {
-                const mine = (id: string) => ask.returns.find((r) => r.itemId === id);
-                const need = requiredShown(ask.config.items as DeliverableItem[], (id) => mine(id)?.value);
-                return {
-                  name: ask.block.name,
-                  sent: need.filter((i) => itemComplete(i, mine(i.id)?.value)).length,
-                  of: need.length,
-                  accepted: ask.returns.filter((r) => r.state === 'accepted').length,
-                  back: ask.returns.filter((r) => r.state === 'rejected').length,
-                };
-              }),
+              lists: listsOf(st.owed),
             }))}
             onTick={async (task) => {
               try {
