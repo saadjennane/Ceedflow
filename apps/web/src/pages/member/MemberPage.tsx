@@ -260,6 +260,24 @@ function MemberSpaceReady({
   for (const a of home.data?.actions ?? []) if (a.editionId) pendingByEdition.set(a.editionId, (pendingByEdition.get(a.editionId) ?? 0) + 1);
 
   const name = preview ? (preview.who?.name ?? preview.orgName) : me!.record.name;
+
+  /* En aperçu, CEED suit les liens sans rien écrire : le programme s'ouvre ici,
+     le rendez-vous et la préparation dans un onglet, où le serveur les montre
+     en lecture seule à l'équipe. Ce qui écrirait au nom de la startup — un
+     créneau de comité, des indicateurs — reste fermé, et le dit. */
+  const previewGo = (href: string) => {
+    if (href.startsWith('/me')) {
+      const prog = new URLSearchParams(href.split('?')[1] ?? '').get('prog');
+      if (prog) setEdition(prog);
+      else setTab('Programs');
+      return;
+    }
+    if (href.startsWith('/meet/') || href.startsWith('/prepare/')) {
+      window.open(href, '_blank', 'noopener');
+      return;
+    }
+    toast('Read-only: this page would act for the startup, so it stays closed here.', true);
+  };
   const email = preview ? (preview.who?.email ?? '') : me!.account.email;
 
   const ICON: Record<MemberTab, string> = {
@@ -500,7 +518,7 @@ function MemberSpaceReady({
               tasks.reload();
             }}
             onOpen={setEdition}
-            onGo={(href) => (preview ? undefined : navigate(href))}
+            onGo={(href) => (preview ? previewGo(href) : navigate(href))}
           />
         )}
         {tab === 'Programs' &&
@@ -522,7 +540,7 @@ function MemberSpaceReady({
                 await api.patch(`/api/me/tasks/${task.id}/items/${item.id}`, { done: !item.done }).catch((err) => toast((err as Error).message, true));
                 home.reload();
               }}
-              onGo={(href) => (preview ? undefined : navigate(href))}
+              onGo={(href) => (preview ? previewGo(href) : navigate(href))}
             />
           ) : (
             <ProgramsSection

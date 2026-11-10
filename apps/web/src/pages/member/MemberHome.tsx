@@ -464,7 +464,11 @@ export function MemberHome({
                         <strong>{p.programName}</strong>
                         <small>{[p.editionName, p.mine[0]?.phase].filter(Boolean).join(' · ')}</small>
                       </span>
-                      {status && <span className={status === 'Selected' ? 'badge ok' : 'badge'}>{status}</span>}
+                      {status && (
+                        <span className={status === 'Selected' ? 'badge ok' : status === 'Not selected' || status === 'Withdrawn' ? 'badge warn' : 'badge'}>
+                          {fr ? (STATUS_FR[status] ?? status) : status}
+                        </span>
+                      )}
                       <Icon name="chevronRight" size={15} />
                     </span>
                     {steps.length > 0 && (
@@ -496,6 +500,16 @@ export function MemberHome({
     </div>
   );
 }
+
+const STATUS_FR: Record<string, string> = {
+  Applied: 'Candidature',
+  'In review': 'En étude',
+  Shortlisted: 'Présélectionnée',
+  Selected: 'Retenue',
+  Waitlisted: 'Liste d’attente',
+  'Not selected': 'Non retenue',
+  Withdrawn: 'Retirée',
+};
 
 const isoToday = () => {
   const d = new Date();
