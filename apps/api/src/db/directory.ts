@@ -18,7 +18,7 @@ import { db } from './client.js';
 
 const COLS = `id, kind, name, first_name as "firstName", last_name as "lastName", roles, origin, test_owner as "testOwner",
   job_title as "jobTitle", department,
-  logo_upload_id as "logoUploadId", pitch, sector, stage,
+  logo_upload_id as "logoUploadId", brand_colour as "brandColour", pitch, sector, stage,
   created_by as "createdBy", created_by_name as "createdByName",
   founded_year as "foundedYear", team_size as "teamSize", linkedin,
   org_type as "orgType", legal_status as "legalStatus", founded_on as "foundedOn", legal_form as "legalForm",
@@ -258,6 +258,7 @@ const FIELDS: Record<string, string> = {
   jobTitle: 'job_title',
   department: 'department',
   logoUploadId: 'logo_upload_id',
+  brandColour: 'brand_colour',
   pitch: 'pitch',
   sector: 'sector',
   stage: 'stage',

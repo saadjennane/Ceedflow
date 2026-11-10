@@ -12,6 +12,7 @@ import { Link } from 'react-router-dom';
 import { formatDate } from '../../lib/format';
 import { colourOf, initialsOf } from '../../ui/Showcase';
 import { AccountBadge } from './AccountCard';
+import { useBrandColour } from '../../ui/brandColour';
 import type { RecordRow } from './DirectoryPage';
 
 export interface Tile {
@@ -50,11 +51,17 @@ export function revenueOf(r: RecordRow): { amount: number; currency: string; del
 const short = (n: number) =>
   n >= 1_000_000 ? `${(n / 1_000_000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} M` : n >= 1_000 ? `${Math.round(n / 1000)} k` : String(n);
 
+/** Le bandeau d'une carte, à la couleur de l'organisation. */
+function Band({ r }: { r: RecordRow }) {
+  const c = useBrandColour({ name: r.name, brandColour: r.brandColour, logoUploadId: r.logoUploadId });
+  return <span className="dir-band" style={{ background: `linear-gradient(115deg, ${c}, var(--cyan))` }} />;
+}
+
 function Mark({ r, size = 36 }: { r: RecordRow; size?: number }) {
   return r.logoUploadId ? (
     <img className="dir-logo" style={{ width: size, height: size }} src={`/api/uploads/${r.logoUploadId}`} alt="" />
   ) : (
-    <span className="dir-logo" style={{ width: size, height: size, background: colourOf(r.name) }}>
+    <span className="dir-logo" style={{ width: size, height: size, background: r.brandColour || colourOf(r.name) }}>
       {r.kind === 'org' ? r.name.slice(0, 1).toUpperCase() : initialsOf(r.name)}
     </span>
   );
@@ -184,7 +191,7 @@ export function OrgCards({ rows }: { rows: RecordRow[] }) {
         const holder = r.holders[0];
         return (
           <Link key={r.id} to={`/directory/${r.id}`} className="dir-card">
-            <span className="dir-band" style={{ background: `linear-gradient(115deg, ${colourOf(r.name)}, var(--cyan))` }} />
+            <Band r={r} />
             <span className="dir-card-body">
               <span className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
                 <span className="dir-card-logo"><Mark r={r} size={50} /></span>

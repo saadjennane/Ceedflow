@@ -21,6 +21,7 @@ import {
 } from '@ceed/shared';
 import { useState, type ReactNode } from 'react';
 import { Icon } from './Icon';
+import { useBrandColour } from './brandColour';
 
 type Lang = 'fr' | 'en';
 const said = (list: readonly Choice[], key: string, lang: Lang) => {
@@ -49,6 +50,7 @@ export function Hero({
   name,
   colour,
   imageId,
+  brandColour,
   round = false,
   eyebrow,
   subtitle,
@@ -59,6 +61,8 @@ export function Hero({
   name: string;
   colour?: string;
   imageId?: string | null;
+  /** Sa couleur choisie ; sans, celle du logo (pas d'une photo). */
+  brandColour?: string | null;
   round?: boolean;
   eyebrow?: ReactNode;
   subtitle?: ReactNode;
@@ -66,7 +70,8 @@ export function Hero({
   chips?: ReactNode;
   side?: ReactNode;
 }) {
-  const c = colour ?? colourOf(name);
+  const brand = useBrandColour({ name, brandColour, logoUploadId: round ? null : imageId });
+  const c = colour ?? brand;
   return (
     <section className="sc-hero">
       <div className="sc-band" style={{ background: `linear-gradient(115deg, ${c}, var(--cyan))` }} />

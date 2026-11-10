@@ -79,6 +79,8 @@ import { EmailLines } from './EmailLines';
 import { Icon } from './Icon';
 import { PeoplePicker } from '../pages/directory/PeoplePicker';
 import { ASK_WORD, ProfileBar, RecordImage, money } from './OrgProfile';
+import { colourOf } from './Showcase';
+import { useLogoColour } from './brandColour';
 import { Drawer, useToast } from './Overlays';
 import { PhoneLines } from './PhoneLines';
 import { PlaceLines } from './PlaceLines';
@@ -439,6 +441,13 @@ function Identity({
         uploadId={draft.logoUploadId}
         name={draft.name}
         onChange={(v) => put({ logoUploadId: v })}
+      />
+      <BrandColourPick
+        value={draft.brandColour ?? ''}
+        logoUploadId={draft.logoUploadId}
+        name={draft.name}
+        l={l}
+        onChange={(v) => put({ brandColour: v }, { wait: true })}
       />
 
       <Line
@@ -1907,6 +1916,76 @@ function Currency({ value, onChange }: { value: string; onChange: (v: string) =>
         <option key={c} value={c}>{c}</option>
       ))}
     </select>
+  );
+}
+
+/**
+ * La couleur de la page : celle du logo par défaut, ou une autre, choisie.
+ * Le bandeau en haut de la fiche et la carte de l'annuaire la prennent.
+ */
+function BrandColourPick({
+  value,
+  logoUploadId,
+  name,
+  l,
+  onChange,
+}: {
+  value: string;
+  logoUploadId: string | null;
+  name: string;
+  l: Lang;
+  onChange: (v: string) => void;
+}) {
+  const fromLogo = useLogoColour(logoUploadId);
+  const auto = fromLogo ?? colourOf(name);
+  const fr = l === 'fr';
+  const SWATCHES = ['#2f5bff', '#00a0c8', '#0f9d74', '#7a5cff', '#d8305a', '#e0782a', '#c77400', '#1f2937'];
+  const swatch = (colour: string, on: boolean, label: string, pick: () => void) => (
+    <button
+      type="button"
+      key={label}
+      onClick={pick}
+      aria-label={label}
+      aria-pressed={on}
+      title={label}
+      style={{
+        width: 28, height: 28, borderRadius: 8, background: colour, cursor: 'pointer',
+        border: on ? '2px solid var(--ink)' : '2px solid transparent', boxShadow: on ? '0 0 0 2px var(--surface) inset' : undefined,
+      }}
+    />
+  );
+  return (
+    <div className="field">
+      <label>{fr ? 'Couleur de la page' : 'Page colour'}</label>
+      <div className="row wrap" style={{ gap: 8, alignItems: 'center' }}>
+        <button
+          type="button"
+          className={value ? 'track' : 'track on'}
+          aria-pressed={!value}
+          onClick={() => onChange('')}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        >
+          <span style={{ width: 14, height: 14, borderRadius: 4, background: auto }} />
+          {fromLogo ? (fr ? 'Celle du logo' : 'From the logo') : fr ? 'Automatique' : 'Automatic'}
+        </button>
+        {SWATCHES.map((c) => swatch(c, value.toLowerCase() === c, c, () => onChange(c)))}
+        <label className="row" style={{ gap: 6, fontSize: 12.5, cursor: 'pointer' }}>
+          <input
+            type="color"
+            value={value || auto}
+            onChange={(e) => onChange(e.target.value)}
+            aria-label={fr ? 'Autre couleur' : 'Other colour'}
+            style={{ width: 30, height: 28, padding: 0, border: 0, background: 'none', cursor: 'pointer' }}
+          />
+          <span className="faint">{fr ? 'Autre' : 'Other'}</span>
+        </label>
+      </div>
+      <span className="faint" style={{ fontSize: 12 }}>
+        {fr
+          ? 'Le bandeau en haut de la page et la carte dans l’annuaire. Sans choix, la couleur de votre logo.'
+          : 'The band at the top of the page and the card in the directory. Left alone, the colour of your logo.'}
+      </span>
+    </div>
   );
 }
 

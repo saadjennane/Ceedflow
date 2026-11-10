@@ -1618,6 +1618,7 @@ function OrgShowcase({
       <Hero
         name={record.name}
         imageId={record.logoUploadId}
+        brandColour={record.brandColour}
         pitch={record.pitch || undefined}
         chips={medals.map((m) => (
           <span key={m.key} className="medal">

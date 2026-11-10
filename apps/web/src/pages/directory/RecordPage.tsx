@@ -117,6 +117,7 @@ export function RecordPage() {
             <Hero
               name={record.name}
               imageId={record.logoUploadId}
+              brandColour={record.brandColour}
               eyebrow={
                 <>
                   {record.roles.map((r) => (

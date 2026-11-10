@@ -96,6 +96,8 @@ export function listedInDirectory(
  * forme juridique inventée par un client passerait sinon dans la base.
  */
 const orgSheetFields = {
+  /** Sa couleur, quand elle en choisit une ; vide, celle de son logo. */
+  brandColour: z.string().regex(/^(#[0-9a-fA-F]{6})?$/, 'A colour like #2f5bff.').default(''),
   pitch: z.string().max(300, 'Three hundred characters at most.').default(''),
   orgType: z.enum(['', ...ORG_TYPES.map((c) => c.key)] as [string, ...string[]]).default(''),
   legalStatus: z.enum(['', ...LEGAL_STATUSES.map((c) => c.key)] as [string, ...string[]]).default(''),

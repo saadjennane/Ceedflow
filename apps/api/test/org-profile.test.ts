@@ -22,6 +22,7 @@ import {
   profileOf,
   profileStarted,
   revenueYears,
+  updateRecordInput,
 } from '@ceed/shared';
 import { migrate } from '../src/db/client.js';
 import * as dir from '../src/db/directory.js';
@@ -117,6 +118,14 @@ describe('what the fiche asks', () => {
 });
 
 describe('a startup’s fiche, kept', { skip: skipWithoutServer }, () => {
+
+  it('keeps the colour it chose, and forgets it when asked — the logo’s then', async () => {
+    const org = await dir.createRecord({ kind: 'org', name: `Couleur ${uniq()}`, origin: 'manual' });
+    assert.equal(org.brandColour, '', 'none chosen: the logo decides');
+    assert.equal((await dir.updateRecord(org.id, { brandColour: '#0f9d74' })).brandColour, '#0f9d74');
+    assert.equal((await dir.updateRecord(org.id, { brandColour: '' })).brandColour, '');
+    assert.equal(updateRecordInput.safeParse({ brandColour: 'red' }).success, false, 'a colour, or nothing');
+  });
 
   it('keeps everything the first fiche asked for, and gives it back', async () => {
     const org = await dir.createRecord({
