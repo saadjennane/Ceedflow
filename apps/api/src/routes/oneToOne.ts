@@ -218,15 +218,18 @@ export async function oneToOnePublicRoutes(app: FastifyInstance) {
       }),
       req.body,
     );
-    if (await isStaff(req)) {
+    const account = await accountForToken(req.cookies?.[SESSION_COOKIE]);
+    if (account?.staffRole) {
       throw new HttpError(403, 'You are signed in as CEED: this page books and answers for the startup. Do it from the workspace instead.');
     }
+    /* Connectée, la personne de la startup signe sa réponse ; sinon, c'est celle à qui le lien est parti. */
+    const byName = account ? ((await dir.getRecord(account.recordId))?.name?.trim() ?? '') : '';
     /* Une case choisie, ou un oui ou non à l'heure proposée. */
     if (body.dayId && body.startTime && body.personId) {
-      return publicInvitation(await bookSlot(token, { dayId: body.dayId, startTime: body.startTime, personId: body.personId }));
+      return publicInvitation(await bookSlot(token, { dayId: body.dayId, startTime: body.startTime, personId: body.personId }, byName));
     }
     if (body.accept === undefined) throw new HttpError(422, 'Pick a time, or answer.');
-    return publicInvitation(await answerInvitation(token, body.accept, body.note ?? ''));
+    return publicInvitation(await answerInvitation(token, body.accept, body.note ?? '', byName));
   });
 }
 

@@ -16,6 +16,7 @@ import { formatDate } from '../../lib/format';
 import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
 import { Modal, useToast } from '../../ui/Overlays';
+import { DeliverableItemInput } from '../../ui/DeliverableItemInput';
 import { download, toWorkbook, type Cell } from '../../lib/xlsx';
 import { NotifyDialog } from './NotifyDialog';
 
@@ -128,6 +129,7 @@ function Cell({
   onAccept,
   onSendBack,
   onReopen,
+  onEdit,
 }: {
   item: DeliverableItem;
   got: ReturnView | undefined;
@@ -135,8 +137,21 @@ function Cell({
   onAccept: () => void;
   onSendBack: () => void;
   onReopen: () => void;
+  /** Remplir ou déposer à la place de la startup : un document remis en main propre, un chiffre donné au téléphone. */
+  onEdit: () => void;
 }) {
-  if (!got || !itemGiven(item, got.value)) return <span className="faint">—</span>;
+  const edit = (
+    <button className="btn ghost icon sm" title="Fill in for the startup" aria-label="Fill in for the startup" onClick={onEdit}>
+      <Icon name="edit" size={13} />
+    </button>
+  );
+  if (!got || !itemGiven(item, got.value)) {
+    return (
+      <button className="linkish faint" style={{ fontSize: 12.5 }} title="Fill in or upload for the startup" onClick={onEdit}>
+        — <Icon name="plus" size={11} /> Add
+      </button>
+    );
+  }
   /* A plain single answer reads in the cell; anything with several parts says
      how many and opens. */
   const What =
@@ -159,6 +174,7 @@ function Cell({
         >
           <Icon name="check" size={13} />
         </button>
+        {edit}
       </span>
     );
   }
@@ -170,6 +186,7 @@ function Cell({
         <span className="badge warn" title={got.reason}>
           Sent back
         </span>
+        {edit}
       </span>
     );
   }
@@ -189,6 +206,7 @@ function Cell({
       >
         <Icon name="x" size={13} />
       </button>
+      {edit}
     </span>
   );
 }
@@ -265,7 +283,36 @@ export function DeliverableTab({ block }: { block: Block }) {
   /* Reading one group or one list in full. It cannot fit in a cell, and this
      is where the CINs are actually checked one after another. */
   const [looking, setLooking] = useState<{ row: Row; item: DeliverableItem } | null>(null);
+  /* Remplir une pièce à la place d'une startup, et ce qu'on y a mis avant d'enregistrer. */
+  const [editing, setEditing] = useState<{ row: Row; item: DeliverableItem } | null>(null);
+  const [draft, setDraft] = useState<unknown>(null);
+  const [saving, setSaving] = useState(false);
   const toast = useToast();
+
+  const startEdit = (row: Row, item: DeliverableItem) => {
+    setDraft(row.returns.find((r) => r.itemId === item.id)?.value ?? null);
+    setLooking(null);
+    setEditing({ row, item });
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    setSaving(true);
+    try {
+      view.set(
+        await api.post<View>(`/api/blocks/${block.id}/deliverables/${editing.row.candidate.id}`, {
+          itemId: editing.item.id,
+          value: draft ?? null,
+        }),
+      );
+      toast(`Saved for ${editing.row.candidate.orgName}.`);
+      setEditing(null);
+    } catch (err) {
+      toast((err as Error).message, true);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const review = async (candidateId: string, itemId: string, state: State, why = '') => {
     try {
@@ -623,6 +670,7 @@ export function DeliverableTab({ block }: { block: Block }) {
                           onAccept={() => void review(row.candidate.id, item.id, 'accepted')}
                           onSendBack={() => { setReason(''); setSendingBack({ row, item }); }}
                           onReopen={() => void review(row.candidate.id, item.id, 'received')}
+                          onEdit={() => startEdit(row, item)}
                         />
                       </td>
                     );
@@ -685,6 +733,7 @@ export function DeliverableTab({ block }: { block: Block }) {
                             onAccept={() => void review(row.candidate.id, item.id, 'accepted')}
                             onSendBack={() => { setReason(''); setSendingBack({ row, item }); }}
                             onReopen={() => void review(row.candidate.id, item.id, 'received')}
+                            onEdit={() => startEdit(row, item)}
                           />
                         </span>
                       </div>
@@ -718,6 +767,9 @@ export function DeliverableTab({ block }: { block: Block }) {
           onClose={() => setLooking(null)}
           footer={
             <>
+              <button className="btn ghost" onClick={() => startEdit(looking.row, looking.item)}>
+                <Icon name="edit" size={13} /> Edit for them
+              </button>
               <div className="spacer" />
               <button className="btn primary" onClick={() => setLooking(null)}>
                 Close
@@ -726,6 +778,28 @@ export function DeliverableTab({ block }: { block: Block }) {
           }
         >
           <EntryTable item={looking.item} value={valueOf(looking.row, looking.item.id)?.value} />
+        </Modal>
+      )}
+
+      {editing && (
+        <Modal
+          wide
+          title={`${editing.item.label || 'This item'} — ${editing.row.candidate.orgName}`}
+          subtitle="Recorded for the startup, as if they had sent it themselves. They see it in their space."
+          onClose={() => !saving && setEditing(null)}
+          footer={
+            <>
+              <div className="spacer" />
+              <button className="btn ghost" disabled={saving} onClick={() => setEditing(null)}>
+                Cancel
+              </button>
+              <button className="btn primary" disabled={saving} onClick={() => void saveEdit()}>
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </>
+          }
+        >
+          <DeliverableItemInput item={editing.item} value={draft} onChange={setDraft} />
         </Modal>
       )}
 

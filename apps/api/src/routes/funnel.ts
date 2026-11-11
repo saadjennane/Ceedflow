@@ -10,6 +10,8 @@ import {
   submitApplicationInput,
   contactProblem,
   CONTACT_SAYS,
+  contactProblemsIn,
+  type DeliverableConfig,
   formPages,
   orderedBlocks,
   profileOf,
@@ -800,8 +802,29 @@ export async function funnelRoutes(app: FastifyInstance) {
     const input = parse(z.object({ itemId: z.string(), value: z.unknown() }), req.body);
     const block = await repo.getBlock(id);
     if (!block || block.type !== 'deliverable') return notFound(reply, 'Deliverables block not found.');
+    const candidate = await repo.getCandidate(candidateId);
+    if (!candidate) return notFound(reply, 'Candidacy not found.');
+    const item = ((block.config as DeliverableConfig | undefined)?.items ?? []).find((i) => i.id === input.itemId);
+    if (!item) return notFound(reply, 'That is not one of the things asked for here.');
+    /* Les mêmes règles que pour la startup : une adresse fausse reste refusée, qui que ce soit qui la tape. */
+    const wrong = contactProblemsIn(item, input.value);
+    if (Object.keys(wrong).length) {
+      const [, problem] = Object.entries(wrong)[0]!;
+      throw new HttpError(422, CONTACT_SAYS[problem as 'email' | 'phone'], { [input.itemId]: CONTACT_SAYS[problem as 'email' | 'phone'] });
+    }
     await repo.saveReturn(id, candidateId, input.itemId, input.value ?? null);
     await repo.claimUploads(candidateId, { [input.itemId]: input.value }, req.staff!.recordId);
+    /* Une pièce reliée à la fiche la met à jour, comme quand la startup l'envoie. */
+    if (item.fromProfile && input.value !== null && input.value !== undefined) {
+      try {
+        const who = await dir.getRecord(req.staff!.recordId);
+        await writeBackToSheet(candidate.orgId, [item], { [item.id]: input.value }, {
+          kind: 'staff', id: req.staff!.recordId, name: who?.name ?? req.staff!.email, sourceLabel: block.name,
+        });
+      } catch (err) {
+        req.log.error(err, 'deliverable to sheet');
+      }
+    }
     return deliverableView(id);
   });
 

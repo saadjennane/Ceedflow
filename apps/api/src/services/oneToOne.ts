@@ -75,10 +75,14 @@ const COLS = `
   m.prep, m.prep_submitted_at::text as "prepSubmittedAt", m.prep_edited_at::text as "prepEditedAt",
   m.prep_edited_by_name as "prepEditedByName",
   m.created_at::text as "createdAt",
-  m.told_startup_at::text as "toldStartupAt", m.told_person_at::text as "toldPersonAt"
+  m.told_startup_at::text as "toldStartupAt", m.told_person_at::text as "toldPersonAt",
+  coalesce(cp.name, '') as "contactName",
+  m.told_startup_name as "invitedName", m.told_startup_email as "invitedEmail",
+  m.answered_by_name as "answeredByName"
   from one_to_one_meetings m
   join candidates c on c.id = m.candidate_id and c.deleted_at is null
   join records o on o.id = c.org_id
+  left join records cp on cp.id = c.person_id
   left join records p on p.id = m.person_id`;
 
 /* Le plus proche d'abord ; ceux sans date, à la fin, dans l'ordre où on les a créés. */
@@ -832,6 +836,7 @@ export async function previewPage(blockId: string, candidateId: string): Promise
     invite: 'slots', token: '', rsvpState: 'pending', respondedAt: null, rsvpNote: '', status: 'planned',
     prep: {}, prepSubmittedAt: null, prepEditedAt: null, prepEditedByName: '', report: {}, reportSubmittedAt: null, reportByName: '',
     createdAt: new Date().toISOString(), toldStartupAt: null, toldPersonAt: null,
+    contactName: candidate.contactName, invitedName: '', invitedEmail: '', answeredByName: '',
   } as OneToOneMeeting;
   return (await pageOf(meeting))?.page ?? null;
 }
@@ -876,8 +881,14 @@ export async function prepFor(recordId: string, id: string): Promise<MeetingInvi
   return (await invitationFor(meeting.token))?.page ?? null;
 }
 
+/**
+ * Qui répond, par le lien : la personne connectée de la startup quand elle
+ * l'est, sinon celle à qui le lien a été envoyé — il est personnel.
+ */
+const responder = (m: OneToOneMeeting, byName: string) => byName.trim() || m.invitedName || m.contactName;
+
 /** Oui ou non à une heure proposée. Rien d'autre ne s'écrit par ce lien. */
-export async function answerInvitation(token: string, accept: boolean, note = ''): Promise<MeetingInvitation> {
+export async function answerInvitation(token: string, accept: boolean, note = '', byName = ''): Promise<MeetingInvitation> {
   const found = await invitationFor(token);
   if (!found) throw new HttpError(404, 'This invitation does not exist.');
   if (found.page.late) throw new HttpError(403, 'The deadline to answer has passed. Get in touch with the team.');
@@ -886,10 +897,10 @@ export async function answerInvitation(token: string, accept: boolean, note = ''
   /* Une série se confirme — ou se refuse — en une fois : ses séances à venir
      suivent la réponse donnée à la première. */
   await all(
-    `update one_to_one_meetings set rsvp_state = $2, rsvp_note = $3, responded_at = now()
+    `update one_to_one_meetings set rsvp_state = $2, rsvp_note = $3, responded_at = now(), answered_by_name = $5
       where id = $1
          or ($4::text is not null and series_id = $4 and status = 'planned' and held_on >= current_date)`,
-    [found.meeting.id, accept ? 'confirmed' : 'declined', accept ? '' : note.trim().slice(0, 1000), found.meeting.seriesId],
+    [found.meeting.id, accept ? 'confirmed' : 'declined', accept ? '' : note.trim().slice(0, 1000), found.meeting.seriesId, responder(found.meeting, byName)],
   );
   /* Oui à l'heure proposée : la confirmation part — une fois, pas à chaque clic. */
   if (accept && found.meeting.rsvpState !== 'confirmed') await confirmBooking(found.meeting.id);
@@ -1252,7 +1263,12 @@ export async function tellMeeting(
       });
       if (posted) {
         // Un rappel n'est pas une annonce : il ne dit pas « prévenue ».
-        if (letter === 'announce') await all('update one_to_one_meetings set told_startup_at = now() where id = $1', [id]);
+        if (letter === 'announce') {
+          await all(
+            'update one_to_one_meetings set told_startup_at = now(), told_startup_name = $2, told_startup_email = $3 where id = $1',
+            [id, candidate.contactName, written.to],
+          );
+        }
         out.startup = true;
       }
     }
@@ -1498,7 +1514,11 @@ export async function slotsFor(meeting: OneToOneMeeting): Promise<BookableCell[]
  * page at once, the second one is told — and booking again moves the meeting
  * rather than adding one.
  */
-export async function bookSlot(token: string, cell: { dayId: string; startTime: string; personId: string }): Promise<MeetingInvitation> {
+export async function bookSlot(
+  token: string,
+  cell: { dayId: string; startTime: string; personId: string },
+  byName = '',
+): Promise<MeetingInvitation> {
   const found = await invitationFor(token);
   if (!found) throw new HttpError(404, 'This invitation does not exist.');
   if (found.page.late) throw new HttpError(403, 'The deadline to answer has passed. Get in touch with the team.');
@@ -1517,10 +1537,11 @@ export async function bookSlot(token: string, cell: { dayId: string; startTime: 
             location = case when $7 <> '' then $7 else location end,
             meeting_link = case when $9 <> '' then $9 else meeting_link end,
             with_ids = $8::jsonb,
-            rsvp_state = 'confirmed', rsvp_note = '', responded_at = now()
+            rsvp_state = 'confirmed', rsvp_note = '', responded_at = now(), answered_by_name = $10
       where id = $1`,
     [found.meeting.id, pick.onDate, pick.startTime, pick.personId, pick.dayId, theDay?.minutesPerMeeting ?? found.meeting.durationMinutes,
-      theDay?.location ?? '', together && theDay ? theDay.interlocutors : [], theDay ? linkForSlot(theDay, pick.startTime) : ''],
+      theDay?.location ?? '', together && theDay ? theDay.interlocutors : [], theDay ? linkForSlot(theDay, pick.startTime) : '',
+      responder(found.meeting, byName)],
   );
   /* Une case prise — ou une autre à la place de la première : la confirmation dit la nouvelle heure. */
   await confirmBooking(found.meeting.id);

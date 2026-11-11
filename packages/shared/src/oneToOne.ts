@@ -62,6 +62,13 @@ export interface OneToOneMeeting {
   /** When each side was written to about it. Null: not yet. */
   toldStartupAt: string | null;
   toldPersonAt: string | null;
+  /** La personne de la startup qui la représente aujourd'hui — son contact. */
+  contactName: string;
+  /** À qui l'invitation est partie, au moment de l'envoi. Vide tant qu'elle n'est pas partie. */
+  invitedName: string;
+  invitedEmail: string;
+  /** Qui a répondu — confirmé, réservé ou refusé. Vide tant que personne n'a répondu. */
+  answeredByName: string;
 }
 
 /** Where a meeting stands, for a badge: what the reader needs to know first. */

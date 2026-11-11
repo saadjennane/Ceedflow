@@ -64,6 +64,20 @@ const STATE_BADGE: Record<ReturnType<typeof meetingState>, { label: string; tone
   cancelled: { label: 'Cancelled', tone: 'badge' },
 };
 
+/** La personne derrière la startup : qui a répondu, sinon qui a reçu l'invitation, sinon son contact. */
+const startupPerson = (m: OneToOneMeeting) => m.answeredByName || m.invitedName || m.contactName;
+
+/** Ce qu'on sait des personnes de la startup, en une ligne : à qui c'est parti, qui a répondu. */
+function peopleLine(m: OneToOneMeeting): string {
+  const parts: string[] = [];
+  if (m.invitedName) parts.push(`Invited: ${m.invitedName}`);
+  if (m.answeredByName) {
+    const verb = m.rsvpState === 'declined' ? 'Declined' : m.invite === 'slots' ? 'Booked' : 'Accepted';
+    parts.push(`${verb} by ${m.answeredByName}`);
+  }
+  return parts.join(' · ') || (m.contactName ? `Contact: ${m.contactName}` : '');
+}
+
 const when = (m: Pick<OneToOneMeeting, 'heldOn' | 'startTime'>) =>
   m.heldOn ? `${formatDate(m.heldOn)}${m.startTime ? ` · ${m.startTime}` : ''}` : 'No time yet';
 
@@ -221,7 +235,12 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
       <span className="grip">
         <Icon name="drag" size={12} />
       </span>
-      <span className="chip-name">{candidate.orgName}</span>
+      <span className="chip-name" title={meeting ? peopleLine(meeting) : candidate.contactName}>
+        {candidate.orgName}
+        {(meeting ? startupPerson(meeting) : candidate.contactName) && (
+          <span className="chip-person">{meeting ? startupPerson(meeting) : candidate.contactName}</span>
+        )}
+      </span>
       {extra}
     </div>
   );
@@ -403,8 +422,9 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
                                 <span className="grip">
                                   <Icon name="drag" size={13} />
                                 </span>
-                                <button className="seated-main oto-seat" onClick={() => setOpenId(m.id)} title="Open the meeting and its report">
+                                <button className="seated-main oto-seat" onClick={() => setOpenId(m.id)} title={[peopleLine(m), 'Open the meeting and its report'].filter(Boolean).join(' — ')}>
                                   <div className="seated-name">{m.orgName}</div>
+                                  {startupPerson(m) && <div className="seated-person">{startupPerson(m)}</div>}
                                   <div className="seated-meta">
                                     {state && (
                                       <span className={state.tone} title={m.rsvpState === 'declined' && m.rsvpNote ? m.rsvpNote : undefined}>
@@ -488,7 +508,10 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
                   </div>
                   {booking.map((m) => (
                     <div className="pool-chip" key={m.id}>
-                      <span className="chip-name">{m.orgName}</span>
+                      <span className="chip-name" title={peopleLine(m)}>
+                        {m.orgName}
+                        {startupPerson(m) && <span className="chip-person">{startupPerson(m)}</span>}
+                      </span>
                       {meetingWith(m) && <span className="badge">{meetingWith(m)}</span>}
                       <button
                         className="chip-x"
@@ -1284,6 +1307,41 @@ function MeetingDrawer({
           )}
         </div>
 
+        {/* Les personnes de la startup : à qui l'invitation est partie, qui y a répondu. */}
+        <dl className="oto-people">
+          <div>
+            <dt>Invitation</dt>
+            <dd>
+              {meeting.invitedName ? (
+                <>
+                  {meeting.invitedName}
+                  {meeting.invitedEmail && <span className="faint"> · {meeting.invitedEmail}</span>}
+                  {meeting.toldStartupAt && <span className="faint"> · {formatDate(meeting.toldStartupAt)}</span>}
+                </>
+              ) : (
+                <span className="faint">Not sent yet{meeting.contactName ? ` — it goes to ${meeting.contactName}` : ''}</span>
+              )}
+            </dd>
+          </div>
+          {meeting.invite !== 'none' && (
+            <div>
+              <dt>{meeting.rsvpState === 'declined' ? 'Declined by' : meeting.invite === 'slots' ? 'Booked by' : 'Accepted by'}</dt>
+              <dd>
+                {meeting.answeredByName ? (
+                  <>
+                    {meeting.answeredByName}
+                    {meeting.respondedAt && <span className="faint"> · {formatDate(meeting.respondedAt)}</span>}
+                  </>
+                ) : meeting.rsvpState !== 'pending' && meeting.respondedAt ? (
+                  <span className="faint">Answered {formatDate(meeting.respondedAt)} — before names were kept</span>
+                ) : (
+                  <span className="faint">No answer yet</span>
+                )}
+              </dd>
+            </div>
+          )}
+        </dl>
+
         {/* La réponse de la startup, et le lien pour la donner — en attendant
             que la lettre l'emporte. */}
         {meeting.invite === 'slots' && meeting.status === 'planned' && (
@@ -1601,11 +1659,11 @@ function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void })
   const summaries = fields.map((f) => summarise(f, sent.map(whole), sent.map((m) => m.orgName)));
 
   const exportAll = () => {
-    const head: Cell[] = ['Date', 'Time', 'Startup', 'Interlocutor', 'Status', 'Source', ...fields.map((f) => f.label), 'Sent'];
+    const head: Cell[] = ['Date', 'Time', 'Startup', 'Person', 'Interlocutor', 'Status', 'Source', ...fields.map((f) => f.label), 'Sent'];
     const rows: Cell[][] = [head];
     for (const m of sent) {
       rows.push([
-        m.heldOn ?? '', m.startTime ?? '', m.orgName, meetingWith(m), MEETING_STATUS_LABEL[m.status],
+        m.heldOn ?? '', m.startTime ?? '', m.orgName, startupPerson(m), meetingWith(m), MEETING_STATUS_LABEL[m.status],
         m.reportSubmittedAt ? 'Report' : 'Preparation only',
         ...fields.map((f) => asText(whole(m)[f.id])),
         (m.reportSubmittedAt ?? m.prepSubmittedAt)?.slice(0, 10) ?? '',
@@ -1686,6 +1744,7 @@ function Reports({ data, onOpen }: { data: View; onOpen: (id: string) => void })
                   <td className="num">{when(m)}</td>
                   <td className="name">
                     {m.orgName}
+                    {startupPerson(m) && <div className="faint" style={{ fontSize: 12, fontWeight: 400 }}>{startupPerson(m)}</div>}
                     {!m.reportSubmittedAt && <span className="badge" style={{ marginLeft: 6 }}>Preparation only</span>}
                   </td>
                   <td className="muted">{meetingWith(m)}</td>

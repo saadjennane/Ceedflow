@@ -11,7 +11,7 @@ import * as dir from '../src/db/directory.js';
 import * as repo from '../src/db/repo.js';
 import { actionRoutes } from '../src/routes/actions.js';
 import { committeeView } from '../src/services/committee.js';
-import { answerInvitation, bookSlot, createDay, planMeetings } from '../src/services/oneToOne.js';
+import { answerInvitation, bookSlot, createDay, getMeeting, planMeetings } from '../src/services/oneToOne.js';
 import { closeDb, skipWithoutServer } from './helpers.js';
 
 const uniq = () => `${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
@@ -127,6 +127,29 @@ describe('a booking, confirmed', { skip: skipWithoutServer }, () => {
     const [n] = await planMeetings(block.id, { candidateIds: [cand.id], personId: mentor.id, invite: 'confirm', heldOn: '2030-03-04', startTime: '14:00' });
     await answerInvitation(n!.token, true);
     assert.equal((await lettersTo(founder)).length, 1, 'switched off: nothing more');
+  });
+
+  it('One to One: keeps who was invited and who answered — the signed-in member, else the person written to', async () => {
+    const { mark, block, founder, cand } = await setUp('one_to_one');
+    const mentor = await dir.createRecord({ kind: 'person', name: `Leila ${mark}`, origin: 'manual' });
+    await repo.updateBlock(block.id, { config: { interlocutors: [mentor.id], visibility: 'open', perStartup: 2 } });
+    const [m] = await planMeetings(block.id, {
+      candidateIds: [cand.id], personId: mentor.id, invite: 'confirm', heldOn: '2030-03-05', startTime: '11:00', tell: true,
+    });
+    const told = (await getMeeting(m!.id))!;
+    assert.equal(told.invitedName, `Karim ${mark}`);
+    assert.equal(told.invitedEmail, founder);
+    assert.equal(told.answeredByName, '', 'nobody answered yet');
+
+    await answerInvitation(m!.token, true);
+    assert.equal((await getMeeting(m!.id))!.answeredByName, `Karim ${mark}`, 'by the link: the person it went to');
+
+    const [n] = await planMeetings(block.id, { candidateIds: [cand.id], personId: mentor.id, invite: 'confirm', heldOn: '2030-03-06', startTime: '11:00' });
+    await answerInvitation(n!.token, true, '', `Sara ${mark}`);
+    const answered = (await getMeeting(n!.id))!;
+    assert.equal(answered.answeredByName, `Sara ${mark}`, 'signed in: the one who answered');
+    assert.equal(answered.invitedName, '', 'not written to');
+    assert.equal(answered.contactName, `Karim ${mark}`);
   });
 
   it('Committee: a picked time confirms to the startup, with the invitation', async () => {

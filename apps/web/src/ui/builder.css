@@ -1350,6 +1350,32 @@ dl.answers dd {
   cursor: pointer;
 }
 
+.seated-person {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip-person {
+  display: block;
+  font-size: 11px;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.oto-people {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+.oto-people > div { display: flex; gap: 10px; }
+.oto-people dt { width: 92px; flex: none; color: var(--ink-3); }
+.oto-people dd { margin: 0; min-width: 0; }
+
 .pool-chip .chip-name {
   flex: 1;
   min-width: 0;
