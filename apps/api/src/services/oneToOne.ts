@@ -427,6 +427,10 @@ export async function changeMeeting(
     params.push(value);
     sets.push(`${column} = $${params.length}${cast}`);
   };
+  /* Ensemble, sans heure : il n'est avec personne en particulier — il le sera
+     avec ceux du jour où il se posera. */
+  const freed = together && patch.heldOn === null && patch.dayId === null;
+  if (freed) put('with_ids', [], '::jsonb');
   if (placedDay?.interlocutors.length) {
     put('person_id', placedDay.interlocutors[0]);
     put('with_ids', placedDay.interlocutors, '::jsonb');

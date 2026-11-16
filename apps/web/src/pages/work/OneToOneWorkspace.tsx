@@ -524,7 +524,8 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
                         {m.orgName}
                         {startupPerson(m) && <span className="chip-person">{startupPerson(m)}</span>}
                       </span>
-                      {meetingWith(m) && <span className="badge">{meetingWith(m)}</span>}
+                      {/* Ensemble, chacun voit tous ceux du jour : le dire sur une carte seulement serait faux. */}
+                      {!together && meetingWith(m) && <span className="badge">{meetingWith(m)}</span>}
                       <button
                         className="chip-x"
                         title="Copy their link to book"
