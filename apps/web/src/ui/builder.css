@@ -1376,9 +1376,19 @@ dl.answers dd {
 .oto-people dt { width: 92px; flex: none; color: var(--ink-3); }
 .oto-people dd { margin: 0; min-width: 0; }
 
-.pool-chip .chip-name {
-  flex: 1;
+/* Le nom d'abord : le badge des interlocuteurs se coupe avant lui. */
+.pool-chip .badge {
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pool-chip .chip-name {
+  flex: 1 1 auto;
+  min-width: 72px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

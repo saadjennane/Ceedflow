@@ -449,6 +449,12 @@ export async function changeMeeting(
   /* Une heure proposée qui change est une nouvelle proposition : la réponse
      donnée à l'ancienne ne vaut pas pour celle-ci. */
   if (moved && current.invite === 'confirm') sets.push(`rsvp_state = 'pending'`, 'responded_at = null');
+  /* Une startup invitée à réserver, posée par l'équipe sur une case : l'heure
+     est choisie pour elle — fixée, comme une startup glissée sans invitation.
+     Son lien ne propose plus de cases. */
+  if (current.invite === 'slots' && !current.heldOn && heldOn && startTime) {
+    sets.push(`invite = 'none'`, `rsvp_state = 'confirmed'`, `rsvp_note = ''`);
+  }
   if (sets.length) await all(`update one_to_one_meetings set ${sets.join(', ')} where id = $1`, params);
   return getMeeting(id);
 }

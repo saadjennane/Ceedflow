@@ -507,7 +507,19 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
                     <span className="num faint">{booking.length}</span>
                   </div>
                   {booking.map((m) => (
-                    <div className="pool-chip" key={m.id}>
+                    /* Invitée sans avoir réservé : l'équipe peut quand même la poser sur une case. */
+                    <div
+                      className="pool-chip"
+                      key={m.id}
+                      draggable={!busy}
+                      onDragStart={() => {
+                        drag.current = { kind: 'meeting', meeting: m };
+                      }}
+                      title="Drag onto a free time to place it yourself"
+                    >
+                      <span className="grip">
+                        <Icon name="drag" size={12} />
+                      </span>
                       <span className="chip-name" title={peopleLine(m)}>
                         {m.orgName}
                         {startupPerson(m) && <span className="chip-person">{startupPerson(m)}</span>}

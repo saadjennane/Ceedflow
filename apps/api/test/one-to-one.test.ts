@@ -390,6 +390,18 @@ describe('a One to One', { skip: skipWithoutServer }, () => {
     assert.equal(moved.heldOn, '2030-02-05', 'a day moved takes its meetings with it');
   });
 
+  it('lets the team place a startup invited to book on a cell itself — the time is then fixed for it', async () => {
+    const { block, mentor, a } = await setUp();
+    const day = await createDay(block.id, {
+      name: 'Day 1', heldOn: '2030-02-11', windows: [{ startsAt: '09:00', endsAt: '10:30' }], minutesPerMeeting: 45,
+      location: 'CEED', interlocutors: [mentor.id],
+    });
+    const [m] = await planMeetings(block.id, { candidateIds: [a.id], personId: null, invite: 'slots', heldOn: null, startTime: null });
+    const placed = (await changeMeeting(m!.id, { personId: mentor.id, dayId: day.id, heldOn: '2030-02-11', startTime: '09:45' }))!;
+    assert.deepEqual([placed.heldOn, placed.startTime, placed.invite, placed.rsvpState], ['2030-02-11', '09:45', 'none', 'confirmed']);
+    assert.equal((await invitationFor(m!.token))!.page.slots.length, 0, 'nothing left to book');
+  });
+
   it('meets a startup with all of them at once: a time free for every one, one meeting seen by each, one report', async () => {
     const { block, mentor, expert, a, b } = await setUp();
     const config = (await repo.getBlock(block.id))!.config as object;
