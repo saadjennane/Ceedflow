@@ -1074,3 +1074,25 @@ table.data tbody tr.picked td {
 .copy-line-text:hover {
   color: var(--blue);
 }
+
+/* Une liste qui arrive : des lignes qui respirent, pas un « vide ». */
+.dir-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 0;
+}
+.dir-loading span {
+  height: 44px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, var(--wash) 0%, var(--canvas) 50%, var(--wash) 100%);
+  background-size: 200% 100%;
+  animation: dir-shimmer 1.2s ease-in-out infinite;
+}
+@keyframes dir-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dir-loading span { animation: none; }
+}

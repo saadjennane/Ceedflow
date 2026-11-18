@@ -567,9 +567,12 @@ function CandidateDrawer({
   );
   const choices = ((deciding.data?.config as EvaluationConfig | undefined)?.outcomes ?? []) as BlockOutcome[];
 
+  /* Un ancien champ « lien du logo » (une adresse tapée) : le logo est sur la
+     fiche de l'organisation, l'adresse n'apprend rien ici. */
+  const legacyLogo = (f: { label: string; type: string }) => /\blogo\b/i.test(f.label) && f.type !== 'file';
   const answered = fields.filter((f) => {
     const value = candidate.answers[f.id];
-    return value !== undefined && value !== '' && !(Array.isArray(value) && !value.length);
+    return !legacyLogo(f) && value !== undefined && value !== '' && !(Array.isArray(value) && !value.length);
   });
 
   return (
@@ -611,6 +614,11 @@ function CandidateDrawer({
             <span className="badge">No verdict yet</span>
           )}
           {candidate.source && <span className="badge">{candidate.source}</span>}
+          <div className="spacer" />
+          {/* La fiche de la startup dans l'annuaire : tout ce qu'on sait d'elle, au-delà de ce programme. */}
+          <Link className="btn sm" to={`/directory/${candidate.orgId}`}>
+            <Icon name="layers" size={13} /> Open the startup’s sheet
+          </Link>
         </div>
 
         {/* Your words, not the plumbing's: this sets the verdict of the block
@@ -750,7 +758,7 @@ function CandidateDrawer({
 
         {editing ? (
           <>
-            {fields.filter((field) => shownFieldIds(fields, edits).has(field.id)).map((field) => (
+            {fields.filter((field) => !legacyLogo(field) && shownFieldIds(fields, edits).has(field.id)).map((field) => (
               <FormFieldInput
                 key={field.id}
                 field={{ ...field, required: false }}

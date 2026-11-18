@@ -3,6 +3,7 @@ import { Suspense, lazy, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { useAsync } from '../../lib/useAsync';
+import { cachedList, loadList } from '../../lib/directoryCache';
 import { Icon } from '../../ui/Icon';
 import { SearchBox } from '../../ui/SearchBox';
 import '../../ui/builder.css';
@@ -82,7 +83,8 @@ export const initials = (name: string) =>
     .toUpperCase();
 
 export function DirectoryPage({ kind }: { kind: RecordKind }) {
-  const records = useAsync(() => api.get<RecordRow[]>(`/api/records?kind=${kind}`), kind);
+  /* Ce qu'on avait déjà, aussitôt ; la liste fraîche ensuite. */
+  const records = useAsync(() => loadList<RecordRow[]>(kind), kind);
   /* Ouvert depuis une pastille : « les 440 qu'on va écrire », « les 4 sans
      adresse ». Un nombre ne se corrige pas — une liste, si. Les identifiants
      viennent du serveur et non de l'URL : quatre cents dans une adresse de
@@ -137,7 +139,8 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
   };
   /* Une tuile du résumé choisie : un filtre de plus. */
   const [preset, setPreset] = useState('all');
-  const loaded = records.data ?? [];
+  const data = records.data ?? cachedList<RecordRow[]>(kind);
+  const loaded = data ?? [];
   const testCount = loaded.filter((r) => r.testOwner).length;
   /* Les fiches de l'espace de test restent hors de vue, des comptes et des
      exports : elles ont leur onglet, qui ne montre qu'elles. */
@@ -396,8 +399,15 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
           <ColumnFilters isOrg={isOrg} rows={shown} picks={columnPicks} onChange={setColumnPicks} />
         )}
 
-        {records.error ? (
+        {records.error && !data ? (
           <div className="empty">{records.error}</div>
+        ) : !data ? (
+          /* En cours : jamais « l'annuaire est vide » le temps que la liste arrive. */
+          <div className="dir-loading" aria-busy="true" aria-label="Loading">
+            {Array.from({ length: 8 }, (_, i) => (
+              <span key={i} />
+            ))}
+          </div>
         ) : !all.length ? (
           <div className="empty stack" style={{ gap: 10, padding: 40 }}>
             <h3>The directory is empty</h3>

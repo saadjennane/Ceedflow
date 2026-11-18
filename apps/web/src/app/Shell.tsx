@@ -2,6 +2,7 @@ import { ORG_SECTIONS, STAFF_ROLE_LABEL } from '@ceed/shared';
 import { Suspense, useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAccount } from '../lib/account';
+import { prefetchDirectory } from '../lib/directoryCache';
 import { api } from '../lib/api';
 import { stillWaiting } from '../lib/panels';
 import { useAsync } from '../lib/useAsync';
@@ -117,7 +118,7 @@ export function Shell() {
 
         <div className="eyebrow nav-group">Community</div>
         <div className="nav-row">
-          <NavLink to="/organisations" className={link} title="Organisations">
+          <NavLink to="/organisations" className={link} title="Organisations" onMouseEnter={() => prefetchDirectory('org')} onFocus={() => prefetchDirectory('org')}>
             <Icon name="layers" />
             <span className="nav-label">Organisations</span>
           </NavLink>
@@ -139,6 +140,7 @@ export function Shell() {
             {ORG_SECTIONS.map((s) => (
               <Link
                 key={s.role}
+                onMouseEnter={() => prefetchDirectory('org')}
                 to={`/organisations?role=${s.role}`}
                 className={where.pathname === '/organisations' && new URLSearchParams(where.search).get('role') === s.role ? 'on' : ''}
               >
@@ -147,7 +149,7 @@ export function Shell() {
             ))}
           </div>
         )}
-        <NavLink to="/individuals" className={link} title="Individuals">
+        <NavLink to="/individuals" className={link} title="Individuals" onMouseEnter={() => prefetchDirectory('person')} onFocus={() => prefetchDirectory('person')}>
           <Icon name="users" />
           <span className="nav-label">Individuals</span>
         </NavLink>

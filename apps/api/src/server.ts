@@ -1,6 +1,7 @@
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
+import compress from '@fastify/compress';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -45,6 +46,9 @@ const app = Fastify({
    local, le même service en production). Renvoyer l'origine de n'importe quel
    site avec les cookies, c'était laisser une page d'ailleurs parler à l'API
    au nom de qui la visite. */
+/* Les réponses compressées : une liste de quelques centaines de fiches part
+   en un dixième de son poids, et la page s'affiche d'autant plus tôt. */
+await app.register(compress, { global: true, threshold: 1024, encodings: ['br', 'gzip'] });
 await app.register(cookie);
 await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } });
 
@@ -129,7 +133,17 @@ const here = dirname(fileURLToPath(import.meta.url));
 const front = process.env.WEB_DIST ?? join(here, '../../web/dist');
 
 if (existsSync(join(front, 'index.html'))) {
-  await app.register(fastifyStatic, { root: front, wildcard: false });
+  await app.register(fastifyStatic, {
+    root: front,
+    wildcard: false,
+    /* Les fichiers du site portent leur empreinte dans leur nom : gardés un an
+       par le navigateur, qui ne les redemande plus. La page d'entrée, elle, est
+       toujours relue — c'est elle qui nomme les fichiers de la nouvelle version. */
+    setHeaders: (res, path) => {
+      if (path.includes('/assets/')) res.header('cache-control', 'public, max-age=31536000, immutable');
+      else res.header('cache-control', 'no-cache');
+    },
+  });
   // Anything that is not a file and not the API is a route of the app itself:
   // the browser asked for /editions/… and only the front knows what that is.
   app.setNotFoundHandler((req, reply) => {

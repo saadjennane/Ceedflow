@@ -84,14 +84,12 @@ type Renderer = ICellRendererParams<RecordRow>;
 
 function NameCell({ data }: Renderer) {
   if (!data) return null;
-  const p = profileOf(data);
   return (
     <Link to={`/directory/${data.id}`} className="dir-who grid-who">
       <Mark r={data} size={30} />
       <span className="dir-min">
         <b>{data.name}</b>
         {data.testOwner && <span className="badge warn" style={{ marginLeft: 6 }}>TEST</span>}
-        <span className="faint dir-clip">{p.pitch || data.email || ''}</span>
       </span>
     </Link>
   );

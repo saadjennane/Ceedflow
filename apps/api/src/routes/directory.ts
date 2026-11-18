@@ -206,18 +206,22 @@ export async function directoryRoutes(app: FastifyInstance) {
 
   app.get('/api/records', async (req) => {
     const { kind, role, q } = req.query as Record<string, string | undefined>;
-    const records = await dir.listRecords({ kind: kind as RecordKind, role, q });
-    // An organisation with nobody attached cannot be invited, so the list says so.
-    const counts = await dir.linkCounts();
-    // Where each person stands on having their own way in. One query for all.
-    const accounts = await accountStatesByRecord();
+    /* Les quatre lectures ensemble, pas l'une après l'autre : la liste arrive
+       au rythme de la plus lente, plus de leur somme. */
+    const [records, counts, accounts, both] = await Promise.all([
+      dir.listRecords({ kind: kind as RecordKind, role, q }),
+      // An organisation with nobody attached cannot be invited, so the list says so.
+      dir.linkCounts(),
+      // Where each person stands on having their own way in. One query for all.
+      accountStatesByRecord(),
+      directoryRows(),
+    ]);
     /* Ce que la liste des individus montre en plus : où ils travaillent, les
        programmes faits et celui en cours. Trois requêtes pour toute la page. */
     /* Les deux côtés, même sans filtre de genre : l'audience d'un sourcing
        lit cette liste entière et a besoin de savoir, pour une société sans
        adresse à elle, qui tient sa page — sinon elle la compte injoignable
        alors que le serveur, lui, saura l'atteindre. */
-    const both = await directoryRows();
     const people = kind === 'org' ? new Map() : both.people;
     const orgs = kind === 'person' ? new Map() : both.orgs;
     const rows = records.map((r) => {
