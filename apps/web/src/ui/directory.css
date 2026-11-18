@@ -1493,3 +1493,65 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Le menu déroulant d'un filtre à choix multiple, sous l'en-tête. */
+.choice-drop {
+  width: 100%;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+.choice-drop.on {
+  border-color: var(--blue);
+  color: var(--blue-press);
+  background: var(--blue-soft);
+  font-weight: 600;
+}
+.choice-drop-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.choice-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow: auto;
+}
+.choice-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 32px;
+  padding: 0 4px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.choice-row:hover {
+  background: var(--wash);
+}
+.choice-row input {
+  accent-color: var(--blue);
+  width: 15px;
+  height: 15px;
+}
+.choice-row span:first-of-type {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -14,6 +14,7 @@ import {
   ClientSideRowModelApiModule,
   ClientSideRowModelModule,
   ColumnApiModule,
+  CustomFilterModule,
   DateFilterModule,
   ModuleRegistry,
   NumberFilterModule,
@@ -33,10 +34,11 @@ import { Link } from 'react-router-dom';
 import { formatDate } from '../../lib/format';
 import { download, toWorkbook, type Cell } from '../../lib/xlsx';
 import { Icon } from '../../ui/Icon';
-import { CopyLine, HoverCard } from '../../ui/HoverCard';
+import { CopyLine, PopCard } from '../../ui/PopCard';
 import { api } from '../../lib/api';
 import { colourOf, initialsOf } from '../../ui/Showcase';
 import type { RecordRow } from './DirectoryPage';
+import { ChoiceFilter, ChoiceFloating, optionsOf } from './ChoiceFilter';
 import { AccountDot, Mark, SheetRing, Trend, revenueOf, short, word } from './DirectoryViews';
 
 /* Seulement ce que la grille sert — pas toute la librairie : moins à télécharger.
@@ -52,6 +54,7 @@ ModuleRegistry.registerModules([
   NumberFilterModule,
   DateFilterModule,
   RowSelectionModule,
+  CustomFilterModule,
   ...(import.meta.env.DEV ? [ValidationModule] : []),
 ]);
 
@@ -114,12 +117,15 @@ function RevenueCell({ data }: Renderer) {
 function ContactCell({ data }: Renderer) {
   const holder = data?.holders[0];
   if (!data || !holder) return <span className="badge warn">None</span>;
-  /* Au survol : son mail et ses numéros, chacun copiable d'un clic. */
-  const card = (
+  /* D'un clic : sa fiche en bref — son mail et ses numéros à copier, et le lien vers son profil. */
+  const card = (close: () => void) => (
     <div className="stack" style={{ gap: 4 }}>
-      <div className="row" style={{ gap: 8 }}>
-        <b style={{ fontSize: 13.5 }}>{holder.name}</b>
-        {holder.role && <span className="faint" style={{ fontSize: 12 }}>{holder.role}</span>}
+      <div className="row" style={{ gap: 10, alignItems: 'center', marginBottom: 4 }}>
+        <span className="dir-av" style={{ background: colourOf(holder.name), width: 32, height: 32, fontSize: 12 }}>{initialsOf(holder.name)}</span>
+        <span className="stack" style={{ gap: 0, minWidth: 0 }}>
+          <b style={{ fontSize: 14 }}>{holder.name}</b>
+          <span className="faint" style={{ fontSize: 12 }}>{[holder.role, data.name].filter(Boolean).join(' · ')}</span>
+        </span>
       </div>
       {holder.email && <CopyLine icon="mail" text={holder.email} href={`mailto:${holder.email}`} />}
       {holder.phones.map((ph) => (
@@ -127,18 +133,17 @@ function ContactCell({ data }: Renderer) {
       ))}
       {!holder.email && !holder.phones.length && <span className="faint" style={{ fontSize: 12.5 }}>No email or phone on file.</span>}
       {data.holders.length > 1 && (
-        <span className="faint" style={{ fontSize: 12 }}>
-          Also: {data.holders.slice(1).map((h) => h.name).join(', ')}
-        </span>
+        <span className="faint" style={{ fontSize: 12 }}>Also: {data.holders.slice(1).map((h) => h.name).join(', ')}</span>
       )}
+      <Link to={`/directory/${holder.id}`} className="btn sm" style={{ marginTop: 6, justifyContent: 'center' }} onClick={close}>
+        <Icon name="users" size={13} /> Profile
+      </Link>
     </div>
   );
   return (
     <span className="dir-contact">
       <span className="dir-av" style={{ background: colourOf(holder.name) }}>{initialsOf(holder.name)}</span>
-      <HoverCard card={card}>
-        <Link to={`/directory/${holder.id}`}>{holder.name}</Link>
-      </HoverCard>
+      <PopCard label={holder.name} card={card} />
       <AccountDot account={data.account} />
       {data.holders.length > 1 && <span className="faint"> +{data.holders.length - 1}</span>}
     </span>
@@ -205,6 +210,15 @@ const COLUMNS: ColDef<RecordRow>[] = [
 /* Les colonnes de la grille elle-même (cases à cocher) : jamais dans le panneau. */
 const isService = (id: string) => id.startsWith('ag-Grid-');
 
+/* Les colonnes aux valeurs fermées : un menu déroulant à choix multiple plutôt qu'un champ libre. */
+const CHOICES: Record<string, (r: RecordRow) => string[]> = {
+  roles: (r) => r.roles,
+  sector: (r) => [word(SECTORS, profileOf(r).sector)].filter(Boolean),
+  maturity: (r) => [word(MATURITY_LEVELS, profileOf(r).maturity)].filter(Boolean),
+  city: (r) => [r.city.trim()].filter(Boolean),
+  programmes: (r) => r.programmes.map((p) => p.name),
+};
+
 const STORE = 'dir-org-grid';
 const loadState = (): ColumnState[] | null => {
   try {
@@ -251,9 +265,41 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
     return () => window.removeEventListener('resize', fit);
   }, []);
 
+  /* La rangée de filtres s'ouvre et se ferme d'un bouton ; on s'en souvient dans ce navigateur. */
+  const [filtersOn, setFiltersOnState] = useState(() => {
+    try {
+      return localStorage.getItem('dir-org-filters') === 'on';
+    } catch {
+      return false;
+    }
+  });
+  const setFiltersOn = (on: boolean) => {
+    setFiltersOnState(on);
+    try {
+      localStorage.setItem('dir-org-filters', on ? 'on' : 'off');
+    } catch {
+      /* rien à garder */
+    }
+  };
   const defaultColDef = useMemo<ColDef<RecordRow>>(
-    () => ({ sortable: true, resizable: true, filter: 'agTextColumnFilter', floatingFilter: true, suppressHeaderMenuButton: true }),
-    [],
+    () => ({ sortable: true, resizable: true, filter: 'agTextColumnFilter', floatingFilter: filtersOn, suppressHeaderMenuButton: true }),
+    [filtersOn],
+  );
+  /* Les colonnes, avec pour celles aux valeurs fermées la liste de ce qui s'y trouve. */
+  const columnDefs = useMemo<ColDef<RecordRow>[]>(
+    () =>
+      COLUMNS.map((c) => {
+        const valuesOf = c.colId ? CHOICES[c.colId] : undefined;
+        if (!valuesOf) return c;
+        return {
+          ...c,
+          filter: ChoiceFilter,
+          filterParams: { valuesOf, options: optionsOf(rows, valuesOf) },
+          floatingFilterComponent: ChoiceFloating,
+          suppressFloatingFilterButton: true,
+        };
+      }),
+    [rows],
   );
 
   /* Ce que le panneau montre : les colonnes dans l'ordre de la grille. */
@@ -341,6 +387,15 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
           </span>
         )}
         <div className="spacer" />
+        <button
+          className={filtersOn ? 'btn sm on' : 'btn sm'}
+          aria-pressed={filtersOn}
+          onClick={() => setFiltersOn(!filtersOn)}
+          title={filtersOn ? 'Hide the filters under the headers' : 'Filter by any column'}
+        >
+          <Icon name="filter" size={13} /> Filter
+          {filtered > 0 && <span className="nav-count">{filtered}</span>}
+        </button>
         {filtered > 0 && (
           <button className="linkish" style={{ fontSize: 12.5 }} onClick={() => grid.current?.setFilterModel(null)}>
             Clear column filters ({filtered})
@@ -359,7 +414,7 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
           <AgGridReact<RecordRow>
             theme={theme}
             rowData={rows}
-            columnDefs={COLUMNS}
+            columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             getRowId={(p) => p.data.id}
             rowSelection={{ mode: 'multiRow', checkboxes: true, headerCheckbox: true, selectAll: 'filtered', enableClickSelection: false }}

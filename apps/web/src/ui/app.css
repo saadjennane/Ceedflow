@@ -1032,9 +1032,18 @@ table.data tbody tr.picked td {
 
 
 /* Une carte au survol, au-dessus de tout. */
-.hover-anchor {
-  display: inline-flex;
+.pop-anchor {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  font-weight: 500;
+  text-align: left;
+}
+.pop-anchor:hover,
+.pop-anchor[aria-expanded='true'] {
+  color: var(--blue);
 }
 .hover-card {
   position: fixed;
