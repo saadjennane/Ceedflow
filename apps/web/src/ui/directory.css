@@ -1190,7 +1190,8 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
 .sc-ci { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--wash); color: var(--ink-2); flex-shrink: 0; }
 .sc-v { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .sc-v small { display: block; color: var(--ink-3); font-size: 11.5px; }
-.sc-copy { border: 0; background: var(--blue-soft); color: var(--blue); border-radius: 999px; padding: 3px 10px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+.sc-copy { border: 0; background: var(--blue-soft); color: var(--blue); border-radius: 999px; width: 28px; height: 28px; padding: 0; display: inline-grid; place-items: center; flex-shrink: 0; cursor: pointer; }
+.sc-copy:hover { background: var(--blue); color: #fff; }
 
 /* Une demande, et son statut en liseré. */
 .sc-ask { display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; gap: 0 12px; align-items: center; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--surface); color: inherit; }
@@ -1352,7 +1353,24 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
 .grid-main {
   flex: 999 1 640px;
   min-width: 0;
-  height: max(480px, calc(100vh - 330px));
+}
+/* Les cellules centrent leur contenu : une pastille, un anneau, des initiales
+   ne prennent pas la hauteur de ligne de la grille. */
+.grid-main .ag-cell {
+  display: flex;
+  align-items: center;
+  line-height: 1.35;
+}
+.grid-main .ag-right-aligned-cell {
+  justify-content: flex-end;
+}
+.grid-main .dir-av,
+.grid-main .dir-ring b,
+.grid-main .dir-logo {
+  line-height: 1;
+}
+.grid-main .ag-cell[col-id='sheet'] {
+  justify-content: center;
 }
 .grid-panel {
   flex: 1 1 220px;
@@ -1431,7 +1449,7 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
   white-space: nowrap;
 }
 .grid-main .dir-ring {
-  vertical-align: middle;
+  margin: 0 auto;
 }
 
 /* Les programmes en toutes lettres, dans la grille. */

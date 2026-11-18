@@ -28,11 +28,13 @@ import {
   type ICellRendererParams,
 } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { formatDate } from '../../lib/format';
 import { download, toWorkbook, type Cell } from '../../lib/xlsx';
 import { Icon } from '../../ui/Icon';
+import { CopyLine, HoverCard } from '../../ui/HoverCard';
+import { api } from '../../lib/api';
 import { colourOf, initialsOf } from '../../ui/Showcase';
 import type { RecordRow } from './DirectoryPage';
 import { AccountDot, Mark, SheetRing, Trend, revenueOf, short, word } from './DirectoryViews';
@@ -112,10 +114,31 @@ function RevenueCell({ data }: Renderer) {
 function ContactCell({ data }: Renderer) {
   const holder = data?.holders[0];
   if (!data || !holder) return <span className="badge warn">None</span>;
+  /* Au survol : son mail et ses numéros, chacun copiable d'un clic. */
+  const card = (
+    <div className="stack" style={{ gap: 4 }}>
+      <div className="row" style={{ gap: 8 }}>
+        <b style={{ fontSize: 13.5 }}>{holder.name}</b>
+        {holder.role && <span className="faint" style={{ fontSize: 12 }}>{holder.role}</span>}
+      </div>
+      {holder.email && <CopyLine icon="mail" text={holder.email} href={`mailto:${holder.email}`} />}
+      {holder.phones.map((ph) => (
+        <CopyLine key={ph} icon="phone" text={ph} href={`tel:${ph.replace(/\s+/g, '')}`} />
+      ))}
+      {!holder.email && !holder.phones.length && <span className="faint" style={{ fontSize: 12.5 }}>No email or phone on file.</span>}
+      {data.holders.length > 1 && (
+        <span className="faint" style={{ fontSize: 12 }}>
+          Also: {data.holders.slice(1).map((h) => h.name).join(', ')}
+        </span>
+      )}
+    </div>
+  );
   return (
-    <span className="dir-contact" title={[holder.email, ...holder.phones].filter(Boolean).join(' · ')}>
+    <span className="dir-contact">
       <span className="dir-av" style={{ background: colourOf(holder.name) }}>{initialsOf(holder.name)}</span>
-      <Link to={`/directory/${holder.id}`}>{holder.name}</Link>
+      <HoverCard card={card}>
+        <Link to={`/directory/${holder.id}`}>{holder.name}</Link>
+      </HoverCard>
       <AccountDot account={data.account} />
       {data.holders.length > 1 && <span className="faint"> +{data.holders.length - 1}</span>}
     </span>
@@ -191,13 +214,22 @@ const loadState = (): ColumnState[] | null => {
     return null;
   }
 };
+/* Sur le compte : chacun retrouve sa vue sur n'importe quel poste. Le
+   navigateur en garde une copie, pour l'afficher sans attendre le serveur. */
+let pending: number | null = null;
 const saveState = (state: ColumnState[]) => {
   try {
     localStorage.setItem(STORE, JSON.stringify(state));
   } catch {
     /* rien à garder */
   }
+  if (pending) window.clearTimeout(pending);
+  pending = window.setTimeout(() => {
+    void api.put(`/api/me/prefs/${STORE}`, { value: state }).catch(() => undefined);
+  }, 600);
 };
+const fetchState = () =>
+  api.get<{ value: ColumnState[] | null }>(`/api/me/prefs/${STORE}`).then((r) => r.value).catch(() => null);
 
 export function OrgGrid({ rows }: { rows: RecordRow[] }) {
   const grid = useRef<GridApi<RecordRow> | null>(null);
@@ -206,6 +238,18 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
   const [panel, setPanel] = useState(false);
   const [cols, setCols] = useState<{ id: string; label: string; on: boolean; fixed: boolean }[]>([]);
   const [filtered, setFiltered] = useState(0);
+  /* Toute la hauteur de l'écran sous la barre d'outils : la grille défile en elle-même. */
+  const fill = useRef<HTMLDivElement | null>(null);
+  const [height, setHeight] = useState(560);
+  useLayoutEffect(() => {
+    const fit = () => {
+      const top = fill.current?.getBoundingClientRect().top ?? 0;
+      setHeight(Math.max(420, window.innerHeight - top - 52));
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, []);
 
   const defaultColDef = useMemo<ColDef<RecordRow>>(
     () => ({ sortable: true, resizable: true, filter: 'agTextColumnFilter', floatingFilter: true, suppressHeaderMenuButton: true }),
@@ -311,7 +355,7 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
       </div>
 
       <div className="grid-shell">
-        <div className="grid-main">
+        <div className="grid-main" ref={fill} style={{ height }}>
           <AgGridReact<RecordRow>
             theme={theme}
             rowData={rows}
@@ -328,6 +372,17 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
               const kept = loadState();
               if (kept) e.api.applyColumnState({ state: kept, applyOrder: true });
               readColumns();
+              /* Puis celle du compte, qui fait foi. */
+              void fetchState().then((saved) => {
+                if (!saved || e.api.isDestroyed()) return;
+                e.api.applyColumnState({ state: saved, applyOrder: true });
+                try {
+                  localStorage.setItem(STORE, JSON.stringify(saved));
+                } catch {
+                  /* rien à garder */
+                }
+                readColumns();
+              });
               refreshCounts();
             }}
             onSelectionChanged={(e) => setPicked(e.api.getSelectedRows())}

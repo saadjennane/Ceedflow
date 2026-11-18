@@ -259,6 +259,8 @@ function CopyButton({ text, lang }: { text: string; lang: Lang }) {
   return (
     <button
       className="sc-copy"
+      aria-label={done ? (lang === 'fr' ? 'Copié' : 'Copied') : `${lang === 'fr' ? 'Copier' : 'Copy'} ${text}`}
+      title={done ? (lang === 'fr' ? 'Copié' : 'Copied') : lang === 'fr' ? 'Copier' : 'Copy'}
       onClick={() => {
         const ok = () => {
           setDone(true);
@@ -267,7 +269,8 @@ function CopyButton({ text, lang }: { text: string; lang: Lang }) {
         navigator.clipboard?.writeText(text).then(ok, ok);
       }}
     >
-      {done ? (lang === 'fr' ? 'Copié' : 'Copied') : lang === 'fr' ? 'Copier' : 'Copy'}
+      {/* L'icône seule, sans le mot : la coche dit que c'est fait. */}
+      <Icon name={done ? 'check' : 'copy'} size={13} />
     </button>
   );
 }

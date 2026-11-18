@@ -66,6 +66,7 @@ import { post } from '../services/mail.js';
 import { markTest, testOwnerOf } from '../services/sandbox.js';
 import { appLink } from '../services/deliverables.js';
 import { HttpError, notFound, parse } from './util.js';
+import { all, one } from '../db/client.js';
 import { keepSheetHistory } from './sheetHistory.js';
 import { setAttribute, sheetAttributes } from '../services/orgAttributes.js';
 import { kpisOf, putKpiPoint } from '../services/kpis.js';
@@ -465,6 +466,35 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   /** Ce que la personne attend encore : ses demandes pour rejoindre une organisation. */
+  /**
+   * Les réglages d'une personne pour elle-même : la disposition d'une grille,
+   * ses colonnes, son tri. Sur son compte — pas dans un navigateur — et à elle
+   * seule : deux collègues qui réorganisent ont chacun leur vue.
+   */
+  app.get('/api/me/prefs/:key', async (req) => {
+    const account = await require(req);
+    const { key } = parse(z.object({ key: z.string().regex(/^[a-z0-9.-]{1,60}$/) }), req.params);
+    const row = await one<{ value: unknown }>('select value from account_prefs where account_id = $1 and key = $2', [account.id, key]);
+    return { value: row?.value ?? null };
+  });
+
+  app.put('/api/me/prefs/:key', async (req) => {
+    const account = await require(req);
+    const { key } = parse(z.object({ key: z.string().regex(/^[a-z0-9.-]{1,60}$/) }), req.params);
+    const { value } = parse(z.object({ value: z.unknown() }), req.body);
+    if (JSON.stringify(value ?? null).length > 50_000) throw new HttpError(413, 'That setting is too large.');
+    if (value === null || value === undefined) {
+      await all('delete from account_prefs where account_id = $1 and key = $2', [account.id, key]);
+    } else {
+      await all(
+        `insert into account_prefs (account_id, key, value) values ($1, $2, $3::text::jsonb)
+         on conflict (account_id, key) do update set value = excluded.value, updated_at = now()`,
+        [account.id, key, JSON.stringify(value)],
+      );
+    }
+    return { ok: true };
+  });
+
   app.get('/api/me/requests', async (req) => {
     const account = await require(req);
     return (await dir.requestsBy(account.recordId)).map(({ id, orgId, orgName, createdAt }) => ({ id, orgId, orgName, createdAt }));
