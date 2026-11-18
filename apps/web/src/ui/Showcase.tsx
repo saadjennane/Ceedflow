@@ -22,6 +22,7 @@ import {
 import { useState, type ReactNode } from 'react';
 import { Icon } from './Icon';
 import { useBrandColour } from './brandColour';
+import { Modal } from './Overlays';
 
 type Lang = 'fr' | 'en';
 const said = (list: readonly Choice[], key: string, lang: Lang) => {
@@ -72,13 +73,28 @@ export function Hero({
 }) {
   const brand = useBrandColour({ name, brandColour, logoUploadId: round ? null : imageId });
   const c = colour ?? brand;
+  /* Le logo ou la photo s'ouvre en grand, et s'enregistre. */
+  const [looking, setLooking] = useState(false);
+  const src = imageId ? `/api/uploads/${imageId}` : '';
   return (
     <section className="sc-hero">
       <div className="sc-band" style={{ background: `linear-gradient(115deg, ${c}, var(--cyan))` }} />
       <div className="sc-hero-body">
-        <div className={round ? 'sc-mark round' : 'sc-mark'} style={{ background: imageId ? 'var(--surface)' : c }}>
-          {imageId ? <img src={`/api/uploads/${imageId}`} alt="" /> : initialsOf(name)}
-        </div>
+        {imageId ? (
+          <button
+            className={round ? 'sc-mark round sc-mark-open' : 'sc-mark sc-mark-open'}
+            style={{ background: 'var(--surface)' }}
+            onClick={() => setLooking(true)}
+            aria-label={round ? `Open ${name}’s photo` : `Open ${name}’s logo`}
+            title={round ? 'Open the photo' : 'Open the logo'}
+          >
+            <img src={src} alt="" />
+          </button>
+        ) : (
+          <div className={round ? 'sc-mark round' : 'sc-mark'} style={{ background: c }}>
+            {initialsOf(name)}
+          </div>
+        )}
         <div className="sc-hero-text">
           {eyebrow && <div className="row wrap" style={{ gap: 6, marginBottom: 4 }}>{eyebrow}</div>}
           <h2>{name}</h2>
@@ -88,6 +104,27 @@ export function Hero({
         </div>
         {side && <div className="sc-hero-side">{side}</div>}
       </div>
+      {looking && imageId && (
+        <Modal
+          title={round ? name : `${name} — logo`}
+          onClose={() => setLooking(false)}
+          footer={
+            <>
+              <a className="btn ghost" href={src} target="_blank" rel="noreferrer">
+                <Icon name="eye" size={14} /> Open in a new tab
+              </a>
+              <div className="spacer" />
+              <a className="btn primary" href={src} download={`${name}${round ? '' : ' - logo'}`}>
+                <Icon name="download" size={14} /> Download
+              </a>
+            </>
+          }
+        >
+          <div className="sc-lightbox">
+            <img src={src} alt={round ? name : `${name} logo`} />
+          </div>
+        </Modal>
+      )}
     </section>
   );
 }

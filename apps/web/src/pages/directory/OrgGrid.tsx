@@ -122,20 +122,11 @@ function ContactCell({ data }: Renderer) {
   );
 }
 
-/* Les programmes en toutes lettres : une pastille par programme, son nom et où elle en est. */
-const STATE_WORD = { now: 'now', alumni: 'alumni', applied: 'applied' } as const;
+/* Les programmes : leurs noms, rien d'autre. */
 function ProgrammesCell({ data }: Renderer) {
   if (!data?.programmes.length) return <span className="faint">—</span>;
-  return (
-    <span className="grid-pms" title={data.programmes.map((p) => `${p.name} — ${STATE_WORD[p.state]}`).join('\n')}>
-      {data.programmes.map((p) => (
-        <span key={p.name} className="grid-pm">
-          <i style={{ background: p.colour }} />
-          {p.name} <small>{STATE_WORD[p.state]}</small>
-        </span>
-      ))}
-    </span>
-  );
+  const names = data.programmes.map((p) => p.name).join(', ');
+  return <span className="grid-names" title={names}>{names}</span>;
 }
 
 const activityOf = (r: RecordRow) => (r.lastActivity ?? r.createdAt).slice(0, 10);
