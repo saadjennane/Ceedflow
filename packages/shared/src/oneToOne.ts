@@ -157,18 +157,33 @@ export interface FreeCell {
  */
 export function freeCells(
   days: readonly OneToOneDay[],
-  taken: readonly { personId: string | null; heldOn: string | null; startTime: string | null }[],
+  taken: readonly { personId: string | null; heldOn: string | null; startTime: string | null; minutes?: number }[],
   only: string | null = null,
   today = new Date().toISOString().slice(0, 10),
 ): FreeCell[] {
-  const busy = new Set(taken.filter((t) => t.personId && t.heldOn && t.startTime).map((t) => `${t.personId} ${t.heldOn} ${t.startTime}`));
+  /* Une case est prise dès qu'un rendez-vous la chevauche — pas seulement
+     quand il commence à la même heure : un rendez-vous ajouté à la main à 10:30
+     occupe le créneau de 10:00. */
+  const toMin = (t: string) => {
+    const [h, m] = t.split(':').map(Number);
+    return (h ?? 0) * 60 + (m ?? 0);
+  };
+  const byPersonDay = new Map<string, [number, number][]>();
+  for (const t of taken) {
+    if (!t.personId || !t.heldOn || !t.startTime) continue;
+    const key = `${t.personId} ${t.heldOn}`;
+    const start = toMin(t.startTime);
+    byPersonDay.set(key, [...(byPersonDay.get(key) ?? []), [start, start + Math.max(1, t.minutes ?? 1)]]);
+  }
+  const overlaps = (personId: string, on: string, from: string, to: string) =>
+    (byPersonDay.get(`${personId} ${on}`) ?? []).some(([s, e]) => s < toMin(to) && e > toMin(from));
   const out: FreeCell[] = [];
   for (const d of days) {
     if (!d.heldOn || d.heldOn < today) continue;
     for (const slot of daySlots(d)) {
       for (const personId of d.interlocutors) {
         if (only && personId !== only) continue;
-        if (busy.has(`${personId} ${d.heldOn} ${slot.startsAt}`)) continue;
+        if (overlaps(personId, d.heldOn, slot.startsAt, slot.endsAt)) continue;
         out.push({ dayId: d.id, onDate: d.heldOn, startTime: slot.startsAt, endTime: slot.endsAt, personId });
       }
     }
@@ -205,6 +220,9 @@ export const meetingPatch = z.object({
   location: z.string().optional(),
   meetingLink: z.string().trim().optional(),
   status: z.enum(MEETING_STATUSES).optional(),
+  /** Changé à la main dans la fiche du rendez-vous : l'heure est prise telle
+      quelle, comme un créneau ajouté — sans chercher de chevauchement. */
+  manual: z.boolean().optional(),
 });
 
 /** Writing the report: the answers so far, and whether it is being sent. */

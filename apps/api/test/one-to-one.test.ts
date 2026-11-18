@@ -139,6 +139,58 @@ describe('a One to One', { skip: skipWithoutServer }, () => {
     assert.ok(again);
   });
 
+  it('refuses a meeting added by hand over a slot — overlapping, not only at the same start — and takes the slot away from booking', async () => {
+    const { block, mentor, a, b } = await setUp();
+    const day = await createDay(block.id, {
+      name: 'Day', heldOn: '2030-04-02', windows: [{ startsAt: '10:00', endsAt: '14:00' }], minutesPerMeeting: 120,
+      location: 'CEED', interlocutors: [mentor.id],
+    });
+    /* À la main, sur l'heure exacte d'un créneau : il se range dans la journée. */
+    const [onSlot] = await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, invite: 'none', heldOn: '2030-04-02', startTime: '10:00' });
+    assert.equal(onSlot!.dayId, day.id);
+    assert.equal(onSlot!.durationMinutes, 120);
+    /* 11:00 tombe en plein dans 10:00–12:00 : refusé, en disant avec qui. */
+    await assert.rejects(
+      planMeetings(block.id, { candidateIds: [b.id], personId: mentor.id, invite: 'none', heldOn: '2030-04-02', startTime: '11:00', durationMinutes: 30 }),
+      /overlaps .*10:00–12:00/,
+    );
+    /* Finir quand l'autre commence n'est pas un conflit. */
+    const [before] = await planMeetings(block.id, { candidateIds: [b.id], personId: mentor.id, invite: 'none', heldOn: '2030-04-02', startTime: '09:00', durationMinutes: 60 });
+    assert.ok(before);
+    await changeMeeting(before!.id, { status: 'cancelled' });
+
+    /* Une séance à la main à 12:30 occupe le créneau de 12:00 : il n'est plus à réserver. */
+    await changeMeeting(onSlot!.id, { status: 'cancelled' });
+    await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, invite: 'none', heldOn: '2030-04-02', startTime: '12:30', durationMinutes: 30 });
+    const [toBook] = await planMeetings(block.id, { candidateIds: [b.id], personId: null, invite: 'slots', heldOn: null, startTime: null });
+    const offered = (await invitationFor(toBook!.token))!.page.slots.map((c) => c.startTime);
+    assert.deepEqual(offered, ['10:00'], '12:00 is taken by the 12:30 meeting');
+  });
+
+  it('takes a time changed by hand in the meeting as an added slot, and moves meetings with a slot changed in the setup', async () => {
+    const { block, mentor, a, b } = await setUp();
+    const day = await createDay(block.id, {
+      name: 'Day', heldOn: '2030-05-06', windows: [{ startsAt: '10:00', endsAt: '14:00' }], minutesPerMeeting: 120,
+      location: 'CEED', interlocutors: [mentor.id],
+    });
+    const [first] = await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, invite: 'none', heldOn: '2030-05-06', startTime: '10:00' });
+    const [second] = await planMeetings(block.id, { candidateIds: [b.id], personId: mentor.id, invite: 'none', heldOn: '2030-05-06', startTime: '12:00' });
+
+    /* À la main : 11:00 chevauche les deux, et c'est accepté — il reste dans sa journée. */
+    const moved = (await changeMeeting(second!.id, { startTime: '11:00', manual: true }))!;
+    assert.deepEqual([moved.startTime, moved.dayId], ['11:00', day.id]);
+    /* La même heure qu'un autre, chez la même personne : une ligne pour deux, refusé. */
+    await assert.rejects(changeMeeting(second!.id, { startTime: '10:00', manual: true }), /already at 10:00/);
+    /* Sans « à la main » (un glisser), le chevauchement reste refusé. */
+    await assert.rejects(changeMeeting(second!.id, { startTime: '10:30' }), /overlaps/);
+
+    /* Dans le réglage, les créneaux passent à 13:00 et 15:00 : le premier rendez-vous suit le premier créneau. */
+    await updateDay(day.id, { windows: [{ startsAt: '13:00', endsAt: '17:00' }] });
+    const after = (await oneToOneView(block.id))!.meetings;
+    assert.equal(after.find((m) => m.id === first!.id)!.startTime, '13:00');
+    assert.equal(after.find((m) => m.id === second!.id)!.startTime, '11:00', 'set by hand: it keeps its time');
+  });
+
   it('keeps the word a startup leaves when it declines, and forgets it when it confirms', async () => {
     const { block, mentor, a } = await setUp();
     const [m] = await planMeetings(block.id, { candidateIds: [a.id], personId: mentor.id, invite: 'confirm', heldOn: '2030-02-04', startTime: '11:00' });

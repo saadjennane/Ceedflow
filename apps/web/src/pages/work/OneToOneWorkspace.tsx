@@ -153,10 +153,21 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
   const offGrid = live.filter((m) => {
     if (!m.heldOn) return false;
     const day = m.dayId ? days.find((d) => d.id === m.dayId) : null;
-    if (!day) return true;
-    if (!m.startTime || !daySlots(day).some((slot) => slot.startsAt === m.startTime)) return true;
+    if (!day || !m.startTime) return true;
+    /* Une heure hors des créneaux reste dans sa journée : elle s'y montre comme posée à la main. */
     return !together && !!m.personId && !day.interlocutors.includes(m.personId);
   });
+  /* Les lignes d'une colonne : les créneaux de la journée, plus les heures
+     posées à la main qui n'en sont pas un. */
+  const rowsOf = (d: OneToOneDay, personId: string) => {
+    const std = daySlots(d).map((slot) => ({ startsAt: slot.startsAt, added: false }));
+    const extra = live
+      .filter((m) => m.dayId === d.id && m.startTime && (together || m.personId === personId))
+      .map((m) => m.startTime!)
+      .filter((t, i, all) => all.indexOf(t) === i && !std.some((slot) => slot.startsAt === t))
+      .map((t) => ({ startsAt: t, added: true }));
+    return [...std, ...extra].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  };
   const seats = (d: OneToOneDay) => (together ? Math.min(1, d.interlocutors.length) : d.interlocutors.length);
   const columns = (d: OneToOneDay) => (together ? d.interlocutors.slice(0, 1) : d.interlocutors);
   const capacity = current ? daySlots(current).length * seats(current) : 0;
@@ -401,14 +412,14 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
                       </span>
                     </header>
                     <div className="day-slots">
-                      {daySlots(current).map((slot) => {
+                      {rowsOf(current, personId).map((slot) => {
                         /* Ensemble : un rendez-vous de la case, chez qui qu'il ait été posé. */
                         const m = onDay.find((x) => (together || x.personId === personId) && x.startTime === slot.startsAt);
                         const key = `${personId}:${slot.startsAt}`;
                         const state = m ? STATE_BADGE[meetingState(m)] : null;
                         return (
                           <div
-                            key={slot.index}
+                            key={slot.startsAt}
                             className={`slot-row${over === key ? ' over' : ''}${m ? '' : ' free'}`}
                             onDragOver={(e) => {
                               e.preventDefault();
@@ -420,7 +431,10 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
                               void dropOn(current, personId, slot.startsAt);
                             }}
                           >
-                            <span className="slot-time num">{slot.startsAt}</span>
+                            <span className="slot-time num" title={slot.added ? 'Set by hand — not one of the day’s slots' : undefined}>
+                              {slot.startsAt}
+                              {slot.added && <span className="slot-added">by hand</span>}
+                            </span>
                             {m ? (
                               <div
                                 className="seated"
@@ -520,7 +534,7 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
                     <span className="num faint">{offGrid.length}</span>
                   </div>
                   <p className="faint" style={{ margin: '0 0 6px', fontSize: 12 }}>
-                    Dated, but on no free cell: their day was deleted or its hours changed. Drag onto a slot, or open to fix.
+                    Dated, but in no day: their day was deleted, or their interlocutor no longer receives on it. Drag onto a slot, or open to fix.
                   </p>
                   {offGrid.map((m) => (
                     <div
@@ -1520,7 +1534,7 @@ function MeetingDrawer({
               disabled={busy}
               onClick={() =>
                 change(
-                  { heldOn: heldOn || null, startTime: startTime || null, ...(personId ? { personId } : {}) },
+                  { heldOn: heldOn || null, startTime: startTime || null, ...(personId ? { personId } : {}), manual: true },
                   meeting.invite === 'confirm' ? 'Moved — they are asked again.' : 'Moved.',
                 )
               }

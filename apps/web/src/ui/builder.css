@@ -1350,6 +1350,14 @@ dl.answers dd {
   cursor: pointer;
 }
 
+.slot-added {
+  display: block;
+  font-size: 10px;
+  font-family: var(--body);
+  color: var(--warn);
+  font-weight: 600;
+}
+
 .seated-person {
   font-size: 11.5px;
   color: var(--ink-3);

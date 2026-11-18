@@ -38,6 +38,7 @@ import {
   CONTACT_FIELD_TYPES,
   mentorsOf,
   pairingOf,
+  daySlots,
   linkForSlot,
   prepLocked,
   prepForm,
@@ -171,29 +172,55 @@ export async function oneToOneView(blockId: string): Promise<OneToOneView | null
  * Whether one of these people already has a meeting at that time — alone, or
  * among several receiving together, in any brick.
  */
-async function busy(people: string | string[] | null, heldOn: string | null, startTime: string | null, except?: string) {
+async function busy(
+  people: string | string[] | null,
+  heldOn: string | null,
+  startTime: string | null,
+  minutes: number,
+  except?: string,
+  /** Seulement la même heure de début — pour un créneau posé à la main. */
+  exact = false,
+): Promise<{ orgName: string; startTime: string; endTime: string } | null> {
   const ids = (Array.isArray(people) ? people : people ? [people] : []).filter(Boolean);
-  if (!ids.length || !heldOn || !startTime) return false;
-  const row = await one<{ id: string }>(
-    `select id from one_to_one_meetings
-      where (person_id = any($1::text[]) or with_ids ?| $1::text[])
-        and held_on = $2::date and start_time = $3 and status <> 'cancelled'
-        and ($4::text is null or id <> $4) limit 1`,
-    [ids, heldOn, startTime, except ?? null],
+  if (!ids.length || !heldOn || !startTime) return null;
+  /* Un chevauchement, pas seulement la même heure de début : 10:30 tombe en
+     plein dans un créneau de 10:00 à 12:00. Finir à l'heure où l'autre
+     commence n'est pas un conflit. */
+  const row = await one<{ orgName: string; startTime: string; endTime: string }>(
+    `select o.name as "orgName", m.start_time as "startTime",
+            to_char(m.start_time::time + make_interval(mins => m.duration_minutes), 'HH24:MI') as "endTime"
+       from one_to_one_meetings m
+       join candidates c on c.id = m.candidate_id
+       join records o on o.id = c.org_id
+      where (m.person_id = any($1::text[]) or m.with_ids ?| $1::text[])
+        and m.held_on = $2::date and m.start_time is not null and m.status <> 'cancelled'
+        and ($4::text is null or m.id <> $4)
+        and (($6::boolean and m.start_time = $3)
+          or (not $6::boolean
+              and m.start_time::time < $3::time + make_interval(mins => $5::int)
+              and m.start_time::time + make_interval(mins => m.duration_minutes) > $3::time))
+      order by m.start_time limit 1`,
+    [ids, heldOn, startTime, except ?? null, Math.max(1, minutes), exact],
   );
-  return Boolean(row);
+  return row ?? null;
 }
+
+const clashSays = (c: { orgName: string; startTime: string; endTime: string }, on?: string) =>
+  `That time overlaps ${c.orgName}’s meeting, ${c.startTime}–${c.endTime}${on ? ` on ${on}` : ''}.`;
 
 /** Who already sits at which time — every person of every meeting, for the free-slot reckoning. */
 async function takenBy(people: string[], except: string | null) {
-  const rows = await all<{ personId: string | null; withIds: string[]; heldOn: string | null; startTime: string | null }>(
-    `select person_id as "personId", with_ids as "withIds", held_on::text as "heldOn", start_time as "startTime"
+  const rows = await all<{ personId: string | null; withIds: string[]; heldOn: string | null; startTime: string | null; minutes: number }>(
+    `select person_id as "personId", with_ids as "withIds", held_on::text as "heldOn", start_time as "startTime",
+            duration_minutes as minutes
        from one_to_one_meetings
       where (person_id = any($1::text[]) or with_ids ?| $1::text[]) and status <> 'cancelled'
         and ($2::text is null or id <> $2)`,
     [people, except],
   );
-  return rows.flatMap((r) => [...new Set([r.personId, ...(r.withIds ?? [])].filter(Boolean))].map((personId) => ({ personId, heldOn: r.heldOn, startTime: r.startTime })));
+  return rows.flatMap((r) =>
+    [...new Set([r.personId, ...(r.withIds ?? [])].filter(Boolean))].map((personId) => ({ personId, heldOn: r.heldOn, startTime: r.startTime, minutes: r.minutes })),
+  );
 }
 
 export async function planMeetings(
@@ -262,19 +289,28 @@ export async function planMeetings(
     !books && input.repeat
       ? seriesDates(input.heldOn!, input.repeat.frequency, { count: input.repeat.count, until: input.repeat.until })
       : [input.heldOn];
-  if (!books) {
-    const clashes: string[] = [];
-    for (const date of dates) if (await busy(together ? participants : input.personId, date, input.startTime)) clashes.push(date!);
-    if (clashes.length) {
-      throw new HttpError(409, `They already have a meeting at that time on ${clashes.join(', ')}.`, {
-        startTime: 'Already taken.',
-      });
-    }
+  /* Ajouté à la main sur l'heure exacte d'un créneau d'une journée : il s'y
+     range, et se voit sur la grille au lieu de flotter hors de toute case. */
+  if (!books && !input.dayId && !input.repeat && input.heldOn && input.startTime) {
+    const who = together ? participants : input.personId ? [input.personId] : [];
+    const home = (await listDays(blockId)).find(
+      (d) => d.heldOn === input.heldOn && who.every((id) => d.interlocutors.includes(id)) && daySlots(d).some((slot) => slot.startsAt === input.startTime),
+    );
+    if (home) input = { ...input, dayId: home.id };
   }
 
   /* Dans une journée : sa durée et son lieu, et l'interlocuteur doit y recevoir. */
   const theDay = input.dayId ? await getDay(input.dayId) : null;
   if (input.dayId && (!theDay || theDay.blockId !== blockId)) throw new HttpError(404, 'Day not found.');
+  const minutes = input.durationMinutes ?? theDay?.minutesPerMeeting ?? ctx.config.durationMinutes;
+  if (!books) {
+    for (const date of dates) {
+      const clash = await busy(together ? participants : input.personId, date, input.startTime, minutes);
+      if (clash) {
+        throw new HttpError(409, clashSays(clash, dates.length > 1 ? date! : undefined), { startTime: 'Overlaps another meeting.' });
+      }
+    }
+  }
   if (theDay && input.personId && !theDay.interlocutors.includes(input.personId)) {
     throw new HttpError(422, 'This interlocutor does not receive on that day.');
   }
@@ -393,6 +429,7 @@ export async function changeMeeting(
     location?: string;
     meetingLink?: string;
     status?: string;
+    manual?: boolean;
   },
 ): Promise<OneToOneMeeting | null> {
   const current = await getMeeting(id);
@@ -417,8 +454,28 @@ export async function changeMeeting(
       : personId
         ? [personId]
         : [];
-  if ((patch.heldOn !== undefined || patch.startTime !== undefined || patch.personId) && (await busy(participants, heldOn, startTime, id))) {
-    throw new HttpError(409, 'They already have a meeting at that time.', { startTime: 'Already taken.' });
+  /* Posé dans une journée, il en prend la durée ; sinon il garde la sienne. */
+  const toDay = patch.dayId ? await getDay(patch.dayId) : null;
+  const minutes = patch.durationMinutes ?? toDay?.minutesPerMeeting ?? current.durationMinutes;
+  if (patch.heldOn !== undefined || patch.startTime !== undefined || patch.personId || patch.durationMinutes !== undefined || patch.dayId) {
+    /* À la main, depuis sa fiche : l'heure est acceptée comme un créneau
+       ajouté. Seule la même heure, chez la même personne, reste refusée — deux
+       startups sur une seule ligne, l'une cacherait l'autre. */
+    const clash = await busy(participants, heldOn, startTime, minutes, id, Boolean(patch.manual));
+    if (clash) {
+      throw new HttpError(409, patch.manual ? `${clash.orgName} is already at ${clash.startTime} with them.` : clashSays(clash), {
+        startTime: patch.manual ? 'Already taken.' : 'Overlaps another meeting.',
+      });
+    }
+  }
+  /* Une autre date, à la main : il suit la journée de cette date, s'il y en a une
+     où son interlocuteur reçoit — sinon il n'est plus dans une journée. */
+  if (patch.manual && patch.dayId === undefined && heldOn !== current.heldOn) {
+    const who = participants.length ? participants : personId ? [personId] : [];
+    const home = heldOn
+      ? (await listDays(current.blockId)).find((d) => d.heldOn === heldOn && who.every((p) => d.interlocutors.includes(p)))
+      : null;
+    patch = { ...patch, dayId: home?.id ?? null };
   }
   const moved = heldOn !== current.heldOn || startTime !== current.startTime;
   const sets: string[] = [];
@@ -438,7 +495,7 @@ export async function changeMeeting(
   if (patch.dayId !== undefined) put('day_id', patch.dayId);
   if (patch.heldOn !== undefined) put('held_on', patch.heldOn, '::date');
   if (patch.startTime !== undefined) put('start_time', patch.startTime);
-  if (patch.durationMinutes !== undefined) put('duration_minutes', patch.durationMinutes);
+  if (patch.durationMinutes !== undefined || (toDay && toDay.minutesPerMeeting !== current.durationMinutes)) put('duration_minutes', minutes);
   if (patch.location !== undefined) put('location', patch.location);
   if (patch.meetingLink !== undefined) put('meeting_link', patch.meetingLink);
   else if (patch.dayId !== undefined || patch.startTime !== undefined) {
@@ -1448,6 +1505,32 @@ export async function updateDay(id: string, input: Partial<DayFields>): Promise<
   }
   if (input.interlocutors !== undefined) put('interlocutors', input.interlocutors, '::jsonb');
   if (sets.length) await all(`update one_to_one_days set ${sets.join(', ')} where id = $1`, params);
+  /* Un créneau changé dans le réglage : ses rendez-vous le suivent — le
+     deuxième créneau reste le deuxième, à sa nouvelle heure. Si le nombre de
+     créneaux change, chacun garde son heure et se montre comme posé à la main. */
+  if (input.windows !== undefined || input.minutesPerMeeting !== undefined) {
+    const after = await getDay(id);
+    const before = daySlots(current);
+    const now = after ? daySlots(after) : [];
+    if (after && before.length === now.length) {
+      const moves = before.map((slot, i) => [slot.startsAt, now[i]!.startsAt] as const).filter(([a, b]) => a !== b);
+      if (moves.length) {
+        const placed = await all<{ id: string; startTime: string | null }>(
+          `select id, start_time as "startTime" from one_to_one_meetings where day_id = $1`,
+          [id],
+        );
+        for (const m of placed) {
+          const to = moves.find(([a]) => a === m.startTime)?.[1];
+          if (to) await all('update one_to_one_meetings set start_time = $2 where id = $1', [m.id, to]);
+        }
+      }
+    }
+    if (after && input.minutesPerMeeting !== undefined && input.minutesPerMeeting !== current.minutesPerMeeting) {
+      await all('update one_to_one_meetings set duration_minutes = $2 where day_id = $1 and duration_minutes = $3', [
+        id, input.minutesPerMeeting, current.minutesPerMeeting,
+      ]);
+    }
+  }
   if (input.heldOn !== undefined && input.heldOn !== current.heldOn) {
     await all(`update one_to_one_meetings set held_on = $2::date where day_id = $1`, [id, input.heldOn]);
   }
