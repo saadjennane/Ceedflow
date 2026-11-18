@@ -1,4 +1,4 @@
-import { ORG_SECTIONS, PERSON_SECTIONS, STAFF_ROLE_LABEL } from '@ceed/shared';
+import { ORG_SECTIONS, STAFF_ROLE_LABEL } from '@ceed/shared';
 import { Suspense, useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAccount } from '../lib/account';
@@ -102,7 +102,11 @@ export function Shell() {
         <div className="eyebrow nav-group">Community</div>
         {/* Chaque annuaire montre tout ; chaque rubrique en est la liste sur un rôle. */}
         <DirectoryNav kind="org" to="/organisations" label="Organisations" icon="layers" sections={ORG_SECTIONS} folded={folded} link={link} />
-        <DirectoryNav kind="person" to="/individuals" label="Individuals" icon="users" sections={PERSON_SECTIONS} folded={folded} link={link} />
+        {/* Les individus : une seule liste, filtrée par la colonne Roles de la grille. */}
+        <NavLink to="/individuals" className={link} title="Individuals" onMouseEnter={() => prefetchDirectory('person')} onFocus={() => prefetchDirectory('person')}>
+          <Icon name="users" />
+          <span className="nav-label">Individuals</span>
+        </NavLink>
         {COMMUNITY_LATER.map((item) => (
           <Soon key={item.label} {...item} />
         ))}
