@@ -1430,28 +1430,36 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
   vertical-align: middle;
 }
 
-/* Le sous-menu des organisations, dans la barre latérale. */
-.nav-sub {
+/* Les programmes en toutes lettres, dans la grille. */
+.grid-pms {
   display: flex;
-  flex-direction: column;
-  margin: 0 0 4px 28px;
-  border-left: 1px solid var(--line);
-}
-.nav-sub a {
-  font-size: 13px;
-  color: var(--ink-2);
-  padding: 5px 10px;
-  border-radius: 0 8px 8px 0;
-  min-height: 30px;
-  display: flex;
+  gap: 4px;
   align-items: center;
+  overflow: hidden;
+  height: 100%;
 }
-.nav-sub a:hover {
-  color: var(--ink);
+.grid-pm {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 2px 8px 2px 6px;
+  border-radius: 999px;
   background: var(--wash);
-}
-.nav-sub a.on {
-  color: var(--blue);
+  color: var(--ink);
+  font-size: 12px;
   font-weight: 600;
-  box-shadow: inset 2px 0 0 var(--blue);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.grid-pm i {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: none;
+}
+.grid-pm small {
+  font-weight: 500;
+  color: var(--ink-2);
 }

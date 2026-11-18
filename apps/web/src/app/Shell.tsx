@@ -1,5 +1,5 @@
 import { ORG_SECTIONS, STAFF_ROLE_LABEL } from '@ceed/shared';
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAccount } from '../lib/account';
 import { api } from '../lib/api';
@@ -32,6 +32,22 @@ export function Shell() {
   const { me, loading } = useAccount();
   const navigate = useNavigate();
   const where = useLocation();
+  /* Le sous-menu des organisations se replie ; on s'en souvient dans ce navigateur. */
+  const [orgsOpen, setOrgsOpenState] = useState(() => {
+    try {
+      return localStorage.getItem('nav-orgs-open') !== 'no';
+    } catch {
+      return true;
+    }
+  });
+  const setOrgsOpen = (open: boolean) => {
+    setOrgsOpenState(open);
+    try {
+      localStorage.setItem('nav-orgs-open', open ? 'yes' : 'no');
+    } catch {
+      /* rien à garder */
+    }
+  };
   const staffRole = me?.account.staffRole ?? null;
   /* Somebody at CEED is often also on a panel — the ecosystem is small enough
      that the person running the programme judges in it too. The route already
@@ -100,12 +116,25 @@ export function Shell() {
         </NavLink>
 
         <div className="eyebrow nav-group">Community</div>
-        <NavLink to="/organisations" className={link} title="Organisations">
-          <Icon name="layers" />
-          <span className="nav-label">Organisations</span>
-        </NavLink>
+        <div className="nav-row">
+          <NavLink to="/organisations" className={link} title="Organisations">
+            <Icon name="layers" />
+            <span className="nav-label">Organisations</span>
+          </NavLink>
+          {!folded && (
+            <button
+              className="nav-toggle"
+              onClick={() => setOrgsOpen(!orgsOpen)}
+              aria-expanded={orgsOpen}
+              aria-label={orgsOpen ? 'Fold the organisation types' : 'Show the organisation types'}
+              title={orgsOpen ? 'Fold' : 'Show the types'}
+            >
+              <Icon name={orgsOpen ? 'chevronUp' : 'chevronDown'} size={13} />
+            </button>
+          )}
+        </div>
         {/* Organisations montre tout ; chaque rubrique en est la liste sur un rôle. */}
-        {!folded && (
+        {!folded && orgsOpen && (
           <div className="nav-sub">
             {ORG_SECTIONS.map((s) => (
               <Link

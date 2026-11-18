@@ -977,3 +977,56 @@ table.data td.name {
 table.data tbody tr.picked td {
   background: color-mix(in srgb, var(--blue-soft) 70%, transparent);
 }
+
+/* Le sous-menu des organisations, dans la barre latérale. */
+.nav-sub {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 4px 28px;
+  border-left: 1px solid var(--line);
+}
+.nav-sub a {
+  font-size: 13px;
+  color: var(--ink-2);
+  padding: 5px 10px;
+  border-radius: 0 8px 8px 0;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+}
+.nav-sub a:hover {
+  color: var(--ink);
+  background: var(--wash);
+}
+.nav-sub a.on {
+  color: var(--blue);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--blue);
+}
+
+.nav-row {
+  position: relative;
+}
+.nav-row .nav-item {
+  padding-right: 40px;
+}
+.nav-toggle {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.nav-toggle:hover {
+  background: var(--wash);
+  color: var(--ink);
+}
+

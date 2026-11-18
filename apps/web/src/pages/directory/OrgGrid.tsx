@@ -35,7 +35,7 @@ import { download, toWorkbook, type Cell } from '../../lib/xlsx';
 import { Icon } from '../../ui/Icon';
 import { colourOf, initialsOf } from '../../ui/Showcase';
 import type { RecordRow } from './DirectoryPage';
-import { AccountDot, Mark, Programmes, SheetRing, Trend, revenueOf, short, word } from './DirectoryViews';
+import { AccountDot, Mark, SheetRing, Trend, revenueOf, short, word } from './DirectoryViews';
 
 /* Seulement ce que la grille sert — pas toute la librairie : moins à télécharger.
    Trier, déplacer, redimensionner et figer sont dans le cœur. Le module de
@@ -122,6 +122,22 @@ function ContactCell({ data }: Renderer) {
   );
 }
 
+/* Les programmes en toutes lettres : une pastille par programme, son nom et où elle en est. */
+const STATE_WORD = { now: 'now', alumni: 'alumni', applied: 'applied' } as const;
+function ProgrammesCell({ data }: Renderer) {
+  if (!data?.programmes.length) return <span className="faint">—</span>;
+  return (
+    <span className="grid-pms" title={data.programmes.map((p) => `${p.name} — ${STATE_WORD[p.state]}`).join('\n')}>
+      {data.programmes.map((p) => (
+        <span key={p.name} className="grid-pm">
+          <i style={{ background: p.colour }} />
+          {p.name} <small>{STATE_WORD[p.state]}</small>
+        </span>
+      ))}
+    </span>
+  );
+}
+
 const activityOf = (r: RecordRow) => (r.lastActivity ?? r.createdAt).slice(0, 10);
 
 /** Les colonnes : l'identifiant reste stable — c'est lui qu'on garde dans le navigateur. */
@@ -135,9 +151,9 @@ const COLUMNS: ColDef<RecordRow>[] = [
   { colId: 'maturity', headerName: 'Maturity', width: 130, valueGetter: (p) => (p.data ? word(MATURITY_LEVELS, profileOf(p.data).maturity) : '') },
   { colId: 'city', headerName: 'City', width: 130, valueGetter: (p) => p.data?.city ?? '' },
   {
-    colId: 'programmes', headerName: 'Programmes', width: 150,
+    colId: 'programmes', headerName: 'Programmes',
     valueGetter: (p) => p.data?.programmes.map((x) => x.name).join(', ') ?? '',
-    cellRenderer: (p: Renderer) => (p.data ? <Programmes list={p.data.programmes} /> : null),
+    cellRenderer: ProgrammesCell, width: 230,
   },
   {
     colId: 'revenue', headerName: 'Revenue', width: 150, type: 'rightAligned', filter: 'agNumberColumnFilter',
@@ -301,6 +317,8 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
             defaultColDef={defaultColDef}
             getRowId={(p) => p.data.id}
             rowSelection={{ mode: 'multiRow', checkboxes: true, headerCheckbox: true, selectAll: 'filtered', enableClickSelection: false }}
+            /* La case à cocher, figée à gauche du nom — jamais ailleurs, même en déplaçant les colonnes. */
+            selectionColumnDef={{ pinned: 'left', lockPinned: true, width: 44, minWidth: 44, maxWidth: 44, suppressMovable: true, resizable: false, sortable: false }}
             suppressCellFocus
             animateRows={false}
             onGridReady={(e) => {

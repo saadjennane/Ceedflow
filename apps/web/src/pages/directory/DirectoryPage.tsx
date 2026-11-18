@@ -119,9 +119,6 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [inviting, setInviting] = useState(false);
 
-  /* Les fiches de l'espace de test restent hors de vue, des comptes et des
-     exports, tant qu'on ne demande pas à les voir. */
-  const [withTest, setWithTest] = useState(false);
   /* Tableau ou cartes : gardé d'une visite à l'autre, dans ce navigateur. */
   const [view, setViewState] = useState<'table' | 'cards'>(() => {
     try {
@@ -142,10 +139,14 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
   const [preset, setPreset] = useState('all');
   const loaded = records.data ?? [];
   const testCount = loaded.filter((r) => r.testOwner).length;
-  const everyone = withTest ? loaded : loaded.filter((r) => !r.testOwner);
+  /* Les fiches de l'espace de test restent hors de vue, des comptes et des
+     exports : elles ont leur onglet, qui ne montre qu'elles. */
+  const real = loaded.filter((r) => !r.testOwner);
   /* L'onglet des inscrits : ceux qui sont vraiment entrés sur la plateforme. Dans l'adresse, pour s'y partager. */
-  const tab = params.get('tab') === 'registered' ? 'registered' : 'all';
-  const setTab = (t: 'all' | 'registered') =>
+  const asked = params.get('tab');
+  const tab: 'all' | 'registered' | 'test' = asked === 'registered' ? 'registered' : asked === 'test' && testCount > 0 ? 'test' : 'all';
+  const everyone = tab === 'test' ? loaded.filter((r) => r.testOwner) : real;
+  const setTab = (t: 'all' | 'registered' | 'test') =>
     setParams((p) => {
       const next = new URLSearchParams(p);
       if (t === 'all') next.delete('tab');
@@ -165,7 +166,8 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
   const elsewhere = fromAudience ? fromAudience.size - all.filter((r) => fromAudience.has(r.id)).length : 0;
 
   const rows = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+    /* Pas de recherche sur la grille : une recherche tapée sur les cartes ne la filtre pas en cachette. */
+    const needle = isOrg && view === 'table' ? '' : query.trim().toLowerCase();
     return all.filter(
       (r) =>
         (!fromAudience || fromAudience.has(r.id)) &&
@@ -246,7 +248,7 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
 
       <nav className="tabbar" role="tablist" aria-label={isOrg ? 'Organisations' : 'Individuals'}>
         <button role="tab" className={tab === 'all' ? 'tab on' : 'tab'} onClick={() => setTab('all')}>
-          All <span className="num faint">{everyone.length}</span>
+          All <span className="num faint">{real.length}</span>
         </button>
         <button
           role="tab"
@@ -254,8 +256,18 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
           onClick={() => setTab('registered')}
           title={isOrg ? 'Somebody holding its page has signed in with their own password' : 'Signed in with their own password'}
         >
-          Registered <span className="num faint">{everyone.filter((r) => r.registered).length}</span>
+          Registered <span className="num faint">{real.filter((r) => r.registered).length}</span>
         </button>
+        {testCount > 0 && (
+          <button
+            role="tab"
+            className={tab === 'test' ? 'tab on' : 'tab'}
+            onClick={() => setTab('test')}
+            title="Records made in the test space, to try the platform out — kept out of the other lists, the counts and the exports"
+          >
+            Test records <span className="num faint">{testCount}</span>
+          </button>
+        )}
       </nav>
 
       <div className="page stack" style={{ gap: 14 }}>
@@ -295,8 +307,10 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
           </div>
         )}
 
-        {all.length > 0 && <Tiles tiles={tiles} on={preset} onPick={setPreset} />}
+        {/* Les organisations se lisent dans la grille : pas de tuiles de chiffres au-dessus. */}
+        {!isOrg && all.length > 0 && <Tiles tiles={tiles} on={preset} onPick={setPreset} />}
 
+        {!isOrg && (
         <div className="row wrap">
           <div className="work-pick">
             <button className={!role ? 'track on' : 'track'} onClick={() => setRole(null)}>
@@ -346,18 +360,17 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
             </div>
           )}
         </div>
+        )}
 
         <div className="row wrap">
-          {testCount > 0 && (
-            <button className={withTest ? 'track on' : 'track'} onClick={() => setWithTest((v) => !v)}>
-              Test records <span className="num">{testCount}</span>
-            </button>
+          {/* La grille filtre sous chaque colonne : la recherche ne sert plus qu'aux cartes et aux individus. */}
+          {!(isOrg && view === 'table') && (
+            <SearchBox
+              placeholder={isOrg ? 'Search an organisation, a city, a tag…' : 'Search a name, an email, a city…'}
+              value={query}
+              onChange={setQuery}
+            />
           )}
-          <SearchBox
-            placeholder={isOrg ? 'Search an organisation, a city, a tag…' : 'Search a name, an email, a city…'}
-            value={query}
-            onChange={setQuery}
-          />
           <span className="faint num" style={{ fontSize: 12.5 }}>
             {rows.length} of {shown.length}
           </span>
