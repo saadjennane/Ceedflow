@@ -147,6 +147,16 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
   const onDay = current ? live.filter((m) => m.dayId === current.id) : [];
   /* Ensemble : une seule colonne — la startup les voit tous à la fois. */
   const together = pairingOf(config) === 'together';
+  /* Datés mais sur aucune case : leur journée a été supprimée, ses horaires ou
+     sa durée ont changé depuis, ou leur interlocuteur n'y reçoit plus. Ils
+     n'apparaissaient nulle part — ni à placer, ni sur la grille. */
+  const offGrid = live.filter((m) => {
+    if (!m.heldOn) return false;
+    const day = m.dayId ? days.find((d) => d.id === m.dayId) : null;
+    if (!day) return true;
+    if (!m.startTime || !daySlots(day).some((slot) => slot.startsAt === m.startTime)) return true;
+    return !together && !!m.personId && !day.interlocutors.includes(m.personId);
+  });
   const seats = (d: OneToOneDay) => (together ? Math.min(1, d.interlocutors.length) : d.interlocutors.length);
   const columns = (d: OneToOneDay) => (together ? d.interlocutors.slice(0, 1) : d.interlocutors);
   const capacity = current ? daySlots(current).length * seats(current) : 0;
@@ -493,9 +503,43 @@ export function OneToOneWorkspace({ block, onOpenSetup }: { block: Block; onOpen
                     <span className="num faint">{noTime.length}</span>
                   </div>
                   {noTime.map((m) => {
-                    const c = pool.find((p) => p.candidate.id === m.candidateId)?.candidate;
-                    return c ? chip(c, meetingWith(m) ? <span className="badge">{meetingWith(m)}</span> : null, m) : null;
+                    /* Sortie du vivier (retirée, statut changé) : son rendez-vous reste, et se montre. */
+                    const c =
+                      pool.find((p) => p.candidate.id === m.candidateId)?.candidate ??
+                      ({ id: m.candidateId, orgName: m.orgName, contactName: m.contactName } as Candidate);
+                    return chip(c, meetingWith(m) ? <span className="badge">{meetingWith(m)}</span> : null, m);
                   })}
+                  <div className="public-sep" style={{ margin: '12px 0 6px' }} />
+                </>
+              )}
+
+              {offGrid.length > 0 && (
+                <>
+                  <div className="rail-head">
+                    <span className="eyebrow" style={{ color: 'var(--warn)' }}>Off the grid</span>
+                    <span className="num faint">{offGrid.length}</span>
+                  </div>
+                  <p className="faint" style={{ margin: '0 0 6px', fontSize: 12 }}>
+                    Dated, but on no free cell: their day was deleted or its hours changed. Drag onto a slot, or open to fix.
+                  </p>
+                  {offGrid.map((m) => (
+                    <div
+                      className="pool-chip"
+                      key={m.id}
+                      draggable={!busy}
+                      onDragStart={() => {
+                        drag.current = { kind: 'meeting', meeting: m };
+                      }}
+                    >
+                      <span className="grip">
+                        <Icon name="drag" size={12} />
+                      </span>
+                      <button className="chip-name linkish" style={{ textAlign: 'left' }} onClick={() => setOpenId(m.id)} title={peopleLine(m)}>
+                        {m.orgName}
+                        <span className="chip-person">{when(m)}{m.dayId ? '' : ' · no day'}</span>
+                      </button>
+                    </div>
+                  ))}
                   <div className="public-sep" style={{ margin: '12px 0 6px' }} />
                 </>
               )}
