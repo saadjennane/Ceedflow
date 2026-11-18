@@ -179,6 +179,9 @@ const COLUMNS: ColDef<RecordRow>[] = [
   { colId: 'created', headerName: 'Added', width: 120, hide: true, valueGetter: (p) => p.data?.createdAt.slice(0, 10) ?? '', valueFormatter: (p) => (p.value ? formatDate(p.value as string) : '') },
 ];
 
+/* Les colonnes de la grille elle-même (cases à cocher) : jamais dans le panneau. */
+const isService = (id: string) => id.startsWith('ag-Grid-');
+
 const STORE = 'dir-org-grid';
 const loadState = (): ColumnState[] | null => {
   try {
@@ -214,7 +217,7 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
     const api = grid.current;
     if (!api) return;
     setCols(
-      (api.getColumns() ?? []).map((c) => ({
+      (api.getColumns() ?? []).filter((c) => !isService(c.getColId())).map((c) => ({
         id: c.getColId(),
         label: c.getColDef().headerName ?? c.getColId(),
         on: c.isVisible(),
@@ -237,14 +240,22 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
     setFiltered(Object.keys(api.getFilterModel() ?? {}).length);
   }, []);
 
+  /* Monter ou descendre d'un cran : échanger sa place avec sa voisine dans
+     l'ordre réel de la grille. Un index calculé sur la liste du panneau tombait
+     à côté — la grille compte aussi sa colonne de cases à cocher. */
   const move = (id: string, d: number) => {
     const api = grid.current;
     if (!api) return;
-    const order = cols.map((c) => c.id);
-    const at = order.indexOf(id);
-    const to = at + d;
-    if (to < 1 || to >= order.length) return; /* le nom reste premier */
-    api.moveColumns([id], to);
+    const state = api.getColumnState();
+    const movable = state.filter((c) => !isService(c.colId) && c.colId !== 'name').map((c) => c.colId);
+    const at = movable.indexOf(id);
+    const other = movable[at + d];
+    if (at < 0 || !other) return; /* le nom reste premier, rien ne passe après la dernière */
+    const i = state.findIndex((c) => c.colId === id);
+    const j = state.findIndex((c) => c.colId === other);
+    const next = [...state];
+    [next[i], next[j]] = [next[j]!, next[i]!];
+    api.applyColumnState({ state: next, applyOrder: true });
     remember();
   };
 
