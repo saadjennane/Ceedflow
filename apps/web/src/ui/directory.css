@@ -1555,3 +1555,45 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Un mail ou un numéro dans la grille : le texte mène, l'icône copie. */
+.grid-copy {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  width: 100%;
+}
+.grid-copy-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+.grid-copy-text:hover {
+  color: var(--blue);
+}
+.grid-copy .btn {
+  opacity: 0;
+  flex: none;
+}
+.ag-row:hover .grid-copy .btn,
+.grid-copy .btn:focus-visible {
+  opacity: 1;
+}
+.grid-account {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  line-height: 1.2;
+}
+.grid-account .faint {
+  font-size: 11.5px;
+}
+@media (hover: none) {
+  .grid-copy .btn {
+    opacity: 1;
+  }
+}

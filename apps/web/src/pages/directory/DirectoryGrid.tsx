@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 /**
- * Les organisations en grille — AG Grid, version Community.
+ * L'annuaire en grille — organisations ou individus — AG Grid, version Community.
  *
  * Trier en cliquant un en-tête, filtrer sous chaque colonne, redimensionner,
  * déplacer, figer le nom à gauche, cocher pour exporter. Ce que la version
@@ -8,7 +8,7 @@
  * colonne s'y coche et s'y range. La mise en page de la grille (ordre,
  * largeurs, colonnes cachées, tri) est gardée dans ce navigateur.
  */
-import { MATURITY_LEVELS, SECTORS, profileDone, profileOf } from '@ceed/shared';
+import { ACCOUNT_STATE_LABEL, MATURITY_LEVELS, SECTORS, profileDone, profileOf } from '@ceed/shared';
 import {
   CellApiModule,
   ClientSideRowModelApiModule,
@@ -29,7 +29,7 @@ import {
   type ICellRendererParams,
 } from 'ag-grid-community';
 import { AgGridReact } from 'ag-grid-react';
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { formatDate } from '../../lib/format';
 import { download, toWorkbook, type Cell } from '../../lib/xlsx';
@@ -40,6 +40,7 @@ import { colourOf, initialsOf } from '../../ui/Showcase';
 import type { RecordRow } from './DirectoryPage';
 import { ChoiceFilter, ChoiceFloating, optionsOf } from './ChoiceFilter';
 import { AccountDot, Mark, SheetRing, Trend, revenueOf, short, word } from './DirectoryViews';
+import { AccountBadge } from './AccountCard';
 
 /* Seulement ce que la grille sert — pas toute la librairie : moins à télécharger.
    Trier, déplacer, redimensionner et figer sont dans le cœur. Le module de
@@ -157,8 +158,87 @@ function ProgrammesCell({ data }: Renderer) {
 
 const activityOf = (r: RecordRow) => (r.lastActivity ?? r.createdAt).slice(0, 10);
 
-/** Les colonnes : l'identifiant reste stable — c'est lui qu'on garde dans le navigateur. */
-const COLUMNS: ColDef<RecordRow>[] = [
+/** Un mail ou un numéro dans sa cellule : on clique pour écrire ou appeler, l'icône copie. */
+function CopyCell({ value, href }: { value: string; href: string }) {
+  const [done, setDone] = useState(false);
+  if (!value) return <span className="faint">—</span>;
+  return (
+    <span className="grid-copy">
+      <a href={href} className="grid-copy-text" title={value}>{value}</a>
+      <button
+        className="btn ghost icon sm"
+        aria-label={done ? 'Copied' : `Copy ${value}`}
+        title={done ? 'Copied' : 'Copy'}
+        onClick={() => {
+          const ok = () => {
+            setDone(true);
+            window.setTimeout(() => setDone(false), 1400);
+          };
+          navigator.clipboard?.writeText(value).then(ok, ok);
+        }}
+      >
+        <Icon name={done ? 'check' : 'copy'} size={12} />
+      </button>
+    </span>
+  );
+}
+
+function AccountCell({ data }: Renderer) {
+  if (!data) return null;
+  const a = data.account;
+  return (
+    <span className="grid-account">
+      <AccountBadge account={a} />
+      {a && <span className="faint">{a.lastSeenAt ? `seen ${formatDate(a.lastSeenAt)}` : `opened ${formatDate(a.createdAt)}`}</span>}
+    </span>
+  );
+}
+
+const accountWord = (r: RecordRow) => (r.account ? ACCOUNT_STATE_LABEL[r.account.state] : 'No account');
+const dateColumn = (colId: string, headerName: string, get: (r: RecordRow) => string, hide = false): ColDef<RecordRow> => ({
+  colId, headerName, width: 130, hide, filter: 'agDateColumnFilter',
+  valueGetter: (p) => (p.data ? get(p.data) : ''),
+  valueFormatter: (p) => (p.value ? formatDate(p.value as string) : ''),
+  filterParams: {
+    comparator: (day: Date, cell: string) => {
+      const iso = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+      return cell === iso ? 0 : cell < iso ? -1 : 1;
+    },
+  },
+});
+
+/** Les individus : qui, ce qu'ils font pour CEED, où ils travaillent, et s'ils peuvent entrer. */
+const PERSON_COLUMNS: ColDef<RecordRow>[] = [
+  {
+    colId: 'name', headerName: 'Name', pinned: 'left', lockPinned: true, lockVisible: true, width: 260, minWidth: 180,
+    valueGetter: (p) => p.data?.name ?? '', cellRenderer: NameCell, filter: 'agTextColumnFilter',
+  },
+  { colId: 'roles', headerName: 'Roles', width: 150, valueGetter: (p) => p.data?.roles.join(', ') ?? '' },
+  {
+    colId: 'orgs', headerName: 'Organisations', width: 200,
+    valueGetter: (p) => p.data?.orgs.map((o) => o.name).join(', ') ?? '',
+    cellRenderer: (p: Renderer) => (p.value ? <span className="grid-names" title={p.value as string}>{p.value as string}</span> : <span className="faint">—</span>),
+  },
+  { colId: 'job', headerName: 'Job title', width: 160, hide: true, valueGetter: (p) => (p.data ? p.data.jobTitle || p.data.orgs[0]?.role || '' : '') },
+  { colId: 'programmes', headerName: 'Programmes', width: 200, valueGetter: (p) => p.data?.programmes.map((x) => x.name).join(', ') ?? '', cellRenderer: ProgrammesCell },
+  { colId: 'city', headerName: 'City', width: 130, valueGetter: (p) => p.data?.city ?? '' },
+  {
+    colId: 'email', headerName: 'Email', width: 230, valueGetter: (p) => p.data?.emails[0] ?? p.data?.email ?? '',
+    cellRenderer: (p: Renderer) => <CopyCell value={(p.value as string) ?? ''} href={`mailto:${p.value as string}`} />,
+  },
+  {
+    colId: 'phone', headerName: 'Phone', width: 170, valueGetter: (p) => p.data?.phones[0] ?? '',
+    cellRenderer: (p: Renderer) => <CopyCell value={(p.value as string) ?? ''} href={`tel:${String(p.value ?? '').replace(/\s+/g, '')}`} />,
+  },
+  { colId: 'account', headerName: 'Account', width: 190, valueGetter: (p) => (p.data ? accountWord(p.data) : ''), cellRenderer: AccountCell },
+  { colId: 'sessions', headerName: 'Sessions', width: 110, type: 'rightAligned', filter: 'agNumberColumnFilter', valueGetter: (p) => p.data?.sessions ?? 0 },
+  { colId: 'evaluations', headerName: 'Evaluations', width: 120, type: 'rightAligned', filter: 'agNumberColumnFilter', hide: true, valueGetter: (p) => p.data?.evaluations ?? 0 },
+  { colId: 'tags', headerName: 'Tags', width: 160, hide: true, valueGetter: (p) => p.data?.tags.join(', ') ?? '' },
+  dateColumn('created', 'Added', (r) => r.createdAt.slice(0, 10), true),
+];
+
+/** Les organisations. */
+const ORG_COLUMNS: ColDef<RecordRow>[] = [
   {
     colId: 'name', headerName: 'Organisation', pinned: 'left', lockPinned: true, lockVisible: true, width: 290, minWidth: 200,
     valueGetter: (p) => p.data?.name ?? '', cellRenderer: NameCell, filter: 'agTextColumnFilter',
@@ -215,12 +295,19 @@ const CHOICES: Record<string, (r: RecordRow) => string[]> = {
   maturity: (r) => [word(MATURITY_LEVELS, profileOf(r).maturity)].filter(Boolean),
   city: (r) => [r.city.trim()].filter(Boolean),
   programmes: (r) => r.programmes.map((p) => p.name),
+  orgs: (r) => r.orgs.map((o) => o.name),
+  account: (r) => [accountWord(r)],
 };
 
-const STORE = 'dir-org-grid';
-const loadState = (): ColumnState[] | null => {
+/** Ce qui change d'un annuaire à l'autre : ses colonnes, où sa vue est gardée, le nom de son export. */
+const KINDS = {
+  org: { columns: ORG_COLUMNS, store: 'dir-org-grid', filters: 'dir-org-filters', sheet: 'Organisations', file: 'organisations.xlsx' },
+  person: { columns: PERSON_COLUMNS, store: 'dir-person-grid', filters: 'dir-person-filters', sheet: 'Individuals', file: 'individuals.xlsx' },
+} as const;
+
+const loadState = (store: string): ColumnState[] | null => {
   try {
-    const raw = localStorage.getItem(STORE);
+    const raw = localStorage.getItem(store);
     return raw ? (JSON.parse(raw) as ColumnState[]) : null;
   } catch {
     return null;
@@ -228,22 +315,40 @@ const loadState = (): ColumnState[] | null => {
 };
 /* Sur le compte : chacun retrouve sa vue sur n'importe quel poste. Le
    navigateur en garde une copie, pour l'afficher sans attendre le serveur. */
-let pending: number | null = null;
-const saveState = (state: ColumnState[]) => {
+const pending = new Map<string, number>();
+const saveState = (store: string, state: ColumnState[]) => {
   try {
-    localStorage.setItem(STORE, JSON.stringify(state));
+    localStorage.setItem(store, JSON.stringify(state));
   } catch {
     /* rien à garder */
   }
-  if (pending) window.clearTimeout(pending);
-  pending = window.setTimeout(() => {
-    void api.put(`/api/me/prefs/${STORE}`, { value: state }).catch(() => undefined);
-  }, 600);
+  const was = pending.get(store);
+  if (was) window.clearTimeout(was);
+  pending.set(
+    store,
+    window.setTimeout(() => {
+      void api.put(`/api/me/prefs/${store}`, { value: state }).catch(() => undefined);
+    }, 600),
+  );
 };
-const fetchState = () =>
-  api.get<{ value: ColumnState[] | null }>(`/api/me/prefs/${STORE}`).then((r) => r.value).catch(() => null);
+const fetchState = (store: string) =>
+  api.get<{ value: ColumnState[] | null }>(`/api/me/prefs/${store}`).then((r) => r.value).catch(() => null);
 
-export function OrgGrid({ rows }: { rows: RecordRow[] }) {
+export function DirectoryGrid({
+  kind,
+  rows,
+  onPicked,
+  pickedActions,
+}: {
+  kind: 'org' | 'person';
+  rows: RecordRow[];
+  /** Ce qui est coché, pour la page — inviter les individus choisis. */
+  onPicked?: (rows: RecordRow[]) => void;
+  /** Ce qu'on fait de la sélection, en plus de l'exporter. */
+  pickedActions?: (rows: RecordRow[]) => ReactNode;
+}) {
+  const conf = KINDS[kind];
+  const STORE = conf.store;
   const grid = useRef<GridApi<RecordRow> | null>(null);
   const [picked, setPicked] = useState<RecordRow[]>([]);
   const [shown, setShown] = useState<RecordRow[]>(rows);
@@ -266,7 +371,7 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
   /* La rangée de filtres s'ouvre et se ferme d'un bouton ; on s'en souvient dans ce navigateur. */
   const [filtersOn, setFiltersOnState] = useState(() => {
     try {
-      return localStorage.getItem('dir-org-filters') === 'on';
+      return localStorage.getItem(conf.filters) === 'on';
     } catch {
       return false;
     }
@@ -274,7 +379,7 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
   const setFiltersOn = (on: boolean) => {
     setFiltersOnState(on);
     try {
-      localStorage.setItem('dir-org-filters', on ? 'on' : 'off');
+      localStorage.setItem(conf.filters, on ? 'on' : 'off');
     } catch {
       /* rien à garder */
     }
@@ -286,7 +391,7 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
   /* Les colonnes, avec pour celles aux valeurs fermées la liste de ce qui s'y trouve. */
   const columnDefs = useMemo<ColDef<RecordRow>[]>(
     () =>
-      COLUMNS.map((c) => {
+      conf.columns.map((c) => {
         const valuesOf = c.colId ? CHOICES[c.colId] : undefined;
         if (!valuesOf) return c;
         return {
@@ -297,7 +402,7 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
           suppressFloatingFilterButton: true,
         };
       }),
-    [rows],
+    [rows, conf.columns],
   );
 
   /* Ce que le panneau montre : les colonnes dans l'ordre de la grille. */
@@ -315,7 +420,7 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
   }, []);
 
   const remember = useCallback(() => {
-    if (grid.current) saveState(grid.current.getColumnState());
+    if (grid.current) saveState(STORE, grid.current.getColumnState());
     readColumns();
   }, [readColumns]);
 
@@ -348,13 +453,14 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
   };
 
   const totals = useMemo(() => {
+    if (kind !== 'org') return '';
     const byCurrency = new Map<string, number>();
     for (const r of shown) {
       const rev = revenueOf(r);
       if (rev) byCurrency.set(rev.currency, (byCurrency.get(rev.currency) ?? 0) + rev.amount);
     }
     return [...byCurrency.entries()].map(([c, n]) => `${short(n)} ${c}`).join(' · ');
-  }, [shown]);
+  }, [shown, kind]);
 
   const exportRows = (list: RecordRow[]) => {
     const api = grid.current;
@@ -367,7 +473,7 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
         return v === null || v === undefined ? '' : (v as Cell);
       }),
     );
-    download(toWorkbook([{ name: 'Organisations', rows: [head, ...body] }]), 'organisations.xlsx');
+    download(toWorkbook([{ name: conf.sheet, rows: [head, ...body] }]), conf.file);
   };
 
   return (
@@ -376,6 +482,7 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
         {picked.length > 0 && (
           <span className="grid-picked">
             {picked.length} selected
+            {pickedActions?.(picked)}
             <button className="btn sm" onClick={() => exportRows(picked)}>
               <Icon name="download" size={13} /> Export selection
             </button>
@@ -422,11 +529,11 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
             animateRows={false}
             onGridReady={(e) => {
               grid.current = e.api;
-              const kept = loadState();
+              const kept = loadState(STORE);
               if (kept) e.api.applyColumnState({ state: kept, applyOrder: true });
               readColumns();
               /* Puis celle du compte, qui fait foi. */
-              void fetchState().then((saved) => {
+              void fetchState(STORE).then((saved) => {
                 if (!saved || e.api.isDestroyed()) return;
                 e.api.applyColumnState({ state: saved, applyOrder: true });
                 try {
@@ -438,7 +545,11 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
               });
               refreshCounts();
             }}
-            onSelectionChanged={(e) => setPicked(e.api.getSelectedRows())}
+            onSelectionChanged={(e) => {
+              const now = e.api.getSelectedRows();
+              setPicked(now);
+              onPicked?.(now);
+            }}
             onModelUpdated={refreshCounts}
             onColumnMoved={(e) => e.finished && remember()}
             onColumnResized={(e) => e.finished && remember()}
@@ -493,7 +604,7 @@ export function OrgGrid({ rows }: { rows: RecordRow[] }) {
             >
               Default columns
             </button>
-            <p className="faint" style={{ fontSize: 12, margin: 0 }}>Drag a header to move it, its edge to resize it. Kept in this browser.</p>
+            <p className="faint" style={{ fontSize: 12, margin: 0 }}>Drag a header to move it, its edge to resize it. Kept on your account.</p>
           </aside>
         )}
       </div>

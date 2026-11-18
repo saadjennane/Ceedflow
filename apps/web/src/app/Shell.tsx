@@ -1,4 +1,4 @@
-import { ORG_SECTIONS, STAFF_ROLE_LABEL } from '@ceed/shared';
+import { ORG_SECTIONS, PERSON_SECTIONS, STAFF_ROLE_LABEL } from '@ceed/shared';
 import { Suspense, useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAccount } from '../lib/account';
@@ -32,23 +32,6 @@ export function Shell() {
   const [folded, setFolded] = useSidebar();
   const { me, loading } = useAccount();
   const navigate = useNavigate();
-  const where = useLocation();
-  /* Le sous-menu des organisations se replie ; on s'en souvient dans ce navigateur. */
-  const [orgsOpen, setOrgsOpenState] = useState(() => {
-    try {
-      return localStorage.getItem('nav-orgs-open') !== 'no';
-    } catch {
-      return true;
-    }
-  });
-  const setOrgsOpen = (open: boolean) => {
-    setOrgsOpenState(open);
-    try {
-      localStorage.setItem('nav-orgs-open', open ? 'yes' : 'no');
-    } catch {
-      /* rien à garder */
-    }
-  };
   const staffRole = me?.account.staffRole ?? null;
   /* Somebody at CEED is often also on a panel — the ecosystem is small enough
      that the person running the programme judges in it too. The route already
@@ -117,42 +100,9 @@ export function Shell() {
         </NavLink>
 
         <div className="eyebrow nav-group">Community</div>
-        <div className="nav-row">
-          <NavLink to="/organisations" className={link} title="Organisations" onMouseEnter={() => prefetchDirectory('org')} onFocus={() => prefetchDirectory('org')}>
-            <Icon name="layers" />
-            <span className="nav-label">Organisations</span>
-          </NavLink>
-          {!folded && (
-            <button
-              className="nav-toggle"
-              onClick={() => setOrgsOpen(!orgsOpen)}
-              aria-expanded={orgsOpen}
-              aria-label={orgsOpen ? 'Fold the organisation types' : 'Show the organisation types'}
-              title={orgsOpen ? 'Fold' : 'Show the types'}
-            >
-              <Icon name={orgsOpen ? 'chevronUp' : 'chevronDown'} size={13} />
-            </button>
-          )}
-        </div>
-        {/* Organisations montre tout ; chaque rubrique en est la liste sur un rôle. */}
-        {!folded && orgsOpen && (
-          <div className="nav-sub">
-            {ORG_SECTIONS.map((s) => (
-              <Link
-                key={s.role}
-                onMouseEnter={() => prefetchDirectory('org')}
-                to={`/organisations?role=${s.role}`}
-                className={where.pathname === '/organisations' && new URLSearchParams(where.search).get('role') === s.role ? 'on' : ''}
-              >
-                {s.label}
-              </Link>
-            ))}
-          </div>
-        )}
-        <NavLink to="/individuals" className={link} title="Individuals" onMouseEnter={() => prefetchDirectory('person')} onFocus={() => prefetchDirectory('person')}>
-          <Icon name="users" />
-          <span className="nav-label">Individuals</span>
-        </NavLink>
+        {/* Chaque annuaire montre tout ; chaque rubrique en est la liste sur un rôle. */}
+        <DirectoryNav kind="org" to="/organisations" label="Organisations" icon="layers" sections={ORG_SECTIONS} folded={folded} link={link} />
+        <DirectoryNav kind="person" to="/individuals" label="Individuals" icon="users" sections={PERSON_SECTIONS} folded={folded} link={link} />
         {COMMUNITY_LATER.map((item) => (
           <Soon key={item.label} {...item} />
         ))}
@@ -241,5 +191,77 @@ function Soon({ label, icon }: { label: string; icon: string }) {
       <Icon name={icon} />
       <span className="nav-label">{label}</span>
     </span>
+  );
+}
+
+/**
+ * Un annuaire dans la barre latérale : son lien, qui montre tout, et ses
+ * rubriques en dessous — repliables, et on s'en souvient dans ce navigateur.
+ */
+function DirectoryNav({
+  kind,
+  to,
+  label,
+  icon,
+  sections,
+  folded,
+  link,
+}: {
+  kind: 'org' | 'person';
+  to: string;
+  label: string;
+  icon: 'layers' | 'users';
+  sections: readonly { label: string; role: string }[];
+  folded: boolean;
+  link: (p: { isActive: boolean }) => string;
+}) {
+  const where = useLocation();
+  const key = `nav-${kind}-open`;
+  const [open, setOpenState] = useState(() => {
+    try {
+      return localStorage.getItem(key) !== 'no';
+    } catch {
+      return true;
+    }
+  });
+  const setOpen = (v: boolean) => {
+    setOpenState(v);
+    try {
+      localStorage.setItem(key, v ? 'yes' : 'no');
+    } catch {
+      /* rien à garder */
+    }
+  };
+  const warm = () => prefetchDirectory(kind);
+  const here = where.pathname === to ? new URLSearchParams(where.search).get('role') : null;
+  return (
+    <>
+      <div className="nav-row">
+        <NavLink to={to} className={link} title={label} onMouseEnter={warm} onFocus={warm}>
+          <Icon name={icon} />
+          <span className="nav-label">{label}</span>
+        </NavLink>
+        {!folded && (
+          <button
+            className="nav-toggle"
+            onClick={() => setOpen(!open)}
+            aria-expanded={open}
+            aria-label={open ? `Fold the ${label.toLowerCase()} types` : `Show the ${label.toLowerCase()} types`}
+            title={open ? 'Fold' : 'Show the types'}
+          >
+            <Icon name={open ? 'chevronUp' : 'chevronDown'} size={13} />
+          </button>
+        )}
+      </div>
+      {!folded && open && (
+        <div className="nav-sub">
+          {sections.map((s) => (
+            <Link key={s.role} onMouseEnter={warm} to={`${to}?role=${encodeURIComponent(s.role)}`} className={here === s.role ? 'on' : ''}>
+              {s.label}
+            </Link>
+          ))}
+        </div>
+      )}
+    </>
   );
 }

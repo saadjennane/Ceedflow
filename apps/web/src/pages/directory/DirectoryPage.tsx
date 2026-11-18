@@ -1,4 +1,4 @@
-import { ORG_SECTIONS, profileDone, profileOf, rolesFor, type DirectoryRecord, type RecordAccount, type RecordKind } from '@ceed/shared';
+import { ORG_SECTIONS, PERSON_SECTIONS, profileDone, profileOf, type DirectoryRecord, type RecordAccount, type RecordKind } from '@ceed/shared';
 import { Suspense, lazy, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../lib/api';
@@ -12,9 +12,9 @@ import { ImportModal } from './ImportModal';
 import { InviteManyModal } from './InviteManyModal';
 import { RecordModal } from './RecordModal';
 import { ColumnFilters, matchesColumns, type ColumnPicks } from './ColumnFilters';
-import { OrgCards, PersonCards, PersonTable, Tiles, type Tile } from './DirectoryViews';
+import { OrgCards, PersonCards, Tiles, type Tile } from './DirectoryViews';
 /* AG Grid pèse son poids : chargé seulement quand la grille s'affiche. */
-const OrgGrid = lazy(() => import('./OrgGrid').then((m) => ({ default: m.OrgGrid })));
+const DirectoryGrid = lazy(() => import('./DirectoryGrid').then((m) => ({ default: m.DirectoryGrid })));
 
 /** Ce qu'une audience de sourcing rend : qui on écrit, et qui reste muet. */
 interface AudienceView {
@@ -99,18 +99,7 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
   /* Le rôle vient de l'adresse : la barre latérale y mène (« Startups »,
      « Donors »…), et la liste se partage telle qu'on la voit. */
   const role = params.get('role');
-  const setRole = (r: string | null) =>
-    setParams((p) => {
-      const next = new URLSearchParams(p);
-      if (r) next.set('role', r);
-      else next.delete('role');
-      return next;
-    });
-  const section = isOrgKind(kind) ? ORG_SECTIONS.find((x) => x.role === role) : undefined;
-  /* Avec ou sans compte : la question qu'on se pose en préparant une invitation
-     — qui a déjà une porte, et à qui il reste à en ouvrir une. Une organisation
-     n'a pas de compte, c'est celui de qui la tient. */
-  const [hasAccount, setHasAccount] = useState<'all' | 'with' | 'without'>('all');
+  const section = (isOrgKind(kind) ? ORG_SECTIONS : PERSON_SECTIONS).find((x) => x.role === role);
   const [query, setQuery] = useState('');
   /* Un filtre par colonne du tableau. */
   const [columnPicks, setColumnPicks] = useState<ColumnPicks>({});
@@ -170,13 +159,12 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
 
   const rows = useMemo(() => {
     /* Pas de recherche sur la grille : une recherche tapée sur les cartes ne la filtre pas en cachette. */
-    const needle = isOrg && view === 'table' ? '' : query.trim().toLowerCase();
+    const needle = view === 'table' ? '' : query.trim().toLowerCase();
     return all.filter(
       (r) =>
         (!fromAudience || fromAudience.has(r.id)) &&
-        (hasAccount === 'all' || (hasAccount === 'with' ? Boolean(r.account) : !r.account)) &&
         presetOf(preset, r) &&
-        (isOrg && view === 'table' ? true : matchesColumns(isOrg, columnPicks, r)) &&
+        (view === 'table' ? true : matchesColumns(isOrg, columnPicks, r)) &&
         (!role || (role === '__none' ? !r.roles.length : r.roles.includes(role))) &&
         (!needle ||
           r.name.toLowerCase().includes(needle) ||
@@ -186,7 +174,7 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [all, role, query, audience.data, only, hasAccount, preset, columnPicks, isOrg, view]);
+  }, [all, role, query, audience.data, only, preset, columnPicks, isOrg, view]);
 
   const shown = fromAudience ? all.filter((r) => fromAudience.has(r.id)) : all;
   /* Le résumé, compté sur ce que la page montre. */
@@ -209,22 +197,7 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
         { key: 'active', label: 'Active accounts', value: pct(shown.filter((r) => presetOf('active', r)).length, shown.length), note: `${shown.filter((r) => r.account && r.account.state !== 'claimed').length} invited, not in yet` },
       ];
 
-  /* Comptés sur ce que la page montre : « All 4 » au-dessus d'une seule ligne
-     parce qu'on arrive d'une audience de quatre est un compteur qui parle
-     d'autre chose que de ce qu'on a sous les yeux. */
-  const countOf = (r: string) => shown.filter((x) => (r === '__none' ? !x.roles.length : x.roles.includes(r))).length;
-
-  const toggle = (id: string) =>
-    setPicked((was) => {
-      const next = new Set(was);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  /* Select-all means what is on screen, not what is in the directory: the
-     filters above are how somebody narrows to the people they mean, and a box
-     that quietly took the other three hundred would be a trap. */
-  const allShown = rows.length > 0 && rows.every((r) => picked.has(r.id));
+  /* Cocher dans la grille, c'est ce qui est à l'écran : ses filtres disent qui on vise. */
   const chosen = all.filter((r) => picked.has(r.id));
 
   return (
@@ -310,64 +283,13 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
           </div>
         )}
 
-        {/* Les organisations se lisent dans la grille : pas de tuiles de chiffres au-dessus. */}
-        {!isOrg && all.length > 0 && <Tiles tiles={tiles} on={preset} onPick={setPreset} />}
-
-        {!isOrg && (
-        <div className="row wrap">
-          <div className="work-pick">
-            <button className={!role ? 'track on' : 'track'} onClick={() => setRole(null)}>
-              All <span className="num">{shown.length}</span>
-            </button>
-            {rolesFor(kind).map((r) => (
-              <button key={r} className={role === r ? 'track on' : 'track'} onClick={() => setRole(r)}>
-                {isOrg ? ORG_SECTIONS.find((x) => x.role === r)?.label ?? `${r}s` : r} <span className="num">{countOf(r)}</span>
-              </button>
-            ))}
-            {!isOrg && (
-              <button
-                className={role === '__none' ? 'track on' : 'track'}
-                onClick={() => setRole('__none')}
-                title="People known through an organisation rather than a role"
-              >
-                Contacts <span className="num">{countOf('__none')}</span>
-              </button>
-            )}
-          </div>
-
-          {/* Qui peut déjà entrer, et à qui il reste à ouvrir. Sur les individus
-              seulement : une organisation ne signe jamais, c'est la personne qui
-              tient sa page qui a la clé. */}
-          {!isOrg && (
-            <div className="work-pick">
-              {(
-                [
-                  ['all', 'Any account'],
-                  ['with', 'With an account'],
-                  ['without', 'Without'],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  className={hasAccount === value ? 'track on' : 'track'}
-                  onClick={() => setHasAccount(value)}
-                >
-                  {label}{' '}
-                  {value !== 'all' && (
-                    <span className="num">
-                      {shown.filter((r) => (value === 'with' ? Boolean(r.account) : !r.account)).length}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        )}
+        {/* L'annuaire se lit dans la grille : ni tuiles de chiffres ni rangée de rôles
+            au-dessus — les rôles sont dans la barre latérale, le reste en colonnes. */}
+        {view === 'cards' && !isOrg && all.length > 0 && <Tiles tiles={tiles} on={preset} onPick={setPreset} />}
 
         <div className="row wrap">
           {/* La grille filtre sous chaque colonne : la recherche ne sert plus qu'aux cartes et aux individus. */}
-          {!(isOrg && view === 'table') && (
+          {view !== 'table' && (
             <SearchBox
               placeholder={isOrg ? 'Search an organisation, a city, a tag…' : 'Search a name, an email, a city…'}
               value={query}
@@ -381,7 +303,7 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
             <button className={view === 'table' ? 'on' : ''} onClick={() => setView('table')}>Table</button>
             <button className={view === 'cards' ? 'on' : ''} onClick={() => setView('cards')}>Cards</button>
           </div>
-          {!isOrg && picked.size > 0 && (
+          {!isOrg && view === 'cards' && picked.size > 0 && (
             <>
               <div className="spacer" />
               <button className="linkish" style={{ fontSize: 12.5 }} onClick={() => setPicked(new Set())}>
@@ -395,7 +317,7 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
         </div>
 
         {/* La grille filtre sous chaque en-tête : la rangée de filtres ne sert qu'aux cartes et aux individus. */}
-        {all.length > 0 && !(isOrg && view === 'table') && (
+        {all.length > 0 && view !== 'table' && (
           <ColumnFilters isOrg={isOrg} rows={shown} picks={columnPicks} onChange={setColumnPicks} />
         )}
 
@@ -429,25 +351,24 @@ export function DirectoryPage({ kind }: { kind: RecordKind }) {
           <div className="empty">Nothing matches these filters.</div>
         ) : view === 'cards' ? (
           isOrg ? <OrgCards rows={rows} /> : <PersonCards rows={rows} />
-        ) : isOrg ? (
-          <Suspense fallback={<div className="empty">Loading the grid…</div>}>
-            <OrgGrid rows={rows} />
-          </Suspense>
         ) : (
-          <PersonTable
-            rows={rows}
-            picked={picked}
-            onToggle={toggle}
-            allShown={allShown}
-            onToggleAll={() =>
-              setPicked((was) => {
-                const next = new Set(was);
-                if (allShown) rows.forEach((r) => next.delete(r.id));
-                else rows.forEach((r) => next.add(r.id));
-                return next;
-              })
-            }
-          />
+          <Suspense fallback={<div className="dir-loading" aria-busy="true"><span /><span /><span /></div>}>
+            <DirectoryGrid
+              key={kind}
+              kind={kind === 'org' ? 'org' : 'person'}
+              rows={rows}
+              onPicked={isOrg ? undefined : (list) => setPicked(new Set(list.map((r) => r.id)))}
+              pickedActions={
+                isOrg
+                  ? undefined
+                  : (list) => (
+                      <button className="btn primary sm" onClick={() => setInviting(true)}>
+                        <Icon name="send" size={13} /> Invite {list.length}
+                      </button>
+                    )
+              }
+            />
+          </Suspense>
         )}
       </div>
 

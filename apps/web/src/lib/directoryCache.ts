@@ -26,8 +26,8 @@ export function loadList<T>(kind: string): Promise<T> {
   return p;
 }
 
-/** Au survol d'un lien : la liste, et pour les organisations le code de la grille. */
+/** Au survol d'un lien : la liste, et le code de la grille. */
 export function prefetchDirectory(kind: 'org' | 'person') {
   if (!lists.has(kind)) void loadList(kind).catch(() => undefined);
-  if (kind === 'org') void import('../pages/directory/OrgGrid').catch(() => undefined);
+  void import('../pages/directory/DirectoryGrid').catch(() => undefined);
 }

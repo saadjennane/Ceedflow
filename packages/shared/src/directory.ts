@@ -63,6 +63,15 @@ export const ORG_SECTIONS = [
   { label: 'Partners', role: 'Partner' },
   { label: 'Suppliers', role: 'Supplier' },
 ] as const;
+
+/** Les rubriques des individus : un rôle chacune ; « Contacts », ceux qui n'en ont aucun. */
+export const PERSON_SECTIONS = [
+  { label: 'Mentors', role: 'Mentor' },
+  { label: 'Investors', role: 'Investor' },
+  { label: 'Jury', role: 'Jury' },
+  { label: 'CEED team', role: 'CEED team' },
+  { label: 'Contacts', role: '__none' },
+] as const;
 export const PERSON_ROLES = ['Mentor', 'Investor', 'Jury', 'CEED team'] as const;
 
 export const rolesFor = (kind: RecordKind): readonly string[] => (kind === 'org' ? ORG_ROLES : PERSON_ROLES);
