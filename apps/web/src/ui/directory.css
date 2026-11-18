@@ -1334,3 +1334,124 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
 .mh-when-mini.late { color: var(--stop); }
 .mh-when-mini.today { color: var(--warn); }
 .mh-when-mini.later { color: var(--ink-3); }
+
+/* ------------------------------------------------------------------ */
+/* La grille des organisations (AG Grid)                                */
+/* ------------------------------------------------------------------ */
+
+.grid-shell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  border-radius: 12px;
+}
+.grid-main {
+  flex: 999 1 640px;
+  min-width: 0;
+  height: max(480px, calc(100vh - 330px));
+}
+.grid-panel {
+  flex: 1 1 220px;
+  max-width: 260px;
+  margin-left: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-self: flex-start;
+}
+.grid-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+.grid-panel-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  overflow: auto;
+}
+.grid-panel-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 34px;
+}
+.grid-panel-row label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.grid-panel-row input {
+  accent-color: var(--blue);
+  width: 15px;
+  height: 15px;
+}
+.grid-status {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  padding: 2px 4px;
+}
+.grid-picked {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 6px 4px 12px;
+  border-radius: 10px;
+  background: var(--blue-soft);
+  color: var(--blue-press);
+}
+.grid-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+  line-height: 1.25;
+}
+.grid-rev {
+  white-space: nowrap;
+}
+.grid-main .dir-ring {
+  vertical-align: middle;
+}
+
+/* Le sous-menu des organisations, dans la barre latérale. */
+.nav-sub {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 4px 28px;
+  border-left: 1px solid var(--line);
+}
+.nav-sub a {
+  font-size: 13px;
+  color: var(--ink-2);
+  padding: 5px 10px;
+  border-radius: 0 8px 8px 0;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+}
+.nav-sub a:hover {
+  color: var(--ink);
+  background: var(--wash);
+}
+.nav-sub a.on {
+  color: var(--blue);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--blue);
+}

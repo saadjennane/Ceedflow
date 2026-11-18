@@ -36,7 +36,7 @@ export function Tiles({ tiles, on, onPick }: { tiles: Tile[]; on: string; onPick
   );
 }
 
-const word = (list: readonly { key: string; en: string }[], key: string) => list.find((c) => c.key === key)?.en ?? '';
+export const word = (list: readonly { key: string; en: string }[], key: string) => list.find((c) => c.key === key)?.en ?? '';
 
 /** Le dernier chiffre d'affaires connu, et sa tendance sur l'exercice d'avant. */
 export function revenueOf(r: RecordRow): { amount: number; currency: string; delta: number | null } | null {
@@ -48,7 +48,7 @@ export function revenueOf(r: RecordRow): { amount: number; currency: string; del
   return { amount: last.amount!, currency: last.currency, delta };
 }
 
-const short = (n: number) =>
+export const short = (n: number) =>
   n >= 1_000_000 ? `${(n / 1_000_000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} M` : n >= 1_000 ? `${Math.round(n / 1000)} k` : String(n);
 
 /** Le bandeau d'une carte, à la couleur de l'organisation. */
@@ -57,7 +57,7 @@ function Band({ r }: { r: RecordRow }) {
   return <span className="dir-band" style={{ background: `linear-gradient(115deg, ${c}, var(--cyan))` }} />;
 }
 
-function Mark({ r, size = 36 }: { r: RecordRow; size?: number }) {
+export function Mark({ r, size = 36 }: { r: RecordRow; size?: number }) {
   return r.logoUploadId ? (
     <img className="dir-logo" style={{ width: size, height: size }} src={`/api/uploads/${r.logoUploadId}`} alt="" />
   ) : (
@@ -67,7 +67,7 @@ function Mark({ r, size = 36 }: { r: RecordRow; size?: number }) {
   );
 }
 
-function Programmes({ list }: { list: RecordRow['programmes'] }) {
+export function Programmes({ list }: { list: RecordRow['programmes'] }) {
   if (!list.length) return <span className="faint">—</span>;
   const word = { now: 'Taking part', alumni: 'Alumni', applied: 'Applied' };
   return (
@@ -82,7 +82,7 @@ function Programmes({ list }: { list: RecordRow['programmes'] }) {
   );
 }
 
-function SheetRing({ value }: { value: number }) {
+export function SheetRing({ value }: { value: number }) {
   const colour = value === 100 ? 'var(--ok)' : value >= 60 ? 'var(--blue)' : 'var(--warn)';
   return (
     <span className="dir-ring" style={{ background: `conic-gradient(${colour} ${value}%, var(--wash) 0)` }} title={`Sheet ${value} % complete`}>
@@ -91,12 +91,12 @@ function SheetRing({ value }: { value: number }) {
   );
 }
 
-function AccountDot({ account }: { account: RecordAccount | null }) {
+export function AccountDot({ account }: { account: RecordAccount | null }) {
   const tone = !account ? '' : account.state === 'claimed' ? 'ok' : account.state === 'disabled' ? '' : 'warn';
   return <span className={`dir-dot ${tone}`} title={account ? account.state : 'No account'} />;
 }
 
-function Trend({ delta }: { delta: number | null }) {
+export function Trend({ delta }: { delta: number | null }) {
   if (delta === null) return null;
   return <span className={delta >= 0 ? 'dir-up' : 'dir-down'}>{delta >= 0 ? '▲ +' : '▼ '}{Math.abs(delta)} %</span>;
 }

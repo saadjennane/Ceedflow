@@ -48,7 +48,21 @@ export type RecordKind = (typeof RECORD_KINDS)[number];
  * per role come later — the model leaves room, the screens do not ask for it.
  */
 /** « Funder » : un bailleur qui finance des programmes (BAD, AFD, UE…) — suivi dans Funding. « Investor » finance des startups. */
-export const ORG_ROLES = ['Startup', 'Corporate', 'Investor', 'Funder', 'Institution', 'Partner'] as const;
+export const ORG_ROLES = ['Startup', 'Corporate', 'Investor', 'Funder', 'Institution', 'Partner', 'Supplier'] as const;
+
+/**
+ * Les rubriques des organisations, sous « Organisations » dans la barre
+ * latérale : chacune est la liste filtrée sur un rôle. « Donors » sont les
+ * bailleurs — le rôle Funder ; les institutions restent dans « tout ».
+ */
+export const ORG_SECTIONS = [
+  { label: 'Startups', role: 'Startup' },
+  { label: 'Corporates', role: 'Corporate' },
+  { label: 'Investors', role: 'Investor' },
+  { label: 'Donors', role: 'Funder' },
+  { label: 'Partners', role: 'Partner' },
+  { label: 'Suppliers', role: 'Supplier' },
+] as const;
 export const PERSON_ROLES = ['Mentor', 'Investor', 'Jury', 'CEED team'] as const;
 
 export const rolesFor = (kind: RecordKind): readonly string[] => (kind === 'org' ? ORG_ROLES : PERSON_ROLES);

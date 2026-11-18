@@ -1,6 +1,6 @@
-import { STAFF_ROLE_LABEL } from '@ceed/shared';
-import { useEffect } from 'react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { ORG_SECTIONS, STAFF_ROLE_LABEL } from '@ceed/shared';
+import { Suspense, useEffect } from 'react';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAccount } from '../lib/account';
 import { api } from '../lib/api';
 import { stillWaiting } from '../lib/panels';
@@ -31,6 +31,7 @@ export function Shell() {
   const [folded, setFolded] = useSidebar();
   const { me, loading } = useAccount();
   const navigate = useNavigate();
+  const where = useLocation();
   const staffRole = me?.account.staffRole ?? null;
   /* Somebody at CEED is often also on a panel — the ecosystem is small enough
      that the person running the programme judges in it too. The route already
@@ -103,6 +104,20 @@ export function Shell() {
           <Icon name="layers" />
           <span className="nav-label">Organisations</span>
         </NavLink>
+        {/* Organisations montre tout ; chaque rubrique en est la liste sur un rôle. */}
+        {!folded && (
+          <div className="nav-sub">
+            {ORG_SECTIONS.map((s) => (
+              <Link
+                key={s.role}
+                to={`/organisations?role=${s.role}`}
+                className={where.pathname === '/organisations' && new URLSearchParams(where.search).get('role') === s.role ? 'on' : ''}
+              >
+                {s.label}
+              </Link>
+            ))}
+          </div>
+        )}
         <NavLink to="/individuals" className={link} title="Individuals">
           <Icon name="users" />
           <span className="nav-label">Individuals</span>
@@ -180,7 +195,10 @@ export function Shell() {
       </nav>
 
       <div className="main">
-        <Outlet />
+        {/* La page se charge à part : le cadre reste, sans clignoter. */}
+        <Suspense fallback={<div className="empty" style={{ padding: 40 }} />}>
+          <Outlet />
+        </Suspense>
       </div>
     </div>
   );
