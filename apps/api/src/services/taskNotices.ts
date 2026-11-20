@@ -30,6 +30,7 @@ import { reachFor } from './people.js';
 import { post } from './mail.js';
 import { publicOrigin } from './platform.js';
 import { getTask } from './tasks.js';
+import { centersOf, currentCenter, inCenter } from './centers.js';
 
 /** L'heure à laquelle un rappel de retard part — la même que les autres. */
 const SEND_HOUR_UTC = Number(process.env.SEND_HOUR_UTC ?? 7);
@@ -123,8 +124,11 @@ export const recipientsOf = (task: Task, except: string | null = null): string[]
  * Annonce une tâche, une fois : à celui à qui elle est confiée, et aux owners
  * — sauf à qui vient de la créer, qui la connaît.
  */
+/** Le centre d'une tâche : ses lettres partent avec ses textes, et à son nom. */
+const centerOfTask = async (taskId: string) => (await centersOf('task', taskId))[0] ?? currentCenter();
+
 export async function tellOwner(taskId: string, except: string | null = null): Promise<Told> {
-  const letter = await houseLetter('task_given');
+  const letter = await houseLetter('task_given', await centerOfTask(taskId));
   if (!letter.enabled) return { told: false, why: 'off' };
 
   const task = await getTask(taskId);
@@ -169,7 +173,7 @@ export async function tellOwner(taskId: string, except: string | null = null): P
  * la valider. Une lettre de la maison chacune, modifiable dans les réglages.
  */
 export async function tellWaiting(taskId: string, kind: 'task_stuck' | 'task_to_validate', recordId: string, byName: string): Promise<boolean> {
-  const letter = await houseLetter(kind);
+  const letter = await houseLetter(kind, await centerOfTask(taskId));
   if (!letter.enabled) return false;
   const task = await getTask(taskId);
   if (!task) return false;
@@ -218,7 +222,7 @@ export async function tellOwnersAtOnce(
   taskIds: string[],
   context: { meeting: string; byName: string },
 ): Promise<{ told: number; notTold: number }> {
-  const letter = await houseLetter('tasks_given');
+  const letter = await houseLetter('tasks_given', taskIds[0] ? await centerOfTask(taskIds[0]) : currentCenter());
   if (!letter.enabled || !taskIds.length) return { told: 0, notTold: taskIds.length };
   const tasks = (await Promise.all(taskIds.map((id) => getTask(id)))).filter((t): t is Task => Boolean(t) && !t!.toldAt);
   const byOwner = new Map<string, Task[]>();
@@ -305,8 +309,6 @@ export async function sendLateDigests(now = new Date()): Promise<{ sent: number;
      jour : sans cette garde, le rappel part à une heure du matin. */
   if (now.getUTCHours() < SEND_HOUR_UTC) return { sent: 0, skipped: 0 };
 
-  const letter = await houseLetter('task_late');
-  if (!letter.enabled) return { sent: 0, skipped: 0 };
 
   const owners = await all<{ ownerId: string }>(
     `select distinct r.id as "ownerId" from tasks t
@@ -328,8 +330,8 @@ export async function sendLateDigests(now = new Date()): Promise<{ sent: number;
     }
 
     /* Réclamées pour cette personne seulement : une tâche partagée prévient chacun. */
-    const due = await all<LateRow>(
-      `select t.id, t.title, t.due_on::text as "dueOn" from tasks t
+    const due = await all<LateRow & { centerId: string }>(
+      `select t.id, t.title, t.due_on::text as "dueOn", t.center_id as "centerId" from tasks t
         where ${LATE} and $1 in ${RECIPIENTS}`,
       [ownerId],
     );
@@ -344,6 +346,14 @@ export async function sendLateDigests(now = new Date()): Promise<{ sent: number;
     ).map((r) => r.taskId);
     const claimed = due.filter((t) => claimedIds.includes(t.id));
     if (!claimed.length) continue;
+    /* La lettre du centre de la plus ancienne : un rappel par personne, signé d'un centre. */
+    const center = [...claimed].sort((a, b) => a.dueOn.localeCompare(b.dueOn))[0]!.centerId;
+    const letter = await houseLetter('task_late', center);
+    if (!letter.enabled) {
+      await all(`delete from task_late_letters where record_id = $1 and task_id = any($2::text[])`, [ownerId, claimed.map((t) => t.id)]);
+      skipped += 1;
+      continue;
+    }
 
     const lines = claimed
       .sort((a, b) => a.dueOn.localeCompare(b.dueOn))
@@ -358,14 +368,16 @@ export async function sendLateDigests(now = new Date()): Promise<{ sent: number;
       lien: await linkFor(hearer.accountFor),
     };
 
-    const id = await post({
-      kind: 'task_late',
-      to: hearer.email,
-      toName: hearer.toName,
-      subject: fillTemplate(letter.subject, values),
-      body: fillTemplate(letter.body, values),
-      recordId: ownerId,
-    });
+    const id = await inCenter(center, () =>
+      post({
+        kind: 'task_late',
+        to: hearer.email,
+        toName: hearer.toName,
+        subject: fillTemplate(letter.subject, values),
+        body: fillTemplate(letter.body, values),
+        recordId: ownerId,
+      }),
+    );
 
     if (id) {
       sent += 1;

@@ -14,7 +14,7 @@
 import { newId, redactPasswords } from '@ceed/shared';
 import { db } from '../db/client.js';
 import { inTestContext, isTestAddress } from './testIdentity.js';
-import { currentCenter } from './centers.js';
+import { centersOf, currentCenter, getCenter } from './centers.js';
 
 export type OutboxState = 'queued' | 'held' | 'sent' | 'failed' | 'bounced';
 
@@ -46,6 +46,8 @@ export interface Attachment {
 
 export interface OutboxRow extends Letter {
   id: string;
+  /** Le centre d'où elle part : il la signe, et reçoit les réponses. */
+  centerId?: string;
   state: OutboxState;
   error: string;
   attempts: number;
@@ -143,9 +145,13 @@ export async function post(letter: Letter): Promise<string | null> {
     const fenced = (await inTestContext(letter)) && !(await isTestAddress(to));
     const held = fenced || (await suppressed(to)) || !sendingIsLive();
     const id = newId('msg');
+    /* Le centre de la lettre : celui du programme dont elle parle, sinon celui où l'on travaille. */
+    const [ofBlock] = letter.blockId ? await centersOf('block', letter.blockId) : [];
+    const [ofCandidate] = !ofBlock && letter.candidateId ? await centersOf('candidate', letter.candidateId) : [];
+    const centerId = ofBlock ?? ofCandidate ?? currentCenter();
     await (await db()).query(
-      `insert into outbox (id, kind, to_email, to_name, subject, body, record_id, block_id, candidate_id, state, send_after, error, attachments)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::text::jsonb)`,
+      `insert into outbox (id, kind, to_email, to_name, subject, body, record_id, block_id, candidate_id, state, send_after, error, attachments, center_id)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::text::jsonb,$14)`,
       [
         id,
         letter.kind,
@@ -160,6 +166,7 @@ export async function post(letter: Letter): Promise<string | null> {
         letter.sendAfter ?? null,
         fenced ? 'Blocked: a test programme writes only to test addresses.' : '',
         JSON.stringify(letter.attachments ?? []),
+        centerId,
       ],
     );
     return id;
@@ -187,7 +194,23 @@ interface Sent {
  * dependency that ships in the image for one POST is a dependency to keep
  * up to date for one POST.
  */
+/**
+ * Qui signe : le nom du centre devant l'adresse de la plateforme, et sa propre
+ * adresse de réponse quand il en a une. Sans réglage, la signature d'avant.
+ */
+async function signatureOf(row: OutboxRow): Promise<{ from: string; replyTo: string }> {
+  const center = row.centerId ? await getCenter(row.centerId) : null;
+  const address = (from().match(/<([^>]+)>/)?.[1] ?? from()).trim();
+  const name = center?.mailName.trim();
+  const reply = center?.replyTo.trim();
+  return {
+    from: name ? `${name.replace(/[<>"]/g, '')} <${address}>` : from(),
+    replyTo: reply ? (domainOf(reply) !== domainOf(row.to) ? reply : '') : replyFor(row.to),
+  };
+}
+
 async function handOver(row: OutboxRow): Promise<{ ok: true; id: string } | { ok: false; why: string }> {
+  const signed = await signatureOf(row);
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -195,11 +218,11 @@ async function handOver(row: OutboxRow): Promise<{ ok: true; id: string } | { ok
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      from: from(),
+      from: signed.from,
       to: [row.toName ? `${row.toName} <${row.to}>` : row.to],
       subject: row.subject,
       text: row.body,
-      ...(replyFor(row.to) ? { reply_to: replyFor(row.to) } : {}),
+      ...(signed.replyTo ? { reply_to: signed.replyTo } : {}),
       ...(row.attachments?.length
         ? {
             attachments: row.attachments.map((a) => ({
@@ -231,7 +254,8 @@ export async function flush(limit = 25): Promise<{ sent: number; failed: number 
   const conn = await db();
   const rows = await conn.query<OutboxRow & { to: string }>(
     `select id, kind, to_email as "to", to_name as "toName", subject, body,
-            state, error, attempts, created_at::text as "createdAt", sent_at::text as "sentAt", attachments
+            state, error, attempts, created_at::text as "createdAt", sent_at::text as "sentAt", attachments,
+            center_id as "centerId"
        from outbox
       where state = 'queued' and (send_after is null or send_after <= now())
       order by send_after nulls first, created_at limit $1`,
@@ -277,7 +301,7 @@ export async function flushOne(id: string): Promise<{ state: OutboxState; error:
   const [row] = await conn.query<OutboxRow & { to: string }>(
     `select id, kind, to_email as "to", to_name as "toName", subject, body,
             state, error, attempts, created_at::text as "createdAt", sent_at::text as "sentAt",
-            delivered_at::text as "deliveredAt", attachments
+            delivered_at::text as "deliveredAt", attachments, center_id as "centerId"
        from outbox where id = $1`,
     [id],
   );

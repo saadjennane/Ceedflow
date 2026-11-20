@@ -26,6 +26,7 @@ import { reportingRoutes } from '../src/routes/reporting.js';
 import { sandboxRoutes } from '../src/routes/sandbox.js';
 import { staffRoutes } from '../src/routes/staff.js';
 import { taskRoutes } from '../src/routes/tasks.js';
+import { networkRoutes } from '../src/routes/network.js';
 import { CENTER_HEADER } from '../src/routes/guard.js';
 import { SESSION_COOKIE, createAccount, createSession, setStaffRole } from '../src/services/auth.js';
 import { DEFAULT_CENTER, FREE_PARAMS, FREE_ROUTES, createCenter, inCenter, joinCenter, kindOfParam } from '../src/services/centers.js';
@@ -35,7 +36,7 @@ import { closeDb, skipWithoutServer } from './helpers.js';
 /** Every route group the workspace guard stands in front of. */
 const GUARDED = [
   programRoutes, builderRoutes, funnelRoutes, actionRoutes, directoryRoutes, staffRoutes, taskRoutes,
-  oneToOneRoutes, reportingRoutes, sandboxRoutes, knowledgeRoutes, meetingAssistantRoutes, fundingRoutes,
+  oneToOneRoutes, reportingRoutes, sandboxRoutes, knowledgeRoutes, meetingAssistantRoutes, fundingRoutes, networkRoutes,
 ];
 /** Routes inside those groups that the guard deliberately leaves open. */
 const OPEN = (url: string) => url.startsWith('/api/public/') || url === '/api/uploads/:id';
@@ -172,4 +173,80 @@ describe('two centres', { skip: skipWithoutServer }, () => {
     assert.equal((await call(tunis, 'GET', `/api/records/${shared}`)).statusCode, 404);
     assert.equal((await call(morocco, 'GET', `/api/records/${shared}`)).statusCode, 200);
   });
+
+  it('lets only CEED Global create a centre and name its administrator, who then works there (scenario 1)', async () => {
+    assert.equal((await call(tunis, 'POST', '/api/centers', { name: `CEED Égypte ${mark}` })).statusCode, 403);
+    assert.equal((await call(tunis, 'GET', '/api/network/overview')).statusCode, 403);
+
+    const made = await call(global, 'POST', '/api/centers', {
+      name: `CEED Égypte ${mark}`, country: 'Egypt', admin: { name: `Amr ${mark}`, email: `amr.${mark}@example.test` },
+    });
+    assert.equal(made.statusCode, 201);
+    const { center, invite } = made.json() as { center: { id: string }; invite: { email: string; password: string } };
+    assert.ok(invite.password, 'a provisional password, shown once');
+    assert.equal((await call(global, 'POST', '/api/centers', { name: `CEED Égypte ${mark}` })).statusCode, 422, 'one name, one centre');
+
+    /* L'administrateur entre : son centre est le premier, sans rien demander. */
+    const login = await app.inject({ method: 'GET', url: '/api/network/me', headers: { cookie: await cookieOf(invite.email) } });
+    const me = login.json() as { current: string; centers: { id: string; role: string }[] };
+    assert.equal(me.current, center.id);
+    assert.deepEqual(me.centers.map((c) => [c.id, c.role]), [[center.id, 'admin']]);
+    const staff = (await call(global, 'GET', `/api/centers/${center.id}/staff`)).json() as { email: string; role: string }[];
+    assert.deepEqual(staff.map((s) => [s.email, s.role]), [[invite.email, 'admin']]);
+
+    /* Désactivé : son équipe n'entre plus, CEED Global si. */
+    assert.equal((await call(global, 'PATCH', `/api/centers/${center.id}`, { status: 'inactive' })).statusCode, 200);
+    const shut = await app.inject({ method: 'GET', url: '/api/programs', headers: { cookie: await cookieOf(invite.email) } });
+    assert.equal(shut.statusCode, 403);
+    assert.equal((await call(global, 'GET', '/api/programs', undefined, center.id)).statusCode, 200);
+  });
+
+  it('counts the network without counting twice (scenario 10)', async () => {
+    const before = (await call(global, 'GET', '/api/network/overview')).json() as { totals: { programs: number; startups: number } };
+
+    /* Un programme en cours, diffusé dans trois centres : un programme. */
+    const live = await inCenter(DEFAULT_CENTER, () => repo.createProgram({ name: `Scale ${mark}`, edition: { name: '2027' } }));
+    await repo.updateEdition(live.editions[0]!.id, { status: 'Live' });
+    for (const c of [tunisia, DEFAULT_CENTER]) {
+      await all(`insert into program_distributions (program_id, center_id, status) values ($1, $2, 'accepted') on conflict do nothing`, [live.id, c]);
+    }
+    /* Une startup de deux communautés, candidate dans les deux centres : une startup. */
+    const twice = (await dir.createRecord({ kind: 'org', name: `Kenza ${mark}`, origin: 'manual', centerId: DEFAULT_CENTER })).id;
+    await joinCenter(twice, tunisia, 'application');
+    const track = (await repo.getEditionDetail(live.editions[0]!.id))!.tracks[0]!;
+    await repo.createCandidate({ editionId: live.editions[0]!.id, trackId: track.id, orgId: twice, personId: null, originBlockId: null });
+    const tnProgram = await inCenter(tunisia, () => repo.createProgram({ name: `Tunis Lab ${mark}`, edition: { name: '2027' } }));
+    const tnTrack = (await repo.getEditionDetail(tnProgram.editions[0]!.id))!.tracks[0]!;
+    await repo.createCandidate({ editionId: tnProgram.editions[0]!.id, trackId: tnTrack.id, orgId: twice, personId: null, originBlockId: null });
+
+    const after = (await call(global, 'GET', '/api/network/overview')).json() as {
+      totals: { programs: number; startups: number };
+      centers: { id: string; startups: number }[];
+    };
+    assert.equal(after.totals.programs, before.totals.programs + 1, 'one live programme, wherever it is shown');
+    assert.equal(after.totals.startups, before.totals.startups + 1, 'one startup, in two centres');
+    assert.ok(after.centers.find((c) => c.id === tunisia)!.startups >= 1, 'and it counts in each centre’s own line');
+    const programs = (await call(global, 'GET', '/api/network/programs')).json() as { id: string; distributedTo: unknown[] }[];
+    assert.equal(programs.filter((p) => p.id === live.id).length, 1);
+    assert.equal(programs.find((p) => p.id === live.id)!.distributedTo.length, 2);
+  });
+
+  it('keeps each centre’s own letters and signature', async () => {
+    const edited = await call(tunis, 'PATCH', '/api/house-letters/task_given', { subject: 'Une tâche pour vous, de Tunis' });
+    assert.equal(edited.statusCode, 200);
+    const mine = (await call(morocco, 'GET', '/api/house-letters')).json() as { key: string; subject: string }[];
+    assert.notEqual(mine.find((l) => l.key === 'task_given')!.subject, 'Une tâche pour vous, de Tunis');
+    assert.equal((await call(tunis, 'PATCH', '/api/center', { mailName: 'CEED Tunisie', replyTo: 'contact@ceed-tunisie.example' })).statusCode, 200);
+    const center = (await call(tunis, 'GET', '/api/center')).json() as { mailName: string };
+    assert.equal(center.mailName, 'CEED Tunisie');
+  });
 });
+
+/** Une session pour un compte qu'on vient de créer par son adresse. */
+async function cookieOf(email: string): Promise<string> {
+  const { findAccount } = await import('../src/services/auth.js');
+  const account = await findAccount(email);
+  /* Comme s'il avait choisi son mot de passe : un provisoire n'ouvre pas l'espace. */
+  await all('update accounts set must_change_password = false where id = $1', [account!.id]);
+  return `${SESSION_COOKIE}=${(await createSession(account!.id)).token}`;
+}

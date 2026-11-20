@@ -3,6 +3,8 @@ import { Suspense, useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAccount } from '../lib/account';
 import { prefetchDirectory } from '../lib/directoryCache';
+import { enterCenter, useNetwork, type NetworkMe } from '../lib/network';
+import { PopCard } from '../ui/PopCard';
 import { api } from '../lib/api';
 import { stillWaiting } from '../lib/panels';
 import { useAsync } from '../lib/useAsync';
@@ -30,6 +32,9 @@ const PROGRAMS_LATER = [
 export function Shell() {
   const [theme, setTheme] = useTheme();
   const [folded, setFolded] = useSidebar();
+  const network = useNetwork();
+  const where = useLocation();
+  const atGlobal = where.pathname.startsWith('/network');
   const { me, loading } = useAccount();
   const navigate = useNavigate();
   const staffRole = me?.account.staffRole ?? null;
@@ -71,7 +76,8 @@ export function Shell() {
           <div className="brand-mark">C</div>
           <div className="brand-text">
             <div className="brand-name">CEED</div>
-            <div className="brand-sub">Program Management</div>
+            {/* Le centre où l'on travaille : toujours là, et c'est par lui qu'on en change. */}
+            <CenterPicker network={network} atGlobal={atGlobal} />
           </div>
         </div>
 
@@ -88,6 +94,12 @@ export function Shell() {
           <Icon name={folded ? 'chevronRight' : 'chevronLeft'} size={13} />
         </button>
 
+        {network?.global && (
+          <NavLink to="/network" className={link} title="Global Overview">
+            <Icon name="compass" />
+            <span className="nav-label">Global Overview</span>
+          </NavLink>
+        )}
         {TOP.map((item) => (
           <Soon key={item.label} {...item} />
         ))}
@@ -180,12 +192,75 @@ export function Shell() {
       </nav>
 
       <div className="main">
+        {/* Qui peut changer de centre voit toujours dans lequel il est : une
+            décision prise dans le mauvais centre est la pire erreur possible ici. */}
+        {network && (network.global || network.centers.length > 1) && (
+          <div className={atGlobal ? 'center-strip global' : 'center-strip'}>
+            {atGlobal ? (
+              <span>
+                <b>CEED Global</b> — the whole network
+              </span>
+            ) : (
+              <span>
+                Working in <b>{currentName(network)}</b>
+              </span>
+            )}
+            {network.global && !atGlobal && (
+              <Link to="/network" className="center-strip-link">
+                Global Overview
+              </Link>
+            )}
+          </div>
+        )}
         {/* La page se charge à part : le cadre reste, sans clignoter. */}
         <Suspense fallback={<div className="empty" style={{ padding: 40 }} />}>
           <Outlet />
         </Suspense>
       </div>
     </div>
+  );
+}
+
+const currentName = (network: NetworkMe) => network.centers.find((c) => c.id === network.current)?.name ?? 'CEED';
+
+/**
+ * Le centre où l'on travaille, sous le nom de CEED. Qui n'en a qu'un le lit ;
+ * qui en a plusieurs — ou CEED Global — l'ouvre pour en changer.
+ */
+function CenterPicker({ network, atGlobal }: { network: NetworkMe | null; atGlobal: boolean }) {
+  if (!network) return <div className="brand-sub">Program Management</div>;
+  const here = atGlobal ? 'CEED Global' : currentName(network);
+  if (!network.global && network.centers.length < 2) return <div className="brand-sub">{here}</div>;
+  return (
+    <PopCard
+      className="brand-sub center-pick"
+      label={
+        <>
+          {here} <Icon name="chevronDown" size={11} />
+        </>
+      }
+      card={(close) => (
+        <div className="stack" style={{ gap: 2 }}>
+          <span className="eyebrow" style={{ padding: '2px 8px 6px' }}>Work in</span>
+          {network.global && (
+            <Link to="/network" className={atGlobal ? 'center-option on' : 'center-option'} onClick={close}>
+              <Icon name="compass" size={14} /> Global Overview
+            </Link>
+          )}
+          {network.centers.map((c) => (
+            <button
+              key={c.id}
+              className={!atGlobal && c.id === network.current ? 'center-option on' : 'center-option'}
+              onClick={() => (c.id === network.current && !atGlobal ? close() : enterCenter(c.id))}
+            >
+              <span style={{ flex: 1 }}>{c.name}</span>
+              {c.status === 'inactive' && <span className="badge">Inactive</span>}
+              {c.country && <span className="faint" style={{ fontSize: 12 }}>{c.country}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    />
   );
 }
 

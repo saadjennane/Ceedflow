@@ -29,6 +29,7 @@ const RecordPage = lazy(() => import('./pages/directory/RecordPage').then((m) =>
 const ProgramPage = lazy(() => import('./pages/ProgramPage').then((m) => ({ default: m.ProgramPage })));
 const ProgramsPage = lazy(() => import('./pages/ProgramsPage').then((m) => ({ default: m.ProgramsPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const NetworkPage = lazy(() => import('./pages/network/NetworkPage').then((m) => ({ default: m.NetworkPage })));
 const TasksPage = lazy(() => import('./pages/TasksPage').then((m) => ({ default: m.TasksPage })));
 
 
@@ -61,6 +62,7 @@ const router = createBrowserRouter([
       { path: 'directory/:recordId', element: <RecordPage /> },
       { path: 'tasks', element: <TasksPage /> },
       { path: 'settings', element: <SettingsPage /> },
+      { path: 'network', element: <NetworkPage /> },
       { path: 'knowledge', element: <KnowledgePage /> },
       { path: 'knowledge/:entryId', element: <KnowledgeEntryPage /> },
       { path: 'tasks/meetings/:meetingId', element: <MeetingResultPage /> },

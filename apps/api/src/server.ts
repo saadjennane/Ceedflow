@@ -23,6 +23,7 @@ import { staffRoutes } from './routes/staff.js';
 import { taskRoutes } from './routes/tasks.js';
 import { oneToOnePublicRoutes, oneToOneRoutes } from './routes/oneToOne.js';
 import { reportingRoutes } from './routes/reporting.js';
+import { networkRoutes } from './routes/network.js';
 import { bootstrapAdmin } from './services/bootstrap.js';
 import { noteOrigin } from './services/platform.js';
 import { sendDueNotices } from './services/notices.js';
@@ -105,6 +106,7 @@ await app.register(sandboxRoutes);
 await app.register(knowledgeRoutes);
 await app.register(meetingAssistantRoutes);
 await app.register(fundingRoutes);
+await app.register(networkRoutes);
 
 /* A deployment that owns the schema step sets SKIP_MIGRATE and runs
    `npm run migrate` before starting anything, so the schema settles once while

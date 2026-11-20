@@ -40,10 +40,15 @@ export interface CenterRow {
   logoUploadId: string | null;
   description: string;
   status: 'active' | 'inactive';
+  /** Le nom qui signe ses lettres ; vide : celui de la plateforme. */
+  mailName: string;
+  /** Où arrivent les réponses à ses lettres ; vide : l'adresse de la plateforme. */
+  replyTo: string;
   createdAt: string;
 }
 
-const CENTER_COLS = `id, name, country, city, logo_upload_id as "logoUploadId", description, status, created_at::text as "createdAt"`;
+const CENTER_COLS = `id, name, country, city, logo_upload_id as "logoUploadId", description, status,
+  mail_name as "mailName", reply_to as "replyTo", created_at::text as "createdAt"`;
 
 export const listCenters = () => all<CenterRow>(`select ${CENTER_COLS} from centers order by created_at, name`);
 export const getCenter = (id: string) => one<CenterRow>(`select ${CENTER_COLS} from centers where id = $1`, [id]);
@@ -56,6 +61,113 @@ export async function createCenter(input: { name: string; country?: string; city
   ]);
   return (await getCenter(id))!;
 }
+
+/** Ce qui change d'un centre : son identité, son statut, la signature de ses lettres. */
+export async function updateCenter(
+  id: string,
+  patch: Partial<Pick<CenterRow, 'name' | 'country' | 'city' | 'description' | 'status' | 'mailName' | 'replyTo' | 'logoUploadId'>>,
+): Promise<CenterRow | null> {
+  const columns: Record<string, string> = {
+    name: 'name', country: 'country', city: 'city', description: 'description', status: 'status',
+    mailName: 'mail_name', replyTo: 'reply_to', logoUploadId: 'logo_upload_id',
+  };
+  const sets: string[] = [];
+  const params: unknown[] = [id];
+  for (const [key, column] of Object.entries(columns)) {
+    const value = (patch as Record<string, unknown>)[key];
+    if (value === undefined) continue;
+    params.push(typeof value === 'string' ? value.trim() : value);
+    sets.push(`${column} = $${params.length}`);
+  }
+  if (sets.length) await all(`update centers set ${sets.join(', ')} where id = $1`, params);
+  return getCenter(id);
+}
+
+/** L'équipe d'un centre, ses administrateurs d'abord. */
+export const staffOf = (centerId: string) =>
+  all<{ accountId: string; recordId: string; name: string; email: string; role: StaffRole }>(
+    `select a.id as "accountId", a.record_id as "recordId", r.name, a.email, cs.role
+       from center_staff cs join accounts a on a.id = cs.account_id join records r on r.id = a.record_id
+      where cs.center_id = $1 and a.disabled_at is null
+      order by case cs.role when 'admin' then 0 when 'editor' then 1 else 2 end, r.name`,
+    [centerId],
+  );
+
+/**
+ * Le réseau en chiffres, sans double compte : une startup présente dans deux
+ * communautés est une startup ; un programme diffusé dans trois centres est un
+ * programme. Les programmes et fiches de l'espace de test ne comptent pas.
+ */
+export async function networkFigures(): Promise<{
+  totals: { centers: number; programs: number; startups: number; members: number };
+  centers: (CenterRow & { activePrograms: number; completedPrograms: number; startups: number; members: number })[];
+}> {
+  /* Un programme actif : une édition en cours. Terminé : des éditions, toutes terminées. */
+  const programState = `
+    select p.id, p.center_id,
+           bool_or(e.status = 'Live') as live,
+           count(e.id) > 0 and bool_and(e.status = 'Completed') as done
+      from programs p join editions e on e.program_id = p.id and e.deleted_at is null
+     where p.deleted_at is null and not p.is_test
+     group by p.id, p.center_id`;
+  /* Une startup accompagnée : une organisation candidate à un programme du centre, sans s'être retirée. */
+  const startups = `
+    select distinct p.center_id, c.org_id
+      from candidates c join editions e on e.id = c.edition_id join programs p on p.id = e.program_id
+      join records o on o.id = c.org_id
+     where c.deleted_at is null and c.status <> 'Withdrawn' and not p.is_test and o.deleted_at is null and o.test_owner is null`;
+  const members = `
+    select cm.center_id, cm.record_id from center_members cm join records r on r.id = cm.record_id
+     where r.deleted_at is null and r.test_owner is null`;
+
+  const [centers, perProgram, perStartup, perMember, totals] = await Promise.all([
+    listCenters(),
+    all<{ center_id: string; active: number; completed: number }>(
+      `select center_id, count(*) filter (where live)::int as active, count(*) filter (where done)::int as completed
+         from (${programState}) s group by center_id`,
+    ),
+    all<{ center_id: string; n: number }>(`select center_id, count(*)::int as n from (${startups}) s group by center_id`),
+    all<{ center_id: string; n: number }>(`select center_id, count(*)::int as n from (${members}) m group by center_id`),
+    one<{ centers: number; programs: number; startups: number; members: number }>(
+      `select (select count(*)::int from centers where status = 'active') as centers,
+              (select count(*)::int from (${programState}) s where live) as programs,
+              (select count(distinct org_id)::int from (${startups}) s) as startups,
+              (select count(distinct record_id)::int from (${members}) m) as members`,
+    ),
+  ]);
+  const of = <T extends { center_id: string }>(rows: T[], id: string) => rows.find((r) => r.center_id === id);
+  return {
+    totals: totals ?? { centers: 0, programs: 0, startups: 0, members: 0 },
+    centers: centers.map((c) => ({
+      ...c,
+      activePrograms: of(perProgram, c.id)?.active ?? 0,
+      completedPrograms: of(perProgram, c.id)?.completed ?? 0,
+      startups: of(perStartup, c.id)?.n ?? 0,
+      members: of(perMember, c.id)?.n ?? 0,
+    })),
+  };
+}
+
+/** Les programmes du réseau, chacun une fois : son centre, son état, ses dates, où il est diffusé. */
+export const networkPrograms = () =>
+  all<{
+    id: string; name: string; colour: string; centerId: string; centerName: string;
+    status: 'Draft' | 'Live' | 'Completed'; startsOn: string | null; endsOn: string | null;
+    distributedTo: { centerId: string; name: string; status: string }[];
+  }>(
+    `select p.id, p.name, p.colour, p.center_id as "centerId", c.name as "centerName",
+            case when bool_or(e.status = 'Live') then 'Live'
+                 when count(e.id) > 0 and bool_and(e.status = 'Completed') then 'Completed'
+                 else 'Draft' end as status,
+            min(e.starts_on)::text as "startsOn", max(e.ends_on)::text as "endsOn",
+            coalesce((select json_agg(json_build_object('centerId', d.center_id, 'name', dc.name, 'status', d.status) order by dc.name)
+                        from program_distributions d join centers dc on dc.id = d.center_id where d.program_id = p.id), '[]'::json) as "distributedTo"
+       from programs p join centers c on c.id = p.center_id
+       left join editions e on e.program_id = p.id and e.deleted_at is null
+      where p.deleted_at is null and not p.is_test
+      group by p.id, c.name
+      order by c.name, p.name`,
+  );
 
 /** Où une personne de l'équipe travaille, et avec quel rôle dans chacun. */
 export const centersOfAccount = (accountId: string) =>
@@ -210,6 +322,7 @@ export const PARAM_KINDS: { prefix: string; param: string; kind: OwnedKind }[] =
  */
 export const FREE_ROUTES: { prefix: string; param: string; why: string }[] = [
   { prefix: '/api/org-attributes/', param: 'id', why: 'a profile field definition, shared by the network' },
+  { prefix: '/api/centers/', param: 'id', why: 'a centre itself — CEED Global only' },
 ];
 
 /** Partout : une candidature nommée dans l'adresse est une candidature. */

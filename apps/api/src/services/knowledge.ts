@@ -52,15 +52,22 @@ export interface KbActor {
 
 const SETTING = { president: 'kb.president', provider: 'kb.provider', model: 'kb.model' } as const;
 
+/* Les réglages de la base de connaissances sont ceux du centre : sa clé porte
+   son nom, sauf pour le premier centre, qui garde les clés d'avant le réseau. */
+const centred = (key: string) => {
+  const center = currentCenter();
+  return center === DEFAULT_CENTER ? key : `${key}@${center}`;
+};
+
 async function setting(key: string): Promise<string> {
-  return (await one<{ value: string }>('select value from settings where key = $1', [key]))?.value ?? '';
+  return (await one<{ value: string }>('select value from settings where key = $1', [centred(key)]))?.value ?? '';
 }
 
 async function putSetting(key: string, value: string): Promise<void> {
   await all(
     `insert into settings (key, value) values ($1, $2)
      on conflict (key) do update set value = excluded.value, updated_at = now()`,
-    [key, value],
+    [centred(key), value],
   );
 }
 
@@ -73,8 +80,9 @@ async function presidentRecord(): Promise<{ recordId: string; name: string; emai
   return one<{ recordId: string; name: string; email: string }>(
     `select r.id as "recordId", r.name, a.email
        from records r join accounts a on a.record_id = r.id
-      where r.id = $1 and a.staff_role in ('admin', 'editor') and a.disabled_at is null`,
-    [id],
+      where r.id = $1 and a.disabled_at is null
+        and exists (select 1 from center_staff cs where cs.account_id = a.id and cs.center_id = $2 and cs.role in ('admin', 'editor'))`,
+    [id, currentCenter()],
   );
 }
 

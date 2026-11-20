@@ -63,6 +63,18 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
 
   if (!res.ok) {
+    /* Un centre choisi auquel on n'a plus accès — retiré de son équipe, centre
+       fermé ou supprimé : on l'oublie et on repart de son centre à soi, plutôt
+       que de voir chaque page refusée. */
+    const lost = ['You do not work for this centre.', 'This centre is not active.', 'This centre does not exist.'];
+    if ((res.status === 403 || res.status === 404) && payload?.error && lost.includes(payload.error) && Object.keys(centerHeader()).length) {
+      try {
+        localStorage.removeItem(CENTER_KEY);
+      } catch {
+        /* rien à oublier */
+      }
+      window.location.reload();
+    }
     if (payload?.fields && Object.keys(payload.fields).length) pointAtFields(payload.fields);
     throw new ApiError(res.status, payload?.error ?? fallback(res.status), payload?.fields ?? null);
   }

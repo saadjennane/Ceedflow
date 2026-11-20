@@ -1096,3 +1096,71 @@ table.data tbody tr.picked td {
 @media (prefers-reduced-motion: reduce) {
   .dir-loading span { animation: none; }
 }
+
+/* Le centre où l'on travaille : sous le nom de CEED, et en bandeau au-dessus de la page. */
+.center-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.center-pick:hover,
+.center-pick[aria-expanded='true'] {
+  color: var(--blue);
+}
+.center-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.center-option:hover {
+  background: var(--wash);
+}
+.center-option.on {
+  background: var(--blue-soft);
+  color: var(--blue-press);
+  font-weight: 600;
+}
+.center-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 24px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  background: var(--wash);
+  border-bottom: 1px solid var(--line);
+}
+.center-strip b {
+  color: var(--ink);
+}
+.center-strip.global {
+  background: var(--ink);
+  color: rgba(255, 255, 255, 0.75);
+}
+.center-strip.global b {
+  color: #fff;
+}
+.center-strip-link {
+  margin-left: auto;
+  color: var(--blue);
+  font-weight: 600;
+}

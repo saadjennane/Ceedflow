@@ -26,6 +26,7 @@ import { Template } from './builder/panels/Template';
 import { TestSpace } from './TestSpace';
 import { SheetSettings } from './SheetSettings';
 import { KnowledgeSettings } from './knowledge/KnowledgeSettings';
+import { CenterSettings } from './CenterSettings';
 import { Icon } from '../ui/Icon';
 import { Modal, useToast } from '../ui/Overlays';
 import '../ui/builder.css';
@@ -231,6 +232,7 @@ export function SettingsPage() {
 
   const tabs = [
     { key: 'team', label: 'Team' },
+    { key: 'centre', label: 'Centre' },
     { key: 'account', label: 'My account' },
     { key: 'letters', label: 'Letters' },
     { key: 'sheet', label: 'Startup sheet' },
@@ -445,6 +447,8 @@ export function SettingsPage() {
         </section>
           </>
         )}
+
+        {tab === 'centre' && <CenterSettings mayManage={mayManage} />}
 
         {tab === 'letters' && <HouseLetters mayManage={mayManage} />}
 

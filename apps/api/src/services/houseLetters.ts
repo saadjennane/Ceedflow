@@ -11,6 +11,7 @@
  */
 import { HOUSE_LETTERS, HOUSE_LETTER_DEFAULTS, type HouseLetter, type HouseLetterKey } from '@ceed/shared';
 import { all } from '../db/client.js';
+import { currentCenter } from './centers.js';
 
 interface Row {
   key: HouseLetterKey;
@@ -36,13 +37,14 @@ const withDefaults = (key: HouseLetterKey, row: Row | undefined): HouseLetter =>
   updatedByName: row?.updatedByName ?? '',
 });
 
-export async function houseLetters(): Promise<HouseLetter[]> {
-  const rows = await all<Row>(SELECT);
+/** Les lettres d'un centre — celles du centre où l'on travaille, sans précision. */
+export async function houseLetters(center: string = currentCenter()): Promise<HouseLetter[]> {
+  const rows = await all<Row>(`${SELECT} where center_id = $1`, [center]);
   return HOUSE_LETTERS.map((key) => withDefaults(key, rows.find((r) => r.key === key)));
 }
 
-export async function houseLetter(key: HouseLetterKey): Promise<HouseLetter> {
-  const rows = await all<Row>(`${SELECT} where key = $1`, [key]);
+export async function houseLetter(key: HouseLetterKey, center: string = currentCenter()): Promise<HouseLetter> {
+  const rows = await all<Row>(`${SELECT} where key = $1 and center_id = $2`, [key, center]);
   return withDefaults(key, rows[0]);
 }
 
@@ -57,20 +59,21 @@ export async function setHouseLetter(
   key: HouseLetterKey,
   patch: { subject?: string; body?: string; enabled?: boolean },
   byName = '',
+  center: string = currentCenter(),
 ): Promise<HouseLetter> {
-  const now = await houseLetter(key);
+  const now = await houseLetter(key, center);
   const next = {
     subject: patch.subject ?? now.subject,
     body: patch.body ?? now.body,
     enabled: patch.enabled ?? now.enabled,
   };
   await all(
-    `insert into house_letters (key, subject, body, enabled, updated_by_name)
-     values ($1, $2, $3, $4, $5)
-     on conflict (key) do update
+    `insert into house_letters (key, subject, body, enabled, updated_by_name, center_id)
+     values ($1, $2, $3, $4, $5, $6)
+     on conflict (center_id, key) do update
         set subject = excluded.subject, body = excluded.body, enabled = excluded.enabled,
             updated_at = now(), updated_by_name = excluded.updated_by_name`,
-    [key, next.subject, next.body, next.enabled, byName],
+    [key, next.subject, next.body, next.enabled, byName, center],
   );
-  return houseLetter(key);
+  return houseLetter(key, center);
 }
