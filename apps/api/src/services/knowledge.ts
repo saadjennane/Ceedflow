@@ -37,6 +37,7 @@ import {
 import { all, db, one } from '../db/client.js';
 import { HttpError } from '../routes/util.js';
 import { DEFAULT_CENTER, currentCenter } from './centers.js';
+import { notify, teamOfCenter } from './notifications.js';
 import { aiKeys, askJson, type AiProvider } from './ai.js';
 import { findAccount } from './auth.js';
 
@@ -565,6 +566,17 @@ export async function reviewVersion(
     if (input.comment) await all('insert into kb_comments (id, version_id, author_id, body) values ($1, $2, $3, $4)', [newId('kbm', 10), id, actor.recordId, input.comment]);
     await log(v.entryId, id, input.action === 'reviewed' ? 'reviewed' : 'review_changes', actor.recordId, input.comment);
   });
+  /* Relue : au président de la valider. Des changements : à son auteur de les faire. */
+  const president = input.action === 'reviewed' ? await presidentRecord() : null;
+  await notify({
+    recordIds: input.action === 'reviewed' ? (president ? [president.recordId] : []) : v.author?.id ? [v.author.id] : [],
+    except: actor.recordId,
+    kind: input.action === 'reviewed' ? 'kb_to_validate' : 'kb_changes',
+    title: input.action === 'reviewed' ? `To validate: ${v.title}` : `Changes asked on ${v.title}`,
+    body: input.comment,
+    href: `/knowledge/${v.entryId}`,
+    centerId: await centerOfEntry(v.entryId),
+  });
 }
 
 /** La version retournée à son auteur repart vers la review, telle quelle ou corrigée. */
@@ -636,6 +648,18 @@ export async function validateVersion(
       await log(v.entryId, id, input.action === 'reject' ? 'rejected' : 'validation_changes', actor.recordId, input.note);
     }
   });
+  /* La décision du président, à l'auteur. */
+  if (v.author?.id) {
+    await notify({
+      recordIds: [v.author.id],
+      except: actor.recordId,
+      kind: input.action === 'approve' ? 'kb_published' : input.action === 'reject' ? 'kb_rejected' : 'kb_changes',
+      title: input.action === 'approve' ? `Published: ${v.title}` : input.action === 'reject' ? `Rejected: ${v.title}` : `Changes asked on ${v.title}`,
+      body: input.note,
+      href: `/knowledge/${v.entryId}`,
+      centerId: await centerOfEntry(v.entryId),
+    });
+  }
 }
 
 export async function commentOn(id: string, body: string, actor: KbActor): Promise<void> {
@@ -643,6 +667,22 @@ export async function commentOn(id: string, body: string, actor: KbActor): Promi
   const v = await mustVersion(id);
   await all('insert into kb_comments (id, version_id, author_id, body) values ($1, $2, $3, $4)', [newId('kbm', 10), id, actor.recordId, body]);
   await log(v.entryId, id, 'comment', actor.recordId, body);
+  if (v.author?.id) {
+    await notify({
+      recordIds: [v.author.id],
+      except: actor.recordId,
+      kind: 'kb_comment',
+      title: `New comment on ${v.title}`,
+      body: body.slice(0, 300),
+      href: `/knowledge/${v.entryId}`,
+      centerId: await centerOfEntry(v.entryId),
+    });
+  }
+}
+
+/** Le centre d'une connaissance : ses notifications portent son nom. */
+async function centerOfEntry(entryId: string): Promise<string | null> {
+  return (await one<{ c: string }>('select center_id as c from kb_entries where id = $1', [entryId]))?.c ?? null;
 }
 
 /** Un membre signale lui-même un conflit, un doublon ou un point à clarifier. */
@@ -866,6 +906,20 @@ export async function runAnalysis(versionId: string, actorId: string | null = nu
         );
       }
       await all(`update kb_versions set status = 'to_review' where id = $1`, [versionId]);
+      /* À relire : l'équipe du centre, sauf son auteur. */
+      const center = await centerOfEntry(v.entryId);
+      if (center) {
+        await notify({
+          recordIds: await teamOfCenter(center),
+          except: v.author?.id ?? null,
+          kind: 'kb_to_review',
+          title: `To review: ${v.title}`,
+          body: v.author?.name ? `Written by ${v.author.name}.` : '',
+          href: `/knowledge/${v.entryId}`,
+          actorName: v.author?.name ?? '',
+          centerId: center,
+        });
+      }
       const said = findings.length
         ? `${findings.length} point${findings.length > 1 ? 's' : ''} to look at`
         : 'No conflict found';

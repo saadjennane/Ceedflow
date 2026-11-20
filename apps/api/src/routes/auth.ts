@@ -5,6 +5,7 @@ import {
   canManageTeam,
   changePasswordInput,
   contactProblemsIn,
+  itemGiven,
   CONTACT_SAYS,
   fullName,
   orderedBlocks,
@@ -68,6 +69,7 @@ import { appLink } from '../services/deliverables.js';
 import { HttpError, notFound, parse } from './util.js';
 import { all, one } from '../db/client.js';
 import { DEFAULT_CENTER, centersOf, listCenters } from '../services/centers.js';
+import { inbox, markRead, notify, teamOfCenter, unreadCount } from '../services/notifications.js';
 import { acceptedIn, centersOfMember } from '../services/distribution.js';
 import { keepSheetHistory } from './sheetHistory.js';
 import { setAttribute, sheetAttributes } from '../services/orgAttributes.js';
@@ -495,6 +497,32 @@ export async function authRoutes(app: FastifyInstance) {
    * ses colonnes, son tri. Sur son compte — pas dans un navigateur — et à elle
    * seule : deux collègues qui réorganisent ont chacun leur vue.
    */
+  /* ---- Le centre de notifications : les siennes, et rien d'autre ---- */
+
+  app.get('/api/me/notifications', async (req) => {
+    const account = await require(req);
+    const q = parse(
+      z.object({ unread: z.enum(['1', '0']).optional(), center: z.string().optional(), limit: z.coerce.number().int().min(1).max(300).optional() }),
+      req.query,
+    );
+    return {
+      items: await inbox(account.recordId, { unread: q.unread === '1', center: q.center || null, limit: q.limit }),
+      unread: await unreadCount(account.recordId),
+    };
+  });
+
+  app.get('/api/me/notifications/count', async (req) => {
+    const account = await require(req);
+    return { unread: await unreadCount(account.recordId) };
+  });
+
+  app.post('/api/me/notifications/read', async (req) => {
+    const account = await require(req);
+    const { ids, all: everything } = parse(z.object({ ids: z.array(z.string()).max(300).default([]), all: z.boolean().default(false) }), req.body);
+    await markRead(account.recordId, everything ? 'all' : ids);
+    return { unread: await unreadCount(account.recordId) };
+  });
+
   app.get('/api/me/prefs/:key', async (req) => {
     const account = await require(req);
     const { key } = parse(z.object({ key: z.string().regex(/^[a-z0-9.-]{1,60}$/) }), req.params);
@@ -781,6 +809,27 @@ export async function authRoutes(app: FastifyInstance) {
 
     await repo.saveReturn(input.blockId, candidateId, input.itemId, input.value ?? null);
     await repo.claimUploads(candidateId, { [input.itemId]: input.value }, account.recordId);
+    /* Tout ce qui était obligatoire est là : l'équipe du centre le sait, une fois. */
+    const after = (await deliverablesFor(candidate.editionId, candidate)).find((o) => o.block.id === input.blockId);
+    if (after) {
+      const required = after.config.items.filter((i) => i.required);
+      const done = required.length > 0 && required.every((i) => itemGiven(i, after.returns.find((r) => r.itemId === i.id)?.value));
+      if (done) {
+        const [center] = await centersOf('block', input.blockId);
+        if (center) {
+          await notify({
+            recordIds: await teamOfCenter(center),
+            kind: 'deliverables_complete',
+            title: `${candidate.orgName} sent every document — ${block.name}`,
+            body: `${required.length} required item${required.length === 1 ? '' : 's'}, ready to read.`,
+            href: `/editions/${candidate.editionId}?tab=deliverables&block=${input.blockId}`,
+            actorName: candidate.orgName,
+            centerId: center,
+            dedupeKey: `deliverables:${input.blockId}:${candidateId}`,
+          });
+        }
+      }
+    }
     /* Une pièce reliée à la fiche la met à jour, quel que soit le membre qui l'envoie. */
     if (item.fromProfile && input.value !== null && input.value !== undefined) {
       try {

@@ -23,6 +23,7 @@ import { useAsync, type AsyncState } from '../../lib/useAsync';
 import { stillWaiting } from '../../lib/panels';
 import type { ReviewPanel } from './ReviewPage';
 import { Icon } from '../../ui/Icon';
+import { NotificationList, useUnread } from '../../ui/Notifications';
 import { Modal, useSidebar, useToast } from '../../ui/Overlays';
 import '../../ui/builder.css';
 import '../../ui/directory.css';
@@ -49,10 +50,10 @@ import { ProfileBlocks } from '../../ui/ProfileBlocks';
  * whole product already points at.
  */
 /** The four places a member has. Jury only exists for somebody on a panel. */
-const MEMBER_TABS = ['Home', 'Profile', 'Organisation', 'Programs', 'Jury', 'Mentoring', 'Settings'] as const;
+const MEMBER_TABS = ['Home', 'Notifications', 'Profile', 'Organisation', 'Programs', 'Jury', 'Mentoring', 'Settings'] as const;
 /** The word each tab wears, in the language the member reads. */
 const TAB_WORD = {
-  Home: 'tab.home', Programs: 'tab.programs', Jury: 'tab.jury', Mentoring: 'tab.mentoring', Profile: 'tab.profile',
+  Home: 'tab.home', Notifications: 'tab.notifications', Programs: 'tab.programs', Jury: 'tab.jury', Mentoring: 'tab.mentoring', Profile: 'tab.profile',
   Organisation: 'tab.organisation',
   Settings: 'tab.settings',
 } as const;
@@ -170,6 +171,7 @@ function MemberSpaceReady({
     preview ? 'preview-meetings' : 'my-meetings',
   );
   const meets = (meetings.data?.length ?? 0) > 0;
+  const unread = useUnread();
   /* Settings holds a password and a way out of the account — neither means
      anything about somebody else's page. */
   const tabs = MEMBER_TABS.filter(
@@ -177,6 +179,7 @@ function MemberSpaceReady({
       (t !== 'Jury' || isJuror) &&
       (t !== 'Mentoring' || meets) &&
       (t !== 'Settings' || !preview) &&
+      (t !== 'Notifications' || !preview) &&
       (t !== 'Organisation' || (!preview && (me?.organisations.length ?? 0) > 0)),
   );
   /* « Meetings » est devenu « Mentoring » : un ancien lien y mène encore. */
@@ -290,7 +293,7 @@ function MemberSpaceReady({
   const email = preview ? (preview.who?.email ?? '') : me!.account.email;
 
   const ICON: Record<MemberTab, string> = {
-    Home: 'home', Profile: 'users', Organisation: 'layers', Programs: 'layers', Jury: 'gavel', Mentoring: 'compass', Settings: 'settings',
+    Home: 'home', Notifications: 'bell', Profile: 'users', Organisation: 'layers', Programs: 'layers', Jury: 'gavel', Mentoring: 'compass', Settings: 'settings',
   };
   const waitingJury = stillWaiting(panels.data ?? []);
   const main = tabs.filter((t) => t !== 'Settings');
@@ -380,6 +383,7 @@ function MemberSpaceReady({
             <Icon name={ICON[name]} />
             <span className="nav-label">{t(TAB_WORD[name])}</span>
             {name === 'Jury' && waitingJury > 0 && <span className="nav-count warn">{waitingJury}</span>}
+            {name === 'Notifications' && unread > 0 && <span className="nav-count">{unread}</span>}
             {name === 'Home' && (home.data?.actions.length ?? 0) > 0 && (
               <span className="nav-count">{home.data!.actions.length}</span>
             )}
@@ -557,6 +561,7 @@ function MemberSpaceReady({
           <OrgShowcase me={me} orgId={currentOrg} programs={programs.data ?? []} onPick={setOrg} onChanged={reload} />
         )}
         {tab === 'Settings' && !preview && <Settings me={me!} />}
+        {tab === 'Notifications' && !preview && <NotificationList />}
       </div>
       </div>
     </div>

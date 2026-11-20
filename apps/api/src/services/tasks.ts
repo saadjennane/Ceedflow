@@ -9,6 +9,7 @@ import { idOf, newId, OPEN_TASK_STATES, type Task, type TaskAttachment, type Tas
 import { all, one } from '../db/client.js';
 import { HttpError } from '../routes/util.js';
 import { currentCenter, staffOfCenter } from './centers.js';
+import { notify } from './notifications.js';
 
 const COLS = `
   select t.id, t.title, t.detail, t.due_on::text as "dueOn", t.state, t.priority,
@@ -278,6 +279,20 @@ export async function changeTask(
   }
   if (sets.length) await all(`update tasks set ${sets.join(', ')} where id = $1`, params);
   if (patch.state !== undefined && patch.state !== before.state) await logTask(id, 'state', by, '', { from: before.state, to: patch.state });
+  /* Faite par quelqu'un d'autre que ses owners — la startup à qui on l'avait
+     demandée : ses owners le savent ; et qui l'a donnée, s'il n'est pas celui qui la ferme. */
+  if (patch.state === 'done' && before.state !== 'done' && by) {
+    await notify({
+      recordIds: [...(before.owners.some((o) => o.id === by.id) ? [] : before.owners.map((o) => o.id)), ...(await creatorOf(id))],
+      except: by.id,
+      kind: 'task_done',
+      title: `${by.name || 'Somebody'} did “${before.title}”`,
+      href: '/tasks',
+      actorName: by.name,
+      centerId: (await one<{ c: string }>('select center_id as c from tasks where id = $1', [id]))?.c ?? null,
+      dedupeKey: `task-done:${id}:${new Date().toISOString().slice(0, 10)}`,
+    });
+  }
   if (patch.priority !== undefined && patch.priority !== before.priority) await logTask(id, 'priority', by, '', { from: before.priority, to: patch.priority });
   if (patch.dueOn !== undefined && (patch.dueOn || null) !== before.dueOn) await logTask(id, 'due', by, '', { from: before.dueOn, to: patch.dueOn });
   if ((patch.title !== undefined && patch.title.trim() !== before.title) || (patch.detail !== undefined && patch.detail.trim() !== before.detail)) {
@@ -337,7 +352,24 @@ export async function validateTask(
     await all(`update tasks set state = 'doing', validator_id = null, validation_note = '' where id = $1`, [id]);
     await logTask(id, 'sent_back', by, input.note);
   }
+  /* Ses owners et qui l'a donnée apprennent la décision — sauf qui l'a prise. */
+  await notify({
+    recordIds: [...task.owners.map((o) => o.id), ...(await creatorOf(id))],
+    except: by.id,
+    kind: input.action === 'approve' ? 'task_validated' : 'task_sent_back',
+    title: input.action === 'approve' ? `Validated: “${task.title}”` : `Sent back: “${task.title}”`,
+    body: input.note,
+    href: '/tasks',
+    actorName: by.name,
+    centerId: (await one<{ c: string }>('select center_id as c from tasks where id = $1', [id]))?.c ?? null,
+  });
   return getTask(id);
+}
+
+/** Qui a donné la tâche — une fiche de l'équipe, quand on le sait. */
+async function creatorOf(id: string): Promise<string[]> {
+  const row = await one<{ by: string | null }>('select created_by as by from tasks where id = $1', [id]);
+  return row?.by ? [row.by] : [];
 }
 
 /** Ce qui attend une personne : débloquer, ou valider. */

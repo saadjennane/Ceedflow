@@ -22,6 +22,7 @@ const PATHS: Record<string, string> = {
   list: 'M4 6h16 M4 12h16 M4 18h16',
   board: 'M4 4h4v16H4z M10 4h4v11h-4z M16 4h4v7h-4z',
   home: 'M4 11 12 4l8 7 M6 10v10h12V10',
+  bell: 'M6 9a6 6 0 0 1 12 0c0 6 2.5 8 2.5 8h-17S6 15 6 9Z M10 20.5a2.2 2.2 0 0 0 4 0',
   layers: 'm12 3 9 5-9 5-9-5z M3 13l9 5 9-5',
   plus: 'M12 5v14 M5 12h14',
   minus: 'M5 12h14',

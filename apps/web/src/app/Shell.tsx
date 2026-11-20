@@ -5,6 +5,7 @@ import { useAccount } from '../lib/account';
 import { prefetchDirectory } from '../lib/directoryCache';
 import { enterCenter, useNetwork, type NetworkMe } from '../lib/network';
 import { PopCard } from '../ui/PopCard';
+import { useUnread } from '../ui/Notifications';
 import { api } from '../lib/api';
 import { stillWaiting } from '../lib/panels';
 import { useAsync } from '../lib/useAsync';
@@ -33,6 +34,7 @@ export function Shell() {
   const [theme, setTheme] = useTheme();
   const [folded, setFolded] = useSidebar();
   const network = useNetwork();
+  const unread = useUnread();
   const where = useLocation();
   const atGlobal = where.pathname.startsWith('/network');
   const { me, loading } = useAccount();
@@ -109,6 +111,13 @@ export function Shell() {
           <Icon name="check" />
           <span className="nav-label">Tasks</span>
           {late > 0 && <span className="nav-count warn">{late}</span>}
+        </NavLink>
+
+        {/* Ce qui l'attend, lui : tâches, rendez-vous, pièces, réponses. */}
+        <NavLink to="/notifications" className={link} title="Notifications">
+          <Icon name="bell" />
+          <span className="nav-label">Notifications</span>
+          {unread > 0 && <span className="nav-count">{unread}</span>}
         </NavLink>
 
         <div className="eyebrow nav-group">Community</div>

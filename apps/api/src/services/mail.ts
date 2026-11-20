@@ -15,6 +15,7 @@ import { newId, redactPasswords } from '@ceed/shared';
 import { db } from '../db/client.js';
 import { inTestContext, isTestAddress } from './testIdentity.js';
 import { centersOf, currentCenter, getCenter } from './centers.js';
+import { notifyFromLetter } from './notifications.js';
 
 export type OutboxState = 'queued' | 'held' | 'sent' | 'failed' | 'bounced';
 
@@ -169,6 +170,7 @@ export async function post(letter: Letter): Promise<string | null> {
         centerId,
       ],
     );
+    await notifyFromLetter({ kind: letter.kind, to, subject: letter.subject, centerId });
     return id;
   } catch {
     // Deliberately quiet. The caller is in the middle of an act the person

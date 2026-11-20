@@ -65,6 +65,7 @@ import { HttpError, notFound, parse } from './util.js';
 import { writeBackToSheet } from '../services/formSheet.js';
 import { workspaceGuard } from './guard.js';
 import { DEFAULT_CENTER, centersOf, centersOfAccount, inCenter, isGlobalAdmin } from '../services/centers.js';
+import { notify, teamOfCenter } from '../services/notifications.js';
 import { meetingsFor } from '../services/oneToOne.js';
 
 const scoreInput = z.object({
@@ -516,6 +517,18 @@ export async function funnelRoutes(app: FastifyInstance) {
     });
     // Attachments are uploaded before the form is sent, so they are claimed here.
     await repo.claimUploads(candidate.id, input.answers, account.recordId);
+    if (programCenter) {
+      await notify({
+        recordIds: await teamOfCenter(programCenter),
+        kind: 'application_new',
+        title: `New application — ${candidate.orgName}`,
+        body: found.block.name,
+        href: `/editions/${found.editionId}?tab=startups`,
+        actorName: candidate.orgName,
+        centerId: programCenter,
+        dedupeKey: `application:${candidate.id}`,
+      });
+    }
     /* Les réponses reliées à la fiche la mettent à jour — sauf pour une
        organisation que la personne ne tient pas encore : sa demande de la
        rejoindre attend, et sa candidature ne réécrit pas la page d'un autre. */

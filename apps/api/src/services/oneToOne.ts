@@ -64,7 +64,8 @@ import * as repo from '../db/repo.js';
 import { HttpError } from '../routes/util.js';
 import { conflicted } from './reviews.js';
 import { intakeFor } from './selection.js';
-import { currentCenter } from './centers.js';
+import { centersOf, currentCenter } from './centers.js';
+import { notify } from './notifications.js';
 
 const COLS = `
   m.id, m.block_id as "blockId", m.candidate_id as "candidateId", o.name as "orgName",
@@ -634,6 +635,20 @@ export async function savePrep(
       where id = $1`,
     [id, kept, who.side === 'startup' && Boolean(who.submit), who.side === 'team', who.name],
   );
+  /* Envoyée par la startup, la première fois : ceux qui la reçoivent en séance le savent. */
+  if (who.side === 'startup' && who.submit && !meeting.prepSubmittedAt) {
+    const [center] = await centersOf('block', meeting.blockId);
+    await notify({
+      recordIds: peopleOf(meeting),
+      kind: 'prep_submitted',
+      title: `${meeting.orgName} sent its preparation`,
+      body: meeting.heldOn ? `For the meeting of ${meeting.heldOn}${meeting.startTime ? ` at ${meeting.startTime}` : ''}.` : '',
+      href: `/meeting/${meeting.id}`,
+      actorName: meeting.orgName,
+      centerId: center ?? null,
+      dedupeKey: `prep:${meeting.id}`,
+    });
+  }
   return (await getMeeting(id))!;
 }
 

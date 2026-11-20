@@ -28,6 +28,7 @@ export type Lang = 'fr' | 'en';
 const WORDS = {
   /* ---- the shell ---- */
   'tab.home': { fr: 'Accueil', en: 'Home' },
+  'tab.notifications': { fr: 'Notifications', en: 'Notifications' },
   'tab.meetings': { fr: 'Rendez-vous', en: 'Meetings' },
   'tab.mentoring': { fr: 'Mentoring', en: 'Mentoring' },
   'tab.organisation': { fr: 'Organisations', en: 'Organisations' },

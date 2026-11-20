@@ -29,6 +29,7 @@ import { kbSettings } from './knowledge.js';
 import { tellOwnersAtOnce } from './taskNotices.js';
 import { createTasks } from './tasks.js';
 import { currentCenter, staffOfCenter } from './centers.js';
+import { notify } from './notifications.js';
 
 export interface MeetingActor {
   recordId: string;
@@ -595,6 +596,17 @@ export async function changeSuggestion(
   if (patch.assigneeId !== undefined) {
     put('assignee_id = $n', patch.assigneeId);
     sets.push("assignee_note = ''");
+    /* Confiée à quelqu'un d'autre que soi : il le sait. */
+    if (patch.assigneeId && patch.assigneeId !== actor.recordId) {
+      const t = await one<{ title: string }>('select title from meeting_task_suggestions where id = $1', [id]);
+      await notify({
+        recordIds: [patch.assigneeId],
+        kind: 'suggestion_assigned',
+        title: `A task proposal for you: ${patch.title ?? t?.title ?? ''}`,
+        href: '/tasks?tab=backlog',
+        actorName: actor.name,
+      });
+    }
   }
   if (patch.dueOn !== undefined) {
     put('due_on = $n::date', patch.dueOn);

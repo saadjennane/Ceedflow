@@ -10,6 +10,7 @@
 import { all, one } from '../db/client.js';
 import { HttpError } from '../routes/util.js';
 import { listCenters } from './centers.js';
+import { notify, teamOfCenter } from './notifications.js';
 
 export type Visibility = 'center' | 'selected' | 'all';
 export type OfferStatus = 'pending' | 'accepted' | 'rejected' | 'withdrawn';
@@ -58,12 +59,26 @@ export async function setDistribution(
     `delete from program_distributions where program_id = $1 and not (center_id = any($2::text[]))`,
     [programId, targets],
   );
+  const name = (await one<{ name: string }>('select name from programs where id = $1', [programId]))?.name ?? 'A programme';
+  const from = (await one<{ name: string }>('select name from centers where id = $1', [program.centerId]))?.name ?? 'Another centre';
   for (const centerId of targets) {
-    await all(
+    const fresh = await all<{ center_id: string }>(
       `insert into program_distributions (program_id, center_id, status, proposed_by) values ($1, $2, 'pending', $3)
-       on conflict (program_id, center_id) do nothing`,
+       on conflict (program_id, center_id) do nothing returning center_id`,
       [programId, centerId, by],
     );
+    if (fresh.length) {
+      await notify({
+        recordIds: await teamOfCenter(centerId, ['admin']),
+        kind: 'offer_received',
+        title: `${from} proposes ${name}`,
+        body: 'Publish it in your catalogue, or decline.',
+        href: '/offers',
+        actorName: from,
+        centerId,
+        dedupeKey: `offer:${programId}:${centerId}:${Date.now()}`,
+      });
+    }
   }
   return (await distributionOf(programId))!;
 }
@@ -147,6 +162,16 @@ export async function decide(programId: string, centerId: string, decision: 'acc
     `update program_distributions set status = $3, decided_at = now(), decided_by = $4 where program_id = $1 and center_id = $2`,
     [programId, centerId, decision, by],
   );
+  const to = (await one<{ name: string }>('select name from centers where id = $1', [centerId]))?.name ?? 'A centre';
+  const said = { accepted: 'published', rejected: 'declined', withdrawn: 'took down' }[decision];
+  await notify({
+    recordIds: await teamOfCenter(now.fromCenterId, ['admin']),
+    kind: 'offer_answered',
+    title: `${to} ${said} ${now.name}`,
+    href: `/programs/${programId}`,
+    actorName: to,
+    centerId: now.fromCenterId,
+  });
   return (await offer(programId, centerId))!;
 }
 

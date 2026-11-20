@@ -34,6 +34,7 @@ import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { HttpError } from '../routes/util.js';
 import { currentCenter } from './centers.js';
+import { notify } from './notifications.js';
 import { askJson, searchWeb, type WebCitation } from './ai.js';
 import { kbSettings, publishedContext } from './knowledge.js';
 import { similar, teamMembers } from './meetingAssistant.js';
@@ -738,7 +739,19 @@ export async function changeAction(
   };
   if (patch.title !== undefined) put('title = $n', patch.title);
   if (patch.description !== undefined) put('description = $n', patch.description);
-  if (patch.assigneeId !== undefined) put('assignee_id = $n', patch.assigneeId);
+  if (patch.assigneeId !== undefined) {
+    put('assignee_id = $n', patch.assigneeId);
+    if (patch.assigneeId && patch.assigneeId !== actor.recordId) {
+      const a = await one<{ title: string; analysisId: string }>('select title, analysis_id as "analysisId" from funding_actions where id = $1', [actionId]);
+      await notify({
+        recordIds: [patch.assigneeId],
+        kind: 'funding_assigned',
+        title: `A funding action for you: ${patch.title ?? a?.title ?? ''}`,
+        href: a ? `/funding/${a.analysisId}` : '/funding',
+        actorName: actor.name,
+      });
+    }
+  }
   if (patch.priority !== undefined) put('priority = $n', patch.priority);
   if (patch.status !== undefined) put('status = $n', patch.status);
   if (sets.length) await all(`update funding_actions set ${sets.join(', ')}, updated_at = now() where id = $1`, params);
