@@ -22,6 +22,10 @@ export interface NetworkMe {
   global: boolean;
   current: string;
   centers: NetworkCenter[];
+  /** Les programmes que le réseau propose à ce centre et qui attendent sa réponse. */
+  pendingOffers: number;
+  /** Les centres actifs du réseau. */
+  networkSize: number;
 }
 
 let cached: NetworkMe | null = null;

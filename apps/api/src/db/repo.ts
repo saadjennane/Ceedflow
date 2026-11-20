@@ -33,6 +33,7 @@ import { currentCenter } from '../services/centers.js';
 /* ------------------------------------------------------------------ */
 
 const PROGRAM_COLS = `id, name, code, type, summary, partner, colour, statuses, is_test as "isTest",
+  center_id as "centerId", visibility,
   created_at::text as "createdAt"`;
 const EDITION_COLS = `id, program_id as "programId", name, status, starts_on::text as "startsOn",
   ends_on::text as "endsOn", city, mentors, position, created_at::text as "createdAt"`;

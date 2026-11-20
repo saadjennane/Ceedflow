@@ -9,10 +9,27 @@ import * as repo from '../db/repo.js';
 import { notFound, parse } from './util.js';
 import { workspaceGuard } from './guard.js';
 import { currentCenter } from '../services/centers.js';
+import { distributionOf, setDistribution } from '../services/distribution.js';
+import { z } from 'zod';
 
 export async function programRoutes(app: FastifyInstance) {
   // Everything below is the CEED workspace. Public routes name themselves.
   app.addHook('preHandler', workspaceGuard());
+
+  /* Où ce programme est proposé dans le réseau, et ce que chaque centre a répondu. */
+  app.get('/api/programs/:id/distribution', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    return (await distributionOf(id)) ?? notFound(reply, 'Programme not found.');
+  });
+
+  app.put('/api/programs/:id/distribution', async (req) => {
+    const { id } = req.params as { id: string };
+    const input = parse(
+      z.object({ visibility: z.enum(['center', 'selected', 'all']), centerIds: z.array(z.string()).default([]) }),
+      req.body,
+    );
+    return setDistribution(id, input, req.staff!.email);
+  });
 
   /* Ceux qu'organise le centre où l'on travaille. */
   app.get('/api/programs', async () => repo.listPrograms({ center: currentCenter() }));

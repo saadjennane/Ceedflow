@@ -67,6 +67,8 @@ import { markTest, testOwnerOf } from '../services/sandbox.js';
 import { appLink } from '../services/deliverables.js';
 import { HttpError, notFound, parse } from './util.js';
 import { all, one } from '../db/client.js';
+import { listCenters } from '../services/centers.js';
+import { acceptedIn, centersOfMember } from '../services/distribution.js';
 import { keepSheetHistory } from './sheetHistory.js';
 import { setAttribute, sheetAttributes } from '../services/orgAttributes.js';
 import { kpisOf, putKpiPoint } from '../services/kpis.js';
@@ -95,6 +97,10 @@ interface MyProgram {
   closesAt: string | null;
   /** The programme's colour, for its mark. */
   colour: string;
+  /** Le centre qui l'organise. */
+  centerName: string;
+  /** Proposé par un autre centre que les siens : on dit lequel. */
+  external: boolean;
 }
 
 /** Open first, then what is coming, then what is over. */
@@ -155,12 +161,19 @@ export async function programsFor(recordId: string): Promise<MyProgram[]> {
   const mine = new Set(record ? (await dir.linksOf(record)).map((l) => l.record.id) : []);
   const programs = await repo.listPrograms();
   const out: MyProgram[] = [];
+  /* Son catalogue : les programmes de ses centres — les siens et ceux de ses
+     organisations —, et ceux que l'un de ses centres a acceptés d'un autre. */
+  const myCenters = await centersOfMember([recordId, ...mine]);
+  const accepted = await acceptedIn([...myCenters]);
+  const centerNames = new Map((await listCenters()).map((c) => [c.id, c.name] as const));
   /* Un compte de test ne voit que les programmes de test, et un vrai membre
      ne les voit jamais : les deux mondes partagent l'app, pas leurs écrans. */
   const testViewer = Boolean(record?.testOwner);
 
   for (const program of programs) {
     if (program.isTest !== testViewer) continue;
+    const ours = myCenters.has(program.centerId);
+    const offered = ours || accepted.has(program.id);
     for (const edition of program.editions) {
       if (edition.status === 'Draft') continue;
       const detail = await repo.getEditionDetail(edition.id);
@@ -182,6 +195,9 @@ export async function programsFor(recordId: string): Promise<MyProgram[]> {
         candidacies.push({ id: c.id, orgId: c.orgId, orgName: c.orgName, status: c.status, phase });
       }
       const form = live ?? forms[0];
+      /* Hors de son catalogue, un programme reste visible là où il a candidaté :
+         un centre qui le retire ne lui retire pas sa candidature. */
+      if (!offered && !candidacies.length) continue;
 
       out.push({
         programId: program.id,
@@ -202,6 +218,8 @@ export async function programsFor(recordId: string): Promise<MyProgram[]> {
         eligibility: form ? ((form.config as { eligibility?: { criteria?: { label: string }[] } }).eligibility?.criteria ?? []).map((c) => c.label) : [],
         closesAt: form ? ((form.config as { closesAt?: string | null }).closesAt ?? null) : null,
         colour: program.colour ?? '#2F5BFF',
+        centerName: centerNames.get(program.centerId) ?? '',
+        external: !ours,
       });
     }
   }

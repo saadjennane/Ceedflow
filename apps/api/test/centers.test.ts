@@ -117,9 +117,9 @@ describe('two centres', { skip: skipWithoutServer }, () => {
     await joinCenter(shared, tunisia, 'manual');
     await joinCenter(shared, tunisia, 'manual');
   });
+  /* La connexion reste ouverte pour la suite du fichier : la dernière la ferme. */
   after(async () => {
     await app.close();
-    await closeDb();
   });
 
   it('keeps CEED Maroc working as before, without saying which centre', async () => {
@@ -239,6 +239,105 @@ describe('two centres', { skip: skipWithoutServer }, () => {
     assert.equal((await call(tunis, 'PATCH', '/api/center', { mailName: 'CEED Tunisie', replyTo: 'contact@ceed-tunisie.example' })).statusCode, 200);
     const center = (await call(tunis, 'GET', '/api/center')).json() as { mailName: string };
     assert.equal(center.mailName, 'CEED Tunisie');
+  });
+});
+
+describe('a programme proposed to the network', { skip: skipWithoutServer }, () => {
+  const app: FastifyInstance = Fastify();
+  const mark = `${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
+  let tunisia = '';
+  let egypt = '';
+  const who: Record<string, { cookie: string }> = {};
+  let program = '';
+  let tnFounder = '';
+
+  const call = (w: { cookie: string }, method: 'GET' | 'POST' | 'PUT', url: string, payload?: object) =>
+    app.inject({ method, url, payload, headers: { cookie: w.cookie } });
+  const catalogue = async (recordId: string) => {
+    const { programsFor } = await import('../src/routes/auth.js');
+    return (await programsFor(recordId)).filter((p) => p.programId === program);
+  };
+
+  before(async () => {
+    await migrate();
+    await app.register(cookie);
+    for (const routes of GUARDED) await app.register(routes);
+    await app.ready();
+    tunisia = (await createCenter({ name: `CEED Tunisie bis ${mark}`, country: 'Tunisia' })).id;
+    egypt = (await createCenter({ name: `CEED Égypte bis ${mark}`, country: 'Egypt' })).id;
+    for (const [key, center] of [['ma', DEFAULT_CENTER], ['tn', tunisia], ['eg', egypt]] as const) {
+      const r = await dir.createRecord({ kind: 'person', name: `${key} ${mark}`, origin: 'manual', centerId: center });
+      const a = await createAccount({ email: `${key}.${mark}@example.test`, password: 'chosen-by-them', recordId: r.id });
+      await setStaffRole(a.id, 'admin', center);
+      who[key] = { cookie: `${SESSION_COOKIE}=${(await createSession(a.id)).token}` };
+    }
+    const made = await inCenter(DEFAULT_CENTER, () => repo.createProgram({ name: `The Builders ${mark}`, edition: { name: 'Cohorte 2' } }));
+    program = made.id;
+    await repo.updateEdition(made.editions[0]!.id, { status: 'Live' });
+    tnFounder = (await dir.createRecord({ kind: 'person', name: `Founder ${mark}`, origin: 'signup', centerId: tunisia })).id;
+  });
+  after(async () => {
+    await app.close();
+    await closeDb();
+  });
+
+  it('stays in its own centre until proposed (scenario 3)', async () => {
+    assert.equal((await catalogue(tnFounder)).length, 0);
+    const d = (await call(who.ma!, 'GET', `/api/programs/${program}/distribution`)).json() as { visibility: string };
+    assert.equal(d.visibility, 'center');
+  });
+
+  it('can be proposed only by its own centre — nobody imposes a programme', async () => {
+    const res = await call(who.tn!, 'PUT', `/api/programs/${program}/distribution`, { visibility: 'all' });
+    assert.equal(res.statusCode, 404);
+  });
+
+  it('waits for the receiving centre, unpublished (scenario 4)', async () => {
+    const res = await call(who.ma!, 'PUT', `/api/programs/${program}/distribution`, { visibility: 'selected', centerIds: [tunisia, egypt] });
+    assert.equal(res.statusCode, 200);
+    const offers = (await call(who.tn!, 'GET', '/api/network/offers')).json() as { programId: string; status: string }[];
+    assert.equal(offers.find((o) => o.programId === program)?.status, 'pending');
+    const me = (await call(who.tn!, 'GET', '/api/network/me')).json() as { pendingOffers: number };
+    assert.ok(me.pendingOffers >= 1);
+    assert.equal((await catalogue(tnFounder)).length, 0, 'not in the catalogue yet');
+    /* Le centre organisateur ne lit pas une proposition comme si elle lui était faite. */
+    assert.equal((await call(who.ma!, 'GET', `/api/network/offers/${program}`)).statusCode, 404);
+  });
+
+  it('shows in the receiving catalogue once accepted, naming who runs it (scenario 5)', async () => {
+    const res = await call(who.tn!, 'POST', `/api/network/offers/${program}/decision`, { decision: 'accepted' });
+    assert.equal(res.statusCode, 200);
+    const seen = await catalogue(tnFounder);
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0]!.external, true);
+    assert.equal(seen[0]!.centerName, 'CEED Maroc');
+  });
+
+  it('is declined by one centre without touching the others (scenario 6)', async () => {
+    assert.equal((await call(who.eg!, 'POST', `/api/network/offers/${program}/decision`, { decision: 'rejected' })).statusCode, 200);
+    const d = (await call(who.ma!, 'GET', `/api/programs/${program}/distribution`)).json() as { targets: { centerId: string; status: string }[] };
+    assert.equal(d.targets.find((t) => t.centerId === tunisia)?.status, 'accepted');
+    assert.equal(d.targets.find((t) => t.centerId === egypt)?.status, 'rejected');
+    assert.equal((await catalogue(tnFounder)).length, 1);
+  });
+
+  it('is taken down by the receiving centre, the programme and its candidacies untouched (scenario 7)', async () => {
+    /* Une startup de Tunis a candidaté entre-temps. */
+    const org = (await dir.createRecord({ kind: 'org', name: `Tunis Startup ${mark}`, origin: 'signup', centerId: tunisia })).id;
+    await dir.linkRecords({ personId: tnFounder, orgId: org, access: 'admin' });
+    const edition = (await repo.getProgram(program))!.editions[0]!;
+    const track = (await repo.getEditionDetail(edition.id))!.tracks[0]!;
+    const cand = await repo.createCandidate({ editionId: edition.id, trackId: track.id, orgId: org, personId: tnFounder, originBlockId: null });
+
+    assert.equal((await call(who.tn!, 'POST', `/api/network/offers/${program}/decision`, { decision: 'withdrawn' })).statusCode, 200);
+    const other = (await dir.createRecord({ kind: 'person', name: `Other ${mark}`, origin: 'signup', centerId: tunisia })).id;
+    assert.equal((await catalogue(other)).length, 0, 'out of the catalogue');
+    assert.equal((await catalogue(tnFounder)).length, 1, 'but the candidacy keeps its programme in view');
+    assert.ok(await repo.getProgram(program), 'the programme itself is untouched');
+    assert.ok(await repo.getCandidate(cand.id), 'and so is the candidacy');
+    /* Et le centre peut revenir sur sa décision. */
+    assert.equal((await call(who.tn!, 'POST', `/api/network/offers/${program}/decision`, { decision: 'accepted' })).statusCode, 200);
+    assert.equal((await call(who.tn!, 'POST', `/api/network/offers/${program}/decision`, { decision: 'rejected' })).statusCode, 422);
   });
 });
 

@@ -128,6 +128,14 @@ export function Shell() {
           <Icon name="layers" />
           <span className="nav-label">Programs</span>
         </NavLink>
+        {/* Ce que les autres centres proposent : ce qui attend une réponse se compte. */}
+        {network && network.networkSize > 1 && (
+          <NavLink to="/offers" className={link} title="From the network">
+            <Icon name="send" />
+            <span className="nav-label">From the network</span>
+            {network.pendingOffers > 0 && <span className="nav-count">{network.pendingOffers}</span>}
+          </NavLink>
+        )}
         {PROGRAMS_LATER.map((item) => (
           <Soon key={item.label} {...item} />
         ))}

@@ -13,7 +13,9 @@ import { enterCenter } from '../../lib/network';
 import { useAsync } from '../../lib/useAsync';
 import { Icon } from '../../ui/Icon';
 import { Modal, useToast } from '../../ui/Overlays';
+import '../../ui/builder.css';
 import '../../ui/directory.css';
+import { colourOf } from '../../ui/Showcase';
 
 interface CenterLine {
   id: string;
@@ -98,62 +100,77 @@ export function NetworkPage() {
   );
 }
 
+/** Les quatre chiffres du réseau, chacun avec son icône et sa couleur. */
+const KPIS = [
+  { key: 'centers', label: 'Active centres', icon: 'compass', tone: 'blue' },
+  { key: 'programs', label: 'Live programmes', icon: 'layers', tone: 'cyan' },
+  { key: 'startups', label: 'Startups supported', icon: 'star', tone: 'ok' },
+  { key: 'members', label: 'Community members', icon: 'users', tone: 'violet' },
+] as const;
+
+/** La pastille d'un centre : l'initiale de son pays, à la couleur de son nom. */
+function CenterMark({ c, size = 40 }: { c: { name: string; country: string }; size?: number }) {
+  const letters = (c.country || c.name.replace(/^CEED\s+/i, '')).slice(0, 2).toUpperCase();
+  return (
+    <span className="net-mark" style={{ width: size, height: size, background: colourOf(c.name) }}>
+      {letters}
+    </span>
+  );
+}
+
 function OverviewTab({ data }: { data: Overview }) {
-  const tiles = [
-    { label: 'Active centres', value: data.totals.centers, note: `${data.centers.length} in the network` },
-    { label: 'Live programmes', value: data.totals.programs, note: 'each counted once' },
-    { label: 'Startups supported', value: data.totals.startups, note: 'unique across centres' },
-    { label: 'Community members', value: data.totals.members, note: 'people and organisations' },
-  ];
+  const notes: Record<(typeof KPIS)[number]['key'], string> = {
+    centers: `${data.centers.length} in the network`,
+    programs: 'each counted once',
+    startups: 'unique across centres',
+    members: 'people and organisations',
+  };
   return (
     <>
-      <div className="dir-tiles">
-        {tiles.map((t) => (
-          <div key={t.label} className="dir-tile" style={{ cursor: 'default' }}>
-            <span className="eyebrow">{t.label}</span>
-            <b className="num">{t.value}</b>
-            <small>{t.note}</small>
+      <div className="net-kpis">
+        {KPIS.map((k) => (
+          <div key={k.key} className={`net-kpi ${k.tone}`}>
+            <span className="net-kpi-icon">
+              <Icon name={k.icon} size={18} />
+            </span>
+            <span className="net-kpi-body">
+              <span className="eyebrow">{k.label}</span>
+              <b className="num">{data.totals[k.key].toLocaleString('fr-FR')}</b>
+              <small>{notes[k.key]}</small>
+            </span>
           </div>
         ))}
       </div>
-      <div className="table-wrap">
-        <table className="data">
-          <thead>
-            <tr>
-              <th>Centre</th>
-              <th>Country</th>
-              <th className="right">Live programmes</th>
-              <th className="right">Completed</th>
-              <th className="right">Startups</th>
-              <th className="right">Members</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {data.centers.map((c) => (
-              <tr key={c.id}>
-                <td>
-                  <b>{c.name}</b>
-                  {c.status === 'inactive' && <span className="badge" style={{ marginLeft: 6 }}>Inactive</span>}
-                </td>
-                <td className="muted">{c.country || '—'}</td>
-                <td className="right num">{c.activePrograms}</td>
-                <td className="right num">{c.completedPrograms}</td>
-                <td className="right num">{c.startups}</td>
-                <td className="right num">{c.members}</td>
-                <td className="right">
-                  <button className="btn sm" onClick={() => enterCenter(c.id)}>
-                    Enter <Icon name="chevronRight" size={12} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+
+      <div className="row" style={{ alignItems: 'baseline' }}>
+        <h3 className="section-title" style={{ margin: 0 }}>Centres</h3>
+        <span className="faint" style={{ fontSize: 12.5, marginLeft: 8 }}>{data.centers.length}</span>
+      </div>
+      <div className="net-centers">
+        {data.centers.map((c) => (
+          <button key={c.id} className="net-center" onClick={() => enterCenter(c.id)} title={`Enter ${c.name}`}>
+            <span className="net-center-head">
+              <CenterMark c={c} />
+              <span className="net-center-name">
+                <b>{c.name}</b>
+                <span className="faint">{[c.city, c.country].filter(Boolean).join(', ') || '—'}</span>
+              </span>
+              {c.status === 'inactive' ? <span className="badge">Inactive</span> : <Icon name="chevronRight" size={16} />}
+            </span>
+            <span className="net-center-stats">
+              <span><b className="num">{c.activePrograms}</b><small>Live</small></span>
+              <span><b className="num">{c.completedPrograms}</b><small>Completed</small></span>
+              <span><b className="num">{c.startups.toLocaleString('fr-FR')}</b><small>Startups</small></span>
+              <span><b className="num">{c.members.toLocaleString('fr-FR')}</b><small>Members</small></span>
+            </span>
+          </button>
+        ))}
       </div>
     </>
   );
 }
+
+const STATUSES = ['', 'Live', 'Draft', 'Completed'] as const;
 
 function ProgramsTab({ centers }: { centers: CenterLine[] }) {
   const programs = useAsync(() => api.get<NetworkProgram[]>('/api/network/programs'), 'network-programs');
@@ -165,67 +182,57 @@ function ProgramsTab({ centers }: { centers: CenterLine[] }) {
   );
   if (programs.error) return <div className="empty">{programs.error}</div>;
   if (!programs.data) return <div className="dir-loading" aria-busy="true"><span /><span /></div>;
+  const countOf = (s: string) => programs.data!.filter((p) => (!center || p.centerId === center) && (!s || p.status === s)).length;
   return (
     <>
-      <div className="row wrap" style={{ gap: 8 }}>
-        <select className="input" style={{ width: 220 }} aria-label="Centre" value={center} onChange={(e) => setCenter(e.target.value)}>
-          <option value="">Every centre</option>
+      <div className="row wrap" style={{ gap: 10 }}>
+        <div className="work-pick">
+          <button className={!center ? 'track on' : 'track'} onClick={() => setCenter('')}>
+            Every centre
+          </button>
           {centers.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
+            <button key={c.id} className={center === c.id ? 'track on' : 'track'} onClick={() => setCenter(c.id)}>
+              {c.name}
+            </button>
           ))}
-        </select>
-        <select className="input" style={{ width: 180 }} aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">Every status</option>
-          <option value="Live">Live</option>
-          <option value="Draft">Draft</option>
-          <option value="Completed">Completed</option>
-        </select>
-        <span className="faint num" style={{ fontSize: 12.5 }}>{shown.length} of {programs.data.length}</span>
+        </div>
+        <div className="spacer" />
+        <div className="seg" role="group" aria-label="Status">
+          {STATUSES.map((s) => (
+            <button key={s || 'all'} className={status === s ? 'on' : ''} onClick={() => setStatus(s)}>
+              {s || 'All'} <span className="num faint">{countOf(s)}</span>
+            </button>
+          ))}
+        </div>
       </div>
+
       {shown.length ? (
-        <div className="table-wrap">
-          <table className="data">
-            <thead>
-              <tr>
-                <th>Programme</th>
-                <th>Organised by</th>
-                <th>Status</th>
-                <th>Dates</th>
-                <th>Shown in</th>
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((p) => (
-                <tr key={p.id}>
-                  <td>
-                    <span className="row" style={{ gap: 8 }}>
-                      <span style={{ width: 10, height: 10, borderRadius: 3, background: p.colour, flex: 'none' }} />
-                      <b>{p.name}</b>
+        <div className="net-programs">
+          {shown.map((p) => (
+            <div key={p.id} className="net-program">
+              <span className="net-program-bar" style={{ background: p.colour }} />
+              <span className="net-program-main">
+                <b>{p.name}</b>
+                <span className="faint">
+                  {p.centerName}
+                  {p.startsOn ? ` · ${formatDate(p.startsOn)}` : ''}
+                  {p.endsOn ? ` → ${formatDate(p.endsOn)}` : ''}
+                </span>
+              </span>
+              <span className="net-program-reach">
+                {p.distributedTo.length ? (
+                  p.distributedTo.map((d) => (
+                    <span key={d.centerId} className={d.status === 'accepted' ? 'badge ok' : d.status === 'pending' ? 'badge warn' : 'badge'} title={`${d.name}: ${d.status}`}>
+                      {d.name}
                     </span>
-                  </td>
-                  <td>{p.centerName}</td>
-                  <td><span className={STATUS_TONE[p.status]}>{p.status}</span></td>
-                  <td className="muted" style={{ whiteSpace: 'nowrap' }}>
-                    {p.startsOn ? formatDate(p.startsOn) : '—'}
-                    {p.endsOn ? ` → ${formatDate(p.endsOn)}` : ''}
-                  </td>
-                  <td>
-                    {p.distributedTo.length ? (
-                      <span className="row wrap" style={{ gap: 4 }}>
-                        {p.distributedTo.map((d) => (
-                          <span key={d.centerId} className={d.status === 'accepted' ? 'badge ok' : d.status === 'pending' ? 'badge warn' : 'badge'} title={d.status}>
-                            {d.name}
-                          </span>
-                        ))}
-                      </span>
-                    ) : (
-                      <span className="faint">Its own centre only</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  ))
+                ) : (
+                  <span className="faint" style={{ fontSize: 12.5 }}>Own centre only</span>
+                )}
+              </span>
+              <span className={STATUS_TONE[p.status]}>{p.status}</span>
+            </div>
+          ))}
         </div>
       ) : (
         <div className="empty">No programme matches.</div>
@@ -259,33 +266,40 @@ function CentersTab({ centers, onChanged }: { centers: CenterLine[]; onChanged: 
           <Icon name="plus" size={14} /> New centre
         </button>
       </div>
-      <div className="stack" style={{ gap: 8 }}>
+      <div className="net-manage">
         {centers.map((c) => (
-          <section key={c.id} className="card" style={{ padding: '14px 16px' }}>
-            <div className="row wrap" style={{ gap: 10 }}>
-              <div style={{ flex: 1, minWidth: 220 }}>
-                <b style={{ fontSize: 15 }}>{c.name}</b>
-                <span className={c.status === 'active' ? 'badge ok' : 'badge'} style={{ marginLeft: 8 }}>
-                  {c.status === 'active' ? 'Active' : 'Inactive'}
-                </span>
-                <div className="faint" style={{ fontSize: 12.5 }}>
+          <section key={c.id} className={c.status === 'active' ? 'net-manage-card' : 'net-manage-card off'}>
+            <div className="net-center-head">
+              <CenterMark c={c} size={44} />
+              <span className="net-center-name">
+                <b>{c.name}</b>
+                <span className="faint">
                   {[c.city, c.country].filter(Boolean).join(', ') || 'No place yet'} · since {formatDate(c.createdAt.slice(0, 10))}
-                </div>
-              </div>
+                </span>
+              </span>
+              <span className={c.status === 'active' ? 'badge ok' : 'badge'}>{c.status === 'active' ? 'Active' : 'Inactive'}</span>
+            </div>
+            {c.description && <p className="net-manage-desc">{c.description}</p>}
+            <div className="net-manage-meta">
+              <span><Icon name="mail" size={12} /> {c.mailName || 'Platform signature'}</span>
+              <span><Icon name="send" size={12} /> {c.replyTo || 'Platform reply address'}</span>
+            </div>
+            <div className="net-manage-actions">
+              <button className="btn primary sm" onClick={() => enterCenter(c.id)}>
+                Enter <Icon name="chevronRight" size={12} />
+              </button>
               <button className="btn sm" onClick={() => setStaffOf(c)}>
                 <Icon name="users" size={13} /> Administrators
               </button>
               <button className="btn sm" onClick={() => setEditing(c)}>
                 <Icon name="edit" size={13} /> Edit
               </button>
+              <div className="spacer" />
               {c.status === 'active' ? (
                 <button className="btn ghost sm" onClick={() => void setStatus(c, 'inactive')}>Deactivate</button>
               ) : (
                 <button className="btn ghost sm" onClick={() => void setStatus(c, 'active')}>Activate</button>
               )}
-              <button className="btn sm" onClick={() => enterCenter(c.id)}>
-                Enter <Icon name="chevronRight" size={12} />
-              </button>
             </div>
           </section>
         ))}

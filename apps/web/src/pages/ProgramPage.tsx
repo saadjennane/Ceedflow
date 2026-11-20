@@ -8,6 +8,9 @@ import { SelectField, TextArea, TextField } from '../ui/Field';
 import { Icon } from '../ui/Icon';
 import { ConfirmDialog, Modal, useToast } from '../ui/Overlays';
 import { CreateEditionModal } from './CreateModals';
+import { ProgramNetwork } from './ProgramNetwork';
+import { useAccount } from '../lib/account';
+import { canWriteWorkspace } from '@ceed/shared';
 import { OutcomeEditor } from './builder/panels/shared';
 import '../ui/programs.css';
 
@@ -62,6 +65,7 @@ function ProgramStatuses({ program }: { program: ProgramWithEditions }) {
 }
 
 export function ProgramPage() {
+  const { me } = useAccount();
   const { programId = '' } = useParams();
   const program = useAsync(() => api.get<ProgramWithEditions>(`/api/programs/${programId}`), programId);
   const [editing, setEditing] = useState(false);
@@ -108,6 +112,8 @@ export function ProgramPage() {
         </div>
 
         <ProgramStatuses program={p} />
+
+        <ProgramNetwork programId={p.id} mayEdit={canWriteWorkspace(me?.account.staffRole ?? 'observer')} />
 
         <div className="row">
           <h2 style={{ fontSize: 15 }}>Editions</h2>

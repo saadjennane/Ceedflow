@@ -802,6 +802,9 @@ export interface MyProgram {
   eligibility?: string[];
   closesAt?: string | null;
   colour?: string;
+  /** Le centre qui l'organise, et s'il n'est pas l'un des siens. */
+  centerName?: string;
+  external?: boolean;
 }
 
 /**
@@ -853,7 +856,10 @@ export function Programs({
           <section className="card card-pad stack" key={p.editionId} style={{ gap: 10 }}>
             <div className="row">
               <div style={{ flex: 1, minWidth: 0 }}>
-                <h2 style={{ fontSize: 16, margin: 0 }}>{p.programName}</h2>
+                <h2 style={{ fontSize: 16, margin: 0 }}>
+                  {p.programName}
+                  {p.external && p.centerName && <span className="badge info" style={{ marginLeft: 8, verticalAlign: 'middle' }}>By {p.centerName}</span>}
+                </h2>
                 <p className="faint" style={{ margin: '2px 0 0', fontSize: 12.5 }}>
                   {[p.editionName, p.city, p.startsOn ? formatDate(p.startsOn) : null].filter(Boolean).join(' · ')}
                 </p>

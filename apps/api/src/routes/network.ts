@@ -21,6 +21,7 @@ import {
   updateCenter,
   centersOfAccount,
 } from '../services/centers.js';
+import { decide, offer, offerOpenProgramsTo, offersFor, pendingOffers } from '../services/distribution.js';
 import { requireWorkspaceAdmin, workspaceGuard } from './guard.js';
 import { HttpError, notFound, parse } from './util.js';
 
@@ -92,6 +93,10 @@ export async function networkRoutes(app: FastifyInstance) {
     return {
       global: staff.global,
       current: currentCenter(),
+      /* Ce que le réseau propose à ce centre et qui attend sa réponse. */
+      pendingOffers: await pendingOffers(currentCenter()),
+      /* Combien de centres actifs compte le réseau : seul, un centre n'a rien à recevoir. */
+      networkSize: all.filter((c) => c.status === 'active').length,
       centers: reachable.map((c) => ({
         id: c.id, name: c.name, country: c.country, city: c.city, status: c.status, logoUploadId: c.logoUploadId,
         role: staff.global ? 'admin' : (mine.find((m) => m.centerId === c.id)?.role ?? null),
@@ -106,6 +111,30 @@ export async function networkRoutes(app: FastifyInstance) {
   app.patch('/api/center', async (req) => {
     requireWorkspaceAdmin(req);
     return updateCenter(currentCenter(), parse(ownPatch, req.body));
+  });
+
+  /* Les centres actifs du réseau, par leur nom : à qui proposer un programme. */
+  app.get('/api/network/centers', async () =>
+    (await listCenters())
+      .filter((c) => c.status === 'active')
+      .map((c) => ({ id: c.id, name: c.name, country: c.country, mine: c.id === currentCenter() })),
+  );
+
+  /* ---- Les programmes que le réseau propose à ce centre ---- */
+
+  app.get('/api/network/offers', async () => offersFor(currentCenter()));
+
+  app.get('/api/network/offers/:programId', async (req, reply) => {
+    const { programId } = req.params as { programId: string };
+    return (await offer(programId, currentCenter())) ?? notFound(reply, 'This programme was not proposed to your centre.');
+  });
+
+  /* Le centre décide pour lui seul : ses administrateurs. */
+  app.post('/api/network/offers/:programId/decision', async (req) => {
+    requireWorkspaceAdmin(req);
+    const { programId } = req.params as { programId: string };
+    const { decision } = parse(z.object({ decision: z.enum(['accepted', 'rejected', 'withdrawn']) }), req.body);
+    return decide(programId, currentCenter(), decision, req.staff!.email);
   });
 
   /* ---- CEED Global ---- */
@@ -133,6 +162,8 @@ export async function networkRoutes(app: FastifyInstance) {
     const taken = (await listCenters()).some((c) => c.name.trim().toLowerCase() === input.name.toLowerCase());
     if (taken) throw new HttpError(422, 'A centre already has this name.', { name: 'Already taken.' });
     const center = await createCenter(input);
+    /* Les programmes proposés à tout le réseau lui sont proposés aussi. */
+    await offerOpenProgramsTo(center.id);
     const invite = admin ? await nameAdmin(center.id, admin) : null;
     reply.code(201);
     return { center, invite };

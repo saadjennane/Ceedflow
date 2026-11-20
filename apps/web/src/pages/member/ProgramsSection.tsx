@@ -93,6 +93,7 @@ export function ProgramsSection({
                 <Mark p={p} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <strong style={{ fontSize: 14.5 }}>{p.programName}</strong>
+                    {p.external && p.centerName && <span className="badge info" style={{ marginLeft: 6 }}>By {p.centerName}</span>}
                   <span className="faint" style={{ display: 'block', fontSize: 12.5 }}>
                     {[p.editionName, p.city, p.startsOn ? formatDate(p.startsOn) : null, p.endsOn ? `→ ${formatDate(p.endsOn)}` : null]
                       .filter(Boolean)
@@ -141,6 +142,7 @@ export function ProgramsSection({
                   <Mark p={p} />
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <strong style={{ fontSize: 14.5 }}>{p.programName}</strong>
+                    {p.external && p.centerName && <span className="badge info" style={{ marginLeft: 6 }}>By {p.centerName}</span>}
                     <span className="faint" style={{ display: 'block', fontSize: 12.5 }}>
                       {[p.editionName, c.orgName, c.phase ? `${fr ? 'Phase' : 'Phase'} : ${c.phase}` : null].filter(Boolean).join(' · ')}
                     </span>
@@ -175,6 +177,7 @@ export function ProgramsSection({
                   <Mark p={p} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <strong style={{ fontSize: 14.5 }}>{p.programName}</strong>
+                    {p.external && p.centerName && <span className="badge info" style={{ marginLeft: 6 }}>By {p.centerName}</span>}
                     <span className="faint" style={{ display: 'block', fontSize: 12.5 }}>
                       {[p.editionName, p.city, p.closesAt ? `${fr ? 'Avant le' : 'Until'} ${formatDate(p.closesAt)}` : null].filter(Boolean).join(' · ')}
                     </span>

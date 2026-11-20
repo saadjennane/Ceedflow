@@ -39,6 +39,10 @@ export const programSchema = z.object({
   statuses: z.array(blockOutcomeSchema).default([]),
   /** Un programme de l'espace de test : invisible des vrais membres, et ses lettres ne partent que vers des adresses de test. */
   isTest: z.boolean().default(false),
+  /** Le centre qui l'organise — et l'administre. */
+  centerId: z.string().default(''),
+  /** Où il est proposé dans le réseau : son centre seul, des centres choisis, ou tous. */
+  visibility: z.enum(['center', 'selected', 'all']).default('center'),
   createdAt: z.string(),
 });
 

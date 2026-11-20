@@ -257,6 +257,8 @@ const OWNERS = {
   meetingAnalysis: `select center_id from meeting_analyses where id = $1`,
   suggestion: `select m.center_id from meeting_task_suggestions s join meeting_analyses m on m.id = s.meeting_id where s.id = $1`,
   staff: `select center_id from center_staff where account_id = $1`,
+  /* Une proposition : les centres à qui elle est faite — jamais celui qui la fait. */
+  offer: `select center_id from program_distributions where program_id = $1`,
   orgProduct: `select cm.center_id from org_products x join center_members cm on cm.record_id = x.org_id where x.id = $1`,
   orgFunding: `select cm.center_id from org_fundings x join center_members cm on cm.record_id = x.org_id where x.id = $1`,
   orgProgram: `select cm.center_id from org_programs x join center_members cm on cm.record_id = x.org_id where x.id = $1`,
@@ -310,6 +312,7 @@ export const PARAM_KINDS: { prefix: string; param: string; kind: OwnedKind }[] =
   { prefix: '/api/meeting-assistant/suggestions/', param: 'id', kind: 'suggestion' },
   { prefix: '/api/sandbox/people/', param: 'id', kind: 'record' },
   { prefix: '/api/staff/', param: 'accountId', kind: 'staff' },
+  { prefix: '/api/network/offers/', param: 'programId', kind: 'offer' },
   { prefix: '/api/records/:id/products/', param: 'itemId', kind: 'orgProduct' },
   { prefix: '/api/records/:id/fundings/', param: 'itemId', kind: 'orgFunding' },
   { prefix: '/api/records/:id/programs/', param: 'itemId', kind: 'orgProgram' },

@@ -1597,3 +1597,220 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
     opacity: 1;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* CEED Global                                                          */
+/* ------------------------------------------------------------------ */
+
+.net-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+.net-kpi {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-1);
+  position: relative;
+  overflow: hidden;
+}
+.net-kpi::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--kpi);
+}
+.net-kpi.blue { --kpi: var(--blue); --kpi-soft: var(--blue-soft); }
+.net-kpi.cyan { --kpi: var(--cyan); --kpi-soft: rgba(0, 200, 240, 0.14); }
+.net-kpi.ok { --kpi: var(--ok); --kpi-soft: var(--ok-wash); }
+.net-kpi.violet { --kpi: #7a5cff; --kpi-soft: rgba(122, 92, 255, 0.14); }
+.net-kpi-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  background: var(--kpi-soft);
+  color: var(--kpi);
+  flex: none;
+}
+.net-kpi-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.net-kpi-body b {
+  font-family: var(--display);
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.net-kpi-body small {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.net-mark {
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 14px;
+  flex: none;
+}
+.net-centers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+.net-center {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-1);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: box-shadow 0.15s, transform 0.15s, border-color 0.15s;
+}
+.net-center:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-2);
+  transform: translateY(-1px);
+}
+.net-center-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink-3);
+}
+.net-center-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  color: var(--ink);
+}
+.net-center-name b {
+  font-size: 15px;
+}
+.net-center-name .faint {
+  font-size: 12.5px;
+}
+.net-center-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.net-center-stats > span {
+  display: flex;
+  flex-direction: column;
+}
+.net-center-stats b {
+  font-family: var(--display);
+  font-size: 18px;
+}
+.net-center-stats small {
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+
+.net-programs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.net-program {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px 12px 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.net-program-bar {
+  width: 5px;
+  align-self: stretch;
+  flex: none;
+}
+.net-program-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.net-program-main b {
+  font-size: 14.5px;
+}
+.net-program-main .faint {
+  font-size: 12.5px;
+}
+.net-program-reach {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+  max-width: 45%;
+}
+
+.net-manage {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 12px;
+}
+.net-manage-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-1);
+}
+.net-manage-card.off {
+  opacity: 0.7;
+}
+.net-manage-desc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.net-manage-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.net-manage-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.net-manage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}

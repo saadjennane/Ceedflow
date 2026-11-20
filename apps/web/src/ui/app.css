@@ -1164,3 +1164,37 @@ table.data tbody tr.picked td {
   color: var(--blue);
   font-weight: 600;
 }
+
+/* La visibilité d'un programme dans le réseau : trois choix, côte à côte. */
+.net-vis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+.net-vis-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  cursor: pointer;
+}
+.net-vis-option.on {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+.net-vis-option input {
+  margin-top: 3px;
+  accent-color: var(--blue);
+}
+.net-vis-option b {
+  display: block;
+  font-size: 13.5px;
+}
+.net-vis-option small {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-2);
+}
