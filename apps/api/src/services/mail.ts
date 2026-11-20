@@ -14,6 +14,7 @@
 import { newId, redactPasswords } from '@ceed/shared';
 import { db } from '../db/client.js';
 import { inTestContext, isTestAddress } from './testIdentity.js';
+import { currentCenter } from './centers.js';
 
 export type OutboxState = 'queued' | 'held' | 'sent' | 'failed' | 'bounced';
 
@@ -329,9 +330,17 @@ export async function lettersAbout(
             state, error, attempts, created_at::text as "createdAt", sent_at::text as "sentAt",
             delivered_at::text as "deliveredAt"
        from outbox
-      where to_email = any($1::text[]) or record_id = $2 or candidate_id = any($3::text[])
+      where (to_email = any($1::text[]) or record_id = $2 or candidate_id = any($3::text[]))
+        /* Les lettres d'un programme d'un autre centre restent à ce centre. */
+        and (candidate_id is null or exists (
+              select 1 from candidates lc join editions le on le.id = lc.edition_id join programs lp on lp.id = le.program_id
+               where lc.id = outbox.candidate_id and lp.center_id = $5))
+        and (block_id is null or exists (
+              select 1 from blocks lb join phases lph on lph.id = lb.phase_id join tracks lt on lt.id = lph.track_id
+                join editions le on le.id = lt.edition_id join programs lp on lp.id = le.program_id
+               where lb.id = outbox.block_id and lp.center_id = $5))
       order by created_at desc limit $4`,
-    [emails.map((e) => e.trim().toLowerCase()).filter(Boolean), recordId, candidateIds, limit],
+    [emails.map((e) => e.trim().toLowerCase()).filter(Boolean), recordId, candidateIds, limit, currentCenter()],
   );
   return rows.map((row) => ({ ...row, body: redactPasswords(row.body) }));
 }

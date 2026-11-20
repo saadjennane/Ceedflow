@@ -25,10 +25,25 @@ function fallback(status: number): string {
   return `The request was refused. (HTTP ${status})`;
 }
 
+/**
+ * Le centre où l'on travaille, s'il a été choisi : chaque requête le dit à
+ * l'API, qui ne montre que ce qui est à lui. Sans choix, l'API prend le premier
+ * centre de la personne — CEED Maroc pour toute l'équipe d'aujourd'hui.
+ */
+export const CENTER_KEY = 'ceed.center';
+function centerHeader(): Record<string, string> {
+  try {
+    const center = localStorage.getItem(CENTER_KEY);
+    return center ? { 'x-ceed-center': center } : {};
+  } catch {
+    return {};
+  }
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
-    headers: body === undefined ? {} : { 'content-type': 'application/json' },
+    headers: { ...centerHeader(), ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (res.status === 204) return undefined as T;

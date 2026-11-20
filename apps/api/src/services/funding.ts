@@ -33,6 +33,7 @@ import { all, db, one } from '../db/client.js';
 import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { HttpError } from '../routes/util.js';
+import { currentCenter } from './centers.js';
 import { askJson, searchWeb, type WebCitation } from './ai.js';
 import { kbSettings, publishedContext } from './knowledge.js';
 import { similar, teamMembers } from './meetingAssistant.js';
@@ -409,9 +410,9 @@ export async function createFromText(input: { title: string; text: string }, act
   mustWrite(actor);
   const id = newId('fan', 10);
   await all(
-    `insert into funding_analyses (id, title, source_kind, text, pages, truncated, created_by, created_by_name)
-     values ($1, $2, 'text', $3, 0, $4, $5, $6)`,
-    [id, input.title, input.text, input.text.length > MAX_ANALYSED_CHARS, actor.recordId, actor.name],
+    `insert into funding_analyses (id, title, source_kind, text, pages, truncated, created_by, created_by_name, center_id)
+     values ($1, $2, 'text', $3, 0, $4, $5, $6, $7)`,
+    [id, input.title, input.text, input.text.length > MAX_ANALYSED_CHARS, actor.recordId, actor.name, currentCenter()],
   );
   return { id };
 }
@@ -422,9 +423,9 @@ export async function createFromPdf(input: { title: string; filename: string; mi
   const upload = await repo.saveUpload({ filename: input.filename, mime: input.mime, bytes: input.bytes, fieldId: 'funding', uploadedBy: actor.recordId });
   const id = newId('fan', 10);
   await all(
-    `insert into funding_analyses (id, title, source_kind, upload_id, filename, text, pages, truncated, created_by, created_by_name)
-     values ($1, $2, 'pdf', $3, $4, $5, $6, $7, $8, $9)`,
-    [id, input.title, upload.id, input.filename, text, pages, text.length > MAX_ANALYSED_CHARS, actor.recordId, actor.name],
+    `insert into funding_analyses (id, title, source_kind, upload_id, filename, text, pages, truncated, created_by, created_by_name, center_id)
+     values ($1, $2, 'pdf', $3, $4, $5, $6, $7, $8, $9, $10)`,
+    [id, input.title, upload.id, input.filename, text, pages, text.length > MAX_ANALYSED_CHARS, actor.recordId, actor.name, currentCenter()],
   );
   return { id };
 }
@@ -450,7 +451,8 @@ export async function listFunding(): Promise<FundingAnalysisRow[]> {
     `select id, title, status, created_by_name as "createdByName", created_at::text as "createdAt",
             coalesce(jsonb_array_length(result -> 'opportunities'), 0)::int as opportunities,
             coalesce(jsonb_array_length(result -> 'organizations'), 0)::int as organizations
-       from funding_analyses order by created_at desc limit 500`,
+       from funding_analyses where center_id = $1 order by created_at desc limit 500`,
+    [currentCenter()],
   );
 }
 
@@ -482,8 +484,8 @@ export async function fundingView(id: string): Promise<FundingAnalysis | null> {
   );
   /* Une opportunité déjà enregistrée, d'une autre analyse, qui ressemble à celle-ci. */
   const others = await all<{ id: string; title: string; organization: string }>(
-    'select id, title, organization from funding_opportunities where analysis_id is distinct from $1 order by created_at desc limit 500',
-    [id],
+    'select id, title, organization from funding_opportunities where analysis_id is distinct from $1 and center_id = $2 order by created_at desc limit 500',
+    [id, currentCenter()],
   );
   const duplicates: FundingAnalysis['duplicates'] = {};
   for (const o of a.result?.opportunities ?? []) {
@@ -700,10 +702,10 @@ export async function saveOpportunities(
     if (!o) continue;
     const org = a.result.organizations.find((x) => fold(x.name) === fold(o.organization) || (x.acronym && fold(x.acronym) === fold(o.organization)));
     const done = await all<{ id: string }>(
-      `insert into funding_opportunities (id, analysis_id, opportunity_key, type, title, organization, record_id, relevance, summary, details, created_by, created_by_name)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text::jsonb, $11, $12)
+      `insert into funding_opportunities (id, analysis_id, opportunity_key, type, title, organization, record_id, relevance, summary, details, created_by, created_by_name, center_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text::jsonb, $11, $12, $13)
        on conflict (analysis_id, opportunity_key) where analysis_id is not null do nothing returning id`,
-      [newId('fop', 10), id, o.key, o.type, item.title, o.organization, org?.recordId ?? null, o.relevance, item.summary, JSON.stringify(o), actor.recordId, actor.name],
+      [newId('fop', 10), id, o.key, o.type, item.title, o.organization, org?.recordId ?? null, o.relevance, item.summary, JSON.stringify(o), actor.recordId, actor.name, currentCenter()],
     );
     if (done.length) {
       await all(
@@ -899,10 +901,11 @@ export async function startWebResearch(id: string, actor: FundingActor): Promise
 /** Les bailleurs et facilités vus dans les analyses, pas encore suivis — à suivre d'un clic. */
 export async function detectedFunders(): Promise<import('@ceed/shared').DetectedFunder[]> {
   const rows = await all<{ id: string; title: string; result: FundingResult }>(
-    `select id, title, result from funding_analyses where status = 'done' and result is not null order by created_at desc limit 300`,
+    `select id, title, result from funding_analyses where status = 'done' and result is not null and center_id = $1 order by created_at desc limit 300`,
+    [currentCenter()],
   );
   const tracked = new Set(
-    (await all<{ id: string }>(`select id from records where kind = 'org' and deleted_at is null and roles @> '["Funder"]'::jsonb`)).map((r) => r.id),
+    (await all<{ id: string }>(`select id from records where kind = 'org' and deleted_at is null and roles @> '["Funder"]'::jsonb and exists (select 1 from center_members cm where cm.record_id = records.id and cm.center_id = $1)`, [currentCenter()])).map((r) => r.id),
   );
   const out = new Map<string, import('@ceed/shared').DetectedFunder>();
   for (const a of rows) {
@@ -923,9 +926,10 @@ export async function detectedFunders(): Promise<import('@ceed/shared').Detected
 /** Les opportunités détectées dans les analyses, pas encore enregistrées. */
 export async function detectedOpportunities(): Promise<import('@ceed/shared').DetectedOpportunity[]> {
   const rows = await all<{ id: string; title: string; analysedAt: string | null; result: FundingResult }>(
-    `select id, title, analysed_at::text as "analysedAt", result from funding_analyses where status = 'done' and result is not null order by created_at desc limit 300`,
+    `select id, title, analysed_at::text as "analysedAt", result from funding_analyses where status = 'done' and result is not null and center_id = $1 order by created_at desc limit 300`,
+    [currentCenter()],
   );
-  const saved = new Set((await all<{ k: string }>(`select analysis_id || ':' || opportunity_key as k from funding_opportunities where analysis_id is not null`)).map((r) => r.k));
+  const saved = new Set((await all<{ k: string }>(`select analysis_id || ':' || opportunity_key as k from funding_opportunities where analysis_id is not null and center_id = $1`, [currentCenter()])).map((r) => r.k));
   return rows.flatMap((a) =>
     (a.result.opportunities ?? [])
       .filter((o) => !saved.has(`${a.id}:${o.key}`))

@@ -11,6 +11,7 @@ import { all } from '../db/client.js';
 import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { HttpError } from '../routes/util.js';
+import { currentCenter } from './centers.js';
 
 export interface OrgFile {
   uploadId: string;
@@ -88,7 +89,7 @@ export async function orgCompanions(orgId: string): Promise<{ personId: string; 
          from one_to_one_meetings m
          join candidates c on c.id = m.candidate_id
          join editions e on e.id = c.edition_id
-         join programs pr on pr.id = e.program_id
+         join programs pr on pr.id = e.program_id and pr.center_id = $2
         where c.org_id = $1 and m.status <> 'cancelled')
      select p.person_id as "personId", r.name,
             count(*) filter (where p.status = 'held')::int as held,
@@ -98,6 +99,6 @@ export async function orgCompanions(orgId: string): Promise<{ personId: string; 
       where p.person_id is not null
       group by p.person_id, r.name
       order by held desc, r.name`,
-    [orgId],
+    [orgId, currentCenter()],
   );
 }

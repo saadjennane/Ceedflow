@@ -50,6 +50,9 @@ async function dependencies(): Promise<Map<string, Set<string>>> {
  * ever we stop and say so, because a dump in the wrong order fails on load and
  * that is a worse way to find out.
  */
+/** Les tables dont les migrations posent déjà des lignes, et leur clé. */
+const SEEDED: Record<string, string> = { centers: 'id' };
+
 function inLoadOrder(tables: string[], deps: Map<string, Set<string>>): string[] {
   const done = new Set<string>();
   const order: string[] = [];
@@ -121,7 +124,14 @@ export async function exportSql(write: (line: string) => void): Promise<number> 
     const names = columns.map((c) => `"${c.name}"`).join(', ');
     for (const row of rows) {
       const values = columns.map((c) => literal(row[c.name], c.type)).join(', ');
-      write(`insert into "${table}" (${names}) values (${values});`);
+      /* Une ligne que les migrations posent déjà (le centre CEED Maroc) : la
+         version sauvegardée la remplace, plutôt que de faire échouer tout le
+         chargement sur un doublon. */
+      const seeded = SEEDED[table];
+      const onConflict = seeded
+        ? ` on conflict ("${seeded}") do update set ${columns.filter((c) => c.name !== seeded).map((c) => `"${c.name}" = excluded."${c.name}"`).join(', ')}`
+        : '';
+      write(`insert into "${table}" (${names}) values (${values})${onConflict};`);
       total += 1;
     }
   }

@@ -64,6 +64,7 @@ import {
 import { HttpError, notFound, parse } from './util.js';
 import { writeBackToSheet } from '../services/formSheet.js';
 import { workspaceGuard } from './guard.js';
+import { centersOf, centersOfAccount, isGlobalAdmin } from '../services/centers.js';
 import { meetingsFor } from '../services/oneToOne.js';
 
 const scoreInput = z.object({
@@ -638,6 +639,12 @@ export async function funnelRoutes(app: FastifyInstance) {
       // The same answer as a missing file: whoever asked has no business
       // knowing that this one exists.
       if (!mine && !reviewing && !reporting) return notFound(reply, 'File not found.');
+    } else if (upload.candidateId && !(await isGlobalAdmin(account.id))) {
+      /* L'équipe : la pièce d'une candidature reste au centre qui organise le
+         programme. Les documents de la fiche, eux, sont communs. */
+      const mine = new Set((await centersOfAccount(account.id)).map((c) => c.centerId));
+      const owners = await centersOf('candidate', upload.candidateId);
+      if (owners.length && !owners.some((c) => mine.has(c))) return notFound(reply, 'File not found.');
     }
 
     reply.headers(servingHeaders(upload.mime, upload.filename));

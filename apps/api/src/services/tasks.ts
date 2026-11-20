@@ -8,6 +8,7 @@
 import { idOf, newId, OPEN_TASK_STATES, type Task, type TaskAttachment, type TaskEvent, type TaskItem } from '@ceed/shared';
 import { all, one } from '../db/client.js';
 import { HttpError } from '../routes/util.js';
+import { currentCenter, staffOfCenter } from './centers.js';
 
 const COLS = `
   select t.id, t.title, t.detail, t.due_on::text as "dueOn", t.state, t.priority,
@@ -69,6 +70,8 @@ export interface TaskFilter {
   recordId?: string;
   /** Les closes restent lisibles, mais ne s'affichent pas d'elles-mêmes. */
   open?: boolean;
+  /** Celles d'un centre : ses tâches restent les siennes. Sans : celles d'une personne, où qu'elles soient. */
+  center?: string;
 }
 
 export async function listTasks(filter: TaskFilter = {}): Promise<Task[]> {
@@ -103,6 +106,10 @@ export async function listTasks(filter: TaskFilter = {}): Promise<Task[]> {
     params.push(OPEN_TASK_STATES);
     where.push(`t.state = any($${params.length}::text[])`);
   }
+  if (filter.center) {
+    params.push(filter.center);
+    where.push(`t.center_id = $${params.length}`);
+  }
   const sql = `${COLS} ${where.length ? `where ${where.join(' and ')}` : ''}
     order by t.state = 'done', case t.priority when 'high' then 0 when 'low' then 2 else 1 end, t.due_on nulls last, t.created_at`;
   return all<Task>(sql, params);
@@ -110,10 +117,15 @@ export async function listTasks(filter: TaskFilter = {}): Promise<Task[]> {
 
 export const getTask = (id: string) => one<Task>(`${COLS} where t.id = $1`, [id]);
 
-/** L'équipe CEED : les seules fiches qui peuvent être owner, débloquer ou valider. */
+/** L'équipe du centre : les seules fiches qui peuvent être owner, débloquer ou valider. */
 export async function teamIds(): Promise<Set<string>> {
   return new Set(
-    (await all<{ id: string }>(`select record_id as id from accounts where staff_role is not null and disabled_at is null`)).map((r) => r.id),
+    (
+      await all<{ id: string }>(
+        `select a.record_id as id from accounts a where ${staffOfCenter('a', '$1')} and a.disabled_at is null`,
+        [currentCenter()],
+      )
+    ).map((r) => r.id),
   );
 }
 
@@ -168,12 +180,12 @@ export async function createTasks(
   const id = idOf.task();
   await all(
     `insert into tasks (id, title, detail, due_on, owner_id, delegate_id, record_id, edition_id, block_id, candidate_id,
-                        created_by, created_by_name, priority)
-     values ($1,$2,$3,nullif($4,'')::date,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+                        created_by, created_by_name, priority, center_id)
+     values ($1,$2,$3,nullif($4,'')::date,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
     [
       id, input.title.trim(), input.detail.trim(), input.dueOn ?? '', owners[0], delegate,
       input.recordId, input.editionId, input.blockId, input.candidateId,
-      by?.id ?? null, by?.name ?? '', input.priority ?? 'medium',
+      by?.id ?? null, by?.name ?? '', input.priority ?? 'medium', currentCenter(),
     ],
   );
   for (const o of owners) {

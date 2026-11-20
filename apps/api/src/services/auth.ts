@@ -9,6 +9,7 @@ import {
 import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { db, one } from '../db/client.js';
+import { DEFAULT_CENTER } from './centers.js';
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 
@@ -70,7 +71,10 @@ export async function accountForToken(token: string | undefined): Promise<(Accou
     // carries the date so nothing downstream has to ask a second time.
     `select a.id, a.email, a.record_id as "recordId",
             a.must_change_password as "mustChangePassword", a.invited_at::text as "invitedAt",
-            a.disabled_at::text as "disabledAt", a.staff_role as "staffRole"
+            a.disabled_at::text as "disabledAt",
+            coalesce(case when a.global_role = 'admin' then 'admin' end,
+              (select cs.role from center_staff cs where cs.account_id = a.id
+                order by case cs.role when 'admin' then 0 when 'editor' then 1 else 2 end limit 1)) as "staffRole"
        from sessions s join accounts a on a.id = s.account_id
       where s.token_hash = $1 and s.expires_at > now() and a.disabled_at is null`,
     [fingerprint(token)],
@@ -104,7 +108,10 @@ export async function findAccount(email: string) {
   }>(
     `select id, email, record_id as "recordId", password_hash as "passwordHash",
             must_change_password as "mustChangePassword", a.invited_at::text as "invitedAt",
-            a.disabled_at::text as "disabledAt", a.staff_role as "staffRole"
+            a.disabled_at::text as "disabledAt",
+            coalesce(case when a.global_role = 'admin' then 'admin' end,
+              (select cs.role from center_staff cs where cs.account_id = a.id
+                order by case cs.role when 'admin' then 0 when 'editor' then 1 else 2 end limit 1)) as "staffRole"
        from accounts a where email = $1`,
     [normalise(email)],
   );
@@ -175,7 +182,10 @@ export async function accountOfRecord(recordId: string): Promise<RecordAccount |
 /** Le rôle CEED du compte de cette fiche, s'il en a un — pour réserver aux administrateurs ce qui touche un collègue. */
 export async function staffRoleOfRecord(recordId: string): Promise<StaffRole | null> {
   const rows = await (await db()).query<{ role: StaffRole | null }>(
-    'select staff_role as "role" from accounts where record_id = $1',
+    `select coalesce(case when a.global_role = 'admin' then 'admin' end,
+              (select cs.role from center_staff cs where cs.account_id = a.id
+                order by case cs.role when 'admin' then 0 when 'editor' then 1 else 2 end limit 1)) as "role"
+       from accounts a where a.record_id = $1`,
     [recordId],
   );
   return rows[0]?.role ?? null;
@@ -368,12 +378,35 @@ export async function followRecordEmail(
  * Putting somebody on the CEED team, or taking them off it. Null is not staff,
  * which is what every founder's account holds.
  */
-export async function setStaffRole(accountId: string, role: StaffRole | null): Promise<void> {
-  await (await db()).query('update accounts set staff_role = $2 where id = $1', [accountId, role]);
+export async function setStaffRole(accountId: string, role: StaffRole | null, centerId: string = DEFAULT_CENTER): Promise<void> {
+  const conn = await db();
+  /* Le rôle vit dans le centre ; la personne rejoint aussi sa communauté, pour
+     être assignable et visible de ses collègues. */
+  if (role) {
+    await conn.query(
+      `insert into center_staff (account_id, center_id, role) values ($1, $2, $3)
+       on conflict (account_id, center_id) do update set role = excluded.role`,
+      [accountId, centerId, role],
+    );
+    await conn.query(
+      `insert into center_members (record_id, center_id, origin)
+       select record_id, $2, 'staff' from accounts where id = $1
+       on conflict do nothing`,
+      [accountId, centerId],
+    );
+  } else {
+    await conn.query('delete from center_staff where account_id = $1 and center_id = $2', [accountId, centerId]);
+  }
+  /* L'ancienne colonne suit, le temps que plus rien ne la lise. */
+  await conn.query(
+    `update accounts set staff_role = (select cs.role from center_staff cs where cs.account_id = accounts.id
+       order by case cs.role when 'admin' then 0 when 'editor' then 1 else 2 end limit 1) where id = $1`,
+    [accountId],
+  );
 }
 
 /** The CEED team, administrators first — the order a settings page reads in. */
-export async function listStaff(): Promise<
+export async function listStaff(centerId: string = DEFAULT_CENTER): Promise<
   { accountId: string; recordId: string; email: string; role: StaffRole; state: AccountState;
     invitedAt: string | null; disabledAt: string | null; createdAt: string }[]
 > {
@@ -383,10 +416,11 @@ export async function listStaff(): Promise<
     accountId: string; recordId: string; email: string; role: StaffRole;
     mustChangePassword: boolean; invitedAt: string | null; disabledAt: string | null; createdAt: string;
   }>(
-    `select id as "accountId", record_id as "recordId", email, staff_role as "role",
-            must_change_password as "mustChangePassword", invited_at::text as "invitedAt",
-            disabled_at::text as "disabledAt", created_at::text as "createdAt"
-       from accounts where staff_role is not null`,
+    `select a.id as "accountId", a.record_id as "recordId", a.email, cs.role,
+            a.must_change_password as "mustChangePassword", a.invited_at::text as "invitedAt",
+            a.disabled_at::text as "disabledAt", a.created_at::text as "createdAt"
+       from accounts a join center_staff cs on cs.account_id = a.id and cs.center_id = $1`,
+    [centerId],
   );
   const rank: Record<StaffRole, number> = { admin: 0, editor: 1, observer: 2 };
   return rows
@@ -415,9 +449,10 @@ export async function setAccountDisabled(accountId: string, disabled: boolean): 
 }
 
 /** How many administrators CEED has. The workspace is never left without one. */
-export async function adminCount(): Promise<number> {
+export async function adminCount(centerId: string = DEFAULT_CENTER): Promise<number> {
   const rows = await (await db()).query<{ n: number }>(
-    `select count(*)::int as n from accounts where staff_role = 'admin'`,
+    `select count(*)::int as n from center_staff where center_id = $1 and role = 'admin'`,
+    [centerId],
   );
   return Number(rows[0]?.n ?? 0);
 }

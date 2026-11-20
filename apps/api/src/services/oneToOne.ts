@@ -64,6 +64,7 @@ import * as repo from '../db/repo.js';
 import { HttpError } from '../routes/util.js';
 import { conflicted } from './reviews.js';
 import { intakeFor } from './selection.js';
+import { currentCenter } from './centers.js';
 
 const COLS = `
   m.id, m.block_id as "blockId", m.candidate_id as "candidateId", o.name as "orgName",
@@ -1707,7 +1708,10 @@ export async function historyOf(by: { candidateId?: string; orgId?: string }): P
   return all<MeetingLine>(
     `select ${COLS.replace('from one_to_one_meetings m', ', b.name as "blockName" from one_to_one_meetings m join blocks b on b.id = m.block_id')}
       where ${by.candidateId ? 'm.candidate_id = $1' : 'c.org_id = $1'}
+        /* Ceux des programmes de ce centre : les rendez-vous d'ailleurs restent à leur centre. */
+        and exists (select 1 from editions he join programs hp on hp.id = he.program_id
+                     where he.id = c.edition_id and hp.center_id = $2)
       order by m.held_on desc nulls first, m.created_at desc`,
-    [by.candidateId ?? by.orgId],
+    [by.candidateId ?? by.orgId, currentCenter()],
   );
 }

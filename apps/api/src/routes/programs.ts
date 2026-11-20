@@ -8,12 +8,14 @@ import type { FastifyInstance } from 'fastify';
 import * as repo from '../db/repo.js';
 import { notFound, parse } from './util.js';
 import { workspaceGuard } from './guard.js';
+import { currentCenter } from '../services/centers.js';
 
 export async function programRoutes(app: FastifyInstance) {
   // Everything below is the CEED workspace. Public routes name themselves.
   app.addHook('preHandler', workspaceGuard());
 
-  app.get('/api/programs', async () => repo.listPrograms());
+  /* Ceux qu'organise le centre où l'on travaille. */
+  app.get('/api/programs', async () => repo.listPrograms({ center: currentCenter() }));
 
   app.get('/api/programs/:id', async (req, reply) => {
     const { id } = req.params as { id: string };

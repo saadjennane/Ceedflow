@@ -26,6 +26,7 @@ import {
   type TrackWithPhases,
 } from '@ceed/shared';
 import { all, db, one } from './client.js';
+import { currentCenter } from '../services/centers.js';
 
 /* ------------------------------------------------------------------ */
 /* Row mapping                                                         */
@@ -83,8 +84,15 @@ function hydrateBlock(row: Block): Block {
 /* Programs                                                            */
 /* ------------------------------------------------------------------ */
 
-export async function listPrograms(): Promise<ProgramWithEditions[]> {
-  const programs = await all<Program>(`select ${PROGRAM_COLS} from programs where deleted_at is null order by created_at`);
+/**
+ * Les programmes. Avec un centre : ceux qu'il organise — ce que son équipe
+ * administre. Sans : tous, pour ce qui sert un membre où qu'il soit (un juré,
+ * une startup) et filtre lui-même par ce qui le concerne.
+ */
+export async function listPrograms(scope: { center?: string } = {}): Promise<ProgramWithEditions[]> {
+  const programs = scope.center
+    ? await all<Program>(`select ${PROGRAM_COLS} from programs where deleted_at is null and center_id = $1 order by created_at`, [scope.center])
+    : await all<Program>(`select ${PROGRAM_COLS} from programs where deleted_at is null order by created_at`);
   const editions = await all<Edition>(`select ${EDITION_COLS} from editions where deleted_at is null order by position, created_at`);
   return programs.map((p) => ({ ...p, editions: editions.filter((e) => e.programId === p.id) }));
 }
@@ -113,13 +121,15 @@ export async function createProgram(input: {
     city?: string;
     template?: 'blank' | 'selection_funnel';
   };
+  /** Le centre organisateur. Sans : celui où l'on travaille. */
+  centerId?: string;
 }): Promise<ProgramWithEditions> {
   const conn = await db();
   const id = idOf.program();
   return conn.tx(async () => {
     await conn.query(
-      `insert into programs (id, name, code, type, summary, partner, colour)
-       values ($1,$2,$3,$4,$5,$6,$7)`,
+      `insert into programs (id, name, code, type, summary, partner, colour, center_id)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)`,
       [
         id,
         input.name,
@@ -128,6 +138,7 @@ export async function createProgram(input: {
         input.summary ?? '',
         input.partner ?? '',
         input.colour ?? '#2F5BFF',
+        input.centerId ?? currentCenter(),
       ],
     );
     if (input.edition) await insertEdition(id, input.edition);
@@ -761,8 +772,16 @@ export async function inTestProgram(where: { blockId?: string | null; candidateI
 /* ------------------------------------------------------------------ */
 
 /** The candidacies of one organisation, every edition — just their ids, for what reads about them. */
-export const candidatesOfOrg = (orgId: string) =>
-  all<{ id: string }>('select id from candidates where org_id = $1 and deleted_at is null', [orgId]);
+/**
+ * Les candidatures d'une organisation dans les programmes d'un centre — ce que
+ * son équipe voit sur la fiche. Celles d'un autre centre restent à lui.
+ */
+export const candidatesOfOrg = (orgId: string, center: string = currentCenter()) =>
+  all<{ id: string }>(
+    `select c.id from candidates c join editions e on e.id = c.edition_id join programs p on p.id = e.program_id
+      where c.org_id = $1 and c.deleted_at is null and p.center_id = $2`,
+    [orgId, center],
+  );
 
 export async function listCandidates(editionId: string, trackId?: string): Promise<Candidate[]> {
   return trackId

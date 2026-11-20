@@ -23,6 +23,7 @@ import {
 import { houseLetters, setHouseLetter } from '../services/houseLetters.js';
 import { binned, restore } from '../services/trash.js';
 import { requireWorkspaceAdmin, workspaceGuard } from './guard.js';
+import { currentCenter } from '../services/centers.js';
 import { HttpError, notFound, parse } from './util.js';
 
 /**
@@ -72,7 +73,7 @@ export async function staffRoutes(app: FastifyInstance) {
 
 
   const resolve = async (): Promise<StaffMember[]> => {
-    const rows = await listStaff();
+    const rows = await listStaff(currentCenter());
     if (!rows.length) return [];
     const people = await dir.recordsByIds(rows.map((r) => r.recordId));
     return rows
@@ -110,8 +111,11 @@ export async function staffRoutes(app: FastifyInstance) {
     if (existing) {
       // Somebody CEED already knows — a mentor with an account, a founder who
       // joined the team — is promoted rather than duplicated.
-      if (existing.staffRole) throw new HttpError(422, 'They are already on the CEED team.');
-      await setStaffRole(existing.id, input.role);
+      /* Déjà dans l'équipe de ce centre ; celle d'un autre centre n'empêche pas de rejoindre celle-ci. */
+      if ((await listStaff(currentCenter())).some((m) => m.accountId === existing.id)) {
+        throw new HttpError(422, 'They are already on the CEED team.');
+      }
+      await setStaffRole(existing.id, input.role, currentCenter());
       reply.code(200);
       return { team: await resolve(), invite: null, promoted: true };
     }
@@ -142,7 +146,7 @@ export async function staffRoutes(app: FastifyInstance) {
           throw new HttpError(422, 'Another account already signs in with this address.', { email: 'Already taken.' });
         }
         await reissueProvisionalPassword(held.id, password);
-        await setStaffRole(held.id, input.role);
+        await setStaffRole(held.id, input.role, currentCenter());
         /* La fiche aussi : c'est là que part le courrier, et l'ancienne
            adresse était une faute de frappe. */
         /* La nouvelle adresse passe en tête, l'ancienne reste : c'était une
@@ -168,7 +172,7 @@ export async function staffRoutes(app: FastifyInstance) {
       }));
 
     const account = await createAccount({ email, password, recordId: record.id, mustChangePassword: true });
-    await setStaffRole(account.id, input.role);
+    await setStaffRole(account.id, input.role, currentCenter());
     reply.code(201);
     return { team: await resolve(), invite: { email, password }, promoted: false };
   });
@@ -177,19 +181,19 @@ export async function staffRoutes(app: FastifyInstance) {
     const admin = requireWorkspaceAdmin(req);
     const { accountId } = req.params as { accountId: string };
     const { role } = parse(staffRolePatch, req.body);
-    const team = await listStaff();
+    const team = await listStaff(currentCenter());
     const member = team.find((m) => m.accountId === accountId);
     if (!member) throw new HttpError(404, 'Not on the CEED team.');
 
     // A workspace with no administrator can be administered by nobody, and no
     // route exists to put one back from outside.
-    if (member.role === 'admin' && role !== 'admin' && (await adminCount()) <= 1) {
+    if (member.role === 'admin' && role !== 'admin' && (await adminCount(currentCenter())) <= 1) {
       throw new HttpError(422, 'Name another administrator first — CEED cannot be left without one.');
     }
     if (member.accountId === admin.id && role !== 'admin') {
       throw new HttpError(422, 'Ask another administrator to change your own role.');
     }
-    await setStaffRole(accountId, role);
+    await setStaffRole(accountId, role, currentCenter());
     return resolve();
   });
 
@@ -201,13 +205,13 @@ export async function staffRoutes(app: FastifyInstance) {
   app.delete('/api/staff/:accountId', async (req, reply) => {
     const admin = requireWorkspaceAdmin(req);
     const { accountId } = req.params as { accountId: string };
-    const member = (await listStaff()).find((m) => m.accountId === accountId);
+    const member = (await listStaff(currentCenter())).find((m) => m.accountId === accountId);
     if (!member) return notFound(reply, 'Not on the CEED team.');
     if (member.accountId === admin.id) throw new HttpError(422, 'You cannot take yourself off the team.');
-    if (member.role === 'admin' && (await adminCount()) <= 1) {
+    if (member.role === 'admin' && (await adminCount(currentCenter())) <= 1) {
       throw new HttpError(422, 'Name another administrator first — CEED cannot be left without one.');
     }
-    await setStaffRole(accountId, null);
+    await setStaffRole(accountId, null, currentCenter());
     reply.code(204);
   });
 
@@ -215,7 +219,7 @@ export async function staffRoutes(app: FastifyInstance) {
   app.post('/api/staff/:accountId/invite', async (req, reply) => {
     requireWorkspaceAdmin(req);
     const { accountId } = req.params as { accountId: string };
-    const member = (await listStaff()).find((m) => m.accountId === accountId);
+    const member = (await listStaff(currentCenter())).find((m) => m.accountId === accountId);
     if (!member) return notFound(reply, 'Not on the CEED team.');
     if (member.state === 'claimed') {
       throw new HttpError(422, 'They chose their own password — nobody here can read or replace it.');

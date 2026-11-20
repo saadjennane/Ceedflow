@@ -17,6 +17,7 @@ import {
 } from '@ceed/shared';
 import { all, one } from '../db/client.js';
 import { HttpError } from '../routes/util.js';
+import { currentCenter } from './centers.js';
 import { searchWeb, type WebCitation } from './ai.js';
 import { mentionsOf } from './funding.js';
 import { kbSettings } from './knowledge.js';
@@ -219,7 +220,8 @@ export async function startFunderSearch(recordId: string, actor: SearchActor): P
 /** Tous les bailleurs suivis, un par un. */
 export async function startAllSearches(actor: SearchActor): Promise<string[]> {
   mustWrite(actor);
-  const ids = (await all<{ id: string }>(`select id from records where kind = 'org' and deleted_at is null and roles @> '["Funder"]'::jsonb order by name`)).map((r) => r.id);
+  /* Les bailleurs suivis par ce centre : ceux de sa communauté. */
+  const ids = (await all<{ id: string }>(`select id from records where kind = 'org' and deleted_at is null and roles @> '["Funder"]'::jsonb and exists (select 1 from center_members cm where cm.record_id = records.id and cm.center_id = $1) order by name`, [currentCenter()])).map((r) => r.id);
   for (const id of ids) await startFunderSearch(id, actor);
   return ids;
 }
@@ -266,12 +268,12 @@ export async function saveResult(id: string, actor: SearchActor): Promise<{ oppo
     ...(r.eligibilityToVerify ? [{ claim: 'CEED is eligible', status: 'unverified' as const }] : []),
   ];
   await all(
-    `insert into funding_opportunities (id, analysis_id, opportunity_key, type, title, organization, record_id, relevance, summary, details, created_by, created_by_name)
-     values ($1, null, $2, $3, $4, $5, $6, $7, $8, $9::text::jsonb, $10, $11)`,
+    `insert into funding_opportunities (id, analysis_id, opportunity_key, type, title, organization, record_id, relevance, summary, details, created_by, created_by_name, center_id)
+     values ($1, null, $2, $3, $4, $5, $6, $7, $8, $9::text::jsonb, $10, $11, $12)`,
     [
       opportunityId, r.id, r.type, r.title, r.organization, r.recordId, r.relevance, r.summary,
       JSON.stringify({ verification, urls: r.urls, nature: r.nature, fundingNote: r.fundingNote, deadline: r.deadline, amount: r.amount, relevanceReason: r.relevanceReason }),
-      actor.recordId, actor.name,
+      actor.recordId, actor.name, currentCenter(),
     ],
   );
   await all(

@@ -13,6 +13,7 @@ import { phasesOf } from './journey.js';
 import { kpisOf } from './kpis.js';
 import { candidacyActions } from './memberActions.js';
 import { listTasks } from './tasks.js';
+import { currentCenter } from './centers.js';
 
 export interface OrgOverview {
   candidacies: {
@@ -50,8 +51,10 @@ export async function orgOverview(orgId: string): Promise<OrgOverview | null> {
   const mine = await all<{ id: string; editionId: string }>(
     `select c.id, c.edition_id as "editionId" from candidates c
        join editions e on e.id = c.edition_id and e.deleted_at is null
+       join programs p on p.id = e.program_id and p.center_id = $2
       where c.org_id = $1 and c.deleted_at is null order by c.submitted_at desc nulls last`,
-    [orgId],
+    /* Ses candidatures dans les programmes de ce centre : celles d'ailleurs restent à leur centre. */
+    [orgId, currentCenter()],
   );
   for (const { id } of mine) {
     const c = await repo.getCandidate(id);
@@ -99,7 +102,7 @@ export async function orgOverview(orgId: string): Promise<OrgOverview | null> {
   }
 
   /* Les tâches que CEED lui a données, encore ouvertes. */
-  for (const task of await listTasks({ ownerIds: [orgId], open: true })) {
+  for (const task of await listTasks({ ownerIds: [orgId], open: true, center: currentCenter() })) {
     asked.push({
       id: `task:${task.id}`, kind: 'task', role: 'member', dueOn: task.dueOn, programName: null, editionId: null, href: '',
       label: task.title, status: task.dueOn && task.dueOn < now ? 'late' : task.state === 'doing' ? 'in_progress' : 'pending',

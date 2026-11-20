@@ -24,6 +24,7 @@ import {
   orderItems, submitForValidation, taskAttachments, taskHistory, validateTask, waitingFor,
 } from '../services/tasks.js';
 import { workspaceGuard } from './guard.js';
+import { currentCenter } from '../services/centers.js';
 import { HttpError, notFound, parse } from './util.js';
 
 /** Le collègue qui agit, tel qu'on l'inscrira sur la tâche : sa fiche, et son nom. */
@@ -43,7 +44,8 @@ export async function taskRoutes(app: FastifyInstance) {
 
   app.get('/api/tasks', async (req) => {
     const { editionId, programId, recordId, open } = req.query as Record<string, string | undefined>;
-    return listTasks({ editionId, programId, recordId, open: open !== 'all' });
+    /* Les tâches du centre où l'on travaille. */
+    return listTasks({ editionId, programId, recordId, open: open !== 'all', center: currentCenter() });
   });
 
   /** Qui travaille sur cette édition, en quatre groupes. */

@@ -18,6 +18,7 @@
  * cannot move because somebody left the directory.
  */
 import { db } from '../db/client.js';
+import { currentCenter } from './centers.js';
 
 /** How long a deletion can be taken back. */
 export const KEPT_DAYS = 30;
@@ -49,26 +50,31 @@ interface Row {
 /* Les quatre tables qui ont une corbeille, lues d'un seul coup. A candidacy is
    named by its organisation, which may itself be in the bin — so the join
    deliberately does not filter on what is live. */
+/* Chaque centre a sa corbeille : ce qu'il a supprimé, et rien de ce qu'un autre
+   centre a supprimé. `$1` est le centre. */
 const EVERYTHING = `
-  select deleted_batch as batch, deleted_at::text as at, coalesce(deleted_by, '') as by,
-         case when kind = 'org' then 'organisation' else 'person' end as what,
-         name as label
-    from records where deleted_at is not null
+  select r.deleted_batch as batch, r.deleted_at::text as at, coalesce(r.deleted_by, '') as by,
+         case when r.kind = 'org' then 'organisation' else 'person' end as what,
+         r.name as label
+    from records r where r.deleted_at is not null
+     and exists (select 1 from center_members cm where cm.record_id = r.id and cm.center_id = $1)
   union all
   select c.deleted_batch, c.deleted_at::text, coalesce(c.deleted_by, ''), 'candidacy',
          coalesce(o.name, 'an application')
     from candidates c left join records o on o.id = c.org_id
-   where c.deleted_at is not null
+    join editions ce on ce.id = c.edition_id join programs cp on cp.id = ce.program_id
+   where c.deleted_at is not null and cp.center_id = $1
   union all
   select deleted_batch, deleted_at::text, coalesce(deleted_by, ''), 'programme', name
-    from programs where deleted_at is not null
+    from programs where deleted_at is not null and center_id = $1
   union all
-  select deleted_batch, deleted_at::text, coalesce(deleted_by, ''), 'edition', name
-    from editions where deleted_at is not null`;
+  select e.deleted_batch, e.deleted_at::text, coalesce(e.deleted_by, ''), 'edition', e.name
+    from editions e join programs ep on ep.id = e.program_id
+   where e.deleted_at is not null and ep.center_id = $1`;
 
-/** Everything still in the bin, newest deletion first. */
-export async function binned(): Promise<Binned[]> {
-  const rows = await (await db()).query<Row>(`${EVERYTHING} order by at desc`);
+/** Everything still in this centre's bin, newest deletion first. */
+export async function binned(center: string = currentCenter()): Promise<Binned[]> {
+  const rows = await (await db()).query<Row>(`${EVERYTHING} order by at desc`, [center]);
   const byBatch = new Map<string, Binned>();
 
   for (const row of rows) {
@@ -98,8 +104,10 @@ export async function binned(): Promise<Binned[]> {
  * this deletion put to sleep are woken — one an administrator disabled
  * yesterday, for a reason of their own, carries no batch and stays asleep.
  */
-export async function restore(batch: string): Promise<number> {
+export async function restore(batch: string, center: string = currentCenter()): Promise<number> {
   const conn = await db();
+  /* Une suppression d'un autre centre ne se restaure pas d'ici. */
+  if (!(await binned(center)).some((b) => b.batch === batch)) return 0;
   let back = 0;
   for (const table of ['records', 'candidates', 'programs', 'editions']) {
     const rows = await conn.query<{ id: string }>(

@@ -14,6 +14,7 @@ import {
   type TeamMember,
 } from '@ceed/shared';
 import { accountOfRecord, accountStatesByRecord } from '../services/auth.js';
+import { currentCenter, joinCenter } from '../services/centers.js';
 import { db } from './client.js';
 
 const COLS = `id, kind, name, first_name as "firstName", last_name as "lastName", roles, origin, test_owner as "testOwner",
@@ -88,6 +89,8 @@ export interface RecordFilter {
   kind?: RecordKind;
   role?: string;
   q?: string;
+  /** Seulement la communauté de ce centre. Sans : tout le réseau (retrouver une fiche, éviter un doublon). */
+  center?: string;
 }
 
 /**
@@ -117,6 +120,10 @@ export async function listRecords(filter: RecordFilter = {}): Promise<DirectoryR
       or lower(city) like $${params.length} or lower(tags::text) like $${params.length}
       or lower(job_title) like $${params.length} or lower(department) like $${params.length}
       or lower(emails::text) like $${params.length} or lower(phones::text) like $${params.length} or lower(places::text) like $${params.length})`);
+  }
+  if (filter.center) {
+    params.push(filter.center);
+    where.push(`exists (select 1 from center_members cm where cm.record_id = records.id and cm.center_id = $${params.length})`);
   }
   where.push(LIVE);
   return all<DirectoryRecord>(
@@ -182,6 +189,8 @@ export async function createRecord(input: {
   by?: { id: string; name: string } | null;
   /** Le logo d'une organisation, la photo d'une personne. */
   logoUploadId?: string | null;
+  /** Le centre dont elle rejoint la communauté. Sans : celui où l'on travaille. */
+  centerId?: string;
   /** Le reste de la fiche, tel que le formulaire l'envoie — écrit comme le ferait `updateRecord`. */
   [field: string]: unknown;
 }): Promise<DirectoryRecord> {
@@ -225,6 +234,8 @@ export async function createRecord(input: {
       input.by?.name ?? '',
     ],
   );
+  /* Une fiche naît dans une communauté : celle du centre où on la crée. */
+  await joinCenter(id, input.centerId ?? currentCenter(), input.origin ?? 'manual');
   /* Tout ce que la fiche sait écrire et que la ligne ci-dessus n'a pas pris —
      la photo, le logo, le type d'organisation, le statut, le capital… Ils
      étaient reçus puis oubliés : une personne créée avec sa photo n'avait

@@ -13,6 +13,7 @@ import {
 import * as dir from '../db/directory.js';
 import * as repo from '../db/repo.js';
 import { reachFor } from './people.js';
+import { centersOf } from './centers.js';
 
 /** One person or organisation the call would be written to. */
 export interface Prospect {
@@ -79,7 +80,9 @@ export async function resolveAudience(audience: SourcingAudience, blockId: strin
   /* Un appel de test ne vise que des fiches de test, un vrai appel jamais :
      un Sourcing copié dans l'espace de test ne compte pas les 400 vraies startups. */
   const test = await repo.inTestProgram({ blockId });
-  const everyone = await dir.listRecords();
+  /* La communauté du centre qui organise ce programme. */
+  const [center] = await centersOf('block', blockId);
+  const everyone = await dir.listRecords(center ? { center } : {});
   return everyone.filter((record) => Boolean(record.testOwner) === test && matches(record, audience));
 }
 

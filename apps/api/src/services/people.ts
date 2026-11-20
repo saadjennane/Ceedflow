@@ -11,6 +11,7 @@
  * personnes font quatre cents allers-retours, et la page ne s'affiche plus.
  */
 import { all } from '../db/client.js';
+import { centersOf, currentCenter, staffOfCenter } from './centers.js';
 
 /** Là où quelqu'un travaille, tel que l'annuaire le sait. */
 export interface Attached {
@@ -97,7 +98,9 @@ export async function directoryRows(): Promise<{ people: Map<string, PersonRow>;
        from candidates c
        join editions e on e.id = c.edition_id
        join programs p on p.id = e.program_id
-      where c.deleted_at is null`,
+      /* Les programmes de ce centre : une candidature ailleurs reste à son centre. */
+      where c.deleted_at is null and p.center_id = $1`,
+    [currentCenter()],
   );
 
   const people = new Map<string, PersonRow>();
@@ -209,10 +212,13 @@ export interface TeamGroup {
  * et c'est presque toujours ce qu'on veut.
  */
 export async function teamOf(editionId: string): Promise<TeamGroup[]> {
+  /* L'équipe du centre qui organise cette édition. */
+  const [center] = await centersOf('edition', editionId);
   const ceed = await all<{ id: string; name: string }>(
     `select r.id, r.name from accounts a join records r on r.id = a.record_id
-      where a.staff_role is not null and a.staff_role <> '' and a.disabled_at is null and r.deleted_at is null
+      where ${staffOfCenter('a', '$1')} and a.disabled_at is null and r.deleted_at is null
       order by r.name`,
+    [center ?? currentCenter()],
   );
   const jury = await all<{ id: string; name: string }>(
     `select distinct r.id, r.name

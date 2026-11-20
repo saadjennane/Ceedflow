@@ -15,6 +15,8 @@ import { HttpError } from '../routes/util.js';
 import { journeyOf } from './journey.js';
 import { lettersAbout } from './mail.js';
 import { listTasks } from './tasks.js';
+import { currentCenter } from './centers.js';
+
 
 export interface OrgNote {
   id: string;
@@ -39,12 +41,15 @@ export interface ActivityItem {
 
 const NOTE_COLS = `id, body, by_id as "byId", by_name as "byName", created_at::text as "createdAt", edited_at::text as "editedAt"`;
 
+/* Les notes de l'équipe restent à son centre : une autre équipe ne les lit pas. */
 export const notesOf = (orgId: string) =>
-  all<OrgNote>(`select ${NOTE_COLS} from org_notes where org_id = $1 order by created_at desc`, [orgId]);
+  all<OrgNote>(`select ${NOTE_COLS} from org_notes where org_id = $1 and center_id = $2 order by created_at desc`, [orgId, currentCenter()]);
 
 export async function addNote(orgId: string, body: string, by: { id: string; name: string }): Promise<OrgNote> {
   const id = newId('note');
-  await all(`insert into org_notes (id, org_id, body, by_id, by_name) values ($1,$2,$3,$4,$5)`, [id, orgId, body.trim(), by.id, by.name]);
+  await all(`insert into org_notes (id, org_id, body, by_id, by_name, center_id) values ($1,$2,$3,$4,$5,$6)`, [
+    id, orgId, body.trim(), by.id, by.name, currentCenter(),
+  ]);
   return (await one<OrgNote>(`select ${NOTE_COLS} from org_notes where id = $1`, [id]))!;
 }
 
@@ -99,7 +104,7 @@ export async function orgActivity(orgId: string): Promise<ActivityItem[]> {
     out.push({ id: `mail:${l.id}`, at: l.createdAt, kind: 'mail', label: l.subject, detail: `To ${l.toName || l.to} · ${l.state}`, by: '' });
   }
 
-  for (const t of await listTasks({ ownerIds: [orgId] })) {
+  for (const t of await listTasks({ ownerIds: [orgId], center: currentCenter() })) {
     out.push({ id: `task:${t.id}`, at: t.createdAt, kind: 'task', label: `Task given — ${t.title}`, detail: t.dueOn ? `Due ${t.dueOn}` : '', by: '' });
     if (t.doneAt) out.push({ id: `task-done:${t.id}`, at: t.doneAt, kind: 'task', label: `Task done — ${t.title}`, detail: '', by: '' });
   }

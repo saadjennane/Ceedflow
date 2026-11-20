@@ -36,6 +36,7 @@ import {
 } from '@ceed/shared';
 import { all, db, one } from '../db/client.js';
 import { HttpError } from '../routes/util.js';
+import { DEFAULT_CENTER, currentCenter } from './centers.js';
 import { aiKeys, askJson, type AiProvider } from './ai.js';
 import { findAccount } from './auth.js';
 
@@ -152,20 +153,27 @@ const STARTING_CATEGORIES = [
   ['kbc_autres', 'Autres'],
 ] as const;
 
+/* La base de connaissances est celle du centre où l'on travaille. */
 export async function listCategories(): Promise<KbCategory[]> {
-  const rows = await all<KbCategory>('select id, name, position, active from kb_categories order by position, name');
+  const center = currentCenter();
+  const read = () =>
+    all<KbCategory>('select id, name, position, active from kb_categories where center_id = $1 order by position, name', [center]);
+  const rows = await read();
   if (rows.length) return rows;
-  /* Les catégories de départ, posées à la première lecture. */
+  /* Les catégories de départ, posées à la première lecture — avec un
+     identifiant propre à chaque centre, sauf pour le premier. */
   for (const [i, [id, name]] of STARTING_CATEGORIES.entries()) {
-    await all('insert into kb_categories (id, name, position) values ($1, $2, $3) on conflict (id) do nothing', [id, name, i + 1]);
+    await all('insert into kb_categories (id, name, position, center_id) values ($1, $2, $3, $4) on conflict (id) do nothing', [
+      center === DEFAULT_CENTER ? id : `${id}_${center}`, name, i + 1, center,
+    ]);
   }
-  return all<KbCategory>('select id, name, position, active from kb_categories order by position, name');
+  return read();
 }
 
 export async function createCategory(input: { name: string }, actor: KbActor): Promise<KbCategory[]> {
   if (actor.role !== 'admin') throw new HttpError(403, 'Only a CEED administrator manages the categories.');
   const last = (await listCategories()).reduce((n, c) => Math.max(n, c.position), 0);
-  await all('insert into kb_categories (id, name, position) values ($1, $2, $3)', [newId('kbc'), input.name, last + 1]);
+  await all('insert into kb_categories (id, name, position, center_id) values ($1, $2, $3, $4)', [newId('kbc'), input.name, last + 1, currentCenter()]);
   return listCategories();
 }
 
@@ -304,7 +312,8 @@ const plain = (body: string) =>
 export async function kbOverview(actor: KbActor): Promise<KbOverview> {
   const categories = await listCategories();
   const entries = await all<{ id: string; categoryId: string; officialVersionId: string | null }>(
-    'select id, category_id as "categoryId", official_version_id as "officialVersionId" from kb_entries',
+    'select id, category_id as "categoryId", official_version_id as "officialVersionId" from kb_entries where center_id = $1',
+    [currentCenter()],
   );
   const versions = (await all<VersionRow>(`select ${VERSION_COLS} order by v.number`)).map(toVersion);
   const byEntry = new Map<string, KbVersion[]>();
@@ -436,7 +445,7 @@ export async function createKnowledge(
   const entryId = newId('kbe', 10);
   const versionId = newId('kbv', 10);
   await (await db()).tx(async () => {
-    await all('insert into kb_entries (id, category_id, created_by) values ($1, $2, $3)', [entryId, input.categoryId, actor.recordId]);
+    await all('insert into kb_entries (id, category_id, created_by, center_id) values ($1, $2, $3, $4)', [entryId, input.categoryId, actor.recordId, currentCenter()]);
     await all(
       `insert into kb_versions (id, entry_id, number, title, body, content_hash, status, author_id, format, items)
        values ($1, $2, 1, $3, $4, $5, 'analysis_pending', $6, $7, $8::text::jsonb)`,

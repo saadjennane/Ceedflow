@@ -45,6 +45,7 @@ import { directoryRows } from '../services/people.js';
 import { invite, inviteBlock, inviteMany } from '../services/invitations.js';
 import { HttpError, notFound, parse } from './util.js';
 import { requireWorkspaceAdmin, workspaceGuard } from './guard.js';
+import { centersOf, currentCenter, joinCenter, leaveCenter } from '../services/centers.js';
 import * as attrs from '../db/attributes.js';
 import type { Changer } from '../db/attributes.js';
 import { keepSheetHistory } from './sheetHistory.js';
@@ -209,7 +210,8 @@ export async function directoryRoutes(app: FastifyInstance) {
     /* Les quatre lectures ensemble, pas l'une après l'autre : la liste arrive
        au rythme de la plus lente, plus de leur somme. */
     const [records, counts, accounts, both] = await Promise.all([
-      dir.listRecords({ kind: kind as RecordKind, role, q }),
+      /* La communauté du centre où l'on travaille — pas tout le réseau. */
+      dir.listRecords({ kind: kind as RecordKind, role, q, center: currentCenter() }),
       // An organisation with nobody attached cannot be invited, so the list says so.
       dir.linkCounts(),
       // Where each person stands on having their own way in. One query for all.
@@ -409,6 +411,13 @@ export async function directoryRoutes(app: FastifyInstance) {
   app.delete('/api/records/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     await adminForStaffAccount(req, id);
+    /* Une fiche partagée avec d'autres centres n'est pas à ce centre seul :
+       elle quitte sa communauté, et reste entière pour les autres. */
+    if ((await centersOf('record', id)).length > 1) {
+      await leaveCenter(id, currentCenter());
+      reply.code(204);
+      return;
+    }
     const plan = await dir.removalPlan(id);
     if (!plan) return notFound(reply, 'Record not found.');
     // Almost nothing refuses any more: removing somebody means something
@@ -770,6 +779,8 @@ async function runImport(
       if (nextRoles.length !== hit.roles.length) fill.roles = nextRoles;
       if (nextTags.length !== hit.tags.length) fill.tags = nextTags;
 
+      /* Déjà dans le réseau : la même fiche rejoint la communauté de ce centre — jamais un doublon. */
+      if (!dryRun) await joinCenter(hit.id, currentCenter(), 'import');
       if (!Object.keys(fill).length && !contactName) {
         skipped++;
         outcomes.push({ row: at, name, action: 'skipped', reason: 'Already in the directory, nothing to add.', contact: null });

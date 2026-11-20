@@ -28,6 +28,7 @@ import { askJson } from './ai.js';
 import { kbSettings } from './knowledge.js';
 import { tellOwnersAtOnce } from './taskNotices.js';
 import { createTasks } from './tasks.js';
+import { currentCenter, staffOfCenter } from './centers.js';
 
 export interface MeetingActor {
   recordId: string;
@@ -44,19 +45,20 @@ function mustWrite(actor: MeetingActor) {
 /* L'équipe, et les éditions                                         */
 /* ---------------------------------------------------------------- */
 
-/** L'équipe CEED : les seules personnes à qui l'assistant confie une tâche. */
+/** L'équipe du centre : les seules personnes à qui l'assistant confie une tâche. */
 export async function teamMembers(): Promise<(MeetingMember & { firstName: string; lastName: string })[]> {
   return all(
     `select r.id, r.name, r.first_name as "firstName", r.last_name as "lastName"
        from accounts a join records r on r.id = a.record_id
-      where a.staff_role is not null and a.disabled_at is null and r.deleted_at is null
+      where ${staffOfCenter('a', '$1')} and a.disabled_at is null and r.deleted_at is null
       order by r.name`,
+    [currentCenter()],
   );
 }
 
 /** Les éditions de programme, nommées comme on les lit : « The Builders — Cohorte 1 ». */
 async function editionList(): Promise<{ id: string; name: string }[]> {
-  return (await repo.listPrograms()).flatMap((p) => p.editions.map((e) => ({ id: e.id, name: `${p.name} — ${e.name}` })));
+  return (await repo.listPrograms({ center: currentCenter() })).flatMap((p) => p.editions.map((e) => ({ id: e.id, name: `${p.name} — ${e.name}` })));
 }
 
 /** Le jour à Casablanca, décalé de quelques jours si besoin. */
@@ -130,8 +132,10 @@ export async function resolveAbout(
   if (kind === 'programme' || kind === 'none' || !name) return kind === 'programme' || !name ? none : { ...none, said: said ?? '' };
   const recordKind = kind === 'person' ? 'person' : 'org';
   const found = (await all<{ id: string; name: string }>(
-    `select id, name from records where kind = $1 and deleted_at is null`,
-    [recordKind],
+    /* Une fiche de la communauté de ce centre. */
+    `select id, name from records where kind = $1 and deleted_at is null
+        and exists (select 1 from center_members cm where cm.record_id = records.id and cm.center_id = $2)`,
+    [recordKind, currentCenter()],
   )).filter((r) => fold(r.name) === name);
   if (found.length !== 1) return { ...none, said: said ?? '' };
   const recordId = found[0]!.id;
@@ -456,9 +460,9 @@ export async function createMeeting(
   }
   const id = newId('mtg', 10);
   await all(
-    `insert into meeting_analyses (id, title, meeting_on, edition_id, content, created_by, created_by_name)
-     values ($1, $2, $3::date, $4, $5, $6, $7)`,
-    [id, input.title, meetingOn, input.editionId, input.content, actor.recordId, actor.name],
+    `insert into meeting_analyses (id, title, meeting_on, edition_id, content, created_by, created_by_name, center_id)
+     values ($1, $2, $3::date, $4, $5, $6, $7, $8)`,
+    [id, input.title, meetingOn, input.editionId, input.content, actor.recordId, actor.name, currentCenter()],
   );
   return { id };
 }
@@ -479,9 +483,10 @@ export async function listMeetings(): Promise<MeetingRow[]> {
        from meeting_analyses m
        left join editions e on e.id = m.edition_id
        left join programs p on p.id = e.program_id
-      where m.kind = 'meeting'
+      where m.kind = 'meeting' and m.center_id = $1
       order by m.meeting_on desc, m.created_at desc
       limit 500`,
+    [currentCenter()],
   );
 }
 
@@ -737,8 +742,9 @@ export async function meetingBacklog(): Promise<{ analysing: { id: string; title
   return {
     analysing: await all(
       `select id, title, status, error, created_at::text as "createdAt" from meeting_analyses
-        where kind = 'meeting' and (status = 'pending' or (status = 'failed' and created_at > now() - interval '7 days'))
+        where kind = 'meeting' and center_id = $1 and (status = 'pending' or (status = 'failed' and created_at > now() - interval '7 days'))
         order by created_at desc`,
+      [currentCenter()],
     ),
     items: await suggestionsWhere(`where s.status in ('proposed', 'failed')`, []),
   };
@@ -780,13 +786,13 @@ export async function createFromBacklog(
  */
 export async function addToBacklog(input: { title: string }, actor: MeetingActor): Promise<{ id: string }> {
   mustWrite(actor);
-  let bucket = await one<{ id: string }>(`select id from meeting_analyses where kind = 'manual' order by created_at limit 1`);
+  let bucket = await one<{ id: string }>(`select id from meeting_analyses where kind = 'manual' and center_id = $1 order by created_at limit 1`, [currentCenter()]);
   if (!bucket) {
     const id = newId('mtg', 10);
     await all(
-      `insert into meeting_analyses (id, kind, title, meeting_on, content, status, created_by, created_by_name, analysed_at)
-       values ($1, 'manual', 'Added by hand', current_date, '', 'done', $2, $3, now())`,
-      [id, actor.recordId, actor.name],
+      `insert into meeting_analyses (id, kind, title, meeting_on, content, status, created_by, created_by_name, analysed_at, center_id)
+       values ($1, 'manual', 'Added by hand', current_date, '', 'done', $2, $3, now(), $4)`,
+      [id, actor.recordId, actor.name, currentCenter()],
     );
     bucket = { id };
   }
@@ -818,9 +824,9 @@ export async function launchChecklist(entryId: string, actor: MeetingActor): Pro
   const groupId = newId('mtg', 10);
   await (await db()).tx(async () => {
     await all(
-      `insert into meeting_analyses (id, kind, title, meeting_on, content, status, created_by, created_by_name, analysed_at, kb_version_id)
-       values ($1, 'checklist', $2, current_date, '', 'done', $3, $4, now(), $5)`,
-      [groupId, v.title, actor.recordId, actor.name, v.id],
+      `insert into meeting_analyses (id, kind, title, meeting_on, content, status, created_by, created_by_name, analysed_at, kb_version_id, center_id)
+       values ($1, 'checklist', $2, current_date, '', 'done', $3, $4, now(), $5, $6)`,
+      [groupId, v.title, actor.recordId, actor.name, v.id, currentCenter()],
     );
     for (const [i, item] of v.items.entries()) {
       await all(
