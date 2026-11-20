@@ -339,6 +339,44 @@ describe('a programme proposed to the network', { skip: skipWithoutServer }, () 
     assert.equal((await call(who.tn!, 'POST', `/api/network/offers/${program}/decision`, { decision: 'accepted' })).statusCode, 200);
     assert.equal((await call(who.tn!, 'POST', `/api/network/offers/${program}/decision`, { decision: 'rejected' })).statusCode, 422);
   });
+
+  it('joins a Tunis startup to CEED Maroc when it applies there, one record, its first centre kept (scenario 8)', async () => {
+    const org = (await dir.createRecord({ kind: 'org', name: `Carthage ${mark}`, origin: 'signup', centerId: tunisia })).id;
+    const founder = (await dir.createRecord({ kind: 'person', name: `Leila ${mark}`, origin: 'signup', centerId: tunisia })).id;
+    /* Avant : CEED Maroc ne la voit pas. */
+    assert.equal((await call(who.ma!, 'GET', `/api/records/${org}`)).statusCode, 404);
+
+    const edition = (await repo.getProgram(program))!.editions[0]!;
+    const track = (await repo.getEditionDetail(edition.id))!.tracks[0]!;
+    await repo.createCandidate({ editionId: edition.id, trackId: track.id, orgId: org, personId: founder, originBlockId: null });
+
+    const centers = await all<{ center_id: string; origin: string }>(
+      'select center_id, origin from center_members where record_id = $1 order by created_at',
+      [org],
+    );
+    assert.deepEqual(centers.map((c) => c.center_id).sort(), [DEFAULT_CENTER, tunisia].sort(), 'Tunis kept, Maroc added');
+    assert.equal(centers.find((c) => c.center_id === DEFAULT_CENTER)!.origin, 'application');
+    assert.equal((await call(who.ma!, 'GET', `/api/records/${org}`)).statusCode, 200, 'CEED Maroc now sees it');
+    assert.equal((await call(who.tn!, 'GET', `/api/records/${org}`)).statusCode, 200, 'and Tunis still does');
+    const named = await all<{ n: number }>(`select count(*)::int as n from records where name = $1`, [`Carthage ${mark}`]);
+    assert.equal(named[0]!.n, 1, 'never a second record');
+    const person = await all<{ center_id: string }>('select center_id from center_members where record_id = $1', [founder]);
+    assert.ok(person.some((p) => p.center_id === DEFAULT_CENTER), 'the applicant joins too');
+  });
+
+  it('applies three times to CEED Maroc and joins it once (scenario 9)', async () => {
+    const org = (await dir.createRecord({ kind: 'org', name: `Kairouan ${mark}`, origin: 'signup', centerId: tunisia })).id;
+    for (let i = 0; i < 3; i++) {
+      const p = await inCenter(DEFAULT_CENTER, () => repo.createProgram({ name: `Prog ${i} ${mark}`, edition: { name: 'E' } }));
+      const track = (await repo.getEditionDetail(p.editions[0]!.id))!.tracks[0]!;
+      await repo.createCandidate({ editionId: p.editions[0]!.id, trackId: track.id, orgId: org, personId: null, originBlockId: null });
+    }
+    const rows = await all<{ n: number }>(
+      'select count(*)::int as n from center_members where record_id = $1 and center_id = $2',
+      [org, DEFAULT_CENTER],
+    );
+    assert.equal(rows[0]!.n, 1);
+  });
 });
 
 /** Une session pour un compte qu'on vient de créer par son adresse. */

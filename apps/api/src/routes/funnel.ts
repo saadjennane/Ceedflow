@@ -64,7 +64,7 @@ import {
 import { HttpError, notFound, parse } from './util.js';
 import { writeBackToSheet } from '../services/formSheet.js';
 import { workspaceGuard } from './guard.js';
-import { centersOf, centersOfAccount, isGlobalAdmin } from '../services/centers.js';
+import { DEFAULT_CENTER, centersOf, centersOfAccount, inCenter, isGlobalAdmin } from '../services/centers.js';
 import { meetingsFor } from '../services/oneToOne.js';
 
 const scoreInput = z.object({
@@ -492,9 +492,13 @@ export async function funnelRoutes(app: FastifyInstance) {
        candidature est déposée pour elle, et la demande de la rejoindre part
        en même temps — l'équipe ou CEED la valide, et d'ici là la personne ne
        voit rien de ce que l'organisation garde pour elle. */
+    /* Une organisation qui naît ici naît dans la communauté du centre qui organise ce programme. */
+    const [programCenter] = await centersOf('block', found.block.id);
     const opened = input.orgId
       ? null
-      : await dir.openOrganisation(account.recordId, { name: input.newOrg!.name, website: input.newOrg!.website });
+      : await inCenter(programCenter ?? DEFAULT_CENTER, () =>
+          dir.openOrganisation(account.recordId, { name: input.newOrg!.name, website: input.newOrg!.website }),
+        );
     const orgId = input.orgId || opened!.org.id;
     const pending = Boolean(opened?.pending);
     if (pending) await tellAdminsOfRequest(orgId, account.recordId);

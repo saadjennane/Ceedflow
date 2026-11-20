@@ -654,6 +654,8 @@ export const signupAccountInput = z.object({
   lastName: z.string().min(1, 'Tell us your last name.'),
   email: z.string().email('Enter a valid email address.'),
   password: z.string().min(8, 'At least 8 characters.'),
+  /** Où la personne allait : le lien d'une candidature dit dans quel centre elle arrive. */
+  next: z.string().nullable().optional(),
 });
 
 export const loginInput = z.object({

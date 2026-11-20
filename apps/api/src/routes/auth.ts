@@ -67,7 +67,7 @@ import { markTest, testOwnerOf } from '../services/sandbox.js';
 import { appLink } from '../services/deliverables.js';
 import { HttpError, notFound, parse } from './util.js';
 import { all, one } from '../db/client.js';
-import { listCenters } from '../services/centers.js';
+import { DEFAULT_CENTER, centersOf, listCenters } from '../services/centers.js';
 import { acceptedIn, centersOfMember } from '../services/distribution.js';
 import { keepSheetHistory } from './sheetHistory.js';
 import { setAttribute, sheetAttributes } from '../services/orgAttributes.js';
@@ -302,6 +302,11 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     const name = fullName(input.firstName, input.lastName);
+    /* Inscrite depuis le lien d'une candidature : elle arrive dans la communauté
+       du centre qui organise ce programme. Sinon, celle du premier centre. */
+    const applying = input.next?.match(/^\/apply\/([^/?#]+)/)?.[1];
+    const form = applying ? await repo.findPublicForm(applying) : null;
+    const centerId = form ? ((await centersOf('block', form.block.id))[0] ?? DEFAULT_CENTER) : DEFAULT_CENTER;
     const record = await dir.createRecord({
       kind: 'person',
       name,
@@ -310,6 +315,7 @@ export async function authRoutes(app: FastifyInstance) {
       emails: [input.email],
       places: [],
       origin: 'signup',
+      centerId,
     });
     /* L'alias d'un collègue — saad+startup@… — est une identité de test, même
        inscrite d'elle-même depuis un formulaire : elle rejoint l'espace de test. */

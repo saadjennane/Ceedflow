@@ -34,7 +34,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
     setBusy(true);
     setErrors({});
     try {
-      const me = await api.post<Me | { mailed: true; email: string }>(signup ? '/api/auth/signup' : '/api/auth/login', form);
+      const me = await api.post<Me | { mailed: true; email: string }>(signup ? '/api/auth/signup' : '/api/auth/login', signup ? { ...form, next } : form);
       /* Une adresse que CEED connaissait : le mot de passe est parti à cette
          adresse, pour prouver qu'elle est bien la sienne. */
       if ('mailed' in me) {
