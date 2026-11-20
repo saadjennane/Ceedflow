@@ -83,7 +83,7 @@ export function ProgramPage() {
     <>
       <header className="topbar">
         <div className="crumbs">
-          <Link to="/">Programs</Link>
+          <Link to="/programs">Programs</Link>
           <Icon name="chevronRight" size={13} />
         </div>
         <h1>
@@ -198,7 +198,7 @@ export function ProgramPage() {
           onConfirm={async () => {
             await api.del(`/api/programs/${p.id}`);
             toast(`${p.name} deleted.`);
-            navigate('/');
+            navigate('/programs');
           }}
         />
       )}

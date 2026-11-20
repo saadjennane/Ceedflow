@@ -124,7 +124,7 @@ export function EditionPage() {
     <>
       <header className="topbar">
         <div className="crumbs">
-          <Link to="/">Programs</Link>
+          <Link to="/programs">Programs</Link>
           <Icon name="chevronRight" size={13} />
           <Link to={`/programs/${detail.program.id}`}>{detail.program.name}</Link>
           <Icon name="chevronRight" size={13} />

@@ -499,6 +499,31 @@ export async function authRoutes(app: FastifyInstance) {
    * ses colonnes, son tri. Sur son compte — pas dans un navigateur — et à elle
    * seule : deux collègues qui réorganisent ont chacun leur vue.
    */
+  /* ---- Absent : chacun le dit pour lui ; l'équipe le voit sur l'accueil ---- */
+
+  app.get('/api/me/away', async (req) => {
+    const account = await require(req);
+    return (
+      (await one<{ until: string | null; note: string }>('select away_until::text as until, away_note as note from accounts where id = $1', [account.id])) ?? {
+        until: null,
+        note: '',
+      }
+    );
+  });
+
+  app.put('/api/me/away', async (req) => {
+    const account = await require(req);
+    const input = parse(
+      z.object({
+        until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'A date.').nullable(),
+        note: z.string().trim().max(120).default(''),
+      }),
+      req.body,
+    );
+    await all('update accounts set away_until = $2::date, away_note = $3 where id = $1', [account.id, input.until, input.until ? input.note : '']);
+    return { until: input.until, note: input.until ? input.note : '' };
+  });
+
   /* ---- Le centre de notifications : les siennes, et rien d'autre ---- */
 
   app.get('/api/me/notifications', async (req) => {

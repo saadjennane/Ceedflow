@@ -44,7 +44,8 @@ const savedView = (): View => {
 export function TasksPage() {
   const tasks = useAsync(() => api.get<Task[]>('/api/tasks?open=all'), 'tasks');
   const [query, setQuery] = useState('');
-  const [adding, setAdding] = useState(false);
+  /* « Nouvelle tâche » depuis l'accueil : la fenêtre s'ouvre d'elle-même. */
+  const [adding, setAdding] = useState(() => new URLSearchParams(window.location.search).get('new') === '1');
   const [showDone, setShowDone] = useState(false);
   const [view, setView] = useState<View>(savedView);
   /* « View task » depuis l'assistant de réunion : la tâche s'ouvre directement. */

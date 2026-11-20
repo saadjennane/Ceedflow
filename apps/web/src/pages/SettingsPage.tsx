@@ -27,6 +27,7 @@ import { TestSpace } from './TestSpace';
 import { SheetSettings } from './SheetSettings';
 import { KnowledgeSettings } from './knowledge/KnowledgeSettings';
 import { CenterSettings } from './CenterSettings';
+import { AwaySetting } from './AwaySetting';
 import { Icon } from '../ui/Icon';
 import { Modal, useToast } from '../ui/Overlays';
 import '../ui/builder.css';
@@ -445,6 +446,7 @@ export function SettingsPage() {
             your password to end all of them at once.
           </p>
         </section>
+        {me?.account.staffRole && <AwaySetting />}
           </>
         )}
 

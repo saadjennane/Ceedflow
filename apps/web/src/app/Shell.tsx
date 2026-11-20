@@ -18,7 +18,6 @@ import { isLate, type Task } from '@ceed/shared';
  * The navigation the prototype settled on. Sections that exist in the model but
  * are not built yet stay visible and inert, so the shape of the product is legible.
  */
-const TOP = [{ label: 'Home', icon: 'home' }];
 
 const COMMUNITY_LATER = [
   { label: 'CRM', icon: 'compass' },
@@ -102,9 +101,11 @@ export function Shell() {
             <span className="nav-label">Global Overview</span>
           </NavLink>
         )}
-        {TOP.map((item) => (
-          <Soon key={item.label} {...item} />
-        ))}
+        {/* L'accueil : ma journée, l'équipe, les programmes en cours. */}
+        <NavLink to="/" className={link} end title="Home">
+          <Icon name="home" />
+          <span className="nav-label">Home</span>
+        </NavLink>
         {/* Avec le compte de ce qui est en retard : une liste qu'on doit aller
             ouvrir est une liste qu'on oublie. */}
         <NavLink to="/tasks" className={link} title="Tasks">
@@ -133,7 +134,7 @@ export function Shell() {
         ))}
 
         <div className="eyebrow nav-group">Programs</div>
-        <NavLink to="/" className={link} end title="Programs">
+        <NavLink to="/programs" className={link} title="Programs">
           <Icon name="layers" />
           <span className="nav-label">Programs</span>
         </NavLink>

@@ -24,6 +24,7 @@ import {
 } from '../services/centers.js';
 import { decide, offer, offerOpenProgramsTo, offersFor, pendingOffers } from '../services/distribution.js';
 import { requireWorkspaceAdmin, workspaceGuard } from './guard.js';
+import { homeFor } from '../services/home.js';
 import { HttpError, notFound, parse } from './util.js';
 
 /** CEED Global seulement. */
@@ -104,6 +105,9 @@ export async function networkRoutes(app: FastifyInstance) {
       })),
     };
   });
+
+  /* La page d'accueil de l'équipe : ma journée, et le centre. */
+  app.get('/api/home', async (req) => homeFor({ recordId: req.staff!.recordId, role: req.staff!.role }));
 
   /* ---- Le centre où l'on travaille ---- */
 

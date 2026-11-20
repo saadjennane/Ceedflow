@@ -30,6 +30,7 @@ const ProgramPage = lazy(() => import('./pages/ProgramPage').then((m) => ({ defa
 const ProgramsPage = lazy(() => import('./pages/ProgramsPage').then((m) => ({ default: m.ProgramsPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const NetworkPage = lazy(() => import('./pages/network/NetworkPage').then((m) => ({ default: m.NetworkPage })));
+const HomePage = lazy(() => import('./pages/HomePage').then((m) => ({ default: m.HomePage })));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage').then((m) => ({ default: m.NotificationsPage })));
 const OffersPage = lazy(() => import('./pages/network/OffersPage').then((m) => ({ default: m.OffersPage })));
 const TasksPage = lazy(() => import('./pages/TasksPage').then((m) => ({ default: m.TasksPage })));
@@ -56,7 +57,8 @@ const router = createBrowserRouter([
     path: '/',
     element: <Shell />,
     children: [
-      { index: true, element: <ProgramsPage /> },
+      { index: true, element: <HomePage /> },
+      { path: 'programs', element: <ProgramsPage /> },
       { path: 'programs/:programId', element: <ProgramPage /> },
       { path: 'editions/:editionId', element: <EditionPage /> },
       { path: 'organisations', element: <DirectoryPage kind="org" /> },
