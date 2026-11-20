@@ -828,13 +828,13 @@ export async function createCandidate(input: {
      et la personne y rejoignent la communauté, sans rien dupliquer — la même
      fiche, une ligne de plus dans center_members, et rien si elle y est déjà.
      Leurs autres centres restent les leurs. */
-  const center = await one<{ id: string }>(
-    `select p.center_id as id from editions e join programs p on p.id = e.program_id where e.id = $1`,
+  const center = await one<{ id: string; programId: string }>(
+    `select p.center_id as id, p.id as "programId" from editions e join programs p on p.id = e.program_id where e.id = $1`,
     [input.editionId],
   );
   if (center) {
     for (const recordId of [input.orgId, input.personId].filter((x): x is string => Boolean(x))) {
-      await joinCenter(recordId, center.id, 'application');
+      await joinCenter(recordId, center.id, 'application', { programId: center.programId });
     }
   }
   return (await one<Candidate>(`${CANDIDATE_SELECT} where c.deleted_at is null and c.id = $1`, [id]))!;

@@ -15,6 +15,7 @@ import {
   currentCenter,
   getCenter,
   listCenters,
+  likelyDuplicates,
   networkFigures,
   networkPrograms,
   staffOf,
@@ -142,6 +143,12 @@ export async function networkRoutes(app: FastifyInstance) {
   app.get('/api/network/overview', async (req) => {
     requireGlobal(req);
     return networkFigures();
+  });
+
+  /* Les fiches probablement en double : de quoi vérifier un chiffre. */
+  app.get('/api/network/duplicates', async (req) => {
+    requireGlobal(req);
+    return likelyDuplicates();
   });
 
   app.get('/api/network/programs', async (req) => {

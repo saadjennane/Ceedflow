@@ -231,6 +231,35 @@ describe('two centres', { skip: skipWithoutServer }, () => {
     assert.equal(programs.find((p) => p.id === live.id)!.distributedTo.length, 2);
   });
 
+  it('notes who added a record, and the programme an application brought it from', async () => {
+    const made = await call(morocco, 'POST', '/api/records', { kind: 'org', name: `Added by hand ${mark}` });
+    assert.equal(made.statusCode, 201);
+    const record = made.json() as { id: string; createdByName: string };
+    assert.equal(record.createdByName, `Samia ${mark}`);
+    const member = await all<{ added_by_name: string; origin: string }>(
+      'select added_by_name, origin from center_members where record_id = $1', [record.id],
+    );
+    assert.equal(member[0]!.added_by_name, `Samia ${mark}`);
+
+    /* Née d'une candidature : son programme. Et une fiche qui rejoint un autre centre en candidatant dit lequel. */
+    const viaApp = await dir.createRecord({ kind: 'org', name: `Via app ${mark}`, origin: 'signup', centerId: DEFAULT_CENTER, sourceProgramId: maProgram });
+    assert.equal((await dir.getRecord(viaApp.id))!.sourceProgramName, `The Builders ${mark}`);
+    await joinCenter(viaApp.id, tunisia, 'application', { programId: maProgram });
+    const tn = await all<{ program_id: string }>('select program_id from center_members where record_id = $1 and center_id = $2', [viaApp.id, tunisia]);
+    assert.equal(tn[0]!.program_id, maProgram);
+  });
+
+  it('separates organisations and individuals, and finds the records that look the same', async () => {
+    const figures = (await call(global, 'GET', '/api/network/overview')).json() as { totals: { organisations: number; individuals: number } };
+    assert.ok(figures.totals.organisations > 0 && figures.totals.individuals > 0);
+    await dir.createRecord({ kind: 'org', name: `Doublon ${mark}`, origin: 'manual', centerId: DEFAULT_CENTER });
+    await dir.createRecord({ kind: 'org', name: `DOUBLON  ${mark}.`, origin: 'manual', centerId: DEFAULT_CENTER });
+    const dupes = (await call(global, 'GET', '/api/network/duplicates')).json() as { kind: string; reason: string; records: { name: string }[] }[];
+    const ours = dupes.find((d) => d.kind === 'org' && d.reason === 'name' && d.records.some((r) => r.name === `Doublon ${mark}`));
+    assert.equal(ours?.records.length, 2);
+    assert.equal((await call(tunis, 'GET', '/api/network/duplicates')).statusCode, 403, 'CEED Global only');
+  });
+
   it('keeps each centre’s own letters and signature', async () => {
     const edited = await call(tunis, 'PATCH', '/api/house-letters/task_given', { subject: 'Une tâche pour vous, de Tunis' });
     assert.equal(edited.statusCode, 200);

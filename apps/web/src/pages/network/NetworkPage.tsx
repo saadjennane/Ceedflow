@@ -30,11 +30,12 @@ interface CenterLine {
   activePrograms: number;
   completedPrograms: number;
   startups: number;
-  members: number;
+  organisations: number;
+  individuals: number;
 }
 
 interface Overview {
-  totals: { centers: number; programs: number; startups: number; members: number };
+  totals: { centers: number; programs: number; startups: number; organisations: number; individuals: number };
   centers: CenterLine[];
 }
 
@@ -62,6 +63,7 @@ const TABS = [
   { key: 'overview', label: 'Overview' },
   { key: 'programs', label: 'Programmes' },
   { key: 'centers', label: 'Centres' },
+  { key: 'check', label: 'Data check' },
 ] as const;
 
 export function NetworkPage() {
@@ -92,6 +94,8 @@ export function NetworkPage() {
           <OverviewTab data={overview.data} />
         ) : tab === 'programs' ? (
           <ProgramsTab centers={overview.data.centers} />
+        ) : tab === 'check' ? (
+          <CheckTab totals={overview.data.totals} />
         ) : (
           <CentersTab centers={overview.data.centers} onChanged={overview.reload} />
         )}
@@ -105,7 +109,8 @@ const KPIS = [
   { key: 'centers', label: 'Active centres', icon: 'compass', tone: 'blue' },
   { key: 'programs', label: 'Live programmes', icon: 'layers', tone: 'cyan' },
   { key: 'startups', label: 'Startups supported', icon: 'star', tone: 'ok' },
-  { key: 'members', label: 'Community members', icon: 'users', tone: 'violet' },
+  { key: 'organisations', label: 'Organisations', icon: 'layers', tone: 'violet' },
+  { key: 'individuals', label: 'Individuals', icon: 'users', tone: 'blue' },
 ] as const;
 
 /** La pastille d'un centre : l'initiale de son pays, à la couleur de son nom. */
@@ -122,8 +127,9 @@ function OverviewTab({ data }: { data: Overview }) {
   const notes: Record<(typeof KPIS)[number]['key'], string> = {
     centers: `${data.centers.length} in the network`,
     programs: 'each counted once',
-    startups: 'unique across centres',
-    members: 'people and organisations',
+    startups: 'organisations with an application',
+    organisations: 'in the communities, each once',
+    individuals: 'in the communities, each once',
   };
   return (
     <>
@@ -161,7 +167,8 @@ function OverviewTab({ data }: { data: Overview }) {
               <span><b className="num">{c.activePrograms}</b><small>Live</small></span>
               <span><b className="num">{c.completedPrograms}</b><small>Completed</small></span>
               <span><b className="num">{c.startups.toLocaleString('fr-FR')}</b><small>Startups</small></span>
-              <span><b className="num">{c.members.toLocaleString('fr-FR')}</b><small>Members</small></span>
+              <span><b className="num">{c.organisations.toLocaleString('fr-FR')}</b><small>Organisations</small></span>
+              <span><b className="num">{c.individuals.toLocaleString('fr-FR')}</b><small>Individuals</small></span>
             </span>
           </button>
         ))}
@@ -236,6 +243,85 @@ function ProgramsTab({ centers }: { centers: CenterLine[] }) {
         </div>
       ) : (
         <div className="empty">No programme matches.</div>
+      )}
+    </>
+  );
+}
+
+interface Duplicate {
+  kind: 'org' | 'person';
+  reason: 'name' | 'email';
+  key: string;
+  records: { id: string; name: string; email: string; createdAt: string; centers: string[] }[];
+}
+
+/**
+ * Vérifier les chiffres : ce qu'ils comptent, et les fiches qui semblent en
+ * double — même nom à l'accent et la ponctuation près, ou même adresse.
+ */
+function CheckTab({ totals }: { totals: Overview['totals'] }) {
+  const dupes = useAsync(() => api.get<Duplicate[]>('/api/network/duplicates'), 'network-duplicates');
+  const [kind, setKind] = useState<'org' | 'person'>('org');
+  const list = (dupes.data ?? []).filter((d) => d.kind === kind);
+  const extra = (k: 'org' | 'person') =>
+    (dupes.data ?? []).filter((d) => d.kind === k && d.reason === 'name').reduce((n, d) => n + d.records.length - 1, 0);
+  return (
+    <>
+      <section className="card card-pad stack" style={{ gap: 6 }}>
+        <h3 className="section-title" style={{ margin: 0 }}>What the figures count</h3>
+        <ul className="net-defs">
+          <li><b>{totals.organisations.toLocaleString('fr-FR')} organisations</b> — every organisation in a centre’s community, counted once however many centres it belongs to. Test records and deleted ones are left out.</li>
+          <li><b>{totals.individuals.toLocaleString('fr-FR')} individuals</b> — the same, for people.</li>
+          <li><b>{totals.startups.toLocaleString('fr-FR')} startups supported</b> — organisations with at least one application to a programme, not withdrawn. A part of the organisations above.</li>
+          <li><b>{totals.programs} live programmes</b> — programmes with an edition in progress, each once even when shown in several centres.</li>
+        </ul>
+      </section>
+
+      <div className="row wrap" style={{ gap: 10 }}>
+        <div className="seg" role="group" aria-label="Kind">
+          <button className={kind === 'org' ? 'on' : ''} onClick={() => setKind('org')}>
+            Organisations <span className="num faint">{(dupes.data ?? []).filter((d) => d.kind === 'org').length}</span>
+          </button>
+          <button className={kind === 'person' ? 'on' : ''} onClick={() => setKind('person')}>
+            Individuals <span className="num faint">{(dupes.data ?? []).filter((d) => d.kind === 'person').length}</span>
+          </button>
+        </div>
+        {dupes.data && (
+          <span className="faint" style={{ fontSize: 12.5 }}>
+            At most {extra(kind)} {kind === 'org' ? 'organisation' : 'person'}
+            {extra(kind) === 1 ? '' : 's'} counted twice by name — check each group before merging.
+          </span>
+        )}
+      </div>
+
+      {dupes.error ? (
+        <div className="empty">{dupes.error}</div>
+      ) : !dupes.data ? (
+        <div className="dir-loading" aria-busy="true"><span /><span /></div>
+      ) : !list.length ? (
+        <div className="empty">
+          <h3>No likely duplicate</h3>
+          <p>No two {kind === 'org' ? 'organisations' : 'people'} share a name or an address.</p>
+        </div>
+      ) : (
+        <div className="net-programs">
+          {list.map((d) => (
+            <div key={`${d.reason}:${d.key}`} className="net-dupe">
+              <span className="net-dupe-head">
+                <span className={d.reason === 'email' ? 'badge warn' : 'badge'}>{d.reason === 'email' ? 'Same address' : 'Same name'}</span>
+                <span className="faint" style={{ fontSize: 12.5 }}>{d.key}</span>
+              </span>
+              {d.records.map((r) => (
+                <a key={r.id} className="net-dupe-row" href={`/directory/${r.id}`} target="_blank" rel="noreferrer">
+                  <b>{r.name}</b>
+                  <span className="faint">{r.email || '—'}</span>
+                  <span className="faint">{r.centers.join(', ') || 'No community'}</span>
+                  <span className="faint num">{formatDate(r.createdAt.slice(0, 10))}</span>
+                </a>
+              ))}
+            </div>
+          ))}
+        </div>
       )}
     </>
   );

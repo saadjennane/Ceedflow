@@ -194,6 +194,10 @@ function AccountCell({ data }: Renderer) {
   );
 }
 
+/** Qui l'a ajoutée : un collègue, la personne elle-même, ou un fichier. */
+const addedBy = (r: RecordRow) =>
+  r.createdByName || (r.origin === 'signup' ? 'Themselves' : r.origin === 'import' ? 'File import' : 'Not recorded');
+
 const accountWord = (r: RecordRow) => (r.account ? ACCOUNT_STATE_LABEL[r.account.state] : 'No account');
 const dateColumn = (colId: string, headerName: string, get: (r: RecordRow) => string, hide = false): ColDef<RecordRow> => ({
   colId, headerName, width: 130, hide, filter: 'agDateColumnFilter',
@@ -234,6 +238,8 @@ const PERSON_COLUMNS: ColDef<RecordRow>[] = [
   { colId: 'sessions', headerName: 'Sessions', width: 110, type: 'rightAligned', filter: 'agNumberColumnFilter', valueGetter: (p) => p.data?.sessions ?? 0 },
   { colId: 'evaluations', headerName: 'Evaluations', width: 120, type: 'rightAligned', filter: 'agNumberColumnFilter', hide: true, valueGetter: (p) => p.data?.evaluations ?? 0 },
   { colId: 'tags', headerName: 'Tags', width: 160, hide: true, valueGetter: (p) => p.data?.tags.join(', ') ?? '' },
+  { colId: 'addedBy', headerName: 'Added by', width: 160, hide: true, valueGetter: (p) => (p.data ? addedBy(p.data) : '') },
+  { colId: 'viaProgram', headerName: 'Via programme', width: 170, hide: true, valueGetter: (p) => p.data?.sourceProgramName ?? '' },
   dateColumn('created', 'Added', (r) => r.createdAt.slice(0, 10), true),
 ];
 
@@ -282,6 +288,8 @@ const ORG_COLUMNS: ColDef<RecordRow>[] = [
       },
     },
   },
+  { colId: 'addedBy', headerName: 'Added by', width: 160, hide: true, valueGetter: (p) => (p.data ? addedBy(p.data) : '') },
+  { colId: 'viaProgram', headerName: 'Via programme', width: 170, hide: true, valueGetter: (p) => p.data?.sourceProgramName ?? '' },
   { colId: 'created', headerName: 'Added', width: 120, hide: true, valueGetter: (p) => p.data?.createdAt.slice(0, 10) ?? '', valueFormatter: (p) => (p.value ? formatDate(p.value as string) : '') },
 ];
 
@@ -297,6 +305,8 @@ const CHOICES: Record<string, (r: RecordRow) => string[]> = {
   programmes: (r) => r.programmes.map((p) => p.name),
   orgs: (r) => r.orgs.map((o) => o.name),
   account: (r) => [accountWord(r)],
+  addedBy: (r) => [addedBy(r)],
+  viaProgram: (r) => [r.sourceProgramName ?? ''].filter(Boolean),
 };
 
 /** Ce qui change d'un annuaire à l'autre : ses colonnes, où sa vue est gardée, le nom de son export. */

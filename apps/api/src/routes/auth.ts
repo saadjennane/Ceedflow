@@ -68,7 +68,7 @@ import { markTest, testOwnerOf } from '../services/sandbox.js';
 import { appLink } from '../services/deliverables.js';
 import { HttpError, notFound, parse } from './util.js';
 import { all, one } from '../db/client.js';
-import { DEFAULT_CENTER, centersOf, listCenters } from '../services/centers.js';
+import { DEFAULT_CENTER, centersOf, listCenters, programOfBlock } from '../services/centers.js';
 import { inbox, markRead, notify, teamOfCenter, unreadCount } from '../services/notifications.js';
 import { acceptedIn, centersOfMember } from '../services/distribution.js';
 import { keepSheetHistory } from './sheetHistory.js';
@@ -318,6 +318,8 @@ export async function authRoutes(app: FastifyInstance) {
       places: [],
       origin: 'signup',
       centerId,
+      /* Inscrite pour candidater : le programme qui l'a amenée. */
+      sourceProgramId: form ? await programOfBlock(form.block.id) : null,
     });
     /* L'alias d'un collègue — saad+startup@… — est une identité de test, même
        inscrite d'elle-même depuis un formulaire : elle rejoint l'espace de test. */

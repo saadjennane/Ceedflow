@@ -296,6 +296,9 @@ export const recordSchema = z.object({
   /** Le collaborateur qui l'a ajoutée, par son nom au moment où il l'a fait. */
   createdBy: z.string().nullable().default(null),
   createdByName: z.string().default(''),
+  /** Le programme dont une candidature l'a amenée, quand c'est ainsi qu'elle est arrivée. */
+  sourceProgramId: z.string().nullable().default(null),
+  sourceProgramName: z.string().nullable().default(null),
   email: z.string().default(''),
   /** Toutes les adresses. La première est celle qu'on donne. */
   emails: z.array(z.string()).default([]),

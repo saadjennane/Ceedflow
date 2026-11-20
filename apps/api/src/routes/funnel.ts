@@ -64,7 +64,7 @@ import {
 import { HttpError, notFound, parse } from './util.js';
 import { writeBackToSheet } from '../services/formSheet.js';
 import { workspaceGuard } from './guard.js';
-import { DEFAULT_CENTER, centersOf, centersOfAccount, inCenter, isGlobalAdmin } from '../services/centers.js';
+import { DEFAULT_CENTER, centersOf, centersOfAccount, inCenter, isGlobalAdmin, programOfBlock } from '../services/centers.js';
 import { notify, teamOfCenter } from '../services/notifications.js';
 import { meetingsFor } from '../services/oneToOne.js';
 
@@ -214,7 +214,9 @@ export async function funnelRoutes(app: FastifyInstance) {
       const name = (input.orgName ?? '').trim();
       if (!name) throw new HttpError(422, 'A name is required.', { orgName: 'A name is required.' });
       const found = await dir.findByName('org', name);
-      orgId = (found ?? (await dir.createRecord({ kind: 'org', name, roles: ['Startup'], origin: 'manual' }))).id;
+      /* Ajoutée à la main pour ce programme : il est celui qui l'a amenée. */
+      const programId = (await repo.getEditionDetail(id))?.program.id ?? null;
+      orgId = (found ?? (await dir.createRecord({ kind: 'org', name, roles: ['Startup'], origin: 'manual', sourceProgramId: programId }))).id;
     }
 
     /** The email tells two people apart when they share a name. */
@@ -228,7 +230,10 @@ export async function funnelRoutes(app: FastifyInstance) {
       const found = email.trim() ? await dir.findByEmail('person', email) : await dir.findByName('person', clean);
       return (
         found ??
-        (await dir.createRecord({ kind: 'person', name: clean, emails: email.trim() ? [email.trim()] : [], phones, origin }))
+        (await dir.createRecord({
+          kind: 'person', name: clean, emails: email.trim() ? [email.trim()] : [], phones, origin,
+          sourceProgramId: (await repo.getEditionDetail(id))?.program.id ?? null,
+        }))
       );
     };
 
@@ -495,10 +500,16 @@ export async function funnelRoutes(app: FastifyInstance) {
        voit rien de ce que l'organisation garde pour elle. */
     /* Une organisation qui naît ici naît dans la communauté du centre qui organise ce programme. */
     const [programCenter] = await centersOf('block', found.block.id);
+    const fromProgram = await programOfBlock(found.block.id);
     const opened = input.orgId
       ? null
       : await inCenter(programCenter ?? DEFAULT_CENTER, () =>
-          dir.openOrganisation(account.recordId, { name: input.newOrg!.name, website: input.newOrg!.website }),
+          dir.openOrganisation(account.recordId, {
+            name: input.newOrg!.name,
+            website: input.newOrg!.website,
+            /* Ouverte en candidatant : ce programme l'a amenée. */
+            sourceProgramId: fromProgram,
+          }),
         );
     const orgId = input.orgId || opened!.org.id;
     const pending = Boolean(opened?.pending);

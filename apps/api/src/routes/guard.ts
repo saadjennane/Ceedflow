@@ -3,6 +3,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { SESSION_COOKIE, accountForToken } from '../services/auth.js';
 import { DEFAULT_CENTER, assertInCenter, centersOfAccount, getCenter, inCenter, isGlobalAdmin } from '../services/centers.js';
 import { HttpError } from './util.js';
+import { one } from '../db/client.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -17,6 +18,8 @@ declare module 'fastify' {
       centerId: string;
       /** CEED Global : entre dans n'importe quel centre, en administrateur. */
       global: boolean;
+      /** Son nom, tel que sa fiche le dit — pour signer ce qu'il ajoute. */
+      name: string;
     };
   }
 }
@@ -41,7 +44,12 @@ export function workspaceGuard(openTo?: (url: string) => boolean) {
   return (req: FastifyRequest, _reply: FastifyReply, done: (err?: Error) => void) => {
     if (openTo?.(req.routeOptions?.url ?? req.url)) return done();
     admit(req)
-      .then((centerId) => inCenter(centerId, () => assertInCenter(req, centerId).then(() => done(), done)))
+      .then((centerId) =>
+        inCenter(centerId, () => assertInCenter(req, centerId).then(() => done(), done), {
+          id: req.staff!.recordId,
+          name: req.staff!.name,
+        }),
+      )
       .catch(done);
   };
 }
@@ -75,7 +83,8 @@ async function admit(req: FastifyRequest): Promise<string> {
   if (changes(req.method) && !canWriteWorkspace(role)) {
     throw new HttpError(403, 'Your access to the workspace is read-only.');
   }
-  req.staff = { id: account.id, email: account.email, recordId: account.recordId, role, centerId, global };
+  const name = (await one<{ name: string }>('select name from records where id = $1', [account.recordId]))?.name?.trim() || account.email;
+  req.staff = { id: account.id, email: account.email, recordId: account.recordId, role, centerId, global, name };
   return centerId;
 }
 

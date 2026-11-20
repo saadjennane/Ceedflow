@@ -1713,7 +1713,7 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
 }
 .net-center-stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
@@ -1813,4 +1813,44 @@ button.prof-bar:hover { border-color: var(--line-strong); background: var(--wash
   align-items: center;
   padding-top: 12px;
   border-top: 1px solid var(--line);
+}
+.net-defs {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.net-dupe {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.net-dupe-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.net-dupe-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) minmax(0, 1.5fr) 110px;
+  gap: 10px;
+  padding: 6px 4px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: inherit;
+}
+.net-dupe-row:hover {
+  background: var(--wash);
+}
+.net-dupe-row > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

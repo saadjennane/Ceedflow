@@ -14,7 +14,7 @@
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { FastifyRequest } from 'fastify';
-import { newId, type StaffRole } from '@ceed/shared';
+import { matchKey, newId, type StaffRole } from '@ceed/shared';
 import { all, one } from '../db/client.js';
 import { HttpError } from '../routes/util.js';
 
@@ -27,10 +27,13 @@ export const DEFAULT_CENTER = 'ctr_maroc';
  * requête de l'équipe — un envoi programmé, un script, un test qui appelle un
  * service directement — c'est le centre d'avant le réseau.
  */
-const context = new AsyncLocalStorage<{ centerId: string }>();
+const context = new AsyncLocalStorage<{ centerId: string; actor?: { id: string; name: string } | null }>();
 export const currentCenter = (): string => context.getStore()?.centerId ?? DEFAULT_CENTER;
+/** Qui, de l'équipe, fait la requête en cours — pour noter qui a ajouté quoi. */
+export const currentActor = (): { id: string; name: string } | null => context.getStore()?.actor ?? null;
 /** Faire tourner `fn` dans un centre — pour le garde, et pour les tests. */
-export const inCenter = <T>(centerId: string, fn: () => T): T => context.run({ centerId }, fn);
+export const inCenter = <T>(centerId: string, fn: () => T, actor: { id: string; name: string } | null = null): T =>
+  context.run({ centerId, actor: actor ?? context.getStore()?.actor ?? null }, fn);
 
 export interface CenterRow {
   id: string;
@@ -99,8 +102,8 @@ export const staffOf = (centerId: string) =>
  * programme. Les programmes et fiches de l'espace de test ne comptent pas.
  */
 export async function networkFigures(): Promise<{
-  totals: { centers: number; programs: number; startups: number; members: number };
-  centers: (CenterRow & { activePrograms: number; completedPrograms: number; startups: number; members: number })[];
+  totals: { centers: number; programs: number; startups: number; organisations: number; individuals: number };
+  centers: (CenterRow & { activePrograms: number; completedPrograms: number; startups: number; organisations: number; individuals: number })[];
 }> {
   /* Un programme actif : une édition en cours. Terminé : des éditions, toutes terminées. */
   const programState = `
@@ -117,7 +120,7 @@ export async function networkFigures(): Promise<{
       join records o on o.id = c.org_id
      where c.deleted_at is null and c.status <> 'Withdrawn' and not p.is_test and o.deleted_at is null and o.test_owner is null`;
   const members = `
-    select cm.center_id, cm.record_id from center_members cm join records r on r.id = cm.record_id
+    select cm.center_id, cm.record_id, r.kind from center_members cm join records r on r.id = cm.record_id
      where r.deleted_at is null and r.test_owner is null`;
 
   const [centers, perProgram, perStartup, perMember, totals] = await Promise.all([
@@ -127,25 +130,68 @@ export async function networkFigures(): Promise<{
          from (${programState}) s group by center_id`,
     ),
     all<{ center_id: string; n: number }>(`select center_id, count(*)::int as n from (${startups}) s group by center_id`),
-    all<{ center_id: string; n: number }>(`select center_id, count(*)::int as n from (${members}) m group by center_id`),
-    one<{ centers: number; programs: number; startups: number; members: number }>(
+    all<{ center_id: string; orgs: number; people: number }>(
+      `select center_id, count(*) filter (where kind = 'org')::int as orgs, count(*) filter (where kind = 'person')::int as people
+         from (${members}) m group by center_id`,
+    ),
+    one<{ centers: number; programs: number; startups: number; organisations: number; individuals: number }>(
       `select (select count(*)::int from centers where status = 'active') as centers,
               (select count(*)::int from (${programState}) s where live) as programs,
               (select count(distinct org_id)::int from (${startups}) s) as startups,
-              (select count(distinct record_id)::int from (${members}) m) as members`,
+              (select count(distinct record_id)::int from (${members}) m where kind = 'org') as organisations,
+              (select count(distinct record_id)::int from (${members}) m where kind = 'person') as individuals`,
     ),
   ]);
   const of = <T extends { center_id: string }>(rows: T[], id: string) => rows.find((r) => r.center_id === id);
   return {
-    totals: totals ?? { centers: 0, programs: 0, startups: 0, members: 0 },
+    totals: totals ?? { centers: 0, programs: 0, startups: 0, organisations: 0, individuals: 0 },
     centers: centers.map((c) => ({
       ...c,
       activePrograms: of(perProgram, c.id)?.active ?? 0,
       completedPrograms: of(perProgram, c.id)?.completed ?? 0,
       startups: of(perStartup, c.id)?.n ?? 0,
-      members: of(perMember, c.id)?.n ?? 0,
+      organisations: of(perMember, c.id)?.orgs ?? 0,
+      individuals: of(perMember, c.id)?.people ?? 0,
     })),
   };
+}
+
+/**
+ * Les fiches probablement en double : même nom une fois les accents, la casse
+ * et la ponctuation mis de côté, ou même adresse — par organisation et par
+ * individu, hors espace de test. Ce que la base contient vraiment, pour qu'un
+ * chiffre se vérifie.
+ */
+export async function likelyDuplicates(): Promise<{
+  kind: 'org' | 'person';
+  reason: 'name' | 'email';
+  key: string;
+  records: { id: string; name: string; email: string; createdAt: string; centers: string[] }[];
+}[]> {
+  const rows = await all<{ id: string; kind: 'org' | 'person'; name: string; emails: string[]; createdAt: string; centers: string[] }>(
+    `select r.id, r.kind, r.name, r.emails, r.created_at::text as "createdAt",
+            coalesce((select array_agg(c.name order by c.name) from center_members cm join centers c on c.id = cm.center_id
+                       where cm.record_id = r.id), '{}') as centers
+       from records r where r.deleted_at is null and r.test_owner is null`,
+  );
+  const groups = new Map<string, typeof rows>();
+  const add = (key: string, r: (typeof rows)[number]) => groups.set(key, [...(groups.get(key) ?? []), r]);
+  for (const r of rows) {
+    const name = matchKey(r.name);
+    if (name) add(`${r.kind}|name|${name}`, r);
+    for (const e of r.emails ?? []) if (e.trim()) add(`${r.kind}|email|${e.trim().toLowerCase()}`, r);
+  }
+  return [...groups.entries()]
+    .filter(([, list]) => new Set(list.map((r) => r.id)).size > 1)
+    .map(([key, list]) => {
+      const [kind, reason, value] = key.split('|') as ['org' | 'person', 'name' | 'email', string];
+      const unique = [...new Map(list.map((r) => [r.id, r])).values()];
+      return {
+        kind, reason, key: value,
+        records: unique.map((r) => ({ id: r.id, name: r.name, email: r.emails?.[0] ?? '', createdAt: r.createdAt, centers: r.centers })),
+      };
+    })
+    .sort((a, b) => a.kind.localeCompare(b.kind) || a.key.localeCompare(b.key));
 }
 
 /** Les programmes du réseau, chacun une fois : son centre, son état, ses dates, où il est diffusé. */
@@ -187,11 +233,18 @@ export async function isGlobalAdmin(accountId: string): Promise<boolean> {
  * Le rattachement d'une fiche à un centre. Idempotent : deux candidatures au
  * même centre ne font qu'une ligne, et le premier motif reste.
  */
-export async function joinCenter(recordId: string, centerId: string, origin: string): Promise<void> {
+export async function joinCenter(
+  recordId: string,
+  centerId: string,
+  origin: string,
+  /** Le programme qui l'amène, et qui l'a ajoutée — l'équipe qui agit, sans précision. */
+  how: { programId?: string | null; by?: { id: string; name: string } | null } = {},
+): Promise<void> {
+  const by = how.by === undefined ? currentActor() : how.by;
   await all(
-    `insert into center_members (record_id, center_id, origin) values ($1, $2, $3)
+    `insert into center_members (record_id, center_id, origin, program_id, added_by, added_by_name) values ($1, $2, $3, $4, $5, $6)
      on conflict (record_id, center_id) do nothing`,
-    [recordId, centerId, origin],
+    [recordId, centerId, origin, how.programId ?? null, by?.id ?? null, by?.name ?? ''],
   );
 }
 
@@ -210,6 +263,16 @@ export const staffAnywhere = (account: string) =>
 export async function leaveCenter(recordId: string, centerId: string): Promise<void> {
   await all('delete from center_members where record_id = $1 and center_id = $2', [recordId, centerId]);
   await all('delete from org_notes where org_id = $1 and center_id = $2', [recordId, centerId]);
+}
+
+/** Le programme d'une brique — celui qu'une candidature à cette brique vise. */
+export async function programOfBlock(blockId: string): Promise<string | null> {
+  const row = await one<{ id: string }>(
+    `select e.program_id as id from blocks b join phases ph on ph.id = b.phase_id join tracks t on t.id = ph.track_id
+       join editions e on e.id = t.edition_id where b.id = $1`,
+    [blockId],
+  );
+  return row?.id ?? null;
 }
 
 /* ------------------------------------------------------------------ */

@@ -14,13 +14,15 @@ import {
   type TeamMember,
 } from '@ceed/shared';
 import { accountOfRecord, accountStatesByRecord } from '../services/auth.js';
-import { currentCenter, joinCenter } from '../services/centers.js';
+import { currentActor, currentCenter, joinCenter } from '../services/centers.js';
 import { db } from './client.js';
 
 const COLS = `id, kind, name, first_name as "firstName", last_name as "lastName", roles, origin, test_owner as "testOwner",
   job_title as "jobTitle", department,
   logo_upload_id as "logoUploadId", brand_colour as "brandColour", pitch, sector, stage,
   created_by as "createdBy", created_by_name as "createdByName",
+  source_program_id as "sourceProgramId",
+  (select sp.name from programs sp where sp.id = records.source_program_id) as "sourceProgramName",
   founded_year as "foundedYear", team_size as "teamSize", linkedin,
   org_type as "orgType", legal_status as "legalStatus", founded_on as "foundedOn", legal_form as "legalForm",
   capital_amount as "capitalAmount", capital_currency as "capitalCurrency",
@@ -191,6 +193,8 @@ export async function createRecord(input: {
   logoUploadId?: string | null;
   /** Le centre dont elle rejoint la communauté. Sans : celui où l'on travaille. */
   centerId?: string;
+  /** Le programme dont la candidature l'a amenée, quand c'est ainsi qu'elle arrive. */
+  sourceProgramId?: string | null;
   /** Le reste de la fiche, tel que le formulaire l'envoie — écrit comme le ferait `updateRecord`. */
   [field: string]: unknown;
 }): Promise<DirectoryRecord> {
@@ -201,6 +205,8 @@ export async function createRecord(input: {
      point every path goes through, rather than left empty for a template to
      guess at later. Whatever the caller gives wins: it knows better. */
   const cut = input.kind === 'person' ? splitName(input.name) : { firstName: '', lastName: '' };
+  /* Qui l'ajoute : celui que l'appel nomme, sinon la personne de l'équipe qui agit. */
+  const by = input.by === undefined ? currentActor() : input.by;
   await (await db()).query(
     `insert into records (id, kind, name, first_name, last_name, roles, origin, emails,
        website, bio, tags, job_title, department,
@@ -230,12 +236,19 @@ export async function createRecord(input: {
       input.linkedin ?? '',
       (input.phones ?? []).filter(Boolean),
       input.places ?? [],
-      input.by?.id ?? null,
-      input.by?.name ?? '',
+      by?.id ?? null,
+      by?.name ?? '',
     ],
   );
-  /* Une fiche naît dans une communauté : celle du centre où on la crée. */
-  await joinCenter(id, input.centerId ?? currentCenter(), input.origin ?? 'manual');
+  /* Une fiche naît dans une communauté : celle du centre où on la crée — par
+     qui l'ajoute, et par le programme qui l'amène quand c'est une candidature. */
+  if (input.sourceProgramId) {
+    await (await db()).query('update records set source_program_id = $2 where id = $1', [id, input.sourceProgramId]);
+  }
+  await joinCenter(id, input.centerId ?? currentCenter(), input.origin ?? 'manual', {
+    programId: input.sourceProgramId ?? null,
+    by: by ?? null,
+  });
   /* Tout ce que la fiche sait écrire et que la ligne ci-dessus n'a pas pris —
      la photo, le logo, le type d'organisation, le statut, le capital… Ils
      étaient reçus puis oubliés : une personne créée avec sa photo n'avait

@@ -389,6 +389,12 @@ export function RecordPage() {
           <div className="card card-pad stack" style={{ gap: 10 }}>
             <div className="eyebrow">The record</div>
             <Fact label="Came from" value={ORIGIN_LABEL[record.origin]} />
+            {/* Le programme dont la candidature l'a amenée, et qui l'a ajoutée. */}
+            {record.sourceProgramName && <Fact label="Via the programme" value={record.sourceProgramName} />}
+            <Fact
+              label="Added by"
+              value={record.createdByName || (record.origin === 'signup' ? 'Themselves' : record.origin === 'import' ? 'A file import' : 'Not recorded')}
+            />
             <Fact label="Added" value={formatDate(record.createdAt)} />
             <p className="faint" style={{ margin: 0, fontSize: 12, lineHeight: 1.5 }}>
               {record.origin === 'signup'
